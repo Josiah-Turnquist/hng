@@ -1,6 +1,6 @@
 // Soviet vehicles. Conventions (vkit.js): meters, +X right, +Y up, -Z forward; origin on the
 // ground at the middle of the wheelbase (wheeled) or of the track contact length (tracked).
-import { S, DEG, ribbon, circle, arc, torusProfile, layer, mirrorHalf, latheGeo, prismGeoX, roundRect, slotV } from './vkit.js';
+import { S, DEG, ribbon, circle, torusProfile, mirrorHalf, latheGeo, prismGeoX, roundRect, slotV } from './vkit.js';
 import { jeepWheel, roadWheel, runningGear, boltRing, steeringWheel } from './parts.js';
 
 const side = (s) => (s < 0 ? 'L' : 'R');
@@ -125,7 +125,7 @@ function t34Hull(b, { spoked = false } = {}) {
       b.box({ x: x + dx, y: y + 0.03, z: gz(y) - 0.04, w: 0.1, h: 0.07, d: 0.08, r: 0.01, mat: P });
       b.box({ x: x + dx, y: y + 0.045, z: gz(y) - 0.081, w: 0.08, h: 0.025, d: 0.005, r: 0.002, mat: 'dark' });
     }
-    b.anchor('driverEye', x, 1.3, gz(1.3) + 0.12);
+    b.anchor('driverEye', x, 1.36, gz(1.36) - 0.1); // at the hatch periscopes
     const bx = 0.45,
       by = 1.22;
     b.sphere({ x: bx, y: by, z: gz(by) + 0.02, r: 0.13, sz: 0.6, mat: C, seg: 16 });
@@ -150,23 +150,18 @@ function t34Hull(b, { spoked = false } = {}) {
       bevel: 0.008,
     });
   }
-  for (let i = 0; i < 3; i++) {
-    const y0 = 1.02 + i * 0.0,
-      x = 0.12 + i * 0.0;
-    void y0;
-    void x;
-  }
-  for (const dx of [0.6, 0.06]) {
-    const y0 = 0.86,
-      y1 = 1.0;
+  // Two spare track links on the glacis.
+  for (const dx of [0.66, 0.02]) {
+    const y0 = 0.85,
+      y1 = 0.94;
     b.quad({
       p: [
-        [dx - 0.27, y0, gz(y0) - 0.03],
-        [dx + 0.27, y0, gz(y0) - 0.03],
-        [dx + 0.27, y1, gz(y1) - 0.03],
-        [dx - 0.27, y1, gz(y1) - 0.03],
+        [dx - 0.25, y0, gz(y0) - 0.025],
+        [dx + 0.25, y0, gz(y0) - 0.025],
+        [dx + 0.25, y1, gz(y1) - 0.025],
+        [dx - 0.25, y1, gz(y1) - 0.025],
       ],
-      t: 0.04,
+      t: 0.035,
       mat: 'track',
     });
   }

@@ -1,6 +1,38 @@
 // Registry of procedural vehicle models: id -> builder(b: VehicleBuilder).
 // Conventions are documented in vkit.js (meters, +X right, +Y up, -Z forward, origin on
 // the ground at the middle of the wheelbase / track contact length).
+//
+// buildVehicle(id, textures) -> { root, parts, anchors, meta, mats, stats }
+//   parts: { name: THREE.Group } all direct children of root, positioned at their pivot.
+//     Wheeled: wheelFL, wheelFR, wheelRL, wheelRR, steeringWheel, windshield?, doors?
+//     Tracked: turret, gun, road{L,R}{0..n} (0 = front), roller{L,R}{i}, sprocket{L,R},
+//       idler{L,R}, pintleMg?, skirtL/R (Panzer IV Schürzen)
+//     Half-track: wheelFL, wheelFR, steeringWheel, doors + the tracked running gear parts.
+//   anchors: { name: Vector3 } in vehicle space at rest; meta.anchorParts[name] = part the
+//     anchor moves with (anchors not listed there are on the body).
+//   meta (all positions in vehicle space at rest):
+//     id, name, faction 'us'|'de'|'su', type 'wheeled'|'tracked'|'halftrack', crew, seats,
+//     dims { length, width, height } (bounding box incl. tracks), bounds { min, max },
+//     bodyBounds { min, max } (without turret/gun/turret-mounted parts), pivots { part: xyz },
+//     partParents { child: parent } (gun -> turret, pintleMg -> turret: see attachParts),
+//     hinges { part: { axis, open } } (rotation axis in the part's frame, open angle in rad),
+//     armor [{ name, part, center, half, rot (XYZ Euler), mm }] (names repeat when a plate
+//     is split into strips), modules [{ name, part, center, half }] (names repeat),
+//     specs { mass kg, maxSpeed km/h, power hp, ... } (reference data)
+//     wheeled: wheelRadius, wheelWidth, wheelbase, trackWidth, wheels { part: xyz },
+//       steeringAxis (unit vector of the steering column, toward the driver), maxSteer (rad),
+//       groundClearance; opel_blitz also rearTrackWidth, dualRear
+//     tracked: roadWheelRadius, roadWheels { count, z[], y }, wheelbase (= track ground
+//       contact length), trackWidth (= 2 * track.offsetX), turretRing { center, radius },
+//       gun { name, caliber }, gunElevation [down, up] deg, turretTraverse deg/s,
+//       track { width, pitch, linkThickness, offsetX, path [[z, y]...] (closed loop of the
+//       link centerline, counterclockwise in z-y = order the links travel when driving
+//       forward; bottom run at y = linkThickness / 2), length, links, realLinks, sag,
+//       guides [{ kind, part, z, y, r }] (circles the loop wraps; feed trackPath() with moved
+//       road wheels to re-shape it), sprocketRadius, sprocketTeeth, idlerRadius, rollerRadius }
+//     half-track: wheeled fields for the front axle (wheelRadius, trackWidth, wheelbase =
+//       front axle -> track bogie center, frontAxleZ, trackBogieZ) + track,
+//       roadWheelRadius, trackContactLength.
 import * as THREE from 'three';
 import { VehicleBuilder, trackPath, pathLength } from './vkit.js';
 import * as us from './us.js';
@@ -146,6 +178,39 @@ function finish(v, b) {
     triangles += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
   });
   v.stats = { primitives: b.primitives, triangles, drawCalls };
+}
+
+// Cheap copies: the first call per (textures, id) builds a prototype; every call returns new
+// groups/meshes that share its geometry and materials (meta is shared, treat it as
+// read-only; do not dispose the geometry of an instance while others are alive).
+const protos = new WeakMap();
+
+export function instanceVehicle(id, textures) {
+  let byId = protos.get(textures);
+  if (!byId) protos.set(textures, (byId = new Map()));
+  let proto = byId.get(id);
+  if (!proto) byId.set(id, (proto = buildVehicle(id, textures)));
+  const root = new THREE.Group();
+  root.name = proto.root.name;
+  const parts = {};
+  for (const [name, g] of Object.entries(proto.parts)) {
+    const ng = new THREE.Group();
+    ng.name = name;
+    ng.position.copy(g.position);
+    for (const c of g.children) {
+      if (!c.isMesh) continue;
+      const mesh = new THREE.Mesh(c.geometry, c.material);
+      mesh.castShadow = c.castShadow;
+      mesh.receiveShadow = c.receiveShadow;
+      ng.add(mesh);
+    }
+    root.add(ng);
+    parts[name] = ng;
+  }
+  const anchors = {};
+  for (const [k, p] of Object.entries(proto.anchors)) anchors[k] = p.clone();
+  root.userData = { anchors, parts, meta: proto.meta };
+  return { root, parts, anchors, meta: proto.meta, mats: proto.mats, stats: proto.stats };
 }
 
 // Re-parent the parts listed in meta.partParents (gun -> turret, turret hatches and pintle

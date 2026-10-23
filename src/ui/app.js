@@ -5,6 +5,7 @@ import { Settings } from '../core/settings.js';
 import { Input } from '../core/input.js';
 import { Game } from '../game/game.js';
 import { AudioSystem } from '../audio/audio.js';
+import { showMainMenu, PauseMenu } from './menu.js';
 
 export class App {
   constructor(root) {
@@ -40,14 +41,30 @@ export class App {
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
 
+    // A battle set up in the address bar (used by tests and links) skips the menu.
+    const p = this.params;
+    let opts;
+    if (p.has('map') || p.has('mode') || p.has('cam') || p.has('play')) {
+      opts = {
+        map: p.get('map') || 'range',
+        mode: p.get('mode') || 'auto',
+        faction: p.get('faction') || 'US',
+        side: p.get('side') || 'attack',
+        cls: p.get('class') || 'infantry',
+        loadout: p.get('weapon') ? [p.get('weapon'), null, null] : null,
+        bots: Number(p.get('bots') || 10),
+        minutes: Number(p.get('minutes') || 20),
+      };
+    } else {
+      const s = await showMainMenu(this);
+      opts = { map: s.map, mode: 'auto', faction: s.faction, side: s.side, cls: s.cls, loadout: s.weapon ? [s.weapon, null, null] : null, bots: s.bots, minutes: s.minutes };
+      // The quality may have changed in the menu.
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.settings.quality.maxPixelRatio));
+      this.audio?.resume();
+    }
+
     this.loading = this._makeLoading();
-    const game = new Game(this, {
-      map: this.params.get('map') || 'range',
-      mode: this.params.get('mode') || 'auto',
-      faction: this.params.get('faction') || 'GE',
-      cls: this.params.get('class') || 'infantry',
-      loadout: this.params.get('weapon') ? [this.params.get('weapon'), null, null] : null,
-    });
+    const game = new Game(this, opts);
     this.game = game;
     const soundReady = this.audio
       ? this.audio.init({ onProgress: () => {} }).catch((e) => {
@@ -62,6 +79,18 @@ export class App {
     window.addEventListener('resize', () => this._resize());
     this.loading.el.classList.add('done');
     setTimeout(() => this.loading.el.remove(), 800);
+    // Releasing the mouse (Esc) pauses, once the player has started playing.
+    this.pause = new PauseMenu(this, game);
+    this.input.onLockChange = (locked) => {
+      if (locked) {
+        game.everLocked = true;
+        game.paused = false;
+        this.pause.hide();
+      } else if (game.everLocked && !game.mode?.over) {
+        game.paused = true;
+        this.pause.show();
+      }
+    };
     game.start();
   }
 

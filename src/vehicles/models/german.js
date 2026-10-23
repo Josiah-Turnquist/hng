@@ -1,8 +1,7 @@
 // German vehicles. Conventions (vkit.js): meters, +X right, +Y up, -Z forward; origin on the
 // ground at the middle of the wheelbase (wheeled) or of the track contact length (tracked).
-import { S, DEG, ribbon, circle, roundRect, arc, torusProfile, section, layer, mirrorHalf, gear } from './vkit.js';
-import { jeepWheel, roadWheel, sprocket, runningGear, boltRing, steeringWheel } from './parts.js';
-import { prismGeoX, latheGeo, eulerFromTo, slotV } from './vkit.js';
+import { DEG, ribbon, roundRect, arc, torusProfile, section, mirrorHalf, eulerFromTo, slotV } from './vkit.js';
+import { jeepWheel, roadWheel, sprocket, runningGear, steeringWheel } from './parts.js';
 
 const side = (s) => (s < 0 ? 'L' : 'R');
 
@@ -145,7 +144,7 @@ export function panzer4_h(b) {
     const y = 1.5;
     b.box({ x: -0.5, y, z: fz(y) - 0.03, w: 0.36, h: 0.16, d: 0.07, r: 0.02, mat: P });
     b.box({ x: -0.5, y: y + 0.01, z: fz(y) - 0.066, w: 0.2, h: 0.022, d: 0.006, r: 0.002, mat: 'dark' });
-    b.anchor('driverEye', -0.5, y + 0.01, fz(y) + 0.12);
+    b.anchor('driverEye', -0.5, y + 0.01, fz(y) - 0.075); // at the visor slit
     b.sphere({ x: 0.5, y: y - 0.02, z: fz(y) - 0.01, r: 0.14, sz: 0.55, mat: Cst, seg: 18 });
     b.cyl({ z0: fz(y) - 0.08, z1: fz(y) - 0.22, r0: 0.026, x: 0.5, y: y - 0.02, mat: 'blued', seg: 10 });
     b.cyl({ z0: fz(y) - 0.22, z1: fz(y) - 0.26, r0: 0.013, x: 0.5, y: y - 0.02, mat: 'blued', seg: 8 });
@@ -492,7 +491,7 @@ export function tiger1(b) {
     const y = 1.6;
     b.box({ x: -0.55, y, z: fz(y) - 0.04, w: 0.42, h: 0.18, d: 0.09, r: 0.025, mat: P });
     b.box({ x: -0.55, y: y + 0.01, z: fz(y) - 0.087, w: 0.22, h: 0.022, d: 0.006, r: 0.002, mat: 'dark' });
-    b.anchor('driverEye', -0.55, y + 0.01, fz(y) + 0.14);
+    b.anchor('driverEye', -0.55, y + 0.01, fz(y) - 0.095); // at the visor slit
     b.sphere({ x: 0.55, y: y - 0.04, z: fz(y) - 0.01, r: 0.16, sz: 0.55, mat: Cst, seg: 18 });
     b.cyl({ z0: fz(y) - 0.08, z1: fz(y) - 0.24, r0: 0.026, x: 0.55, y: y - 0.04, mat: 'blued', seg: 10 });
     b.cyl({ z0: fz(y) - 0.24, z1: fz(y) - 0.28, r0: 0.013, x: 0.55, y: y - 0.04, mat: 'blued', seg: 8 });

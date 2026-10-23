@@ -94,7 +94,7 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   const b = s.body;
   const v = s.vehicle;
   // Hidden: the player's own body in first person, and crews inside tanks.
-  const hidden = (s.isPlayer && firstPersonPlayer && !v) || (v && v.def.kind === 'tracked') || (!s.alive && s.deathTime > 90);
+  const hidden = (s.isPlayer && firstPersonPlayer && !v && s.alive) || (v && v.def.kind === 'tracked') || (!s.alive && s.deathTime > 90);
   m.root.visible = !hidden;
   if (hidden && s.alive) return;
   setSoldierWeapon(game, s);

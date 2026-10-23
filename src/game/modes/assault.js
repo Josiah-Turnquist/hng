@@ -110,6 +110,13 @@ export class AssaultMode {
       const n = this.perSide - (team === this.playerTeam ? 1 : 0);
       for (let i = 0; i < n; i++) this._makeBot(team, i);
     }
+    // Jeeps wait at each side's spawn points.
+    this.vehicleSpots = [];
+    const jeep = { US: 'willys_mb', GE: 'kubelwagen', SU: 'gaz67' };
+    if (!g.headless) {
+      for (const p of this.points.filter((q) => q.kind === 'access')) this._park(jeep[this.factions[ATT]], p, ATT);
+      for (const p of this.points.filter((q) => q.kind === 'objective')) this._park(jeep[this.factions[DEF]], p, DEF);
+    }
     // HUD: points and timer.
     const el = document.createElement('div');
     el.className = 'assault-bar';
@@ -120,8 +127,35 @@ export class AssaultMode {
     g.hud.root.appendChild(big);
     this.resultEl = big;
     const side = this.playerTeam === ATT ? 'attacking' : 'defending';
-    g.hud.hint(`Assault on ${g.mapDef.name}: you are ${side} with the ${FACTIONS[this.factions[this.playerTeam]].name}. Take the points in order toward the police station (O1) and the church (O2). F enters vehicles.`, 12);
+    const f = FACTIONS[this.factions[this.playerTeam]];
+    const goal = this.playerTeam === ATT ? 'Take the points in order toward the police station (O1) and the church (O2).' : 'Hold the police station (O1) and the church (O2) until the clock runs out.';
+    g.hud.hint(`Assault on ${g.mapDef.name}: the ${f.army} is ${side}. ${goal} Blue points are yours, red the enemy's.`, 14);
     this._updateBar(true);
+  }
+
+  // Park a vehicle on a clear, level spot near a point, facing the fight.
+  _park(id, p, team) {
+    const g = this.game;
+    const hf = g.world.hf;
+    const coll = g.world.collision;
+    const yaw = this._facing({ ...p, owner: team });
+    for (let r = 10; r < 70; r += 6) {
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2 + r;
+        const x = p.x + Math.cos(a) * r,
+          z = p.z + Math.sin(a) * r;
+        if (g.nav && !g.nav.walkable(x, z)) continue;
+        const h = hf.getHeight(x, z);
+        if (Math.abs(hf.getHeight(x + 2.5, z) - hf.getHeight(x - 2.5, z)) > 0.5 || Math.abs(hf.getHeight(x, z + 2.5) - hf.getHeight(x, z - 2.5)) > 0.5) continue;
+        if (g.world.waterLevelAt?.(x, z) != null) continue;
+        if (coll.query(x - 2.5, h + 0.2, z - 2.5, x + 2.5, h + 2.2, z + 2.5, [], 1).length) continue;
+        const v = g.spawnVehicle(id, x, z, yaw);
+        v.team = team;
+        this.vehicleSpots.push({ id, x, z, yaw, team, v, deadT: 0 });
+        return v;
+      }
+    }
+    return null;
   }
 
   _makeBot(team, i) {
@@ -144,7 +178,7 @@ export class AssaultMode {
   // A varied but sensible loadout per faction: mostly rifles, some SMGs and MGs.
   _botLoadout(faction, cls, i) {
     const base = DEFAULT_LOADOUT[faction][cls] || DEFAULT_LOADOUT[faction].infantry;
-    const prim = weaponsFor(faction).filter((w) => w.slot === 'primary' && w.type !== 'launcher' && w.type !== 'atRifle' && w.type !== 'sniper');
+    const prim = weaponsFor(faction, cls, 'primary').filter((w) => w.type !== 'launcher' && w.type !== 'atRifle');
     const pick = prim[(i * 7 + 3) % prim.length];
     const loadout = base.slice();
     if (pick && i % 2 === 1) loadout[0] = pick.id;
@@ -292,6 +326,17 @@ export class AssaultMode {
         this.spawnSoldier(s, p);
         s.respawnT = null;
       }
+    }
+    // Wrecked vehicles are replaced after a while.
+    for (const spot of this.vehicleSpots || []) {
+      if (spot.v.alive) continue;
+      spot.deadT += dt;
+      if (spot.deadT < 45 || spot.v.occupants.some((o) => o)) continue;
+      spot.v.removeFromWorld();
+      g.vehicles.splice(g.vehicles.indexOf(spot.v), 1);
+      spot.v = g.spawnVehicle(spot.id, spot.x, spot.z, spot.yaw);
+      spot.v.team = spot.team;
+      spot.deadT = 0;
     }
     if (((g.time * 4) | 0) !== this._barTick) {
       this._barTick = (g.time * 4) | 0;

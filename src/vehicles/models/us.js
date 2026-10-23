@@ -1,6 +1,6 @@
 // US vehicles. Conventions (vkit.js): meters, +X right, +Y up, -Z forward; origin on the
 // ground at the middle of the wheelbase (wheeled) or of the track contact length (tracked).
-import { S, DEG, TAU, ribbon, circle, roundRect, slotV, arc, torusProfile, section, layer, mirrorHalf } from './vkit.js';
+import { S, DEG, ribbon, circle, roundRect, slotV, arc, torusProfile, layer, mirrorHalf } from './vkit.js';
 import { jeepWheel, roadWheel, sprocket, runningGear, steeringWheel } from './parts.js';
 
 const side = (s) => (s < 0 ? 'L' : 'R');
@@ -598,14 +598,19 @@ export function m4a1_sherman(b) {
     turretRing: { center: [0, yR, zT], radius: 0.875 },
     specs: { mass: 30300, maxSpeed: 39, power: 400, engine: 'Continental R975-C1', fuel: 662 },
   });
-  const ang = (deg) => deg * DEG;
   // Hull.
   b.armorZY('glacis', 'body', 51, [-2.76, 1.04], [-1.62, gY(-1.62)], -1.2, 1.2, [0, 0.5, -1]);
   b.armorZY('noseUpper', 'body', 51, [-2.845, 0.86], [-2.77, 1.05], -0.86, 0.86, [0, 0, -1]);
   b.armorZY('noseLower', 'body', 51, [-2.52, 0.47], [-2.845, 0.86], -0.86, 0.86, [0, -0.5, -1]);
   for (const s of [-1, 1]) {
     const L = side(s);
-    b.armorXY(`sideUpper${L}`, 'body', 38, [s * 1.295, 1.0], [s * 1.295, 1.86], -2.4, 2.86, [s, 0, 0]);
+    b.armorPoly(`sideUpper${L}`, 'body', 38, [
+      [s * 1.295, 1.0, -2.4],
+      [s * 1.295, 1.0, 2.86],
+      [s * 1.295, 1.86, 2.72],
+      [s * 1.295, 1.86, -1.55],
+      [s * 1.295, gY(-2.4), -2.4],
+    ], [s, 0, 0], 5, [0, 0, 1]);
     b.armorXY(`sideLower${L}`, 'body', 38, [s * 0.8, 0.45], [s * 0.8, 0.99], -2.25, 2.7, [s, 0, 0]);
     b.armorZY(`sponsonFloor${L}`, 'body', 13, [-2.4, yb], [2.88, yb], s * 0.8, s * 1.295, [0, -1, 0]);
   }
@@ -628,7 +633,6 @@ export function m4a1_sherman(b) {
   b.armorZY('turretRoof', 'turret', 25, [tz(-0.62), 2.565], [tz(0.86), 2.565], -0.68, 0.68, [0, 1, 0]);
   b.armor('mantlet', 'gun', 89, [0.08, yG, zS], [0.74, 0, 0], [0, 0.46, 0], [0, 0, -1]);
   b.armor('rotor', 'gun', 76, [0, yG, zG - 0.3], [0.84, 0, 0], [0, 0.5, 0], [0, 0, -1]);
-  void ang;
   // Internal modules.
   b.module('engine', 'body', [0, 1.3, 1.85], [0.62, 0.52, 0.62]);
   b.module('transmission', 'body', [0, 0.78, -2.35], [0.62, 0.3, 0.35]);
@@ -721,18 +725,16 @@ export function m5a1_stuart(b) {
     mat: P,
     bevel: 0.015,
   });
-  b.prismX({
-    points: [
-      [-2.26, 0.92],
-      [2.12, 0.92],
-      [2.14, 1.58],
-      [2.08, 1.62],
-      [gl(1.62), 1.62],
-    ],
-    x0: -1.12,
-    x1: 1.12,
+  // Upper hull over the tracks, sides leaning in (tumblehome) up to the roof.
+  b.convex({
+    points: [-1, 1].flatMap((s) => [
+      [s * 1.12, 0.92, -2.26],
+      [s * 1.12, 0.92, 2.12],
+      [s * 0.99, 1.58, 2.14],
+      [s * 0.98, 1.62, 2.08],
+      [s * 0.98, 1.62, gl(1.62)],
+    ]),
     mat: P,
-    bevel: 0.015,
   });
   // Driver and assistant driver hatches with periscopes on the glacis, bow MG (right),
   // headlights with brush guards, lifting eyes.
@@ -874,17 +876,29 @@ export function m5a1_stuart(b) {
     turretRing: { center: [0, yR, zT], radius: 0.59 },
     specs: { mass: 15400, maxSpeed: 58, power: 220, engine: '2x Cadillac Series 42 V8', fuel: 340 },
   });
-  b.armorZY('glacis', 'body', 29, [-2.26, 0.92], [gl(1.62), 1.62], -1.12, 1.12, [0, 0.5, -1]);
+  b.armorZY('glacis', 'body', 29, [-2.26, 0.92], [gl(1.62), 1.62], -1.06, 1.06, [0, 0.5, -1]);
   b.armorZY('lowerFront', 'body', 44, [-2.12, 0.46], [-2.3, 0.72], -0.7, 0.7, [0, -0.3, -1]);
   b.armorZY('lowerFrontUpper', 'body', 44, [-2.3, 0.72], [-2.26, 0.93], -0.7, 0.7, [0, 0, -1]);
   for (const s of [-1, 1]) {
     const L = side(s);
-    b.armorXY(`sideUpper${L}`, 'body', 29, [s * 1.12, 0.92], [s * 1.12, 1.62], gl(1.2), 2.12, [s, 0, 0]);
+    b.armorPoly(`sideUpper${L}`, 'body', 29, [
+      [s * 1.12, 0.92, -2.26],
+      [s * 1.12, 0.92, 2.12],
+      [s * 0.99, 1.58, 2.14],
+      [s * 0.98, 1.62, gl(1.62)],
+    ], [s, 0.2, 0], 5, [0, 0, 1]);
     b.armorXY(`sideLower${L}`, 'body', 29, [s * 0.7, 0.38], [s * 0.7, 0.93], -2.1, 2.1, [s, 0, 0]);
     b.armorZY(`sponsonFloor${L}`, 'body', 13, [-2.2, 0.92], [2.12, 0.92], s * 0.7, s * 1.12, [0, -1, 0]);
   }
-  b.armorZY('roof', 'body', 13, [gl(1.62), 1.62], [2.08, 1.62], -1.12, 1.12, [0, 1, 0]);
-  b.armorZY('rear', 'body', 25, [2.12, 0.55], [2.14, 1.58], -1.12, 1.12, [0, 0, 1]);
+  b.armorZY('roof', 'body', 13, [gl(1.62), 1.62], [2.08, 1.62], -0.98, 0.98, [0, 1, 0]);
+  b.armorPoly('rear', 'body', 25, [
+    [-0.7, 0.55, 2.12],
+    [0.7, 0.55, 2.12],
+    [1.12, 0.92, 2.12],
+    [0.99, 1.58, 2.14],
+    [-0.99, 1.58, 2.14],
+    [-1.12, 0.92, 2.12],
+  ], [0, 0, 1], 4, [0, 1, 0]);
   b.armorZY('belly', 'body', 13, [-1.86, 0.38], [1.9, 0.38], -0.7, 0.7, [0, -1, 0]);
   b.armorShell('turret', 'turret', plan.map(([x, dz]) => [x, zT + dz]), [1.64, 1], [2.14, 0.9], [0, zT], (deg) => (deg < 40 ? 38 : 32));
   b.armorPoly('turretRoof', 'turret', 13, L3(2.2, 0.86), [0, 1, 0], 3, [0, 0, 1]);

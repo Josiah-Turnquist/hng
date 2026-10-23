@@ -1047,9 +1047,9 @@ for (const [id, w] of Object.entries(WEAPONS)) {
 }
 
 export const FACTIONS = {
-  US: { name: 'United States', short: 'US', tracer: [1.0, 0.25, 0.15] },
-  GE: { name: 'Germany', short: 'GE', tracer: [1.0, 0.75, 0.35] },
-  SU: { name: 'Soviet Union', short: 'SU', tracer: [0.5, 1.0, 0.35] },
+  US: { name: 'United States', army: 'US Army', short: 'US', tracer: [1.0, 0.25, 0.15] },
+  GE: { name: 'Germany', army: 'Wehrmacht', short: 'GE', tracer: [1.0, 0.75, 0.35] },
+  SU: { name: 'Soviet Union', army: 'Red Army', short: 'SU', tracer: [0.5, 1.0, 0.35] },
 };
 
 export function weaponsFor(faction, cls, slot) {

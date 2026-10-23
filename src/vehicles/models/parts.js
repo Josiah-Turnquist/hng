@@ -211,7 +211,8 @@ export function runningGear(b, { wheels, wheel, wheelR, rollers = [], roller: ro
     ...rollers.map(([z, y], i) => ({ kind: 'roller', part: `roller${i}`, z, y, r: rollerR + h })),
   ].sort((a, c) => c.z - a.z);
   const bottom = wheels.map(([z, y], i) => ({ kind: 'road', part: `road${i}`, z, y, r: wheelR + h }));
-  const guides = [rear, ...top, front, ...bottom].map(({ kind, part, z, y, r }) => ({ kind, part, z, y, r }));
+  const q = (v) => Math.round(v * 1e4) / 1e4;
+  const guides = [rear, ...top, front, ...bottom].map(({ kind, part, z, y, r }) => ({ kind, part, z: q(z), y: q(y), r: q(r) }));
   const path = trackPath(guides, { sag: track.sag || 0 });
   const length = pathLength(path);
   b.meta.track = {
@@ -225,9 +226,9 @@ export function runningGear(b, { wheels, wheel, wheelR, rollers = [], roller: ro
     realLinks: track.realLinks,
     sag: track.sag || 0,
     guides,
-    sprocketRadius: spr.r,
+    sprocketRadius: q(spr.r),
     sprocketTeeth: spr.teeth,
-    idlerRadius: idler.r - h,
+    idlerRadius: q(idler.r - h),
     rollerRadius: rollerR,
   };
   b.meta.roadWheelRadius = wheelR;

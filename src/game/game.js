@@ -16,6 +16,7 @@ import { AssaultMode, ATT, DEF } from './modes/assault.js';
 import { NavGrid } from '../ai/navgrid.js';
 import { attachSoldierModel, updateSoldierView } from './soldierView.js';
 import { gaussRandom } from '../core/math.js';
+import { Casings } from '../render/casings.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
 import { updateVehicleEffects, charModel } from '../vehicles/effects.js';
@@ -52,6 +53,7 @@ export class Game {
     this.pipeline = new Pipeline(this.renderer, this.quality);
     this.pipeline.setSky(this.world.sky.skyCube);
     this.effects = new Effects(this.world);
+    this.casings = new Casings(this.world, this.audio);
     this.projectiles = new ProjectileSystem({
       world: this.world.collision,
       atmosphere: this.world.atmosphere,
@@ -82,8 +84,8 @@ export class Game {
         attackers: attack ? faction : enemy,
         defenders: attack ? enemy : faction,
         playerTeam: team,
-        perSide: Number(this.app.params.get('bots') || 12),
-        minutes: Number(this.app.params.get('minutes') || 30),
+        perSide: this.opts.bots || Number(this.app.params.get('bots') || 10),
+        minutes: this.opts.minutes || Number(this.app.params.get('minutes') || 20),
       });
     } else this.mode = new RangeMode(this);
     const spawn = this.mode.playerSpawn();
@@ -113,6 +115,8 @@ export class Game {
     this.app.canvas.addEventListener('click', () => {
       if (!this.paused) this.input.lock();
     });
+    // Tank crews start in their tank.
+    if (cls === 'tanker') this._deployInTank(player);
   }
 
   start() {
@@ -127,6 +131,21 @@ export class Game {
     this.hud?.resize(w, h);
   }
 
+  // Put a soldier in a fresh tank of their army next to where they stand.
+  _deployInTank(s) {
+    const id = { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' }[s.faction];
+    if (!id) return null;
+    const b = s.body;
+    const yaw = s.yaw;
+    const x = b.x - Math.sin(yaw) * 6,
+      z = b.z - Math.cos(yaw) * 6;
+    const v = this.spawnVehicle(id, x, z, yaw);
+    v.team = s.team;
+    v.enter(s, 0);
+    if (s.isPlayer) this.player.vehicleCtl.entered(v);
+    return v;
+  }
+
   spawnVehicle(id, x, z, yaw = 0) {
     const v = spawnVehicle(this, id, x, z, yaw);
     this.vehicles.push(v);
@@ -135,6 +154,7 @@ export class Game {
 
   // --- simulation ----------------------------------------------------------------------
   update(dt) {
+    if (this.paused) return;
     this.time += dt;
     this.navBudget = 1;
     this.player.update(dt);
@@ -214,6 +234,7 @@ export class Game {
         this.player.look.yaw = s.yaw;
         this.player.look.pitch = 0;
         this.player._equip(0);
+        if (s.cls === 'tanker') this._deployInTank(s);
       }
     } else if (!opts) {
       const wait = Math.max(0, 5 - d.t);
@@ -514,8 +535,23 @@ export class Game {
     this.hud?.killFeed(cause?.attacker, s, cause);
   }
 
-  spawnCasing() {}
-  spawnClip() {}
+  // Spent case thrown out of the player's gun (from the ejection port).
+  spawnCasing(pos, w, quat) {
+    if (!pos || !quat) return;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+    const back = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
+    const b = this.player.soldier.body;
+    this.casings.ejectCase(pos, right, up, back, w.ammo, new THREE.Vector3(b.vx, b.vy, b.vz));
+  }
+
+  // The M1 Garand's en-bloc clip pinging out.
+  spawnClip(pos) {
+    if (!pos) return;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    const b = this.player.soldier.body;
+    this.casings.ejectClip(pos, up, new THREE.Vector3(b.vx, b.vy, b.vz));
+  }
 
   // --- rendering --------------------------------------------------------------------
   render(frameDt) {
@@ -543,6 +579,7 @@ export class Game {
     this.world.update(this.time, camPos);
     this.world.shadows.update();
     this.effects.update(frameDt, camPos, this.world.fogColor);
+    if (!this.paused) this.casings.update(frameDt);
     const colors = FACTION_TRACERS;
     this.effects.updateTracers(this.projectiles.active, (p) => colors[p.owner?.faction] || colors.GE);
     this.hud.update(frameDt);

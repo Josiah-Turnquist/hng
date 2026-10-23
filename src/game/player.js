@@ -387,8 +387,35 @@ export class PlayerController {
       this.viewmodel.visible = false;
       this.scoped = false;
       this.fovCurrent = cam.fov;
+      this.deathCam = null;
       return;
     }
+    if (!s.alive) {
+      // Killed: the view drifts up and away from where you fell.
+      const dc = (this.deathCam ??= { yaw: this.look.yaw + Math.PI, t: 0 });
+      dc.t += dt;
+      dc.yaw += dt * 0.12;
+      const target = new THREE.Vector3(b.x, b.y + 0.4, b.z);
+      const hips = s.model?.bones?.[0];
+      if (hips) hips.getWorldPosition(target);
+      const dist = 2.5 + Math.min(3, dc.t * 0.8);
+      cam.position.set(target.x + Math.sin(dc.yaw) * dist, target.y + 1.2 + Math.min(2.5, dc.t * 0.5), target.z + Math.cos(dc.yaw) * dist);
+      const gy = this.game.world.hf.getHeight(cam.position.x, cam.position.z) + 0.3;
+      if (cam.position.y < gy) cam.position.y = gy;
+      cam.lookAt(target);
+      cam.rotation.setFromQuaternion(cam.quaternion, 'YXZ');
+      if (Math.abs(cam.fov - this.baseFov) > 0.01) {
+        cam.fov = this.baseFov;
+        cam.updateProjectionMatrix();
+      }
+      this.fovCurrent = cam.fov;
+      cam.updateMatrixWorld();
+      this.eye.copy(cam.position);
+      this.viewmodel.visible = false;
+      this.scoped = false;
+      return;
+    }
+    this.deathCam = null;
 
     // Eye position with head bob and landing dip.
     b.eyePosition(this.eye);
