@@ -11,6 +11,11 @@ const CLASSES = [
   ['paratrooper', 'Paratrooper', 'Submachine guns and carbines for close fighting.'],
   ['tanker', 'Tank crew', 'Deploys in a tank: drive with W/S/A/D, aim and fire the main gun.'],
 ];
+const TANKS = {
+  US: [['m4a1_sherman', 'M4A1 Sherman'], ['m5a1_stuart', 'M5A1 Stuart']],
+  GE: [['panzer4_h', 'Panzer IV Ausf. H'], ['tiger1', 'Tiger I']],
+  SU: [['t34_76', 'T-34/76'], ['t34_85', 'T-34-85']],
+};
 const CONTROLS = [
   ['Move', 'W A S D'],
   ['Sprint / hold breath while aiming', 'Shift'],
@@ -138,6 +143,11 @@ function battleTab(body, s, deploy) {
         CLASSES.find((c) => c[0] === s.cls)?.[2] || '',
       ),
     );
+    if (s.cls === 'tanker') {
+      const tanks = TANKS[s.faction];
+      if (!tanks.some((t) => t[0] === s.tank)) s.tank = tanks[0][0];
+      body.appendChild(choiceRow('Tank', tanks, s.tank, (v) => ((s.tank = v), render())));
+    }
     const list = weaponsFor(s.faction, s.cls, 'primary');
     const def = DEFAULT_LOADOUT[s.faction][s.cls]?.[0];
     if (!s.weapon || !list.some((w) => w.id === s.weapon)) s.weapon = def || list[0]?.id;

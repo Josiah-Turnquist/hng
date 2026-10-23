@@ -74,7 +74,7 @@ test('Willys MB: brakes from 60 km/h in a plausible distance', () => {
 });
 
 test('tank top speeds match the real ones', () => {
-  const expect = { m4a1_sherman: [36, 42], panzer4_h: [37, 44], t34_76: [48, 56] };
+  const expect = { m4a1_sherman: [36, 42], panzer4_h: [37, 44], t34_76: [48, 56], t34_85: [48, 57], tiger1: [36, 46], m5a1_stuart: [50, 61] };
   for (const [id, [lo, hi]] of Object.entries(expect)) {
     const { v } = accelerate(id, 80);
     assert.ok(kmh(v) > lo && kmh(v) < hi, `${id} top speed ${kmh(v)}`);
@@ -99,6 +99,23 @@ test('Sherman cannot turn on the spot; T-34 and Panzer IV can pivot on a track',
     if (canPivot) assert.ok(moved < 4, `${id} pivots in place (moved ${moved} m)`);
     else assert.ok(moved > 3, `${id} has to drive round (moved ${moved} m)`);
   }
+});
+
+test('Tiger I turns on the spot in neutral (regenerative steering)', () => {
+  const { game } = makeWorld();
+  const v = spawn(game, 'tiger1', 0, 0, 0);
+  run(v, 2);
+  const p0 = v.body.position.clone();
+  const y0 = yawOf(v);
+  run(v, 8, () => v.driverInput(0, 1));
+  const turned = Math.abs(((yawOf(v) - y0 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+  assert.ok(turned > 30, `turned ${turned}`);
+  assert.ok(v.body.position.distanceTo(p0) < 2, `stayed in place (${v.body.position.distanceTo(p0)} m)`);
+});
+
+test('Opel Blitz: a slow, heavy truck (about 80-90 km/h flat out)', () => {
+  const { v } = accelerate('opel_blitz', 120);
+  assert.ok(kmh(v) > 70 && kmh(v) < 95, `top speed ${kmh(v)}`);
 });
 
 test('Sherman turning circle at speed is about 31 ft (controlled differential)', () => {

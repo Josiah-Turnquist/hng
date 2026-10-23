@@ -150,9 +150,11 @@ export class TrackedVehicle extends Vehicle {
     const rs = d.sprocketRadius;
     let throttle = inp.throttle;
     const steer = inp.steer;
+    // The Tiger's regenerative steering turns it on the spot in neutral.
+    const neutralTurn = d.steering === 'regenerative' && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1;
     // Turning from a standstill with only A or D: the driver puts it in gear and
     // feeds in just enough gas to swing round at a walking pace.
-    if (Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1.5) {
+    if (!neutralTurn && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1.5) {
       this.wantDir = 1;
       const vo = Math.max(Math.abs(this.trackSpeed[0]), Math.abs(this.trackSpeed[1]));
       const target = d.steering === 'controlledDiff' ? 1.6 : 1.1;
@@ -191,7 +193,17 @@ export class TrackedVehicle extends Vehicle {
     const brake = [0, 0];
     let lock = false;
     let diffTarget = null;
-    if (d.steering === 'controlledDiff') {
+    if (d.steering === 'regenerative') {
+      // A steering differential driven from the gearbox: the turning radius is
+      // fixed by the gear (3.4 m in first, wider in each higher gear); in
+      // neutral the tracks counter-rotate.
+      const g = Math.max(1, Math.abs(this.gear || this.nextGear || 1));
+      const R = d.turnRadius * (d.gears[0] / d.gears[g - 1]);
+      const kmin = d.trackCenters / (2 * R);
+      // In neutral: outer track forward and inner back, about 0.9 m/s each.
+      diffTarget = neutralTurn ? a * 1.8 : a * 2 * kmin * vMean;
+      lock = a < 0.05;
+    } else if (d.steering === 'controlledDiff') {
       // Braking one side of the differential speeds up the other: the track speeds
       // are forced apart, up to the fixed ratio of the mechanism (applied below).
       const kmin = d.trackCenters / (2 * d.turnRadius);

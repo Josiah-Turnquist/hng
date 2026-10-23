@@ -51,13 +51,14 @@ export class App {
         faction: p.get('faction') || 'US',
         side: p.get('side') || 'attack',
         cls: p.get('class') || 'infantry',
+        tank: p.get('tank') || null,
         loadout: p.get('weapon') ? [p.get('weapon'), null, null] : null,
         bots: Number(p.get('bots') || 10),
         minutes: Number(p.get('minutes') || 20),
       };
     } else {
       const s = await showMainMenu(this);
-      opts = { map: s.map, mode: 'auto', faction: s.faction, side: s.side, cls: s.cls, loadout: s.weapon ? [s.weapon, null, null] : null, bots: s.bots, minutes: s.minutes };
+      opts = { map: s.map, mode: 'auto', faction: s.faction, side: s.side, cls: s.cls, tank: s.tank, loadout: s.weapon ? [s.weapon, null, null] : null, bots: s.bots, minutes: s.minutes };
       // The quality may have changed in the menu.
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.settings.quality.maxPixelRatio));
       this.audio?.resume();
