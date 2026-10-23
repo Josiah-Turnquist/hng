@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Vegetation viewer</title>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre;background:rgba(0,0,0,0.45);padding:4px 6px;pointer-events:none}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// Atlas inspection (temporary first version).
+import * as THREE from 'three';
+import { TextureLibrary } from '../src/render/textures.js';
+
+const params = new URLSearchParams(location.search);
+const info = document.getElementById('info');
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+renderer.setSize(W, H);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const textures = new TextureLibrary(renderer, { size: 512 });
+const t0 = performance.now();
+const cells = ['vegBarkOak', 'vegBarkBeech', 'vegBarkPine', 'vegBarkGrey', 'vegLeafOak', 'vegLeafBeech', 'vegLeafAsh', 'vegLeafPoplar', 'vegLeafApple', 'vegNeedleSpruce', 'vegNeedlePine', 'vegLeafHawthorn', 'vegLeafHazel', 'vegLeafBramble', 'vegHedgeCore', 'grass'];
+const ground = ['vegGrass', 'vegGrassDry', 'vegWheat', 'vegFern', 'vegFlowers', 'vegPoppies', 'vegTallGrass', 'vegWeeds'];
+const which = params.get('atlas') || 'trees';
+const cs = Number(params.get('cell') || 256);
+const at = which === 'ground' ? textures.atlas('vegGround', ground, { cols: 4, cellSize: cs, normals: false }) : textures.atlas('vegTrees', cells, { cols: 4, cellSize: cs });
+const t1 = performance.now();
+const kind = params.get('kind') || 'map';
+const scene = new THREE.Scene();
+const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, -1, 1);
+const aspect = at.cols / at.rows;
+const size = Math.min(W, H * aspect);
+const mat = new THREE.MeshBasicMaterial({ map: at[kind], transparent: kind === 'map' });
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(size, size / aspect), mat);
+scene.add(quad);
+renderer.setClearColor(params.get('bg') || 0x6a7a8a);
+renderer.render(scene, cam);
+info.textContent = `atlas ${which} ${at.cols}x${at.rows} cells ${cs}px, baked in ${(t1 - t0).toFixed(0)} ms`;
+window.__done = true;
+</script>
+</body>
+</html>

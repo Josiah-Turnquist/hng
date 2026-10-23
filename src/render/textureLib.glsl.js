@@ -888,4 +888,404 @@ export const MATERIALS = {
       height = fine * 0.0008 + mud * 0.003 + big * 0.002;
       alpha = 1.0;
     }`,
+  // ---- Vegetation (src/world/vegetation) ----------------------------------------------
+  // Shape parameters come in as vec4 uniforms uVegP / uVegQ (from a preset's `uniforms`
+  // field), so one program serves every species. Baked into atlases (textures.atlas).
+  vegBark: /* glsl */ `
+    // Tree bark. uVegP.x: 0 oak (deep furrows broken into blocks), 1 beech (smooth grey),
+    // 2 Scots pine (thin orange plates), 3 fissured bark that is tinted per species.
+    // uPaintA: furrow (dark) color, uPaintB: ridge (light) color.
+    uniform vec4 uVegP;
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float style = uVegP.x;
+      float fine = fbm01(uv, vec2(32.0), 4, 401.0);
+      float big = fbm01(uv, vec2(3.0), 4, 402.0);
+      float lichen = smoothstep(0.66, 0.8, fbm01(uv, vec2(6.0), 4, 403.0));
+      vec3 col;
+      float h;
+      if (style < 0.5) {
+        vec2 w = vec2(fbm(uv, vec2(3.0, 2.0), 3, 405.0) * 0.05, 0.0);
+        float r = ridged(uv + w, vec2(7.0, 2.0), 4, 406.0);
+        float breaks = smoothstep(0.72, 0.9, vnoise(uv * vec2(7.0, 9.0), vec2(7.0, 9.0), 407.0));
+        float ridge = smoothstep(0.3, 0.75, r) * (1.0 - breaks * 0.7);
+        col = mix(uPaintA, uPaintB, ridge) * (0.82 + 0.3 * fine);
+        h = ridge * 0.035 + fine * 0.004;
+        rough = 0.93;
+      } else if (style < 1.5) {
+        float marks = smoothstep(0.8, 0.95, vnoise(uv * vec2(5.0, 48.0), vec2(5.0, 48.0), 408.0));
+        float blot = smoothstep(0.5, 0.8, fbm01(uv, vec2(4.0), 4, 409.0));
+        col = mix(uPaintB, uPaintA, blot * 0.55 + big * 0.2) * (0.94 + 0.1 * fine);
+        col *= 1.0 - marks * 0.2;
+        h = fine * 0.0015 + big * 0.002 - marks * 0.001;
+        rough = 0.74;
+      } else if (style < 2.5) {
+        vec4 v = voronoiVec(uv, vec2(10.0, 5.0), 0.9, 410.0);
+        float plate = smoothstep(0.0, 0.05, v.z);
+        col = mix(uPaintA * 0.45, mix(uPaintA, uPaintB, v.w), plate) * (0.85 + 0.25 * fine);
+        h = plate * (0.006 + v.w * 0.004) + fine * 0.002;
+        rough = 0.86;
+      } else {
+        vec2 w = vec2(fbm(uv, vec2(4.0, 2.0), 3, 411.0) * 0.04, 0.0);
+        float r = ridged(uv + w, vec2(11.0, 3.0), 4, 412.0);
+        float ridge = smoothstep(0.3, 0.8, r);
+        col = mix(uPaintA, uPaintB, ridge) * (0.85 + 0.25 * fine);
+        h = ridge * 0.016 + fine * 0.003;
+        rough = 0.9;
+      }
+      albedo = mix(col, srgb(vec3(0.45, 0.48, 0.34)), lichen * 0.3);
+      height = h;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  vegLeaves: /* glsl */ `
+    // A spray of foliage on a transparent card: twigs fan up from the bottom middle
+    // of the card and carry leaves (or needles) along them. The spray is scaled to fit.
+    //   uVegP: x shape (0 oval: beech/apple, 1 oak, 2 ash leaflets, 3 poplar, 4 spruce,
+    //          5 pine tufts, 6 hawthorn, 7 hazel, 8 bramble), y leaf (needle) length,
+    //          z leaf width / length, w leaves per twig.
+    //   uVegQ: x twigs, y fan half-angle (radians), z twig curl, w twig length.
+    // uPaintA / uPaintB: the range of leaf colors.
+    uniform vec4 uVegP;
+    uniform vec4 uVegQ;
+    float vegHalfWidth(float y, float shape) {
+      float s = sin(3.14159 * clamp(y, 0.0, 1.0));
+      if (shape < 0.5) return pow(s, 0.7) * (1.0 - 0.15 * y);
+      if (shape < 1.5) return pow(sin(3.14159 * pow(clamp(y, 0.0, 1.0), 0.8)), 0.65) * (0.7 + 0.3 * abs(sin(y * 12.5 + 0.6)));
+      if (shape < 2.5) return pow(s, 0.9);
+      if (shape < 3.5) return pow(clamp(y < 0.4 ? y / 0.4 : (1.0 - y) / 0.6, 0.0, 1.0), 0.7);
+      if (shape < 6.5) return pow(clamp(y, 0.0, 1.0), 0.4) * (0.45 + 0.55 * abs(sin(y * 7.0 + 0.5))) * (1.0 - 0.3 * y);
+      if (shape < 7.5) return pow(s, 0.45) * (1.0 - 0.05 * abs(sin(y * 48.0)));
+      return pow(s, 0.6) * (1.0 - 0.1 * abs(sin(y * 40.0)));
+    }
+    // Needle comb: q.y along a twig, q.x across it; 1 inside a needle.
+    float vegComb(vec2 q, float nl, float seed) {
+      float r = abs(q.x) / nl;
+      float u2 = (q.y - abs(q.x) * 0.75) * 170.0;
+      float ln = hash12(vec2(floor(u2), seed));
+      return (abs(fract(u2) - 0.5) < 0.32 * (1.0 - r * 0.5) && r < 0.6 + 0.4 * ln) ? 0.75 + 0.45 * ln : 0.0;
+    }
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float shape = uVegP.x;
+      float W = uVegP.z * 0.5;
+      float leafL = uVegP.y;
+      int M = int(uVegP.w + 0.5);
+      int K = int(uVegQ.x + 0.5);
+      float spread = uVegQ.y;
+      float lenMax = uVegQ.w;
+      bool spruce = shape > 3.5 && shape < 4.5;
+      bool pine = shape > 4.5 && shape < 5.5;
+      // Spray space: the base of the twigs at the origin, scaled so it fits the card.
+      float R = lenMax * 0.85 * sin(min(spread * 0.85, 1.5)) + leafL * 0.7;
+      float fit = min(0.96 / (2.0 * R), 0.95 / (lenMax * 0.92 + leafL * 0.6));
+      vec2 p = (uv - vec2(0.5, 0.025)) / fit;
+      float aa = 1.2 / uSize / fit;
+      alpha = 0.0;
+      height = 0.0;
+      metal = 0.0;
+      rough = 0.66;
+      albedo = mix(uPaintA, uPaintB, 0.4) * 0.7;
+      vec3 twigCol = srgb(vec3(0.32, 0.25, 0.17));
+      for (int k = 0; k < 12; k++) {
+        if (k >= K) break;
+        float fk = float(k);
+        vec3 hk = hash32(vec2(fk * 7.0 + 1.0, 17.0 + shape * 3.0));
+        float a0 = (K > 1 ? -spread + 2.0 * spread * fk / float(K - 1) : 0.0) + (hk.x - 0.5) * 0.3;
+        // Outer twigs long, a few short ones fill the middle of the spray.
+        float len = lenMax * (0.55 + 0.45 * hk.y) * (1.0 - 0.25 * step(0.6, hk.z) * (1.0 - abs(a0) / max(spread, 0.1)));
+        float curl = uVegQ.z * (hk.z - 0.5) * 2.0 - a0 * 0.35;
+        // Skip twigs whose reach (twig plus leaves) is nowhere near this pixel.
+        vec2 tip = vec2(sin(a0 + curl * 0.5), cos(a0 + curl * 0.5)) * len;
+        float hsT = clamp(dot(p, tip) / max(dot(tip, tip), 1e-6), 0.0, 1.0);
+        if (length(p - tip * hsT) > leafL * 1.3 + len * abs(curl) * 0.15 + 0.02) continue;
+        vec2 prev = vec2(0.0);
+        for (int i = 0; i < 16; i++) {
+          if (i >= M) break;
+          float t = (float(i) + 1.0) / float(M);
+          float a = a0 + curl * t;
+          vec2 P = vec2(sin(a0 + curl * t * 0.5), cos(a0 + curl * t * 0.5)) * len * t;
+          vec2 dir = vec2(sin(a), cos(a));
+          vec2 pa = p - prev;
+          vec2 ba = P - prev;
+          float hs = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+          float dTw = length(pa - ba * hs);
+          float tw = (spruce || pine ? 0.008 : 0.0055) * (1.3 - t);
+          if (dTw < tw) {
+            albedo = twigCol * (0.75 + 0.45 * (1.0 - dTw / tw));
+            alpha = 1.0;
+            height = 0.004 * (1.0 - dTw / tw);
+          }
+          vec3 h = hash32(vec2(fk * 31.0 + float(i) * 3.0, 5.0 + shape));
+          float side = mod(float(i) + fk, 2.0) < 0.5 ? 1.0 : -1.0;
+          if (length(p - P) > leafL * 1.25 + (spruce ? lenMax * 0.22 : 0.0)) {
+            prev = P;
+            continue;
+          }
+          if (spruce) {
+            // Bottle brushes of short needles: along the twig and on side twigs.
+            float nl = leafL * (0.9 + 0.3 * h.x) * (1.1 - 0.3 * t);
+            vec2 sd = ba / max(length(ba), 1e-5);
+            float c = vegComb(vec2(dot(pa, vec2(-sd.y, sd.x)), dot(pa, sd)), nl, fk * 13.0 + float(i));
+            if (c > 0.0 && dot(pa, sd) > -0.004 && dot(pa, sd) < length(ba) + 0.004) {
+              albedo = mix(uPaintA, uPaintB, 0.3 + t * 0.4) * c;
+              alpha = 1.0;
+              height = 0.002;
+            }
+            vec2 s2 = vec2(sin(a + side * 0.9), cos(a + side * 0.9));
+            vec2 rel = p - P;
+            float sl = (0.12 + 0.1 * h.y) * (1.0 - 0.45 * t) * lenMax;
+            vec2 q = vec2(dot(rel, vec2(s2.y, -s2.x)), dot(rel, s2));
+            if (q.y > 0.0 && q.y < sl) {
+              float c2 = vegComb(q, nl * (1.0 - 0.4 * q.y / sl), fk * 19.0 + float(i) * 5.0);
+              if (abs(q.x) < 0.0035) c2 = 0.6;
+              if (c2 > 0.0) {
+                albedo = mix(uPaintA, uPaintB, 0.45 + 0.5 * q.y / sl) * c2;
+                alpha = 1.0;
+                height = 0.002;
+              }
+            }
+          } else if (pine) {
+            // Tufts of long needles pointing forward along the twig.
+            vec2 rel = p - P;
+            float tl = leafL * (0.8 + 0.35 * h.x);
+            float r = length(rel) / tl;
+            if (r < 1.0) {
+              vec2 td = vec2(sin(a + side * 0.35 * h.z), cos(a + side * 0.35 * h.z));
+              float ang = atan(dot(rel, vec2(td.y, -td.x)), dot(rel, td));
+              if (abs(ang) < 0.95) {
+                float n = ang * 10.0 + h.y * 3.0;
+                float ln = hash12(vec2(floor(n), fk * 5.0 + float(i)));
+                float lineD = abs(fract(n) - 0.5) / 10.0 * r * tl;
+                if (lineD < 0.0028 + 0.0016 * (1.0 - r) && r < 0.6 + 0.4 * ln) {
+                  albedo = mix(uPaintA, uPaintB, r * 0.7) * (0.8 + 0.4 * ln);
+                  alpha = 1.0;
+                  height = 0.002;
+                }
+              }
+            }
+          } else {
+            // Leaves beside the twig (alternating; ash leaflets in opposite pairs) and at the tip.
+            for (int s = 0; s < 2; s++) {
+              if (s == 1 && shape > 2.5 && h.z < 0.5) break;
+              if (s == 1 && shape < 1.5 && h.z < 0.75) break;
+              float sd = s == 0 ? side : -side;
+              float la = i == M - 1 && s == 0 ? a + (h.x - 0.5) * 0.4 : a + sd * (0.6 + 0.5 * h.x);
+              vec2 ld = vec2(sin(la), cos(la));
+              float ll = leafL * (0.75 + 0.45 * fract(h.y + float(s) * 0.37)) * (1.0 - 0.2 * t);
+              vec2 rel = p - P - ld * ll * 0.05;
+              vec2 q = vec2(dot(rel, vec2(ld.y, -ld.x)), dot(rel, ld)) / ll;
+              if (q.y > 0.0 && q.y < 1.0) {
+                float hw = vegHalfWidth(q.y, shape) * W;
+                float edge = hw - abs(q.x);
+                float cov = clamp(edge * ll / aa + 0.5, 0.0, 1.0);
+                if (cov > 0.0) {
+                  vec3 lc = mix(uPaintA, uPaintB, fract(h.z + float(s) * 0.5));
+                  lc *= 0.78 + 0.32 * h.y;
+                  lc *= 0.88 + 0.2 * q.y;
+                  lc *= 1.0 - 0.2 * smoothstep(0.035 * W, 0.0, abs(q.x)) * step(q.y, 0.92);
+                  float vein = abs(fract((q.y - abs(q.x) * 1.3) * 7.0) - 0.5);
+                  lc *= 1.0 - 0.07 * smoothstep(0.08, 0.0, vein);
+                  lc *= 0.84 + 0.16 * clamp(edge * ll / (aa * 3.0), 0.0, 1.0);
+                  cov *= smoothstep(0.0, 0.02, min(min(uv.x, 1.0 - uv.x), 1.0 - uv.y));
+                  albedo = mix(albedo, lc, cov);
+                  alpha = max(alpha, cov);
+                  height = max(height, cov * (0.003 * sqrt(clamp(edge / max(hw, 1e-3), 0.0, 1.0)) + 0.0015 * t));
+                }
+              }
+            }
+          }
+          prev = P;
+        }
+      }
+    }`,
+  vegHedgeCore: /* glsl */ `
+    // The dense inside of a hedge seen from outside: small leaves over dark, shadowed
+    // twigs. Opaque and tiling (hedge cores, far hedges).
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float deep = fbm01(uv, vec2(5.0), 4, 421.0);
+      albedo = mix(uPaintA * 0.22, uPaintA * 0.45, deep);
+      height = 0.0;
+      for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        vec4 v = voronoiVec(uv + vec2(fk * 0.27, fk * 0.61), vec2(14.0 + fk * 4.0), 1.0, 422.0 + fk);
+        float ang = v.w * 6.2831;
+        vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
+        float shape = length(d * vec2(1.0, 1.8));
+        float leaf = 1.0 - smoothstep(0.32, 0.38, shape);
+        float present = step(0.18 + 0.1 * fk, hash12(vec2(v.w * 17.0, fk)));
+        if (leaf * present > 0.5) {
+          vec3 lc = mix(uPaintA, uPaintB, hash12(vec2(v.w * 31.0)));
+          lc *= (0.5 + 0.17 * fk) * (0.85 + 0.3 * (1.0 - shape * 1.6));
+          albedo = lc;
+          height = 0.004 + fk * 0.004 * (1.0 - shape);
+        }
+      }
+      rough = 0.75;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  vegGround: /* glsl */ `
+    // Ground cover on transparent cards (u across, v up), several plants per card.
+    // uVegP.x: 0 meadow grass, 1 dry grass with seed heads, 2 ripe wheat, 3 bracken,
+    // 4 meadow flowers (daisies, buttercups), 5 poppies and cornflowers, 6 tall rough
+    // grass, 7 low weeds. uVegP.y: blades/stalks per card. uPaintA: tips, uPaintB: base.
+    uniform vec4 uVegP;
+    float vegSeg(vec2 p, vec2 a, vec2 b) {
+      vec2 pa = p - a, ba = b - a;
+      float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
+      return length(pa - ba * h);
+    }
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float kind = uVegP.x;
+      int N = int(uVegP.y + 0.5);
+      alpha = 0.0;
+      height = 0.0;
+      metal = 0.0;
+      rough = 0.82;
+      albedo = mix(uPaintA, uPaintB, 0.6);
+      bool wheat = kind > 1.5 && kind < 2.5;
+      if (kind > 2.5 && kind < 3.5) {
+        // Bracken: fronds arching out from the middle, pinnae on both sides.
+        for (int k = 0; k < 6; k++) {
+          float fk = float(k);
+          vec3 h = hash32(vec2(fk * 3.1, 41.0));
+          float a0 = -1.1 + 2.2 * (fk + 0.5) / 6.0 + (h.x - 0.5) * 0.3;
+          float len = 0.42 + 0.2 * h.y;
+          float droop = (a0 < 0.0 ? -1.0 : 1.0) * (0.5 + 0.6 * h.z);
+          vec2 base = vec2(0.5 + (h.x - 0.5) * 0.12, 0.0);
+          vec2 prev = base;
+          for (int i = 0; i < 14; i++) {
+            float t = (float(i) + 1.0) / 14.0;
+            vec2 P = base + vec2(sin(a0 + droop * t * t * 0.5), cos(a0 + droop * t * t * 0.5)) * len * t;
+            vec2 dir = normalize(P - prev);
+            if (vegSeg(uv, prev, P) < 0.005 * (1.2 - t)) {
+              albedo = uPaintB * 0.8;
+              alpha = 1.0;
+              height = 0.002;
+            }
+            float pl = 0.11 * pow(1.0 - t, 0.6) + 0.012;
+            for (int s = 0; s < 2; s++) {
+              float sd = s == 0 ? 1.0 : -1.0;
+              vec2 pd = normalize(vec2(dir.y, -dir.x) * sd + dir * 0.5);
+              vec2 rel = uv - P;
+              vec2 q = vec2(dot(rel, vec2(pd.y, -pd.x)), dot(rel, pd)) / pl;
+              if (q.y > 0.0 && q.y < 1.0) {
+                float hw = 0.22 * pow(sin(3.14159 * q.y), 0.6) * (0.62 + 0.38 * abs(sin(q.y * 22.0)));
+                if (abs(q.x) < hw) {
+                  albedo = mix(uPaintB, uPaintA, 0.35 + 0.65 * q.y) * (0.8 + 0.3 * hash12(vec2(fk * 17.0 + float(i), float(s))));
+                  alpha = 1.0;
+                  height = 0.002 + 0.001 * q.y;
+                }
+              }
+            }
+            prev = P;
+          }
+        }
+        rough = 0.75;
+        return;
+      }
+      for (int k = 0; k < 64; k++) {
+        if (k >= N) break;
+        float fk = float(k);
+        vec3 h = hash32(vec2(fk * 1.37 + kind * 11.0, 7.0));
+        vec3 h2 = hash32(vec2(fk * 2.11 + kind * 5.0, 13.0));
+        float x0 = 0.06 + 0.88 * h.x;
+        float tall;
+        float lean;
+        float w0;
+        if (wheat) {
+          tall = 0.8 + 0.12 * h.y;
+          lean = (h.z - 0.5) * 0.1;
+          w0 = 0.0055;
+        } else if (kind > 6.5) {
+          tall = 0.22 + 0.25 * h.y;
+          lean = (h.z - 0.5) * 0.9;
+          w0 = 0.035;
+        } else {
+          tall = (kind > 5.5 ? 0.6 : 0.42) + 0.5 * h.y;
+          lean = (h.z - 0.5) * 0.5;
+          w0 = 0.011 + 0.008 * h2.x;
+        }
+        tall = min(tall, 0.9);
+        vec2 top = vec2(x0 + lean, tall);
+        if (wheat) {
+          // The ear: rows of grains, short awns above.
+          vec2 ec = top + vec2(lean * 0.05, 0.02);
+          vec2 rel = (uv - ec) / vec2(0.02, 0.07);
+          float er = length(rel);
+          if (er < 1.0) {
+            float grain = abs(fract(rel.y * 4.5 + (rel.x > 0.0 ? 0.25 : 0.0)) - 0.5);
+            albedo = mix(uPaintA, uPaintA * 0.7, smoothstep(0.1, 0.5, grain)) * (0.85 + 0.3 * h2.y) * (1.0 - 0.2 * er);
+            alpha = 1.0;
+            height = 0.004 * (1.0 - er);
+            continue;
+          }
+          if (h2.z > 0.5) {
+            for (int a = 0; a < 3; a++) {
+              float fa = float(a) - 1.0;
+              if (vegSeg(uv, ec + vec2(fa * 0.01, 0.05), ec + vec2(fa * 0.025 + lean * 0.05, 0.1)) < 0.0015) {
+                albedo = uPaintA * 1.05;
+                alpha = 1.0;
+                height = 0.001;
+              }
+            }
+          }
+        } else if (((kind > 0.5 && kind < 1.5) || (kind > 5.5 && kind < 6.5)) && h2.z > 0.55) {
+          // Seed head: a loose spike at the tip.
+          vec2 rel = (uv - top - vec2(lean * 0.06, 0.03)) / vec2(0.016, 0.06);
+          if (length(rel) < 1.0 && hash12(floor(uv * uSize * 0.5)) > 0.3) {
+            albedo = mix(uPaintA, srgb(vec3(0.55, 0.47, 0.3)), 0.6) * (0.8 + 0.3 * h2.y);
+            alpha = 1.0;
+            height = 0.002;
+          }
+        }
+        float y = uv.y / tall;
+        if (y > 1.0) continue;
+        float cx = x0 + lean * y * y;
+        float w = wheat ? w0 : w0 * (1.0 - y) + 0.0015;
+        if (kind > 6.5) w = w0 * pow(sin(3.14159 * y), 0.6);
+        if (abs(uv.x - cx) < w) {
+          float sh = 0.85 + 0.3 * h2.y;
+          albedo = (wheat ? mix(uPaintB, uPaintA * 0.92, 0.5 + 0.5 * y) : mix(uPaintB, uPaintA, pow(y, 0.8))) * sh;
+          alpha = 1.0;
+          height = 0.0015 * (1.0 - abs(uv.x - cx) / w);
+        }
+      }
+      if (kind > 3.5 && kind < 5.5) {
+        // Flowers on thin stems.
+        for (int f = 0; f < 7; f++) {
+          float ff = float(f);
+          vec3 h = hash32(vec2(ff * 5.3 + kind, 29.0));
+          vec2 c = vec2(0.12 + 0.76 * h.x, 0.45 + 0.42 * h.y);
+          if (vegSeg(uv, vec2(c.x + (h.z - 0.5) * 0.08, 0.0), c) < 0.0025) {
+            albedo = uPaintB * 1.1;
+            alpha = 1.0;
+          }
+          float type = hash12(vec2(ff, kind * 3.0));
+          vec3 petal;
+          vec3 mid;
+          float rad;
+          float lobeN;
+          if (kind < 4.5) {
+            petal = type < 0.6 ? srgb(vec3(0.92, 0.92, 0.88)) : srgb(vec3(0.95, 0.82, 0.18));
+            mid = srgb(vec3(0.9, 0.7, 0.12));
+            rad = type < 0.6 ? 0.04 : 0.028;
+            lobeN = 6.0;
+          } else {
+            petal = type < 0.65 ? srgb(vec3(0.76, 0.09, 0.05)) : srgb(vec3(0.24, 0.36, 0.82));
+            mid = type < 0.65 ? srgb(vec3(0.08, 0.06, 0.06)) : petal * 0.6;
+            rad = type < 0.65 ? 0.05 : 0.035;
+            lobeN = type < 0.65 ? 2.0 : 6.0;
+          }
+          vec2 rp = (uv - c) / vec2(1.0, 1.15);
+          float r = length(rp);
+          float ang = atan(rp.y, rp.x);
+          if (r < rad * (0.8 + 0.2 * abs(cos(ang * lobeN)))) {
+            albedo = r < rad * 0.28 ? mid : petal * (0.85 + 0.15 * (1.0 - r / rad));
+            alpha = 1.0;
+            height = 0.002;
+            rough = 0.6;
+          }
+        }
+      }
+    }`,
 };

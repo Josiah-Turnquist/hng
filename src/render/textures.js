@@ -123,6 +123,31 @@ export const PRESETS = {
   canvasOD: { mat: 'fabric', world: 1.2, a: lin(0.37, 0.36, 0.25) }, // cotton duck tops and seat covers
   canvasGerman: { mat: 'fabric', world: 1.2, a: lin(0.4, 0.39, 0.31) },
   canvasSoviet: { mat: 'fabric', world: 1.2, a: lin(0.4, 0.4, 0.27) },
+  // Vegetation (src/world/vegetation), baked side by side with textures.atlas().
+  // uniforms: shape parameters for the shader (vec4s, see vegLeaves / vegGround).
+  vegBarkOak: { mat: 'vegBark', world: 1.6, a: lin(0.16, 0.14, 0.12), b: lin(0.4, 0.37, 0.33), uniforms: { uVegP: [0, 0, 0, 0] } },
+  vegBarkBeech: { mat: 'vegBark', world: 1.6, a: lin(0.42, 0.42, 0.4), b: lin(0.6, 0.6, 0.56), uniforms: { uVegP: [1, 0, 0, 0] } },
+  vegBarkPine: { mat: 'vegBark', world: 1.2, a: lin(0.5, 0.28, 0.15), b: lin(0.7, 0.45, 0.26), uniforms: { uVegP: [2, 0, 0, 0] } },
+  vegBarkGrey: { mat: 'vegBark', world: 1.4, a: lin(0.26, 0.24, 0.21), b: lin(0.5, 0.48, 0.44), uniforms: { uVegP: [3, 0, 0, 0] } },
+  vegLeafOak: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.15, 0.22, 0.07), b: lin(0.27, 0.34, 0.11), uniforms: { uVegP: [1, 0.12, 0.75, 10], uVegQ: [11, 0.75, 0.4, 0.85] } },
+  vegLeafBeech: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.2, 0.29, 0.07), b: lin(0.33, 0.42, 0.12), uniforms: { uVegP: [0, 0.105, 0.62, 12], uVegQ: [11, 0.8, 0.5, 0.85] } },
+  vegLeafAsh: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.24, 0.32, 0.1), b: lin(0.36, 0.44, 0.15), uniforms: { uVegP: [2, 0.1, 0.34, 13], uVegQ: [10, 0.7, 0.3, 0.9] } },
+  vegLeafPoplar: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.2, 0.3, 0.1), b: lin(0.36, 0.43, 0.2), uniforms: { uVegP: [3, 0.08, 0.95, 13], uVegQ: [11, 0.5, 0.2, 0.9] } },
+  vegLeafApple: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.2, 0.3, 0.1), b: lin(0.32, 0.4, 0.14), uniforms: { uVegP: [0, 0.105, 0.58, 11], uVegQ: [11, 0.85, 0.5, 0.8] } },
+  vegNeedleSpruce: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.07, 0.13, 0.07), b: lin(0.15, 0.24, 0.1), uniforms: { uVegP: [4, 0.04, 0, 10], uVegQ: [7, 0.65, 0.25, 0.9] } },
+  vegNeedlePine: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.12, 0.19, 0.11), b: lin(0.22, 0.3, 0.17), uniforms: { uVegP: [5, 0.13, 0, 7], uVegQ: [9, 0.8, 0.3, 0.8] } },
+  vegLeafHawthorn: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.16, 0.25, 0.07), b: lin(0.27, 0.36, 0.11), uniforms: { uVegP: [6, 0.08, 0.8, 14], uVegQ: [12, 0.9, 0.6, 0.85] } },
+  vegLeafHazel: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.22, 0.31, 0.09), b: lin(0.34, 0.42, 0.14), uniforms: { uVegP: [7, 0.12, 0.85, 9], uVegQ: [10, 0.85, 0.4, 0.8] } },
+  vegLeafBramble: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.15, 0.22, 0.08), b: lin(0.26, 0.32, 0.12), uniforms: { uVegP: [8, 0.11, 0.62, 10], uVegQ: [10, 1.0, 0.7, 0.8] } },
+  vegHedgeCore: { mat: 'vegHedgeCore', world: 2, a: lin(0.14, 0.22, 0.06), b: lin(0.25, 0.33, 0.1) },
+  vegGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.42, 0.48, 0.2), b: lin(0.16, 0.24, 0.07), uniforms: { uVegP: [0, 44, 0, 0] } },
+  vegGrassDry: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.6, 0.55, 0.33), b: lin(0.28, 0.3, 0.12), uniforms: { uVegP: [1, 30, 0, 0] } },
+  vegWheat: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.85, 0.7, 0.38), b: lin(0.6, 0.55, 0.28), uniforms: { uVegP: [2, 40, 0, 0] } },
+  vegFern: { mat: 'vegGround', world: 0.8, alpha: true, a: lin(0.32, 0.42, 0.12), b: lin(0.18, 0.27, 0.07), uniforms: { uVegP: [3, 0, 0, 0] } },
+  vegFlowers: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.42, 0.48, 0.2), b: lin(0.16, 0.24, 0.07), uniforms: { uVegP: [4, 26, 0, 0] } },
+  vegPoppies: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.72, 0.62, 0.34), b: lin(0.3, 0.33, 0.13), uniforms: { uVegP: [5, 18, 0, 0] } },
+  vegTallGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.5, 0.5, 0.25), b: lin(0.18, 0.25, 0.08), uniforms: { uVegP: [6, 34, 0, 0] } },
+  vegWeeds: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.3, 0.4, 0.13), b: lin(0.16, 0.24, 0.08), uniforms: { uVegP: [7, 10, 0, 0] } },
 };
 
 // Terrain layers (index = layer in the texture arrays; matches SURF ids 0..8).
@@ -174,6 +199,8 @@ export class TextureLibrary {
     u.uHeightRange.value = preset.heightRange ?? 0.1;
     if (preset.a) u.uPaintA.value.copy(preset.a);
     if (preset.b) u.uPaintB.value.copy(preset.b);
+    // Extra vec4 shape parameters (vegetation presets).
+    if (preset.uniforms) for (const [k, v] of Object.entries(preset.uniforms)) (u[k] ??= { value: new THREE.Vector4() }).value.fromArray(v);
     this.quad.material = mat;
     return u;
   }
@@ -281,6 +308,93 @@ export class TextureLibrary {
     if (opts.normalScale !== undefined) m.normalScale.set(opts.normalScale, opts.normalScale);
     m.userData.texWorld = t.world;
     return m;
+  }
+
+  // Several presets baked side by side into one texture atlas (a grid of square
+  // cells), so objects using any of them can share one material and one draw call.
+  // cells: preset names in rows from the top-left (null leaves a cell empty).
+  // Returns { map, normalMap (null when normals: false), ormMap, cols, rows,
+  // cellSize, rect(i) -> [u0, v0, u1, v1], targets }. Cached by key and cell size.
+  atlas(key, cells, { cols = 4, cellSize = 256, normals = true } = {}) {
+    const cacheKey = `atlas:${key}@${cellSize}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    const rows = Math.ceil(cells.length / cols);
+    const w = cols * cellSize,
+      h = rows * cellSize;
+    // One quad per cell, each with its own copy of the preset's baking material
+    // (copies share the compiled program), so a whole atlas is a single render.
+    const scene = new THREE.Scene();
+    const mats = [];
+    cells.forEach((name, i) => {
+      if (!name) return;
+      const preset = PRESETS[name];
+      if (!preset) throw new Error(`Unknown texture preset ${name}`);
+      const m = this._material(preset.mat).clone();
+      const u = m.uniforms;
+      u.uSize.value = cellSize;
+      u.uWorld.value = preset.world;
+      u.uNormalScale.value = preset.normalScale ?? 1;
+      u.uHeightRange.value = preset.heightRange ?? 0.1;
+      if (preset.a) u.uPaintA.value.copy(preset.a);
+      if (preset.b) u.uPaintB.value.copy(preset.b);
+      if (preset.uniforms) for (const [k, v] of Object.entries(preset.uniforms)) u[k] = { value: new THREE.Vector4().fromArray(v) };
+      const c = i % cols,
+        r = Math.floor(i / cols);
+      const x0 = (c / cols) * 2 - 1,
+        x1 = ((c + 1) / cols) * 2 - 1;
+      const y1 = 1 - (r / rows) * 2,
+        y0 = 1 - ((r + 1) / rows) * 2;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y1, 0], 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
+      g.setIndex([0, 1, 2, 0, 2, 3]);
+      const q = new THREE.Mesh(g, m);
+      q.frustumCulled = false;
+      scene.add(q);
+      mats.push(m);
+    });
+    const mk = (srgb) =>
+      new THREE.WebGLRenderTarget(w, h, {
+        depthBuffer: false,
+        generateMipmaps: true,
+        minFilter: THREE.LinearMipmapLinearFilter,
+        magFilter: THREE.LinearFilter,
+        wrapS: THREE.ClampToEdgeWrapping,
+        wrapT: THREE.ClampToEdgeWrapping,
+        colorSpace: srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace,
+        anisotropy: this.anisotropy,
+      });
+    const targets = [mk(true), normals ? mk(false) : null, mk(false)];
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    const prevColor = r.getClearColor(new THREE.Color());
+    const prevAlpha = r.getClearAlpha();
+    r.setClearColor(0x000000, 0);
+    targets.forEach((t, mode) => {
+      if (!t) return;
+      for (const m of mats) m.uniforms.uMode.value = mode;
+      r.setRenderTarget(t);
+      r.clear();
+      r.render(scene, this.camera);
+    });
+    r.setRenderTarget(prev);
+    r.setClearColor(prevColor, prevAlpha);
+    scene.traverse((o) => o.geometry?.dispose());
+    for (const m of mats) m.dispose();
+    const set = {
+      map: targets[0].texture,
+      normalMap: targets[1]?.texture ?? null,
+      ormMap: targets[2].texture,
+      cols,
+      rows,
+      cellSize,
+      world: 1,
+      alpha: true,
+      targets: targets.filter(Boolean),
+      rect: (i) => [(i % cols) / cols, 1 - (Math.floor(i / cols) + 1) / rows, ((i % cols) + 1) / cols, 1 - Math.floor(i / cols) / rows],
+    };
+    this.cache.set(cacheKey, set);
+    return set;
   }
 
   dispose() {
