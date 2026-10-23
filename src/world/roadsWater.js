@@ -73,18 +73,30 @@ export function buildRoads(terrain, textures) {
   });
   for (const road of terrain.roads) {
     const width = road.width + 1.6;
-    // Thin out samples (every 4 m) and lay the ribbon on the actual ground.
+    // Thin out samples (every 4 m) and lay the ribbon on the actual ground. The
+    // dirt road stops where the village has paved the street with cobbles.
     const pts = road.samples.filter((_, i) => i % 2 === 0);
-    const geo = ribbon(pts, width, (x, z) => hf.getHeight(x, z), {
-      across: 7,
-      lift: 0.03,
-      vScale: 1 / 12,
+    const runs = [];
+    let run = [];
+    for (const p of pts) {
+      if (hf.getSurface(p[0], p[1]) === 6) {
+        if (run.length > 1) runs.push(run);
+        run = [];
+      } else run.push(p);
+    }
+    if (run.length > 1) runs.push(run);
+    runs.forEach((r, i) => {
+      const geo = ribbon(r, width, (x, z) => hf.getHeight(x, z), {
+        across: 7,
+        lift: 0.03,
+        vScale: 1 / 12,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.renderOrder = 1;
+      mesh.name = `road-${road.id}-${i}`;
+      group.add(mesh);
     });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.receiveShadow = true;
-    mesh.renderOrder = 1;
-    mesh.name = `road-${road.id}`;
-    group.add(mesh);
   }
   return group;
 }
