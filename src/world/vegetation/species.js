@@ -31,22 +31,22 @@ export const GC = { grass: 0, dry: 1, wheat: 2, fern: 3, flowers: 4, poppies: 5,
 export const SPECIES = {
   oak: {
     kind: 'broadleaf', H: [15, 18], trunk: [0.26, 0.34], r0: 0.034, crown: { y: 0.6, rx: [0.44, 0.52], ry: [0.3, 0.35] },
-    limbs: [6, 8], limbAngle: [42, 78], bend: 0.12, wiggle: 0.18, leader: false, clusters: 40, card: [1.8, 2.4],
+    limbs: [6, 8], limbAngle: [42, 78], bend: 0.12, wiggle: 0.18, leader: false, clusters: 36, card: [1.9, 2.5],
     leaf: 'oak', bark: 'barkOak', barkTint: [0.95, 0.92, 0.88], flutter: 0.9, density: 0.85,
   },
   beech: {
     kind: 'broadleaf', H: [20, 25], trunk: [0.34, 0.46], r0: 0.022, crown: { y: 0.64, rx: [0.3, 0.37], ry: [0.33, 0.38] },
-    limbs: [6, 8], limbAngle: [22, 52], bend: 0.22, wiggle: 0.08, leader: true, clusters: 44, card: [1.9, 2.4],
+    limbs: [6, 8], limbAngle: [22, 52], bend: 0.22, wiggle: 0.08, leader: true, clusters: 38, card: [2.0, 2.5],
     leaf: 'beech', bark: 'barkBeech', barkTint: [1, 1, 1], flutter: 0.9, density: 1,
   },
   ash: {
     kind: 'broadleaf', H: [17, 22], trunk: [0.34, 0.44], r0: 0.022, crown: { y: 0.65, rx: [0.3, 0.36], ry: [0.3, 0.35] },
-    limbs: [5, 7], limbAngle: [22, 46], bend: 0.32, wiggle: 0.1, leader: true, clusters: 32, card: [1.8, 2.3],
+    limbs: [5, 7], limbAngle: [22, 46], bend: 0.32, wiggle: 0.1, leader: true, clusters: 30, card: [1.9, 2.4],
     leaf: 'ash', bark: 'barkGrey', barkTint: [1.08, 1.08, 1.04], flutter: 1.2, density: 0.7,
   },
   poplar: {
     kind: 'poplar', H: [22, 27], trunk: [0.06, 0.1], r0: 0.017, crown: { y: 0.54, rx: [0.085, 0.1], ry: [0.46, 0.48] },
-    limbs: [18, 22], limbAngle: [12, 24], bend: 0.1, wiggle: 0.05, leader: true, clusters: 46, card: [1.3, 1.6],
+    limbs: [18, 22], limbAngle: [12, 24], bend: 0.1, wiggle: 0.05, leader: true, clusters: 40, card: [1.4, 1.7],
     leaf: 'poplar', bark: 'barkGrey', barkTint: [0.98, 0.95, 0.9], flutter: 1.8, density: 1,
   },
   apple: {
