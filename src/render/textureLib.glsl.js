@@ -266,7 +266,9 @@ export const MATERIALS = {
     }`,
   forest: /* glsl */ `
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
-      vec3 soil = srgb(vec3(0.2, 0.15, 0.1));
+      // Summer woodland floor: dark humus, last year's leaves gone brown and
+      // grey, and patches of moss.
+      vec3 soil = srgb(vec3(0.17, 0.13, 0.09));
       albedo = soil * (0.8 + 0.4 * fbm01(uv, vec2(8.0), 4, 71.0));
       height = 0.0;
       // Several layers of fallen leaves.
