@@ -35,8 +35,11 @@ export class App {
 
     this.loading = this._makeLoading();
     const game = new Game(this, {
-      map: this.params.get('map') || 'village',
-      mode: this.params.get('mode') || 'spectate',
+      map: this.params.get('map') || 'range',
+      mode: this.params.get('mode') || 'range',
+      faction: this.params.get('faction') || 'GE',
+      cls: this.params.get('class') || 'infantry',
+      loadout: this.params.get('weapon') ? [this.params.get('weapon'), null, null] : null,
     });
     this.game = game;
     await game.load((p, msg) => this._progress(p, msg));

@@ -1,0 +1,210 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Village viewer</title>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre;background:rgba(0,0,0,0.45);padding:4px 6px;pointer-events:none}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// Renders the "Town" village: terrain, roads, river and every building, prop and bridge.
+// URL parameters:
+//   view=aerial|top|church|churchside|nave|tower|square|gendarmerie|court|street|north|south|
+//        bridgeE|bridgeW|bridgeS|farm|damage
+//   cam=x,y,z,yawDeg,pitchDeg   free camera (yaw 0 looks north / -z, positive yaw turns left)
+//   look=x,y,z                  aim the camera at a point (with cam=x,y,z)
+//   colliders=1                 draw collision boxes as wireframes (2 = only colliders near the view)
+//   tex=512                     texture size; fov=55; noshadow=1; exposure=1
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { TextureLibrary } from '../src/render/textures.js';
+import { MAPS } from '../src/world/maps.js';
+import { generateTerrain } from '../src/world/terrainGen.js';
+import { TerrainRenderer } from '../src/world/terrainMesh.js';
+import { buildRoads, buildRiver } from '../src/world/roadsWater.js';
+import { CollisionWorld } from '../src/physics/collision.js';
+import { RNG } from '../src/core/math.js';
+import { planVillage, buildVillage } from '../src/world/village/index.js';
+
+const params = new URLSearchParams(location.search);
+const info = document.getElementById('info');
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = Number(params.get('exposure') || 1.0);
+renderer.shadowMap.enabled = !params.has('noshadow');
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const t0 = performance.now();
+const textures = new TextureLibrary(renderer, { size: Number(params.get('tex') || 512), anisotropy: 8 });
+const def = MAPS.town;
+const terrain = generateTerrain(def);
+const t1 = performance.now();
+const plan = planVillage(terrain, def, new RNG(def.seed * 7 + 3));
+const t2 = performance.now();
+const collision = new CollisionWorld(terrain.hf);
+const village = buildVillage(plan, { terrain, def, collision, textures });
+const t3 = performance.now();
+
+const scene = new THREE.Scene();
+const skyColor = new THREE.Color(0.55, 0.68, 0.85);
+scene.background = skyColor;
+scene.fog = new THREE.Fog(new THREE.Color(0.66, 0.74, 0.84), 350, 2200);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+const quality = { terrainLod: 1.4 };
+const terrainR = new TerrainRenderer(terrain.hf, textures, quality);
+scene.add(terrainR.group);
+scene.add(buildRoads(terrain, textures));
+const river = buildRiver(terrain, textures);
+if (river) scene.add(river);
+scene.add(village.group);
+
+// Sun from the map definition (same formula as the game's sky).
+const el = (def.sun.elevation * Math.PI) / 180, az = (def.sun.azimuth * Math.PI) / 180;
+const sunDir = new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+const sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xbfd2e6, 0x4a4030, 0.6));
+
+// ---- Views ------------------------------------------------------------------------
+const hf = terrain.hf;
+const gy = (x, z) => hf.getHeight(x, z);
+const loc = (b, lx, ly, lz) => {
+  const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+  return new THREE.Vector3(b.x + c * lx + s * lz, (b.floorY ?? gy(b.x, b.z)) + ly, b.z - s * lx + c * lz);
+};
+const camera = new THREE.PerspectiveCamera(Number(params.get('fov') || 55), W / H, 0.1, 4000);
+let target = new THREE.Vector3(plan.center.x, gy(plan.center.x, plan.center.z), plan.center.z);
+let shadowRadius = 140;
+const ch = plan.church, g = plan.gendarmerie;
+const views = {
+  aerial: () => { camera.position.set(plan.center.x + 150, gy(0, 0) + 170, plan.center.z + 230); target.set(plan.center.x - 5, gy(0, 0), plan.center.z - 15); shadowRadius = 230; },
+  top: () => { camera.position.set(plan.center.x, 420, plan.center.z + 1); target.set(plan.center.x, 0, plan.center.z); shadowRadius = 220; },
+  church: () => { camera.position.copy(loc(ch, 9, 1.7, 36)); target.copy(loc(ch, 2, 9, -4)); },
+  churchside: () => { camera.position.copy(loc(ch, 34, 6, -6)); target.copy(loc(ch, 0, 6, -20)); },
+  nave: () => { camera.position.copy(loc(ch, -2, 1.7, -1.5)); target.copy(loc(ch, 1, 4.5, -26)); shadowRadius = 60; },
+  tower: () => { camera.position.copy(loc(ch, 9.3, 17.1, -2.6)); target.copy(loc(ch, 9.3, 12, 40)); shadowRadius = 160; },
+  square: () => { camera.position.copy(loc(ch, -5, 2.0, 40)); target.copy(loc(ch, 12, 2, 4)); },
+  gendarmerie: () => { camera.position.copy(loc(g, -4, 1.8, 22)); target.copy(loc(g, 2, 3.5, 0)); },
+  court: () => { camera.position.copy(loc(g, g.side * 24, 7, 10)); target.copy(loc(g, g.side * 10, 1, -6)); },
+  street: () => { camera.position.set(-75, gy(-75, 46) + 1.8, 46.5); target.set(20, gy(20, 15) + 2, 15); },
+  north: () => { camera.position.set(-33, gy(-33, -100) + 1.8, -100); target.set(-31, gy(-31, 0) + 4, 0); },
+  south: () => { camera.position.set(72, gy(72, 160) + 1.8, 160); target.set(64, gy(64, 60) + 2, 60); },
+  damage: () => {
+    const b = plan.buildings.find((x) => x.kind === 'house' && x.damage && (x.damage.kind === (params.get('kind') || 'corner'))) || plan.buildings.find((x) => x.damage);
+    camera.position.copy(loc(b, 6, 4, b.d / 2 + 11)); target.copy(loc(b, 0, 2.5, 0)); shadowRadius = 60;
+  },
+  farm: () => { const f = plan.farms[Number(params.get('i') || 0)]; camera.position.copy(loc({ ...f, floorY: f.ground }, 18, 9, f.d / 2 + 22)); target.copy(loc({ ...f, floorY: f.ground }, 0, 2, -3)); },
+};
+for (const [i, br] of plan.bridges.entries()) {
+  const key = ['bridgeE', 'bridgeW', 'bridgeS'][i] || `bridge${i}`;
+  views[key] = () => {
+    const nx = -br.tz, nz = br.tx;
+    camera.position.set(br.x + nx * 32 + br.tx * 18, br.deckY + 7, br.z + nz * 32 + br.tz * 18);
+    target.set(br.x, br.waterY + 1, br.z);
+  };
+}
+const cam = params.get('cam');
+if (cam) {
+  const [x, y, z, yaw, pitch] = cam.split(',').map(Number);
+  camera.position.set(x, y, z);
+  const look = params.get('look');
+  if (look) target.set(...look.split(',').map(Number));
+  else {
+    const yr = ((yaw || 0) * Math.PI) / 180, pr = ((pitch || 0) * Math.PI) / 180;
+    target.set(x - Math.sin(yr) * Math.cos(pr) * 10, y + Math.sin(pr) * 10, z - Math.cos(yr) * Math.cos(pr) * 10);
+  }
+  shadowRadius = Number(params.get('sr') || 120);
+} else (views[params.get('view') || 'aerial'] || views.aerial)();
+camera.lookAt(target);
+camera.updateMatrixWorld();
+terrainR.update(camera.position);
+
+// Shadow camera around the view target.
+const sc = sun.shadow.camera;
+const focus = target.clone().lerp(camera.position, 0.15);
+sun.target.position.copy(focus);
+sun.position.copy(focus).addScaledVector(sunDir, 600);
+sc.left = -shadowRadius; sc.right = shadowRadius; sc.top = shadowRadius; sc.bottom = -shadowRadius;
+sc.near = 100; sc.far = 1400;
+sc.updateProjectionMatrix();
+
+// Collision wireframes.
+if (params.get('colliders')) {
+  const near = params.get('colliders') === '2';
+  const pts = [];
+  const corner = (b, sx, sy, sz) => [
+    b.cx + b.ax[0] * b.hx * sx + b.ay[0] * b.hy * sy + b.az[0] * b.hz * sz,
+    b.cy + b.ax[1] * b.hx * sx + b.ay[1] * b.hy * sy + b.az[1] * b.hz * sz,
+    b.cz + b.ax[2] * b.hx * sx + b.ay[2] * b.hy * sy + b.az[2] * b.hz * sz,
+  ];
+  const E = [[-1,-1,-1, 1,-1,-1],[-1,1,-1, 1,1,-1],[-1,-1,1, 1,-1,1],[-1,1,1, 1,1,1],[-1,-1,-1, -1,1,-1],[1,-1,-1, 1,1,-1],[-1,-1,1, -1,1,1],[1,-1,1, 1,1,1],[-1,-1,-1, -1,-1,1],[1,-1,-1, 1,-1,1],[-1,1,-1, -1,1,1],[1,1,-1, 1,1,1]];
+  const colors = [];
+  const matColor = { stone: [1, 0.3, 0.2], plaster: [1, 0.6, 0.2], brick: [1, 0.4, 0.4], wood: [0.3, 1, 0.3], plank: [0.6, 1, 0.3], roofTile: [0.3, 0.6, 1], glass: [0.4, 1, 1], sandbag: [1, 1, 0.3], steel: [0.8, 0.8, 1], foliage: [0.2, 0.7, 0.2], concrete: [0.9, 0.9, 0.9] };
+  for (const b of village.colliders) {
+    if (near && Math.hypot(b.cx - target.x, b.cz - target.z) > 60) continue;
+    const c = matColor[b.material] || [1, 0, 1];
+    for (const e of E) {
+      pts.push(...corner(b, e[0], e[1], e[2]), ...corner(b, e[3], e[4], e[5]));
+      colors.push(...c, ...c);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: params.get('xray') ? false : true, transparent: true, opacity: 0.9 }));
+  lines.renderOrder = 10;
+  scene.add(lines);
+}
+
+// Count the village's own draw calls separately (render it alone, off screen).
+function villageDrawCalls() {
+  const s2 = new THREE.Scene();
+  s2.environment = scene.environment;
+  const parent = village.group.parent;
+  s2.add(village.group);
+  renderer.info.reset();
+  renderer.info.autoReset = false;
+  const big = new THREE.PerspectiveCamera(80, 1, 0.1, 5000);
+  big.position.set(plan.center.x, 900, plan.center.z);
+  big.lookAt(plan.center.x, 0, plan.center.z);
+  renderer.shadowMap.autoUpdate = false;
+  renderer.setRenderTarget(new THREE.WebGLRenderTarget(64, 64));
+  renderer.render(s2, big);
+  renderer.setRenderTarget(null);
+  const calls = renderer.info.render.calls, tris = renderer.info.render.triangles;
+  renderer.info.autoReset = true;
+  renderer.shadowMap.autoUpdate = true;
+  parent.add(village.group);
+  return { calls, tris };
+}
+
+const vstats = villageDrawCalls();
+renderer.info.reset();
+renderer.render(scene, camera);
+const st = village.stats;
+const lines = [
+  `view ${params.get('view') || (cam ? 'cam' : 'aerial')}  cam ${camera.position.toArray().map((v) => v.toFixed(1)).join(',')}`,
+  `village: ${vstats.calls} draw calls, ${(vstats.tris / 1000).toFixed(0)}k tris (all of it in view), ${st.meshes} meshes`,
+  `colliders ${st.colliders}, buildings ${st.buildings} (houses ${st.houses}), cover ${village.coverPoints.length}, doors ${village.doors.length}, nav ${village.navBlockers.length}`,
+  `frame: ${renderer.info.render.calls} calls, ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris`,
+  `terrain ${(t1 - t0).toFixed(0)} ms, plan ${(t2 - t1).toFixed(0)} ms, build ${(t3 - t2).toFixed(0)} ms`,
+];
+info.textContent = lines.join('\n');
+console.log('VILLAGE_STATS ' + JSON.stringify({ calls: vstats.calls, tris: vstats.tris, ...st, cover: village.coverPoints.length, doors: village.doors.length, nav: village.navBlockers.length, planMs: Math.round(t2 - t1), buildMs: Math.round(t3 - t2) }));
+window.__village = { plan, village, scene, camera, renderer, collision };
+window.__done = true;
+</script>
+</body>
+</html>

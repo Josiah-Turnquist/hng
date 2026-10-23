@@ -21,6 +21,7 @@ export class World {
     this.def = mapDef;
     this.scene = new THREE.Scene();
     this.updaters = [];
+    this.fogColor = new THREE.Color(0.62, 0.68, 0.75);
   }
 
   async build(progress = () => {}) {
@@ -35,6 +36,18 @@ export class World {
     this.hf = this.terrain.hf;
     this.collision = new CollisionWorld(this.hf);
     this.atmosphere = new Atmosphere(this.def.altitude, this.def.temperatureC);
+    if (this.def.wind) this.atmosphere.setWind(this.def.wind.speed, this.def.wind.from);
+    // Water surface height at a point (rivers), or null on dry land.
+    const riverData = this.terrain.river;
+    this.waterLevelAt = (x, z) => {
+      if (!riverData) return null;
+      const [gx, gz] = this.hf.toGrid(x, z);
+      const i = Math.round(gz) * this.hf.res + Math.round(gx);
+      const d = riverData.distField.dist[i];
+      if (!(d < riverData.half)) return null;
+      return riverData.level[riverData.distField.nearest[i]] - 0.25;
+    };
+    this.collision.waterLevelAt = this.waterLevelAt;
 
     progress(0.3, 'Building the sky');
     await nextFrame();

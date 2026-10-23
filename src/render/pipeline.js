@@ -78,7 +78,8 @@ void main() {
   vec4 col = texture2D(tColor, vUv);
   float d = texture2D(tDepth, vUv).r;
   gl_FragDepth = d;
-  if (d >= 0.99999) {
+  if (d >= 1.0) {
+    // Nothing was drawn here: it's sky, which already has its own haze.
     gl_FragColor = col;
     return;
   }
@@ -154,7 +155,7 @@ void main() {
     hdr = acc / wsum;
   }
   hdr += uFlash;
-  vec3 col = AgXToneMapping(hdr);
+  vec3 col = ACESFilmicToneMapping(hdr);
   // Color grade in display space: lift/gain, contrast, saturation.
   col = sRGBTransferOETF(vec4(col, 1.0)).rgb;
   col = col * uGain + uLift * (1.0 - col);
@@ -206,10 +207,10 @@ export class Pipeline {
         uCamPos: { value: new THREE.Vector3() },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunColor: { value: new THREE.Color(1, 0.9, 0.7) },
-        uDensity: { value: 0.00032 },
+        uDensity: { value: 0.00026 },
         uFalloff: { value: 0.0035 },
         uBaseHeight: { value: 0 },
-        uHaze: { value: 0.00009 },
+        uHaze: { value: 0.00006 },
         uAO: { value: quality.ssao ? 0.7 : 0 },
         uTexel: { value: new THREE.Vector2() },
         uNear: { value: 0.1 },
@@ -233,9 +234,9 @@ export class Pipeline {
         uTime: { value: 0 },
         uVignette: { value: 0.32 },
         uGrain: { value: 0.035 },
-        uSaturation: { value: 0.86 },
-        uContrast: { value: 1.06 },
-        uLift: { value: new THREE.Vector3(0.012, 0.012, 0.02) },
+        uSaturation: { value: 0.9 },
+        uContrast: { value: 1.04 },
+        uLift: { value: new THREE.Vector3(0.0, 0.0, 0.008) },
         uGain: { value: new THREE.Vector3(1.0, 0.99, 0.95) },
         uAberration: { value: 0.012 },
         uDamage: { value: 0 },
@@ -263,7 +264,9 @@ export class Pipeline {
     fq.frustumCulled = false;
     this.fxaaScene.add(fq);
 
-    this.bloom = quality.bloom ? new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.55, 1.6) : null;
+    // Bloom only for truly bright things (sun disc, muzzle flashes, fire): the
+    // threshold sits well above the brightness of the sky.
+    this.bloom = quality.bloom ? new UnrealBloomPass(new THREE.Vector2(256, 256), 0.22, 0.4, 7.0) : null;
   }
 
   setSize(w, h, pixelRatio) {

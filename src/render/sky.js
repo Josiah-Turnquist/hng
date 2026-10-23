@@ -76,6 +76,14 @@ export class SkySystem {
     this.sky.frustumCulled = false;
     this.sky.renderOrder = -10;
     const u = this.sky.material.uniforms;
+    // The sun disc is drawn in the visible sky but left out of the captured
+    // environment light: the sun already lights the scene directly, and counting
+    // it twice makes every surface glare.
+    u.uSunDisk = { value: 1 };
+    this.sky.material.fragmentShader = this.sky.material.fragmentShader.replace(
+      'L0 += ( vSunE * 19000.0 * Fex ) * sundisk;',
+      'L0 += ( vSunE * 19000.0 * Fex ) * sundisk * uSunDisk;',
+    ).replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float uSunDisk;');
     u.turbidity.value = 7.5;
     u.rayleigh.value = 1.35;
     u.mieCoefficient.value = 0.0045;
@@ -106,7 +114,7 @@ export class SkySystem {
 
     // Sun light. Cascaded shadows are attached by the World (see shadows.js).
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
-    this.hemi = new THREE.HemisphereLight(0xbfd2e6, 0x4a4030, 0.25);
+    this.hemi = new THREE.HemisphereLight(0xbfd2e6, 0x4a4030, 0.08);
     scene.add(this.hemi);
 
     // Capture targets.
@@ -139,7 +147,7 @@ export class SkySystem {
     const warm = 1 - Math.min(1, h / 0.5);
     this.sunColor.setRGB(1.0, 0.94 - warm * 0.25, 0.84 - warm * 0.45);
     this.sun.color.copy(this.sunColor);
-    this.sun.intensity = 3.2 * Math.min(1, h * 3 + 0.05);
+    this.sun.intensity = 4.6 * Math.min(1, h * 3 + 0.05);
     this.cloudMat.uniforms.uSunColor.value.setRGB(1.25 * this.sunColor.r, 1.2 * this.sunColor.g, 1.12 * this.sunColor.b);
 
     // Capture the sky (with clouds) for reflections and for fog color.
@@ -148,14 +156,16 @@ export class SkySystem {
       cloudParent = this.clouds.parent;
     cap.add(this.sky);
     cap.add(this.clouds);
+    this.sky.material.uniforms.uSunDisk.value = 0;
     this.cubeCamera.position.set(0, 2, 0);
     this.cubeCamera.update(this.renderer, cap);
     if (this.envTarget) this.envTarget.dispose();
     this.envTarget = this.pmrem.fromScene(cap, 0.0, 1, 30000);
+    this.sky.material.uniforms.uSunDisk.value = 1;
     skyParent?.add(this.sky);
     cloudParent?.add(this.clouds);
     this.scene.environment = this.envTarget.texture;
-    this.scene.environmentIntensity = 0.85;
+    this.scene.environmentIntensity = 0.42;
   }
 
   update(time) {

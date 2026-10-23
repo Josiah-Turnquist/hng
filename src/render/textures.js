@@ -79,12 +79,12 @@ export const PRESETS = {
   paintGermanGrey: { mat: 'paintedMetal', world: 2, a: lin(0.24, 0.26, 0.27), b: lin(0.35, 0.36, 0.35) }, // Dunkelgrau RAL 7021
   paintSoviet: { mat: 'paintedMetal', world: 2, a: lin(0.27, 0.33, 0.19), b: lin(0.38, 0.4, 0.28) }, // 4BO green
   paintBlack: { mat: 'paintedMetal', world: 2, a: lin(0.1, 0.1, 0.1), b: lin(0.18, 0.17, 0.16) },
-  steelBlued: { mat: 'gunSteel', world: 0.3, a: lin(0.09, 0.1, 0.12), b: new THREE.Color(0.42, 0, 0) },
+  steelBlued: { mat: 'gunSteel', world: 0.3, a: lin(0.07, 0.075, 0.09), b: new THREE.Color(0.5, 0, 0) },
   steelParkerized: { mat: 'gunSteel', world: 0.3, a: lin(0.16, 0.17, 0.16), b: new THREE.Color(0.6, 0, 0) },
-  steelPlain: { mat: 'gunSteel', world: 0.3, a: lin(0.3, 0.3, 0.3), b: new THREE.Color(0.45, 0, 0) },
-  walnut: { mat: 'stockWood', world: 0.6, a: lin(0.32, 0.17, 0.08), b: lin(0.2, 0.1, 0.05) },
-  beech: { mat: 'stockWood', world: 0.6, a: lin(0.5, 0.3, 0.16), b: lin(0.36, 0.2, 0.1) },
-  birch: { mat: 'stockWood', world: 0.6, a: lin(0.55, 0.36, 0.2), b: lin(0.42, 0.25, 0.13) },
+  steelPlain: { mat: 'gunSteel', world: 0.3, a: lin(0.22, 0.22, 0.22), b: new THREE.Color(0.45, 0, 0) },
+  walnut: { mat: 'stockWood', world: 0.6, a: lin(0.3, 0.18, 0.11), b: lin(0.17, 0.09, 0.05) },
+  beech: { mat: 'stockWood', world: 0.6, a: lin(0.45, 0.29, 0.17), b: lin(0.32, 0.19, 0.1) },
+  birch: { mat: 'stockWood', world: 0.6, a: lin(0.52, 0.36, 0.22), b: lin(0.38, 0.24, 0.14) },
   bakelite: { mat: 'stockWood', world: 0.3, a: lin(0.28, 0.12, 0.06), b: lin(0.18, 0.08, 0.04) },
   woolOD: { mat: 'fabric', world: 0.5, a: lin(0.36, 0.33, 0.24) }, // US M1941 field jacket / wool OD
   woolFeldgrau: { mat: 'fabric', world: 0.5, a: lin(0.33, 0.35, 0.3) }, // German M40 feldgrau
@@ -101,6 +101,14 @@ export const PRESETS = {
   leavesHedge: { mat: 'leaves', world: 1, alpha: true, a: lin(0.18, 0.26, 0.09), b: lin(0.28, 0.33, 0.12) },
   grassCard: { mat: 'grassCard', world: 0.5, alpha: true, a: lin(0.42, 0.45, 0.2), b: lin(0.2, 0.28, 0.08) },
   wheatCard: { mat: 'grassCard', world: 0.5, alpha: true, a: lin(0.78, 0.65, 0.35), b: lin(0.5, 0.42, 0.2) },
+  // Village buildings (src/world/village).
+  slate: { mat: 'slateRoof', world: 2, a: lin(0.25, 0.27, 0.3), b: lin(0.33, 0.34, 0.37) },
+  ashlar: { mat: 'ashlar', world: 4, a: lin(0.74, 0.69, 0.58), b: lin(0.63, 0.59, 0.5) }, // dressed limestone
+  floorTiles: { mat: 'tomettes', world: 1.6, a: lin(0.52, 0.25, 0.15), b: lin(0.64, 0.35, 0.21) }, // terracotta tomettes
+  woodPaint: { mat: 'woodPlanks', world: 1.4, a: lin(0.86, 0.86, 0.84), b: lin(0.76, 0.76, 0.74) }, // white boards, tinted per object
+  planeBark: { mat: 'planeBark', world: 1.2, a: lin(0.56, 0.55, 0.43), b: lin(0.4, 0.42, 0.33) },
+  hay: { mat: 'hay', world: 1, a: lin(0.76, 0.63, 0.36), b: lin(0.48, 0.38, 0.19) },
+  rubble: { mat: 'rubble', world: 2.5 },
 };
 
 // Terrain layers (index = layer in the texture arrays; matches SURF ids 0..8).

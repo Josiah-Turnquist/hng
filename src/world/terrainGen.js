@@ -117,6 +117,26 @@ export function generateTerrain(def) {
     }
   }
 
+  // 2b) Flat zones (firing ranges, airfields): blend to a level height.
+  for (const fz of def.flatZones || []) {
+    const level = fz.h ?? hf.getHeight((fz.x0 + fz.x1) / 2, (fz.z0 + fz.z1) / 2);
+    const fall = fz.falloff ?? 30;
+    for (let iz = 0; iz < r; iz++) {
+      const z = iz * hf.cell - hf.half;
+      const dz = Math.max(fz.z0 - z, 0, z - fz.z1);
+      if (dz > fall) continue;
+      for (let ix = 0; ix < r; ix++) {
+        const x = ix * hf.cell - hf.half;
+        const dx = Math.max(fz.x0 - x, 0, x - fz.x1);
+        const d = Math.hypot(dx, dz);
+        if (d > fall) continue;
+        const w = 1 - smoothstep(0, fall, d);
+        const i = iz * r + ix;
+        H[i] = lerp(H[i], level + 0.15 * noise2.fbm2(x / 20, z / 20, 2), w);
+      }
+    }
+  }
+
   // 3) River valley ------------------------------------------------------------
   let river = null;
   if (def.river) {

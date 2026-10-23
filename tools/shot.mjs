@@ -31,18 +31,31 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.stack || e.message}`));
 const url = `http://localhost:${port}/index.html?capture=1&${query}`;
 const t0 = Date.now();
 await page.goto(url);
+let failed = false;
+page.on('pageerror', () => (failed = true));
 try {
-  await page.waitForFunction(() => window.__app?.game?.loop?.frame > 2, null, { timeout: 240000 });
+  await page.waitForFunction(() => window.__app?.game?.loop?.frame > 2 || document.querySelector('.error-box'), null, { timeout: 240000 });
 } catch (e) {
   logs.push(`[timeout] game did not start: ${e.message}`);
+}
+// Optional scripted actions: ?script=... is evaluated in the page after load.
+if (process.env.SCRIPT) {
+  try {
+    const r = await page.evaluate(process.env.SCRIPT);
+    if (r !== undefined) logs.push(`[script] ${JSON.stringify(r)}`);
+  } catch (e) {
+    logs.push(`[script error] ${e.message}`);
+  }
 }
 const loadMs = Date.now() - t0;
 await page.waitForTimeout(Number(waitMs));
 const stats = await page.evaluate(() => {
   const g = window.__app?.game;
   const r = window.__app?.renderer;
-  return g ? { frame: g.loop.frame, fps: g.loop.fps.toFixed(1), calls: r.info.render.calls, tris: r.info.render.triangles, programs: r.info.programs?.length } : null;
+  return g?.loop ? { frame: g.loop.frame, fps: g.loop.fps.toFixed(1), calls: r.info.render.calls, tris: r.info.render.triangles, programs: r.info.programs?.length } : null;
 });
+const errBox = await page.evaluate(() => document.querySelector('.error-box')?.textContent);
+if (errBox) logs.push(`[error-box] ${errBox}`);
 await page.screenshot({ path: out });
 console.log(`loaded in ${loadMs} ms`, JSON.stringify(stats));
 for (const l of logs) console.log(l);
