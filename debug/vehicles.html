@@ -20,6 +20,7 @@
 //   &links=0    hide the preview track links (tracked vehicles)
 //   &turret=30&elev=10&steer=20   pose turret (deg), gun elevation (deg), front wheel steer (deg)
 //   &zoom=2&focus=x,y,z  zoom the 3/4 views on a point
+//   &hide=skirtL,skirtR  hide parts;  &open=1  apply meta.hinges (doors, windshields)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
@@ -103,6 +104,8 @@ function setup(id) {
   if (v.parts.turret && params.get('turret')) v.parts.turret.rotation.y = -Number(params.get('turret')) * deg;
   if (v.parts.gun && params.get('elev')) v.parts.gun.rotation.x = Number(params.get('elev')) * deg;
   if (params.get('steer')) for (const w of ['wheelFL', 'wheelFR']) if (v.parts[w]) v.parts[w].rotation.y = -Number(params.get('steer')) * deg;
+  for (const name of (params.get('hide') || '').split(',')) if (v.parts[name]) v.parts[name].visible = false;
+  if (on('open')) for (const [name, h] of Object.entries(v.meta.hinges || {})) if (v.parts[name]) v.parts[name].quaternion.setFromAxisAngle(new THREE.Vector3(...h.axis), h.open);
   const piv = v.meta.pivots;
   const attach = (obj, part, pos) => {
     const g = part && part !== 'body' && v.parts[part];
@@ -181,7 +184,35 @@ function render(scene, cam, vp) {
 
 const r2 = (x) => x.toFixed(2);
 const idParam = params.get('id') || 'willys_mb';
-if (idParam === 'all' || idParam.includes(',')) {
+if (params.get('eye')) {
+  // First-person check: render from an anchor looking along -Z of the part it rides on
+  // (?eye=driverEye|gunnerEye|commanderEye|seat2...&fov=60). Posts mark 10 m steps ahead.
+  const { scene, v } = setup(idParam);
+  for (let i = 1; i <= 8; i++) for (const x of [-4, 4]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2, 0.2), new THREE.MeshStandardMaterial({ color: i % 2 ? 0xcc3333 : 0xeeeeee }));
+    post.position.set(x, 1, -i * 10);
+    scene.add(post);
+  }
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x4a5a3a }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  scene.add(ground);
+  scene.background = new THREE.Color(0x9fb4c8);
+  const name = params.get('eye');
+  const part = v.meta.anchorParts?.[name];
+  const holder = new THREE.Object3D();
+  const g = part && v.parts[part];
+  const a = v.anchors[name];
+  if (g) { g.add(holder); holder.position.set(a.x - v.meta.pivots[part][0], a.y - v.meta.pivots[part][1], a.z - v.meta.pivots[part][2]); }
+  else { v.root.add(holder); holder.position.copy(a); }
+  v.root.updateMatrixWorld(true);
+  const cam = new THREE.PerspectiveCamera(Number(params.get('fov') || 60), W / H, 0.05, 500);
+  holder.add(cam);
+  if (name.startsWith('seat')) cam.position.y = 0.72; // hip -> eye
+  holder.updateMatrixWorld(true);
+  render(scene, cam, [0, 0, W, H]);
+  info.push(`${idParam} from ${name} (${part || 'body'})  ${a.toArray().map(r2).join(', ')}`);
+} else if (idParam === 'all' || idParam.includes(',')) {
   const ids = idParam === 'all' ? Object.keys(VEHICLE_MODELS) : idParam.split(',');
   const cols = Math.min(3, ids.length), rows = Math.ceil(ids.length / cols);
   const cw = W / cols, ch = H / rows;
