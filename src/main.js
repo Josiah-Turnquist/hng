@@ -13,6 +13,16 @@ function showError(err) {
 window.addEventListener('error', (e) => showError(e.error || e.message));
 window.addEventListener('unhandledrejection', (e) => showError(e.reason));
 
-const app = new App(root);
-window.__app = app; // handy for debugging from the browser console
-app.start().catch(showError);
+function boot(resume = {}) {
+  const app = new App(root, resume);
+  window.__app = app; // handy for debugging from the browser console
+  app.start().catch(showError);
+}
+
+// When the page is shown in the claude.ai viewer and a new version of it is
+// published, the viewer swaps it in place: hand the battle setup over so the
+// player lands back in the same battle instead of the main menu.
+const hot = window.claude?.hot;
+hot?.snapshot?.(() => window.__app?.snapshot() ?? {});
+if (hot?.ready) hot.ready(boot);
+else boot(hot?.data ?? {});

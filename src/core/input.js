@@ -126,8 +126,16 @@ export class Input {
     } catch {
       p = null;
     }
-    // Some browsers reject unadjustedMovement; fall back to a plain request.
-    if (p && p.catch) p.catch(() => this.element.requestPointerLock?.());
+    // Some browsers reject unadjustedMovement; fall back to a plain request
+    // (which may be refused too, inside pages that don't allow mouse capture).
+    if (p && p.catch)
+      p.catch(() => {
+        try {
+          this.element.requestPointerLock?.()?.catch?.(() => {});
+        } catch {
+          /* the free-mouse fallback below takes over */
+        }
+      });
     // Where the mouse can't be captured at all (some embedded pages), play with
     // the free mouse instead: its movement still turns the view.
     clearTimeout(this._lockTimer);

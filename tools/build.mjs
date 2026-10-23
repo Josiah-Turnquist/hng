@@ -15,23 +15,30 @@ const workerSrc = worker.outputFiles[0].text;
 const css = readFileSync(resolve(root, 'src/ui/styles.css'), 'utf8');
 // Keep "</script" out of inline code.
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
+const workerJs = `window.__HNG_SYNTH_WORKER_SRC = ${JSON.stringify(workerSrc).replace(/</g, '\\u003c')};`;
+const head = `<title>HNG</title>
+<meta name="description" content="A realistic WWII combined-arms shooter in the browser, an unofficial tribute to Heroes &amp; Generals.">
+<style>${css}</style>`;
+const body = `<div id="app"></div>
+<script>${workerJs}</script>
+<script type="module">${safe(js)}</script>`;
 const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HNG: WWII Combined Arms</title>
-<meta name="description" content="A realistic WWII combined-arms shooter in the browser, inspired by Heroes &amp; Generals.">
-<style>${css}</style>
+${head}
 </head>
 <body>
-<div id="app"></div>
-<script>window.__HNG_SYNTH_WORKER_SRC = ${JSON.stringify(workerSrc).replace(/</g, '\\u003c')};</script>
-<script type="module">${safe(js)}</script>
+${body}
 </body>
 </html>
 `;
+// The same game as a page body only, for hosts that supply the document
+// shell themselves (the claude.ai artifact viewer).
+const fragment = `${head}\n${body}\n`;
 mkdirSync(resolve(root, 'dist'), { recursive: true });
 const out = resolve(root, 'dist/hng.html');
 writeFileSync(out, html);
+writeFileSync(resolve(root, 'dist/hng-page.html'), fragment);
 console.log(`wrote ${out} (${(html.length / 1e6).toFixed(2)} MB)`);

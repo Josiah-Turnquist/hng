@@ -8,10 +8,17 @@ import { AudioSystem } from '../audio/audio.js';
 import { showMainMenu, PauseMenu } from './menu.js';
 
 export class App {
-  constructor(root) {
+  // resume: state handed over from a previous version of the page (see main.js).
+  constructor(root, resume = {}) {
     this.root = root;
+    this.resume = resume || {};
     this.settings = new Settings();
     this.params = new URLSearchParams(location.search);
+  }
+
+  // What a new version of the page needs to pick up where this one was.
+  snapshot() {
+    return this.opts ? { opts: this.opts } : {};
   }
 
   async start() {
@@ -44,7 +51,9 @@ export class App {
     // A battle set up in the address bar (used by tests and links) skips the menu.
     const p = this.params;
     let opts;
-    if (p.has('map') || p.has('mode') || p.has('cam') || p.has('play')) {
+    if (this.resume.opts) {
+      opts = { ...this.resume.opts };
+    } else if (p.has('map') || p.has('mode') || p.has('cam') || p.has('play')) {
       opts = {
         map: p.get('map') || 'range',
         mode: p.get('mode') || 'auto',
@@ -64,6 +73,7 @@ export class App {
       this.audio?.resume();
     }
 
+    this.opts = opts;
     this.loading = this._makeLoading();
     const game = new Game(this, opts);
     this.game = game;

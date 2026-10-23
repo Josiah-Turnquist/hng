@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --ink: #e9e4d6;
   --ink-dim: #b9b29f;
   --accent: #c9a24a;
@@ -415,6 +416,7 @@ canvas.game {
   letter-spacing: 0.04em;
 }
 .menu button:hover, .pause button:hover { background: rgba(201, 162, 74, 0.18); }
+.menu button:focus-visible, .pause button:focus-visible, .menu select:focus-visible, .menu input:focus-visible, .pause input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .menu button.on { background: rgba(201, 162, 74, 0.3); border-color: var(--accent); }
 .menu-body {
   width: min(720px, 100%);

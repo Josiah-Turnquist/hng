@@ -67,8 +67,8 @@ export function showMainMenu(app) {
     const setup = loadSetup();
     const root = el('div', 'menu');
     root.innerHTML = `
-      <div class="menu-head"><h1>HNG</h1><div class="sub">WWII combined arms · inspired by Heroes &amp; Generals</div></div>
-      <div class="menu-tabs"><button data-tab="battle" class="on">Battle</button><button data-tab="settings">Settings</button><button data-tab="controls">Controls</button><button data-tab="about">About</button></div>
+      <div class="menu-head"><h1>HNG</h1><div class="sub">WWII combined arms · an unofficial Heroes &amp; Generals tribute</div></div>
+      <div class="menu-tabs"><button data-tab="battle" class="on">Battle</button><button data-tab="settings">Settings</button><button data-tab="controls">Controls</button><button data-tab="about">About</button><button class="fullscreen" title="Fill the whole screen (Esc leaves it)">Full screen</button></div>
       <div class="menu-body"></div>`;
     app.root.appendChild(root);
     const body = root.querySelector('.menu-body');
@@ -82,12 +82,23 @@ export function showMainMenu(app) {
       controls: () => controlsTab(body),
       about: () => aboutTab(body),
     };
-    root.querySelectorAll('.menu-tabs button').forEach((b) =>
+    root.querySelectorAll('.menu-tabs button[data-tab]').forEach((b) =>
       b.addEventListener('click', () => {
-        root.querySelectorAll('.menu-tabs button').forEach((x) => x.classList.toggle('on', x === b));
+        root.querySelectorAll('.menu-tabs button[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
         tabs[b.dataset.tab]();
       }),
     );
+    // Full screen, where the page is allowed to use it.
+    const fs = root.querySelector('.fullscreen');
+    fs.hidden = !document.fullscreenEnabled;
+    fs.addEventListener('click', () => {
+      try {
+        if (document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+        else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+      } catch {
+        /* not allowed here */
+      }
+    });
     tabs.battle();
   });
 }
@@ -152,8 +163,9 @@ function battleTab(body, s, deploy) {
     const def = DEFAULT_LOADOUT[s.faction][s.cls]?.[0];
     if (!s.weapon || !list.some((w) => w.id === s.weapon)) s.weapon = def || list[0]?.id;
     const wsel = el('div', 'row');
-    wsel.appendChild(el('label', '', 'Weapon'));
+    const wl = wsel.appendChild(el('label', '', 'Weapon'));
     const sel = el('select');
+    sel.id = wl.htmlFor = 'menu-weapon';
     for (const w of list) {
       const o = el('option', '', `${w.name}`);
       o.value = w.id;
@@ -167,8 +179,9 @@ function battleTab(body, s, deploy) {
     body.appendChild(wsel);
     if (s.map === 'town') {
       const r = el('div', 'row');
-      r.appendChild(el('label', '', `Soldiers per side: <b>${s.bots}</b>`));
+      const bl = r.appendChild(el('label', '', `Soldiers per side: <b>${s.bots}</b>`));
       const inp = el('input');
+      inp.id = bl.htmlFor = 'menu-soldiers';
       inp.type = 'range';
       inp.min = 4;
       inp.max = 18;
@@ -215,8 +228,9 @@ function settingsTab(body, app) {
   body.appendChild(q);
   const slider = (key, label, min, max, step, fmt = (v) => v) => {
     const r = el('div', 'row');
-    r.appendChild(el('label', '', `${label}: <b>${fmt(st.get(key))}</b>`));
+    const l = r.appendChild(el('label', '', `${label}: <b>${fmt(st.get(key))}</b>`));
     const i = el('input');
+    i.id = l.htmlFor = `setting-${key}`;
     i.type = 'range';
     i.min = min;
     i.max = max;
@@ -253,9 +267,10 @@ function controlsTab(body) {
 
 function aboutTab(body) {
   body.innerHTML = `
-    <p>A tribute to <b>Heroes &amp; Generals</b> (Reto-Moto, 2016-2022): large WWII battles of infantry, tanks and vehicles fought over a French village.</p>
+    <p>An unofficial fan tribute to <b>Heroes &amp; Generals</b>, the WWII game by Reto-Moto (2016 to 2023; its servers closed in May 2023): large battles of infantry, tanks and vehicles fought over a French village. It is not connected with Reto-Moto or the game's later owners and uses none of their assets.</p>
     <p>Everything is simulated: bullets fly with real drag and drop for their ammunition and slow down through walls; guns load, cycle and recoil like the originals and are aimed through their real sights; armor stops or fails against each shell by its real thickness and slope; tanks steer like their real transmissions; soldiers tire, bleed and bandage.</p>
-    <p>All models, textures and sounds are generated in code when the game loads.</p>`;
+    <p>All models, textures and sounds are generated in code when the game loads.</p>
+    <p>Play it on a computer with a keyboard and mouse.</p>`;
 }
 
 // Pause overlay while the mouse is released during a battle.

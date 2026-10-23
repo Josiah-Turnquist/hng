@@ -1,6 +1,6 @@
 # HNG: a WWII combined-arms shooter in the browser
 
-A fan recreation of **Heroes & Generals** (Reto-Moto, 2016-2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. Nothing is downloaded.
+An unofficial fan recreation of **Heroes & Generals** (Reto-Moto, 2016 to 2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. Nothing is downloaded.
 
 ## Play
 
@@ -13,7 +13,7 @@ npm start
 
 Then open http://localhost:8000 in Chrome, Edge or Firefox. Pick a battlefield, army, side, class and weapon in the menu and press **Deploy**. Click the game to capture the mouse; **Esc** releases it and pauses.
 
-To make a single HTML file you can open without a server: `npm run build` (writes `dist/hng.html`).
+To make a single HTML file you can open without a server: `npm run build` (writes `dist/hng.html`, plus `dist/hng-page.html`, the same game without the outer page tags, for sites that add their own, such as a claude.ai artifact).
 
 ### Battlefields
 
