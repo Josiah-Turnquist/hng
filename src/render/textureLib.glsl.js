@@ -278,12 +278,14 @@ export const MATERIALS = {
         float ang = v.w * 6.2831;
         vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
         float leaf = 1.0 - smoothstep(0.24, 0.3, length(d * vec2(1.0, 2.2)));
-        vec3 lc = srgb(mix(vec3(0.42, 0.26, 0.1), vec3(0.55, 0.4, 0.15), hash12(vec2(v.w * 37.0))));
-        lc = mix(lc, srgb(vec3(0.28, 0.2, 0.12)), hash12(vec2(v.w * 13.0)) * 0.6);
-        float present = step(0.3, hash12(vec2(v.w * 71.0, fk)));
+        vec3 lc = srgb(mix(vec3(0.27, 0.19, 0.12), vec3(0.38, 0.29, 0.18), hash12(vec2(v.w * 37.0))));
+        lc = mix(lc, srgb(vec3(0.24, 0.2, 0.16)), hash12(vec2(v.w * 13.0)) * 0.6);
+        float present = step(0.45, hash12(vec2(v.w * 71.0, fk)));
         albedo = mix(albedo, lc, leaf * present);
         height = max(height, leaf * present * (0.006 + fk * 0.003));
       }
+      float moss = smoothstep(0.5, 0.75, fbm01(uv, vec2(3.0), 4, 78.0));
+      albedo = mix(albedo, srgb(vec3(0.17, 0.21, 0.08)) * (0.8 + 0.4 * fbm01(uv, vec2(40.0), 2, 77.0)), moss * 0.7);
       float twig = smoothstep(0.985, 1.0, sin((uv.x * 0.6 + uv.y) * 140.0 + fbm(uv, vec2(6.0), 3, 79.0) * 30.0)) * step(0.65, fbm01(uv, vec2(5.0), 2, 80.0));
       albedo = mix(albedo, srgb(vec3(0.3, 0.22, 0.14)), twig);
       rough = 0.85;
