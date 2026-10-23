@@ -182,16 +182,19 @@ export const MATERIALS = {
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float base = fbm01(uv, vec2(4.0), 5, 21.0);
       float fine = fbm01(uv, vec2(32.0), 4, 22.0);
-      vec4 peb = voronoiVec(uv, vec2(28.0), 0.9, 23.0);
-      float pebMask = step(0.82, peb.w) * smoothstep(0.0, 0.08, peb.z);
+      // Small stones, a few centimeters across. They sit low: where dirt meets
+      // grass the highest points of each texture win, and tall stones would
+      // show through the grass as pale flakes.
+      vec4 peb = voronoiVec(uv, vec2(40.0), 0.9, 23.0);
+      float pebMask = step(0.87, peb.w) * smoothstep(0.0, 0.08, peb.z);
       float pebH = sqrt(max(0.0, 1.0 - dot(peb.xy, peb.xy) * 2.2)) * pebMask;
       vec3 c1 = srgb(vec3(0.36, 0.28, 0.2));
       vec3 c2 = srgb(vec3(0.26, 0.2, 0.14));
       albedo = mix(c2, c1, 0.5 + 0.4 * (base - 0.5)) * (0.85 + 0.3 * fine);
       vec3 stone = srgb(mix(vec3(0.34, 0.31, 0.27), vec3(0.45, 0.41, 0.35), hash12(vec2(peb.w * 91.0))));
-      albedo = mix(albedo, stone * 0.85, pebMask * smoothstep(0.0, 0.3, pebH) * 0.55);
-      rough = 0.9 - pebMask * 0.15;
-      height = base * 0.03 + fine * 0.01 + pebH * 0.012;
+      albedo = mix(albedo, stone * 0.75, pebMask * smoothstep(0.0, 0.3, pebH) * 0.45);
+      rough = 0.9 - pebMask * 0.06;
+      height = base * 0.03 + fine * 0.01 + pebH * 0.005;
       metal = 0.0;
       alpha = 1.0;
     }`,
