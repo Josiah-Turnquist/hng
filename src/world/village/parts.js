@@ -13,6 +13,7 @@ export const SHUTTER_FLAGS = FLAG_BULLET | FLAG_SIGHT;
 
 const ASHLAR_TINT = rgb(1, 1, 1);
 const STONE_SILL = rgb(0.95, 0.93, 0.88);
+const DUSTY_BRICK = rgb(0.72, 0.66, 0.62);
 
 // ---------------------------------------------------------------------------------------
 // Windows. wall: Wall (geom.js). u0..u1 along the wall, y0..y1 in frame height.
@@ -154,11 +155,28 @@ export function doorUnit(wall, u0, u1, y0, y1, o = {}) {
   }
   // Doorstep outside, down to the ground.
   if (o.step !== false) {
-    const gy = (o.groundY ?? -0.25) - wall.base;
-    if (v0 - gy > 0.04) {
-      wall.box('ashlar', u0 - 0.12, gy - 0.2, t / 2, u1 + 0.12, v0, t / 2 + 0.42, { color: STONE_SILL });
-      const p = wall.p((u0 + u1) / 2, (gy - 0.2 + v0) / 2, t / 2 + 0.21);
-      wall.f.collider(p[0], p[1], p[2], w / 2 + 0.12, (v0 - gy + 0.2) / 2, 0.21, { yaw: wall.yaw }, 'stone', undefined, false);
+    // Outside ground measured where the steps go (falls back to the plot height).
+    const sp = wall.p((u0 + u1) / 2, 0, t / 2 + 0.5);
+    const gTerrain = wall.f.b.hf ? wall.f.groundY(sp[0], sp[2]) : (o.groundY ?? -0.25);
+    const gy = Math.min(gTerrain, o.groundY ?? gTerrain) - wall.base;
+    const rise = v0 - gy;
+    if (rise > 0.04) {
+      const steps = Math.max(1, Math.ceil(rise / 0.18));
+      for (let k = 0; k < steps; k++) {
+        const top = gy + (rise * (steps - k)) / steps;
+        const d0 = t / 2 + 0.3 * k,
+          d1 = t / 2 + 0.3 * (k + 1) + 0.04;
+        wall.box('ashlar', u0 - 0.12, gy - 0.2, d0, u1 + 0.12, top, d1, { color: STONE_SILL });
+      }
+      if (steps === 1) {
+        const p = wall.p((u0 + u1) / 2, (gy - 0.2 + v0) / 2, t / 2 + 0.17);
+        wall.f.collider(p[0], p[1], p[2], w / 2 + 0.12, (v0 - gy + 0.2) / 2, 0.17, { yaw: wall.yaw }, 'stone', undefined, false);
+      } else {
+        // One ramp from the ground in front of the steps up to the threshold.
+        const a = wall.p((u0 + u1) / 2, gy, t / 2 + 0.3 * steps + 0.05),
+          b = wall.p((u0 + u1) / 2, v0, t / 2 - 0.02);
+        rampCollider(wall.f, a[0], a[1], a[2], b[0], b[1], b[2], w + 0.24, 0.25, 'stone');
+      }
     }
   }
   // Report the doorway for navigation.
@@ -253,18 +271,18 @@ export function gableWall(f, xo, xi, d, eaves, yR, o = {}) {
   ];
   const outward = xo > xi;
   // Outer face (normal toward +x when outward).
-  const outer = outward ? [[0, 1, 2]] : [[0, 2, 1]];
-  const inner = outward ? [[3, 5, 4]] : [[3, 4, 5]];
+  const outer = outward ? [[0, 2, 1]] : [[0, 1, 2]];
+  const inner = outward ? [[3, 4, 5]] : [[3, 5, 4]];
   f.tris(o.mat || 'plaster', V, outer, { color: o.color });
   if (o.inner !== null) f.tris(o.inner || o.mat || 'plaster', V, inner, { color: o.innerColor || o.color });
-  // Collider: three stepped boxes.
+  // Collider: two stepped boxes (the top quarter of the triangle is left open).
   if (o.col !== false) {
     const hg = yR - eaves;
     const xc = (xo + xi) / 2,
       hx = Math.abs(xo - xi) / 2;
-    for (let k = 0; k < 3; k++) {
-      const wk = d * (1 - (k + 0.5) / 3);
-      f.collider(xc, eaves + (hg * (k + 0.5)) / 3, cz, hx, hg / 6, wk / 2, null, o.colMat || 'stone', undefined, false);
+    for (const [a, b] of [[0, 0.4], [0.4, 0.75]]) {
+      const wk = d * (1 - (a + b) / 2);
+      f.collider(xc, eaves + (hg * (a + b)) / 2, cz, hx, (hg * (b - a)) / 2, wk / 2, null, o.colMat || 'stone', undefined, false);
     }
   }
 }
@@ -288,9 +306,9 @@ export function gableWallZ(f, zo, zi, width, eaves, yR, o = {}) {
     const hg = yR - eaves;
     const zc = (zo + zi) / 2,
       hz = Math.abs(zo - zi) / 2;
-    for (let k = 0; k < 3; k++) {
-      const wk = width * (1 - (k + 0.5) / 3);
-      f.collider(cx, eaves + (hg * (k + 0.5)) / 3, zc, wk / 2, hg / 6, hz, null, o.colMat || 'stone', undefined, false);
+    for (const [a, b] of [[0, 0.4], [0.4, 0.75]]) {
+      const wk = width * (1 - (a + b) / 2);
+      f.collider(cx, eaves + (hg * (a + b)) / 2, zc, wk / 2, (hg * (b - a)) / 2, hz, null, o.colMat || 'stone', undefined, false);
     }
   }
 }
@@ -357,6 +375,12 @@ export function rampCollider(f, ax, ay, az, bx, by, bz, width, thick, material =
 // through stepped colliders (each step <= 0.4 m).
 export function rubblePile(f, x, y, z, rx, rz, h, o = {}) {
   const rng = new RNG(o.seed ?? Math.floor(x * 131 + z * 71 + 9999));
+  // Outdoor piles sit on the real terrain (lowest point under the pile).
+  if (o.onGround && f.b.hf) {
+    let lo = Infinity;
+    for (const [dx, dz] of [[0, 0], [rx, 0], [-rx, 0], [0, rz], [0, -rz]]) lo = Math.min(lo, f.groundY(x + dx, z + dz));
+    y = lo;
+  }
   const yaw = o.yaw ?? 0;
   const geo = new THREE.SphereGeometry(1, 9, 5, 0, TAU, 0, Math.PI / 2);
   const pos = geo.attributes.position;
@@ -384,7 +408,7 @@ export function rubblePile(f, x, y, z, rx, rz, h, o = {}) {
     const hh = h * Math.sqrt(Math.max(0, 1 - rr * rr));
     const sz = rng.range(0.12, 0.42);
     const m = rng.pick(pal);
-    const tint = m === 'plaster' ? o.plasterColor || rgb(0.95, 0.92, 0.85) : undefined;
+    const tint = m === 'plaster' ? o.plasterColor || rgb(0.95, 0.92, 0.85) : m === 'brick' ? DUSTY_BRICK : undefined;
     f.obox(m, x + cy * lx + sy * lz, y + hh + sz * 0.2, z - sy * lx + cy * lz, sz * rng.range(0.8, 1.6), sz * rng.range(0.4, 0.8), sz * rng.range(0.7, 1.2), {
       rot: { yaw: rng.next() * TAU, pitch: rng.range(-0.5, 0.5), roll: rng.range(-0.5, 0.5) },
       uv: 'box',
@@ -403,14 +427,18 @@ export function rubblePile(f, x, y, z, rx, rz, h, o = {}) {
       f.beam('wood', bx, y + h * 0.5, bz, bx + Math.cos(dir) * len, y + h * rng.range(0.1, 1.3), bz + Math.sin(dir) * len, 0.16, 0.18, { color: WOOD.charred });
     }
   }
-  // Stepped colliders.
+  // Stepped colliders: risers <= 0.18 m and treads >= 0.24 m so people can walk up
+  // them (the body's lowest sphere spans 0.27-0.83 m above the feet). A steep heap
+  // gets a lower collider than its visual height (loose rubble on top).
   if (o.collide !== false) {
-    const n = Math.max(1, Math.ceil(h / 0.38));
+    const R = Math.min(rx, rz) * 0.85;
+    const n = Math.max(1, Math.min(Math.ceil(h / 0.18), Math.floor(R / 0.24)));
+    const hc = Math.min(h, n * 0.18);
     for (let k = 1; k <= n; k++) {
-      const yk = (k * h) / n;
-      const rk = Math.sqrt(Math.max(0.05, 1 - ((k - 0.5) / n) ** 2)) * 0.74;
-      const y0 = y - 0.3;
-      f.collider(x, (y0 + y + yk) / 2, z, rx * rk, (y + yk - y0) / 2, rz * rk, { yaw }, 'stone', undefined, false);
+      const yk = (k * hc) / n;
+      const fk = 1 - (k - 1) / n;
+      const y0 = y - 0.6;
+      f.collider(x, (y0 + y + yk) / 2, z, rx * 0.85 * fk, (y + yk - y0) / 2, rz * 0.85 * fk, { yaw }, 'stone', undefined, false);
     }
   }
 }
@@ -422,13 +450,134 @@ export function scatter(f, x, y, z, radius, count, o = {}) {
   for (let k = 0; k < count; k++) {
     const a = rng.next() * TAU,
       rr = Math.sqrt(rng.next()) * radius;
-    const sz = rng.range(0.08, 0.3);
+    const sz = rng.range(0.06, 0.22);
     const m = rng.pick(pal);
     const gy = o.groundAt ? o.groundAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) : y;
     f.obox(m, x + Math.cos(a) * rr, gy + sz * 0.25, z + Math.sin(a) * rr, sz * rng.range(0.8, 1.6), sz * 0.45, sz, {
       rot: { yaw: rng.next() * TAU, pitch: rng.range(-0.3, 0.3), roll: rng.range(-0.3, 0.3) },
       uv: 'box',
-      color: m === 'plaster' ? o.plasterColor : undefined,
+      color: m === 'plaster' ? o.plasterColor : m === 'brick' ? DUSTY_BRICK : undefined,
     });
   }
+}
+
+// ---------------------------------------------------------------------------------------
+// Hipped roof over the rectangle x0..x1, depth d (centered on z = 0), same pitch on all
+// four sides. Returns { yR, yTop }.
+export function hipRoof(f, o) {
+  const th = o.pitch;
+  const tan = Math.tan(th);
+  const T = o.T ?? 0.16;
+  const ov = o.ov ?? 0.4;
+  const mat = o.mat || 'slate';
+  const hd = o.d / 2;
+  const ye = o.eaves - ov * tan; // underside at the eave edge
+  const yR = o.eaves + hd * tan; // underside at the ridge
+  const dy = T / Math.cos(th);
+  const xr0 = o.x0 + hd,
+    xr1 = o.x1 - hd;
+  const E = [
+    [o.x0 - ov, ye + dy, hd + ov],
+    [o.x1 + ov, ye + dy, hd + ov],
+    [o.x1 + ov, ye + dy, -hd - ov],
+    [o.x0 - ov, ye + dy, -hd - ov],
+  ];
+  const R0 = [xr0, yR + dy, 0],
+    R1 = [xr1, yR + dy, 0];
+  const low = (p) => [p[0], p[1] - dy, p[2]];
+  const faces = [
+    [E[0], E[1], R1, R0],
+    [E[1], E[2], R1],
+    [E[2], E[3], R0, R1],
+    [E[3], E[0], R0],
+  ];
+  for (const fc of faces) {
+    const verts = [...fc, ...fc.map(low)];
+    const n = fc.length;
+    const top = n === 4 ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 2]];
+    const bot = n === 4 ? [[4, 6, 5], [4, 7, 6]] : [[3, 5, 4]];
+    const edge = n === 4 ? [[0, 5, 1], [0, 4, 5]] : [[0, 4, 1], [0, 3, 4]];
+    f.tris(mat, verts, top, { color: o.color, uvFn: roofUV(fc[0], fc[1]) });
+    f.tris(o.underMat || 'wood', verts, [...bot, ...edge], { color: WOOD.dark });
+  }
+  // Ridge cap.
+  f.obox(mat, (xr0 + xr1) / 2, yR + dy - 0.02, 0, (xr1 - xr0) / 2 + 0.1, 0.12, 0.12, { rot: { pitch: Math.PI / 4 }, uv: 'box', color: o.color ? scale(o.color, 0.9) : undefined });
+  // Colliders: front/back slopes as tilted boxes, hips as narrower boxes.
+  const L = (hd + ov) / Math.cos(th);
+  for (const side of [1, -1]) {
+    const sm = L / 2;
+    const zc = side * (sm * Math.cos(th) - 0.02 * Math.sin(th));
+    const yc = yR - sm * Math.sin(th) + dy - 0.02 * Math.cos(th);
+    const half = (xr1 - xr0) / 2 + (hd + ov) / 2;
+    f.collider((xr0 + xr1) / 2, yc, zc, half, 0.02, L / 2, { yaw: side > 0 ? 0 : Math.PI, pitch: th }, 'roofTile', undefined, false);
+  }
+  for (const sx of [1, -1]) {
+    const sm = L / 2;
+    const xc = (sx > 0 ? xr1 : xr0) + sx * sm * Math.cos(th);
+    const yc = yR - sm * Math.sin(th) + dy - 0.02;
+    f.collider(xc, yc, 0, (hd + ov) * 0.5, 0.02, L / 2, { yaw: sx > 0 ? Math.PI / 2 : -Math.PI / 2, pitch: th }, 'roofTile', undefined, false);
+  }
+  return { yR, yTop: yR + dy };
+}
+
+// Planar UVs on a sloped roof face: u along the eave edge A->B, v up the slope.
+export function roofUV(A, Bv) {
+  const ux = Bv[0] - A[0],
+    uz = Bv[2] - A[2];
+  const ul = Math.hypot(ux, uz) || 1;
+  const ex = ux / ul,
+    ez = uz / ul;
+  return (P, out) => {
+    const dx = P[0] - A[0],
+      dy = P[1] - A[1],
+      dz = P[2] - A[2];
+    out[0] = dx * ex + dz * ez;
+    const h = -dx * ez + dz * ex;
+    out[1] = -Math.hypot(h, dy);
+    return out;
+  };
+}
+
+// Dormer window on the front (+z) slope of a gable roof whose ridge runs along x.
+// roof: the info returned by gableRoof(); x: dormer center; w: width.
+export function dormer(f, x, roof, o = {}) {
+  const th = o.pitch;
+  const tan = Math.tan(th);
+  const w = o.w ?? 1.3,
+    h = o.h ?? 1.35;
+  const zd = o.zFront; // front face z (just behind the eave line)
+  const ySurf = roof.yR - zd * tan + roof.T / Math.cos(th); // roof top surface at zd
+  const y0 = ySurf - 0.25,
+    y1 = ySurf + h;
+  const zBack = zd - (y1 - ySurf) / tan - 0.1;
+  const mat = o.mat || 'plaster';
+  const col = o.color;
+  // Front wall with the window opening (as four boxes around it).
+  const ww = w - 0.5,
+    wy0 = ySurf + 0.2,
+    wy1 = y1 - 0.15;
+  const t = 0.14;
+  f.box(mat, x - w / 2, y0, zd - t, x - ww / 2, y1, zd, { color: col });
+  f.box(mat, x + ww / 2, y0, zd - t, x + w / 2, y1, zd, { color: col });
+  f.box(mat, x - ww / 2, y0, zd - t, x + ww / 2, wy0, zd, { color: col });
+  f.box(mat, x - ww / 2, wy1, zd - t, x + ww / 2, y1, zd, { color: col });
+  // Window: frame, glass or dark void, shutters.
+  f.box('paint', x - ww / 2, wy0, zd - t - 0.02, x + ww / 2, wy0 + 0.06, zd - t + 0.06, { color: o.frameColor });
+  f.box('paint', x - 0.03, wy0, zd - t - 0.01, x + 0.03, wy1, zd - t + 0.05, { color: o.frameColor });
+  f.box(o.glass ? 'glass' : 'dark', x - ww / 2, wy0, zd - t - 0.03, x + ww / 2, wy1, zd - t - 0.02, {});
+  if (o.shutterColor) {
+    for (const sx of [-1, 1]) f.box('paint', x + sx * (ww / 2 + 0.02), wy0, zd + 0.01, x + sx * (ww / 2 + 0.02 + ww / 2), wy1, zd + 0.04, { color: o.shutterColor });
+  }
+  // Cheeks running back into the roof.
+  for (const sx of [-1, 1]) f.box(mat, x + sx * (w / 2) - (sx > 0 ? 0.1 : 0), y0, zBack, x + sx * (w / 2) + (sx < 0 ? 0.1 : 0), y1, zd - t, { color: col });
+  // Little gable roof.
+  const dp = (24 * Math.PI) / 180 + th * 0.5;
+  const half = w / 2 + 0.18;
+  const rise = half * Math.tan(dp);
+  const L = half / Math.cos(dp);
+  for (const sx of [-1, 1]) {
+    f.obox(o.roofMat || 'tiles', x + sx * half * 0.5, y1 + rise / 2 + 0.04, (zd + 0.15 + zBack) / 2, L / 2, 0.05, (zd + 0.15 - zBack) / 2, { rot: { roll: -sx * dp }, uv: 'box', color: o.roofColor, faces: { ny: 'wood' } });
+  }
+  // Small gable triangle on the front.
+  f.tris(mat, [[x - w / 2, y1, zd], [x + w / 2, y1, zd], [x, y1 + rise, zd]], [[0, 1, 2]], { color: col });
 }

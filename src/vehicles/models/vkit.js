@@ -638,6 +638,35 @@ export class VehicleBuilder extends GunBuilder {
     return this;
   }
 
+  // Armor for a turret/casemate shell given as a plan outline (closed [x, z] list, any
+  // winding) between a lower and an upper layer: one plate per outline edge from
+  // [y0, scale0] to [y1, scale1] (scaled about center [cx, cz] like layer()). mmFor(deg)
+  // returns the thickness for a face whose outward normal points `deg` degrees away from
+  // straight ahead (0 = front, 90 = side, 180 = rear); faces are named `${name}Front`,
+  // `${name}Side{L,R}` or `${name}Rear` by the same angle (front < 45 < side < 135 < rear).
+  armorShell(name, part, outline, [y0, s0], [y1, s1], [cx, cz], mmFor) {
+    const n = outline.length;
+    const ccw = area2(outline) > 0;
+    for (let i = 0; i < n; i++) {
+      const a = outline[i],
+        c = outline[(i + 1) % n];
+      const ex = c[0] - a[0],
+        ez = c[1] - a[1];
+      if (Math.hypot(ex, ez) < 0.02) continue;
+      // Outward normal in plan (x, z): for counterclockwise (x right, z up) it is (ez, -ex).
+      let nx = ccw ? ez : -ez,
+        nz = ccw ? -ex : ex;
+      const l = Math.hypot(nx, nz);
+      nx /= l;
+      nz /= l;
+      const deg = (Math.acos(Math.max(-1, Math.min(1, -nz))) * 180) / Math.PI;
+      const sec = deg < 45 ? 'Front' : deg > 135 ? 'Rear' : nx < 0 ? 'SideL' : 'SideR';
+      const L = (p, y, sc) => [cx + (p[0] - cx) * sc, y, cz + (p[1] - cz) * sc];
+      this.armorPoly(`${name}${sec}`, part, mmFor(deg), [L(a, y0, s0), L(c, y0, s0), L(c, y1, s1), L(a, y1, s1)], [nx, 0, nz], 1);
+    }
+    return this;
+  }
+
   // Internal component box (axis-aligned).
   module(name, part, center, half) {
     this.meta.modules.push({ name, part, center: center.map(r4), half: half.map(r4) });

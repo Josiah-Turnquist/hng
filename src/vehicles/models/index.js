@@ -12,9 +12,14 @@ export { trackPath, pathLength };
 export const VEHICLE_MODELS = {
   willys_mb: us.willys_mb,
   m4a1_sherman: us.m4a1_sherman,
+  m5a1_stuart: us.m5a1_stuart,
   panzer4_h: german.panzer4_h,
+  tiger1: german.tiger1,
   t34_76: soviet.t34_76,
+  t34_85: soviet.t34_85,
   kubelwagen: german.kubelwagen,
+  opel_blitz: german.opel_blitz,
+  m3_halftrack: us.m3_halftrack,
   gaz67: soviet.gaz67,
 };
 

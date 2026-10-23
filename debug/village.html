@@ -13,7 +13,7 @@
 // URL parameters:
 //   view=aerial|top|church|churchside|nave|tower|square|gendarmerie|court|street|north|south|
 //        bridgeE|bridgeW|bridgeS|farm|damage
-//   cam=x,y,z,yawDeg,pitchDeg   free camera (yaw 0 looks north / -z, positive yaw turns left)
+//   view=x,y,z,yawDeg,pitchDeg  or cam=...: free camera (yaw 0 looks north / -z, positive yaw turns left)
 //   look=x,y,z                  aim the camera at a point (with cam=x,y,z)
 //   colliders=1                 draw collision boxes as wireframes (2 = only colliders near the view)
 //   tex=512                     texture size; fov=55; noshadow=1; exposure=1
@@ -89,14 +89,15 @@ let target = new THREE.Vector3(plan.center.x, gy(plan.center.x, plan.center.z), 
 let shadowRadius = 140;
 const ch = plan.church, g = plan.gendarmerie;
 const views = {
-  aerial: () => { camera.position.set(plan.center.x + 150, gy(0, 0) + 170, plan.center.z + 230); target.set(plan.center.x - 5, gy(0, 0), plan.center.z - 15); shadowRadius = 230; },
+  aerial: () => { camera.position.set(plan.center.x + 95, gy(0, 0) + 85, plan.center.z + 135); target.set(plan.center.x - 12, gy(0, 0), plan.center.z - 22); shadowRadius = 200; },
   top: () => { camera.position.set(plan.center.x, 420, plan.center.z + 1); target.set(plan.center.x, 0, plan.center.z); shadowRadius = 220; },
   church: () => { camera.position.copy(loc(ch, 9, 1.7, 36)); target.copy(loc(ch, 2, 9, -4)); },
+  portal: () => { camera.position.copy(loc(ch, 2.5, 1.7, 14)); target.copy(loc(ch, 1.2, 5, 0)); shadowRadius = 60; },
   churchside: () => { camera.position.copy(loc(ch, 34, 6, -6)); target.copy(loc(ch, 0, 6, -20)); },
   nave: () => { camera.position.copy(loc(ch, -2, 1.7, -1.5)); target.copy(loc(ch, 1, 4.5, -26)); shadowRadius = 60; },
   tower: () => { camera.position.copy(loc(ch, 9.3, 17.1, -2.6)); target.copy(loc(ch, 9.3, 12, 40)); shadowRadius = 160; },
   square: () => { camera.position.copy(loc(ch, -5, 2.0, 40)); target.copy(loc(ch, 12, 2, 4)); },
-  gendarmerie: () => { camera.position.copy(loc(g, -4, 1.8, 22)); target.copy(loc(g, 2, 3.5, 0)); },
+  gendarmerie: () => { camera.position.copy(loc(g, -15, 1.8, 11.4)); target.copy(loc(g, -1, 3.6, 2)); },
   court: () => { camera.position.copy(loc(g, g.side * 24, 7, 10)); target.copy(loc(g, g.side * 10, 1, -6)); },
   street: () => { camera.position.set(-75, gy(-75, 46) + 1.8, 46.5); target.set(20, gy(20, 15) + 2, 15); },
   north: () => { camera.position.set(-33, gy(-33, -100) + 1.8, -100); target.set(-31, gy(-31, 0) + 4, 0); },
@@ -115,7 +116,9 @@ for (const [i, br] of plan.bridges.entries()) {
     target.set(br.x, br.waterY + 1, br.z);
   };
 }
-const cam = params.get('cam');
+// ?view=x,y,z,yaw,pitch is accepted as a free camera too.
+const viewParam = params.get('view') || '';
+const cam = params.get('cam') || (viewParam.includes(',') ? viewParam : null);
 if (cam) {
   const [x, y, z, yaw, pitch] = cam.split(',').map(Number);
   camera.position.set(x, y, z);
@@ -126,7 +129,7 @@ if (cam) {
     target.set(x - Math.sin(yr) * Math.cos(pr) * 10, y + Math.sin(pr) * 10, z - Math.cos(yr) * Math.cos(pr) * 10);
   }
   shadowRadius = Number(params.get('sr') || 120);
-} else (views[params.get('view') || 'aerial'] || views.aerial)();
+} else (views[viewParam || 'aerial'] || views.aerial)();
 camera.lookAt(target);
 camera.updateMatrixWorld();
 terrainR.update(camera.position);
@@ -195,7 +198,7 @@ renderer.info.reset();
 renderer.render(scene, camera);
 const st = village.stats;
 const lines = [
-  `view ${params.get('view') || (cam ? 'cam' : 'aerial')}  cam ${camera.position.toArray().map((v) => v.toFixed(1)).join(',')}`,
+  `view ${cam ? 'cam' : viewParam || 'aerial'}  cam ${camera.position.toArray().map((v) => v.toFixed(1)).join(',')}`,
   `village: ${vstats.calls} draw calls, ${(vstats.tris / 1000).toFixed(0)}k tris (all of it in view), ${st.meshes} meshes`,
   `colliders ${st.colliders}, buildings ${st.buildings} (houses ${st.houses}), cover ${village.coverPoints.length}, doors ${village.doors.length}, nav ${village.navBlockers.length}`,
   `frame: ${renderer.info.render.calls} calls, ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris`,

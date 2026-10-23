@@ -343,3 +343,46 @@ canvas.game {
   background: rgba(230, 190, 120, 0.95);
   transform-origin: 50% 100%;
 }
+
+/* Assault: capture points and timer at the top */
+.assault-bar {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.assault-bar .timer { font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: 0.05em; }
+.assault-bar .pts { display: flex; align-items: center; gap: 2px; font-size: 10px; }
+.assault-bar .pts b { color: var(--ink-dim); margin: 0 5px; font-weight: 400; }
+.assault-bar .pt {
+  position: relative;
+  min-width: 24px;
+  padding: 2px 3px;
+  text-align: center;
+  font-family: var(--mono);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.assault-bar .pt.own { background: rgba(70, 110, 160, 0.75); }
+.assault-bar .pt.enemy { background: rgba(160, 60, 50, 0.75); }
+.assault-bar .pt.neutral { background: rgba(120, 120, 110, 0.6); }
+.assault-bar .pt.obj { min-width: 30px; font-weight: 700; border-color: rgba(255, 230, 160, 0.7); }
+.assault-bar .pt.contested { box-shadow: 0 0 0 2px rgba(255, 210, 80, 0.85); }
+.assault-bar .pt i { position: absolute; left: 0; bottom: 0; height: 3px; background: #f0d080; }
+.assault-result {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 8, 0.55);
+}
+.assault-result .title { font-size: 54px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.assault-result .why { margin-top: 8px; font-size: 16px; }
+.assault-result .hint { margin-top: 18px; color: var(--ink-dim); }

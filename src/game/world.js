@@ -9,6 +9,8 @@ import { SkySystem } from '../render/sky.js';
 import { Shadows } from '../render/shadows.js';
 import { TextureLibrary } from '../render/textures.js';
 import { Atmosphere } from '../ballistics/atmosphere.js';
+import { planVillage, buildVillage } from '../world/village/index.js';
+import { RNG } from '../core/math.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
@@ -49,6 +51,14 @@ export class World {
     };
     this.collision.waterLevelAt = this.waterLevelAt;
 
+    // The village shapes the ground under it, so plan it before the terrain mesh.
+    if (this.def.objectives && this.def.village) {
+      progress(0.22, 'Surveying the village');
+      await nextFrame();
+      this.villagePlan = planVillage(this.terrain, this.def, new RNG(this.def.seed * 7 + 3));
+      this.hf.computeRange();
+    }
+
     progress(0.3, 'Building the sky');
     await nextFrame();
     this.sky = new SkySystem(this.renderer, this.scene, q);
@@ -68,6 +78,15 @@ export class World {
     if (river) {
       this.scene.add(river);
       this.updaters.push((t) => river.userData.update(t));
+    }
+
+    if (this.villagePlan) {
+      progress(0.7, 'Building the village');
+      await nextFrame();
+      const t0 = performance.now();
+      this.village = buildVillage(this.villagePlan, { terrain: this.terrain, def: this.def, collision: this.collision, textures: this.textures, textureSize: q.textureSize });
+      this.scene.add(this.village.group);
+      console.log(`village built in ${Math.round(performance.now() - t0)} ms`, this.village.stats);
     }
 
     progress(0.95, 'Final touches');

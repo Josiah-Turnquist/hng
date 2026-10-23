@@ -7,7 +7,7 @@ import { RNG } from '../../core/math.js';
 import { FLAG_BULLET, FLAG_SOLID, FLAG_DEFAULT } from '../../physics/collision.js';
 import { wallRects } from './geom.js';
 import { PLASTER_COLORS, LIMEWASH, PAINTS, WOOD, rgb, scale, mix } from './materials.js';
-import { windowUnit, doorUnit, gableRoof, gableWall, chimney, straightStair, rubblePile, scatter } from './parts.js';
+import { windowUnit, doorUnit, gableRoof, gableWall, chimney, straightStair, rubblePile, scatter, rampCollider, dormer } from './parts.js';
 
 const SHOP_SIGNS = { cafe: 'cafe', bakery: 'boulangerie', epicerie: 'epicerie', boucherie: 'boucherie', quincaillerie: 'quincaillerie' };
 
@@ -61,8 +61,6 @@ export function buildHouse(B, h, ctx) {
   };
   // Frame x/z of a wall's u coordinate.
   const uToX = { front: (u) => u - W / 2, back: (u) => W / 2 - u };
-  const xToU = { front: (x) => x + W / 2, back: (x) => W / 2 - x };
-  const zToU = { right: (z) => D / 2 - t - z, left: (z) => z + D / 2 - t };
 
   // ---- Openings ------------------------------------------------------------------
   const openings = []; // { wall, u0, u1, y0, y1, type }
@@ -117,6 +115,8 @@ export function buildHouse(B, h, ctx) {
     if (attached) continue;
     const L = walls[side].len;
     const isStair = hasStair && (side === 'right' ? stairSide > 0 : stairSide < 0);
+    const adHere = h.ad && (side === 'right' ? h.ad.side > 0 : h.ad.side < 0);
+    if (adHere) continue;
     if (!isStair && r.chance(0.6)) add(side, L / 2 - 0.45, L / 2 + 0.45, 1.0, 2.15, 'window', { small: true });
     if (floors.length > 1 && r.chance(0.55)) add(side, L / 2 - 0.45, L / 2 + 0.45, upSill(top), upHead(top) - 0.1, 'window', { floor: 1, small: true });
   }
@@ -126,6 +126,7 @@ export function buildHouse(B, h, ctx) {
   const atticHoles = []; // in frame x/z: {x0,x1,z0,z1}
   const floorHoles = [];
   const piles = []; // {x, y, z, rx, rz, h, beams}
+  const ramps = []; // breach approach ramps {a, b, w}
   const capWall = {}; // wall -> extra holes
   let skipGable = null;
   const th = h.pitch;
@@ -183,8 +184,9 @@ export function buildHouse(B, h, ctx) {
         const wlx = walls[wk];
         const pin = wlx.p(um, 0, -t / 2 - 0.9),
           pout = wlx.p(um, 0, t / 2 + 0.9);
-        piles.push({ x: pin[0], y: 0, z: pin[2], rx: bw * 0.5, rz: 0.9, h: 0.55, yaw: wlx.yaw, beams: 0 });
-        piles.push({ x: pout[0], y: groundY, z: pout[2], rx: bw * 0.55, rz: 1.0, h: 0.7, yaw: wlx.yaw, beams: 1 });
+        piles.push({ x: pin[0], y: 0, z: pin[2], rx: bw * 0.5, rz: 0.9, h: 0.45, yaw: wlx.yaw, beams: 0 });
+        piles.push({ x: pout[0], y: groundY, z: pout[2], rx: bw * 0.55, rz: 1.0, h: 0.55, yaw: wlx.yaw, beams: 1, collide: false });
+        ramps.push({ a: wlx.p(um, 0, t / 2 + 2.0), b: wlx.p(um, 0, t / 2 - 0.05), w: bw * 0.8 });
       }
     } else if (kind === 'corner' || kind === 'burned') {
       const sx = dmg.side;
@@ -200,13 +202,11 @@ export function buildHouse(B, h, ctx) {
         const steps = 3;
         const lowY = dr.range(1.4, 2.4);
         for (let k = 0; k < steps; k++) {
-          const frac = (k + 1) / steps;
           const yk = lowY + (eaves - lowY) * (k / steps) + dr.range(-0.2, 0.2);
           const span = ext * (1 - k / steps) + dr.range(-0.2, 0.2);
           const ua = cu > 0 ? cu - span : 0,
             ub = cu > 0 ? cu + 0.1 : span;
           capWall[fw] = (capWall[fw] || []).concat([{ u0: ua, u1: ub, y0: yk, y1: eaves + 1 }]);
-          void frac;
         }
         const sideL = walls[swk].len;
         const sideCornerU = (swk === 'right') === (sz > 0) ? 0 : sideL;
@@ -342,6 +342,35 @@ export function buildHouse(B, h, ctx) {
     }
   }
 
+  // ---- Lettering: street plaque, painted advert, MAIRIE band ----------------------------
+  if (ctx.atlas) {
+    const zf = D / 2 + 0.012;
+    if (h.plaque && ctx.atlas[h.plaque]) {
+      const sx = h.attachedL ? 1 : -1;
+      const x0 = sx < 0 ? -W / 2 + 0.35 : W / 2 - 1.15;
+      f.quad('signs', [x0, 2.75, zf + 0.02], [x0 + 0.8, 2.75, zf + 0.02], [x0 + 0.8, 2.9, zf + 0.02], [x0, 2.9, zf + 0.02], ctx.atlas[h.plaque]);
+    }
+    if (h.ad && ctx.atlas[h.ad.key]) {
+      const rc = ctx.atlas[h.ad.key];
+      const aspect = ((rc[2] - rc[0]) * 2048) / ((rc[3] - rc[1]) * 2048);
+      const wAd = Math.min(D - 1.6, 6.2),
+        hAd = wAd / aspect;
+      const y0 = Math.max(2.4, eaves - 0.5 - hAd);
+      const xo = h.ad.side * (W / 2 + 0.012);
+      // Quad on the gable end, readable from outside (CCW seen from outside).
+      const zA = h.ad.side > 0 ? wAd / 2 : -wAd / 2,
+        zB = -zA;
+      f.quad('signs', [xo, y0, zA], [xo, y0, zB], [xo, y0 + hAd, zB], [xo, y0 + hAd, zA], rc, { color: rgb(0.92, 0.9, 0.86) });
+    }
+    if (h.mairie && ctx.atlas.mairie) {
+      const cx = doorX;
+      const y0 = 2.62,
+        y1 = 3.0;
+      f.box('ashlar', cx - 1.75, y0 - 0.06, D / 2 - 0.02, cx + 1.75, y1 + 0.06, D / 2 + 0.03, { color: rgb(0.95, 0.93, 0.88) });
+      f.quad('signs', [cx - 1.7, y0, D / 2 + 0.032], [cx + 1.7, y0, D / 2 + 0.032], [cx + 1.7, y1, D / 2 + 0.032], [cx - 1.7, y1, D / 2 + 0.032], ctx.atlas.mairie);
+    }
+  }
+
   // ---- Floors ---------------------------------------------------------------------------
   // Ground floor slab.
   f.box('floor', xi0, -0.3, zi0, xi1, 0, zi1, { faces: { ny: null, px: 'stone', nx: 'stone', pz: 'stone', nz: 'stone' }, color: burned ? rgb(0.45, 0.42, 0.4) : undefined, col: 'stone', nav: false });
@@ -401,6 +430,13 @@ export function buildHouse(B, h, ctx) {
     if (skipGable === key) continue;
     gableWall(f, sx * (W / 2), sx * (W / 2 - t), D, eaves, roof.yR, { mat: wallMat, color: wallColor, inner: 'plaster', innerColor: inner, colMat: colMat });
   }
+  // Dormers on single-storey houses (attic rooms), over the front bays.
+  if (h.storeys === 1 && !burned && roofHoles.front.length === 0 && r.chance(0.65)) {
+    const picks = frontBays.length >= 3 ? [frontBays[0], frontBays[frontBays.length - 1]] : [frontBays[r.int(0, frontBays.length - 1)]];
+    for (const u of picks) {
+      dormer(f, uToX.front(u), roof, { pitch: th, zFront: D / 2 - 0.15, mat: wallMat, color: wallColor, roofMat, roofColor, frameColor: rgb(0.88, 0.87, 0.83), shutterColor: r.chance(0.5) ? shutterColor : null, glass: r.chance(0.4) });
+    }
+  }
   if (h.chimney && !burned) {
     const cxs = (skipGable === 'right' ? -1 : skipGable === 'left' ? 1 : r.chance(0.5) ? 1 : -1) * (W / 2 - t - 0.45);
     const cz = r.chance(0.6) ? 0 : r.range(-0.8, 0.8);
@@ -409,12 +445,23 @@ export function buildHouse(B, h, ctx) {
 
   // ---- Rubble and debris ---------------------------------------------------------------
   for (const p of piles) {
-    rubblePile(f, p.x, p.y, p.z, p.rx, p.rz, p.h, { seed: dr.int(0, 1e6), beams: p.beams, yaw: p.yaw ? p.yaw : 0, plasterColor: wallColor });
+    rubblePile(f, p.x, p.y, p.z, p.rx, p.rz, p.h, { seed: dr.int(0, 1e6), beams: p.beams, yaw: p.yaw ? p.yaw : 0, plasterColor: wallColor, onGround: p.y < -0.05, collide: p.collide });
   }
+  for (const rp of ramps) rampCollider(f, rp.a[0], f.groundY(rp.a[0], rp.a[2]) - 0.02, rp.a[2], rp.b[0], 0.06, rp.b[2], rp.w, 0.3, 'stone');
   if (dmg) scatter(f, 0, groundY + 0.02, D / 2 + 1.5, W / 2, 8, { seed: dr.int(0, 1e6), plasterColor: wallColor });
 
   // ---- Furniture ----------------------------------------------------------------------
-  if (!burned) furnish(f, r, { W, D, t, xi0, xi1, zi0, zi1, top, floors, hasStair, stairX, stairSide, shop: h.shop, doorX, piles });
+  // Keep a clear zone behind every door so furniture never blocks a doorway.
+  const clear = [];
+  for (const o of openings) {
+    const isWin = o.type === 'window' && o.floor !== 1;
+    if (o.type !== 'door' && o.type !== 'shop' && o.type !== 'breach' && !isWin) continue;
+    const wl = walls[o.wall];
+    const a = wl.p(o.u0 - (isWin ? 0.1 : 0.35), 0, -t / 2),
+      b = wl.p(o.u1 + (isWin ? 0.1 : 0.35), 0, -t / 2 - (isWin ? 0.9 : 2.0));
+    clear.push({ x0: Math.min(a[0], b[0]), x1: Math.max(a[0], b[0]), z0: Math.min(a[2], b[2]), z1: Math.max(a[2], b[2]) });
+  }
+  if (!burned) furnish(f, r, { W, D, t, xi0, xi1, zi0, zi1, top, floors, hasStair, stairX, stairSide, shop: h.shop, doorX, piles, clear });
 
   // Corner cover outside (standing behind the corner).
   for (const sx of [-1, 1]) {
@@ -468,7 +515,6 @@ function shopFront(f, wall, o, h, ctx, { r, burned, groundY }) {
     f.quad('signs', a, b, c2, d, rect, { color: burned ? rgb(0.35, 0.33, 0.3) : undefined });
   }
   // Door in the middle (cafe) or at one end.
-  const w = u1 - u0;
   const dw = h.shop === 'cafe' ? 1.5 : 1.1;
   const du0 = h.shop === 'cafe' ? (u0 + u1) / 2 - dw / 2 : r.chance(0.5) ? u0 + 0.1 : u1 - dw - 0.1;
   const du1 = du0 + dw;
@@ -525,21 +571,31 @@ function shopFront(f, wall, o, h, ctx, { r, burned, groundY }) {
     const pv = wall.p((ua + ub) / 2, v1 - 0.05, out + 1.47);
     f.obox('burlap', pv[0], pv[1], pv[2], (ub - ua) / 2, 0.14, 0.01, { rot: { yaw: wall.yaw }, uv: 'box', color: scale(ac, 0.9) });
   }
-  void w;
 }
 
 // A few pieces of furniture (also give cover inside).
-function furnish(f, r, o) {
+function furnish(f0, r, o) {
   const { xi0, xi1, zi0, zi1, top, floors, hasStair, stairX, shop } = o;
   const wood = WOOD.dark;
   const inStair = (x, z) => hasStair && Math.abs(x - stairX) < 0.9 && z > zi1 - 5.2;
+  // Wrap the frame so ground-floor boxes overlapping a door's clear zone are skipped.
+  const blocked = (x0, y0, z0, x1, y1, z1) => y0 < 2.2 && o.clear.some((c) => Math.min(x0, x1) < c.x1 && Math.max(x0, x1) > c.x0 && Math.min(z0, z1) < c.z1 && Math.max(z0, z1) > c.z0);
+  const f = {
+    box: (m, x0, y0, z0, x1, y1, z1, opt) => {
+      if (!blocked(x0, y0, z0, x1, y1, z1)) f0.box(m, x0, y0, z0, x1, y1, z1, opt);
+    },
+  };
   if (shop === 'cafe') {
     // Bar counter along the back.
     const z = zi0 + 1.6;
     f.box('wood', xi0 + 1.5, 0, z - 0.3, xi1 - 2.5, 1.1, z + 0.3, { color: rgb(0.55, 0.42, 0.32), col: 'wood' });
     f.box('ashlar', xi0 + 1.45, 1.1, z - 0.35, xi1 - 2.45, 1.15, z + 0.35, { color: rgb(0.8, 0.8, 0.78) });
     f.box('wood', xi0 + 1.2, 0, zi0, xi1 - 2.5, 2.0, zi0 + 0.4, { color: wood });
-    for (let k = 0; k < 3; k++) if (!inStair(xi0 + 1.6 + k * 2.3, zi1 - 1.6)) table(f, r, xi0 + 1.6 + k * 2.3, zi1 - 1.6);
+    for (let k = 0; k < 3; k++) {
+      const tx = xi0 + 1.6 + k * 2.3,
+        tz = zi1 - 2.0;
+      if (!inStair(tx, tz) && !blocked(tx - 1.0, 0, tz - 1.1, tx + 1.0, 1, tz + 1.1)) table(f0, r, tx, tz);
+    }
     return;
   }
   if (shop) {
@@ -552,7 +608,7 @@ function furnish(f, r, o) {
   // Table and chairs in the main room.
   const tx = (xi0 + xi1) / 2 + r.range(-0.6, 0.6),
     tz = (zi0 + zi1) / 2 + r.range(-0.5, 0.5);
-  if (!inStair(tx, tz) && !o.piles.some((p) => p.y === 0 && Math.hypot(p.x - tx, p.z - tz) < p.rx + 1)) table(f, r, tx, tz);
+  if (!inStair(tx, tz) && !blocked(tx - 1.0, 0, tz - 1.1, tx + 1.0, 1, tz + 1.1) && !o.piles.some((p) => p.y === 0 && Math.hypot(p.x - tx, p.z - tz) < p.rx + 1)) table(f0, r, tx, tz);
   // Wardrobe against the back wall.
   if (r.chance(0.7)) {
     const ax = r.range(xi0 + 0.9, xi1 - 0.9);
@@ -569,17 +625,56 @@ function furnish(f, r, o) {
   }
 }
 
-export function table(f, r, x, z) {
+export function table(f, r, x, z, y = 0) {
   const c = rgb(0.6, 0.45, 0.32);
-  f.box('wood', x - 0.6, 0.72, z - 0.4, x + 0.6, 0.78, z + 0.4, { color: c, col: 'wood', colFlags: FLAG_SOLID | FLAG_BULLET, nav: false });
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) f.box('wood', x + sx * 0.52 - 0.03, 0, z + sz * 0.32 - 0.03, x + sx * 0.52 + 0.03, 0.72, z + sz * 0.32 + 0.03, { color: c });
+  f.box('wood', x - 0.6, y + 0.72, z - 0.4, x + 0.6, y + 0.78, z + 0.4, { color: c, col: 'wood', colFlags: FLAG_SOLID | FLAG_BULLET, nav: false });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) f.box('wood', x + sx * 0.52 - 0.03, y, z + sz * 0.32 - 0.03, x + sx * 0.52 + 0.03, y + 0.72, z + sz * 0.32 + 0.03, { color: c });
   // Two chairs.
   for (const sz of [-1, 1]) {
     if (r.chance(0.3)) continue;
     const cz = z + sz * 0.75,
       cx = x + r.range(-0.3, 0.3);
-    f.box('wood', cx - 0.22, 0.43, cz - 0.22, cx + 0.22, 0.47, cz + 0.22, { color: c });
-    f.box('wood', cx - 0.22, 0.47, cz + sz * 0.2 - 0.02, cx + 0.22, 0.95, cz + sz * 0.2 + 0.02, { color: c });
-    for (const a of [-1, 1]) for (const b of [-1, 1]) f.box('wood', cx + a * 0.19 - 0.02, 0, cz + b * 0.19 - 0.02, cx + a * 0.19 + 0.02, 0.43, cz + b * 0.19 + 0.02, { color: c });
+    f.box('wood', cx - 0.22, y + 0.43, cz - 0.22, cx + 0.22, y + 0.47, cz + 0.22, { color: c });
+    f.box('wood', cx - 0.22, y + 0.47, cz + sz * 0.2 - 0.02, cx + 0.22, y + 0.95, cz + sz * 0.2 + 0.02, { color: c });
+    for (const a of [-1, 1]) for (const b of [-1, 1]) f.box('wood', cx + a * 0.19 - 0.02, y, cz + b * 0.19 - 0.02, cx + a * 0.19 + 0.02, y + 0.43, cz + b * 0.19 + 0.02, { color: c });
   }
+}
+
+// Garden shed / small outbuilding: stone or rendered walls, a plank door facing the
+// house, a small window and a tiled gable roof (sometimes holed).
+export function buildAnnex(B, a, ctx) {
+  const r = new RNG(a.seed);
+  const f = B.frame(a.x, a.floorY, a.z, a.yaw, { tag: 'annex' }); // front (door) faces the house
+  const W = a.w,
+    D = a.d;
+  const t = 0.35;
+  const groundY = (a.ground ?? a.floorY - 0.08) - a.floorY;
+  const base = groundY - 0.5;
+  const eaves = 2.45;
+  const stone = a.wall === 'stone';
+  const color = stone ? rgb(0.96, 0.94, 0.9) : PLASTER_COLORS[a.wallColor] || PLASTER_COLORS.cream;
+  const o = { thick: t, base, height: eaves - base, mat: stone ? 'stone' : 'plaster', inner: stone ? 'stone' : 'plaster', col: stone ? 'stone' : 'plaster', color, innerColor: color };
+  const walls = {
+    front: f.wall(-W / 2, D / 2 - t / 2, W / 2, D / 2 - t / 2, o),
+    back: f.wall(W / 2, -D / 2 + t / 2, -W / 2, -D / 2 + t / 2, o),
+    right: f.wall(W / 2 - t / 2, D / 2 - t, W / 2 - t / 2, -D / 2 + t, o),
+    left: f.wall(-W / 2 + t / 2, -D / 2 + t, -W / 2 + t / 2, D / 2 - t, o),
+  };
+  const du = r.chance(0.5) ? W * 0.3 : W * 0.7;
+  walls.front.hole(du - 0.45, du + 0.45, 0 - base, 2.0 - base);
+  const sideKey = r.chance(0.5) ? 'left' : 'right';
+  const sl = walls[sideKey].len;
+  walls[sideKey].hole(sl / 2 - 0.3, sl / 2 + 0.3, 1.0 - base, 1.6 - base);
+  for (const w of Object.values(walls)) w.build({ groundV: groundY - 0.2 - base });
+  doorUnit(walls.front, du - 0.45, du + 0.45, 0, 2.0, { rng: r, color: WOOD.weathered, state: r.chance(0.6) ? 'open' : 'ajar', lintel: 'wood', groundY });
+  windowUnit(walls[sideKey], sl / 2 - 0.3, sl / 2 + 0.3, 1.0, 1.6, { rng: r, glass: false, shutters: r.chance(0.5) ? 'none' : 'open', shutterColor: WOOD.weathered, lintel: 'wood', frame: false });
+  f.box('concrete', -W / 2 + t, groundY - 0.1, -D / 2 + t, W / 2 - t, 0, D / 2 - t, { color: rgb(0.7, 0.66, 0.6), col: 'stone', nav: false });
+  const holes = a.damaged ? { front: [{ x0: -W / 4, x1: W / 4 + 0.4, s0: 0.2, s1: 1.8 }], back: [] } : undefined;
+  const roof = gableRoof(f, { x0: -W / 2, x1: W / 2, d: D, eaves, pitch: (34 * Math.PI) / 180, ov: 0.3, gvL: 0.2, gvR: 0.2, mat: a.roof === 'slate' ? 'slate' : 'tiles', color: rgb(0.9, 0.84, 0.78), T: 0.12, holes, ridgeSegments: a.damaged ? [] : undefined });
+  for (const sx of [-1, 1]) gableWall(f, sx * (W / 2), sx * (W / 2 - t), D, eaves, roof.yR, { mat: o.mat, color, inner: o.inner, innerColor: color });
+  // Firewood and a crate inside.
+  if (r.chance(0.7)) f.box('wood', -W / 2 + t + 0.1, 0, -D / 2 + t + 0.05, -W / 2 + t + 1.4, 0.9, -D / 2 + t + 0.7, { color: rgb(0.68, 0.55, 0.42), col: 'wood' });
+  f.cover(W / 2 + 0.45, groundY, 0, -1, 0, 'high');
+  f.cover(-W / 2 - 0.45, groundY, 0, 1, 0, 'high');
+  return f;
 }

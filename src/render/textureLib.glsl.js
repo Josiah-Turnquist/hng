@@ -698,6 +698,32 @@ export const MATERIALS = {
       metal = 0.0;
       alpha = 1.0;
     }`,
+  crepi: /* glsl */ `
+    // Lime render (crepi) on rubble masonry: trowel marks, rain streaks and patches
+    // where the render has fallen off and shows the stones underneath.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float stucco = fbm01(uv, vec2(48.0), 4, 311.0);
+      float trowel = fbm01(uv, vec2(9.0), 3, 312.0);
+      float big = fbm01(uv, vec2(3.0), 5, 313.0);
+      float streaks = fbm01(uv * vec2(1.0, 0.15), vec2(16.0, 2.0), 4, 314.0);
+      float patchN = fbm01(uv, vec2(4.0), 5, 315.0);
+      float fallen = smoothstep(0.665, 0.69, patchN);
+      vec4 v = voronoiVec(uv * vec2(1.0, 1.6), vec2(12.0, 19.0), 0.8, 316.0);
+      float edge = smoothstep(0.02, 0.08, v.z);
+      vec3 stone = mix(srgb(vec3(0.5, 0.47, 0.42)), srgb(vec3(0.63, 0.59, 0.51)), v.w) * (0.8 + 0.3 * stucco);
+      vec3 under = mix(srgb(vec3(0.56, 0.53, 0.48)), stone, edge);
+      float blotch = fbm01(uv, vec2(6.0), 4, 317.0);
+      vec3 wall = mix(uPaintA, uPaintB, big) * (0.84 + 0.24 * stucco) * (0.9 + 0.16 * trowel);
+      wall *= 0.92 + 0.12 * blotch;
+      wall *= 1.0 - smoothstep(0.5, 0.85, streaks) * 0.28;
+      float rim = smoothstep(0.62, 0.665, patchN) * (1.0 - fallen);
+      wall *= 1.0 - rim * 0.22;
+      albedo = mix(wall, under, fallen);
+      rough = 0.92;
+      height = stucco * 0.002 + trowel * 0.003 + (1.0 - fallen) * 0.012 + fallen * edge * 0.01;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
   tomettes: /* glsl */ `
     // Hexagonal terracotta floor tiles (tomettes) with worn faces and dirty grout.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {

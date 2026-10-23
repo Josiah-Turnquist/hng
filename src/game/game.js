@@ -12,9 +12,16 @@ import { PlayerController } from './player.js';
 import { FACTIONS, DEFAULT_LOADOUT } from '../weapons/defs.js';
 import { Hud } from '../ui/hud.js';
 import { RangeMode } from './modes/range.js';
+import { AssaultMode, ATT, DEF } from './modes/assault.js';
+import { NavGrid } from '../ai/navgrid.js';
+import { attachSoldierModel, updateSoldierView } from './soldierView.js';
+import { gaussRandom } from '../core/math.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
 import { updateVehicleEffects, charModel } from '../vehicles/effects.js';
+import { SURFACE_INFO } from '../world/heightfield.js';
+import { MATERIALS } from '../ballistics/materials.js';
+import { updateVehicleSound } from '../vehicles/sound.js';
 import { clamp } from '../core/math.js';
 
 export class Game {
@@ -60,14 +67,34 @@ export class Game {
     const cls = this.opts.cls || 'infantry';
     const def0 = DEFAULT_LOADOUT[faction][cls];
     const loadout = (this.opts.loadout || def0).map((id, i) => id || def0[i]);
-    this.mode = new RangeMode(this);
+    const modeName = this.opts.mode && this.opts.mode !== 'auto' ? this.opts.mode : def.objectives ? 'assault' : 'range';
+    let team = 0;
+    if (modeName === 'assault' && def.objectives) {
+      // Bots find their way on a walkability grid over the battlefield.
+      const t0 = performance.now();
+      this.nav = new NavGrid(this.world, { radius: (def.playRadius || 700) + 60 });
+      this.nav.build({ doors: this.world.village?.doors || [] });
+      console.log(`navigation grid ${this.nav.n}x${this.nav.n} built in ${Math.round(performance.now() - t0)} ms`);
+      const enemy = this.opts.enemy || (faction === 'GE' ? 'US' : 'GE');
+      const attack = (this.opts.side || 'attack') === 'attack';
+      team = attack ? ATT : DEF;
+      this.mode = new AssaultMode(this, {
+        attackers: attack ? faction : enemy,
+        defenders: attack ? enemy : faction,
+        playerTeam: team,
+        perSide: Number(this.app.params.get('bots') || 12),
+        minutes: Number(this.app.params.get('minutes') || 30),
+      });
+    } else this.mode = new RangeMode(this);
     const spawn = this.mode.playerSpawn();
-    const player = new Soldier(this, { faction, cls, loadout, team: 0, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z });
+    const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z });
     player.yaw = spawn.yaw;
     this.soldiers.push(player);
     this.player = new PlayerController(this, player);
     this.player.look.yaw = spawn.yaw;
+    attachSoldierModel(this, player);
     this.mode.start();
+    this.deploy = { t: 0, index: 0 };
 
     // Optional fixed camera for screenshots: ?cam=x,y,z,yawDeg,pitchDeg
     const cam = this.app.params.get('cam');
@@ -109,12 +136,125 @@ export class Game {
   // --- simulation ----------------------------------------------------------------------
   update(dt) {
     this.time += dt;
+    this.navBudget = 1;
     this.player.update(dt);
     for (const v of this.vehicles) v.step(dt);
-    for (const s of this.soldiers) if (!s.isPlayer) s.update(dt);
+    for (const s of this.soldiers) {
+      if (s.isPlayer) continue;
+      if (s.alive && s.brain) s.brain.update(dt);
+      s.update(dt);
+      if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
+    }
+    this._playerDeploy(dt);
+    this._footsteps();
     this._runOver();
     this.projectiles.update(dt);
     this.mode.update?.(dt);
+  }
+
+  // A bot's shot: from the eye along its aim, with the weapon's own accuracy and
+  // a pointing error when not using the sights.
+  botFire(s, w) {
+    const d = w.def;
+    const b = s.body;
+    const eye = b.eyePosition({ x: 0, y: 0, z: 0 });
+    const cp = Math.cos(s.pitch);
+    let dx = -Math.sin(s.yaw) * cp,
+      dy = Math.sin(s.pitch),
+      dz = -Math.cos(s.yaw) * cp;
+    let err = s.aiming ? 0 : (d.hipError * Math.PI) / 180 * 0.5;
+    err = Math.hypot(err, d.accuracy * 0.000291 * 0.42);
+    dx += gaussRandom(0, err);
+    dy += gaussRandom(0, err);
+    dz += gaussRandom(0, err);
+    const l = Math.hypot(dx, dy, dz);
+    dx /= l;
+    dy /= l;
+    dz /= l;
+    const mv = d.mv * (1 + gaussRandom(0, 0.006));
+    const tracer = d.tracerEvery > 0 && w.shotsFired % d.tracerEvery === 0;
+    const sx = eye.x + dx * 0.3,
+      sy = eye.y + dy * 0.3,
+      sz = eye.z + dz * 0.3;
+    this.projectiles.fire({ x: sx, y: sy, z: sz, vx: dx * mv + b.vx, vy: dy * mv + b.vy, vz: dz * mv + b.vz, ammo: w.ammo, owner: s, weapon: d, tracer });
+    s.lastShotTime = this.time;
+    if (s.view) s.view.recoil = 1;
+    const m = s.model?.muzzleWorld;
+    const mx = m ? m.x : sx,
+      my = m ? m.y : sy,
+      mz = m ? m.z : sz;
+    this.effects.muzzle(mx, my, mz, dx, dy, dz, 0.8);
+    this.audio?.gunshot?.(d.sound, mx, my, mz, { source: `s${s.id}` });
+  }
+
+  // Sounds of other soldiers handling their weapons.
+  onWeaponEvent(s, w, ev) {
+    if (ev.type === 'sound') this.audio?.play?.(ev.id, { x: s.body.x, y: s.body.y + 1.2, z: s.body.z }, { volume: 0.8 });
+  }
+
+  // Dead player: choose where to go back in (SPACE deploys, Q/E change the point).
+  _playerDeploy(dt) {
+    const s = this.player.soldier;
+    if (s.alive) {
+      this.deploy.t = 0;
+      return;
+    }
+    const d = this.deploy;
+    d.t += dt;
+    const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;
+    const input = this.input;
+    if (opts && opts.length) {
+      if (input.hit('leanLeft')) d.index = (d.index + opts.length - 1) % opts.length;
+      if (input.hit('leanRight')) d.index = (d.index + 1) % opts.length;
+      const o = opts[Math.min(d.index, opts.length - 1)];
+      const wait = Math.max(0, o.delay - d.t);
+      this.hud.setDeploy(`Deploy at ${o.id}${o.name !== o.id ? ` ${o.name}` : ''} ${wait > 0 ? `in ${wait.toFixed(0)} s` : '- press SPACE'}   (Q/E: ${opts.length} points)`);
+      if (wait <= 0 && input.hit('jump')) {
+        this.mode.spawnSoldier(s, o.point);
+        this.player.look.yaw = s.yaw;
+        this.player.look.pitch = 0;
+        this.player._equip(0);
+      }
+    } else if (!opts) {
+      const wait = Math.max(0, 5 - d.t);
+      this.hud.setDeploy(wait > 0 ? `Back in ${wait.toFixed(0)} s` : 'Press SPACE to go back in');
+      if (wait <= 0 && input.hit('jump')) {
+        const sp = this.mode.playerSpawn();
+        const b = s.body;
+        b.x = sp.x;
+        b.z = sp.z;
+        b.y = this.world.hf.getHeight(sp.x, sp.z);
+        b.vx = b.vy = b.vz = 0;
+        s.alive = true;
+        s.health = 100;
+        s.bleed = 0;
+        s.deathTime = 0;
+        s.resupply();
+        for (const w of s.weapons) w?.fill();
+        this.player.look.yaw = sp.yaw;
+      }
+    } else this.hud.setDeploy('No point to deploy at');
+  }
+
+  // Footsteps: the ground's own sound; crawling and walking are quieter.
+  _footsteps() {
+    const a = this.audio;
+    if (!a) return;
+    for (const s of this.soldiers) {
+      const b = s.body;
+      if (!b.stepEvent || !s.alive || s.vehicle) continue;
+      let surface;
+      if (b.waterDepth > 0.15) surface = 'water';
+      else if (b.groundOnTerrain) surface = SURFACE_INFO[b.groundSurface]?.step || 'dirt';
+      else {
+        const m = b.groundBox?.material;
+        surface = m === 'wood' || m === 'plank' ? 'wood' : m === 'sandbag' ? 'sand' : 'stone';
+      }
+      const loud = b.sprinting;
+      const vol = b.stance === 2 ? 0.35 : b.stance === 1 || s.intent.walk ? 0.55 : 1;
+      if (s.isPlayer) a.footstep(surface, null, 0, 0, { loud, volume: vol * 0.7 });
+      else a.footstep(surface, b.x, b.y, b.z, { loud, volume: vol });
+    }
   }
 
   // Vehicles knock down (and hurt) people in their way; slow ones just push.
@@ -277,8 +417,10 @@ export class Game {
 
   // Supersonic bullets crack as they pass the listener; slow ones whiz.
   _onSegment(p, x0, y0, z0, x1, y1, z1) {
+    if (p.ammo.thrown) return;
+    this._botsNearMiss(p, x0, y0, z0, x1, y1, z1);
     const me = this.player?.soldier;
-    if (!me || p.owner === me || p.ammo.thrown) return;
+    if (!me || p.owner === me) return;
     const e = this.player.eye;
     const sx = x1 - x0,
       sy = y1 - y0,
@@ -295,6 +437,31 @@ export class Game {
       p.crackPlayed = true;
       this.audio?.crack(e.x + cx, e.y + cy, e.z + cz, miss, p.speed);
       this.player.suppression = Math.min(1, (this.player.suppression || 0) + (1 - miss / 8) * 0.4);
+    }
+  }
+
+  // Bullets cracking past bots keep their heads down and give the shooter away.
+  _botsNearMiss(p, x0, y0, z0, x1, y1, z1) {
+    const sx = x1 - x0,
+      sy = y1 - y0,
+      sz = z1 - z0;
+    const len2 = sx * sx + sy * sy + sz * sz;
+    if (len2 < 1e-9) return;
+    const mx = (x0 + x1) / 2,
+      mz = (z0 + z1) / 2;
+    const reach2 = len2 / 4 + 25;
+    for (const s of this.soldiers) {
+      if (!s.brain || !s.alive || s === p.owner || (p.owner && s.team === p.owner.team)) continue;
+      const b = s.body;
+      if ((b.x - mx) ** 2 + (b.z - mz) ** 2 > reach2) continue;
+      const ey = b.y + 1.2;
+      const t = ((b.x - x0) * sx + (ey - y0) * sy + (b.z - z0) * sz) / len2;
+      if (t < 0 || t > 1) continue;
+      const miss = Math.hypot(x0 + sx * t - b.x, y0 + sy * t - ey, z0 + sz * t - b.z);
+      if (miss > 4) continue;
+      s.suppression = Math.min(1, (s.suppression || 0) + (1 - miss / 4) * 0.25);
+      if (p.owner) s.brain.aware.set(p.owner, Math.min(1.2, (s.brain.aware.get(p.owner) || 0) + 0.35));
+      if (!s.brain.target) s.brain.lookYaw = Math.atan2(sx, sz);
     }
   }
 
@@ -361,7 +528,18 @@ export class Game {
     else this.camera.updateMatrixWorld();
 
     const camPos = this.camera.position;
-    for (const v of this.vehicles) updateVehicleEffects(this, v, frameDt);
+    const fp = this.cameraMode === 'first';
+    for (const s of this.soldiers) updateSoldierView(this, s, frameDt, camPos, fp);
+    for (const v of this.vehicles) {
+      updateVehicleEffects(this, v, frameDt);
+      if (this.audio) updateVehicleSound(this, v, frameDt);
+    }
+    if (this.audio) {
+      const c = this.camera;
+      const f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
+      const u = new THREE.Vector3(0, 1, 0).applyQuaternion(c.quaternion);
+      this.audio.setListener(c.position.x, c.position.y, c.position.z, f.x, f.y, f.z, u.x, u.y, u.z);
+    }
     this.world.update(this.time, camPos);
     this.world.shadows.update();
     this.effects.update(frameDt, camPos, this.world.fogColor);

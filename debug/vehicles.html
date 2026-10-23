@@ -1,0 +1,292 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Vehicle viewer</title>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;bottom:6px;right:8px;white-space:pre-wrap;word-break:break-all;pointer-events:none;text-shadow:0 0 3px #000,0 0 2px #000}canvas{display:block}#labels{position:absolute;left:0;top:0;pointer-events:none}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="labels"></canvas>
+<div id="info"></div>
+<script type="module">
+// Procedural vehicle viewer. Four views: side (orthographic, from the right), front
+// (orthographic), 3/4 front-left perspective and 3/4 rear-right perspective (or top view
+// with &br=top).
+// Usage: debug/vehicles.html?id=m4a1_sherman  (?id=all for a grid of 3/4 views)
+//   &armor=1    armor boxes as wireframes colored by thickness (grey 0 mm .. magenta 120+)
+//   &modules=1  internal module boxes
+//   &anchors=1  anchor points with labels
+//   &links=0    hide the preview track links (tracked vehicles)
+//   &turret=30&elev=10&steer=20   pose turret (deg), gun elevation (deg), front wheel steer (deg)
+//   &zoom=2&focus=x,y,z  zoom the 3/4 views on a point
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { TextureLibrary } from '../src/render/textures.js';
+import { VEHICLE_MODELS, buildVehicle, attachParts } from '../src/vehicles/models/index.js';
+
+const params = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.prepend(renderer.domElement);
+renderer.setScissorTest(true);
+const lib = new TextureLibrary(renderer, { size: 512 });
+const pmrem = new THREE.PMREMGenerator(renderer);
+const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const labels = document.getElementById('labels');
+labels.width = W;
+labels.height = H;
+const lg = labels.getContext('2d');
+lg.font = '11px monospace';
+const info = [];
+const on = (k, def = '0') => (params.get(k) ?? def) !== '0';
+
+function mmColor(mm) {
+  const stops = [[0, 0x8a8a8a], [8, 0x3355ff], [16, 0x22aaff], [25, 0x22ddcc], [35, 0x33dd44], [45, 0xaaee22], [55, 0xffdd22], [70, 0xff9922], [85, 0xff4422], [100, 0xff2266], [120, 0xff22ff]];
+  let c = stops[stops.length - 1][1];
+  for (let i = 0; i < stops.length; i++) if (mm <= stops[i][0]) { c = stops[i][1]; break; }
+  return c;
+}
+
+// Preview of the track belt the game builds along meta.track.path.
+function trackLinks(v) {
+  const t = v.meta.track;
+  const path = t.path;
+  const cum = [];
+  let total = 0;
+  for (let i = 0; i < path.length; i++) {
+    cum.push(total);
+    const a = path[i], b = path[(i + 1) % path.length];
+    total += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  const n = Math.round(total / t.pitch);
+  const step = total / n;
+  const geo = new THREE.BoxGeometry(t.width, t.linkThickness, step * 0.9);
+  const mesh = new THREE.InstancedMesh(geo, v.mats.track, n * 2);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+  let k = 0, j = 0;
+  for (let i = 0; i < n; i++) {
+    const s = (i + 0.5) * step;
+    while (j < path.length - 1 && cum[j + 1] <= s) j++;
+    const a = path[j], b = path[(j + 1) % path.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const f = (s - cum[j]) / len;
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    q.setFromEuler(e.set(-ang, 0, 0));
+    for (const sx of [-1, 1]) {
+      p.set(sx * t.offsetX, a[1] + (b[1] - a[1]) * f, a[0] + (b[0] - a[0]) * f);
+      mesh.setMatrixAt(k++, m.compose(p, q, one));
+    }
+  }
+  mesh.castShadow = true;
+  return { mesh, n, total };
+}
+
+function setup(id) {
+  const scene = new THREE.Scene();
+  scene.environment = env;
+  scene.environmentIntensity = 0.45;
+  scene.background = new THREE.Color(0x2b2e31);
+  scene.add(new THREE.HemisphereLight(0xbfd4e6, 0x3a3326, 0.5));
+  const sun = new THREE.DirectionalLight(0xfff4e6, 2.4);
+  sun.position.set(-4, 8, -5);
+  scene.add(sun);
+  const grid = new THREE.GridHelper(12, 24, 0x666666, 0x3e3e3e);
+  scene.add(grid);
+  const v = buildVehicle(id, lib);
+  attachParts(v);
+  scene.add(v.root);
+  const deg = Math.PI / 180;
+  if (v.parts.turret && params.get('turret')) v.parts.turret.rotation.y = -Number(params.get('turret')) * deg;
+  if (v.parts.gun && params.get('elev')) v.parts.gun.rotation.x = Number(params.get('elev')) * deg;
+  if (params.get('steer')) for (const w of ['wheelFL', 'wheelFR']) if (v.parts[w]) v.parts[w].rotation.y = -Number(params.get('steer')) * deg;
+  const piv = v.meta.pivots;
+  const attach = (obj, part, pos) => {
+    const g = part && part !== 'body' && v.parts[part];
+    if (g) {
+      g.add(obj);
+      obj.position.set(pos[0] - piv[part][0], pos[1] - piv[part][1], pos[2] - piv[part][2]);
+    } else {
+      v.root.add(obj);
+      obj.position.set(pos[0], pos[1], pos[2]);
+    }
+  };
+  let links = null;
+  if (v.meta.track && on('links', '1')) {
+    links = trackLinks(v);
+    scene.add(links.mesh);
+  }
+  if (on('armor')) {
+    for (const a of v.meta.armor) {
+      const g = new THREE.BoxGeometry(a.half[0] * 2, a.half[1] * 2, a.half[2] * 2);
+      const col = mmColor(a.mm);
+      const grp = new THREE.Group();
+      const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.28, depthWrite: false }));
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.9 }));
+      fill.renderOrder = 5;
+      edges.renderOrder = 6;
+      grp.add(fill, edges);
+      grp.rotation.set(a.rot[0], a.rot[1], a.rot[2], 'XYZ');
+      attach(grp, a.part, a.center);
+    }
+  }
+  if (on('modules')) {
+    const mc = { engine: 0xff5500, transmission: 0xffaa00, ammo: 0xff0000, fuel: 0xffee00, driver: 0x00ffaa, gunner: 0x00ccff, commander: 0x0088ff, loader: 0x66aaff, radio: 0xaa66ff };
+    for (const a of v.meta.modules) {
+      const g = new THREE.BoxGeometry(a.half[0] * 2, a.half[1] * 2, a.half[2] * 2);
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: mc[a.name] ?? 0xffffff, depthTest: false }));
+      e.renderOrder = 7;
+      attach(e, a.part, a.center);
+    }
+  }
+  const anchorObjs = [];
+  if (on('anchors')) {
+    for (const [name, p] of Object.entries(v.anchors)) {
+      const col = /muzzle/i.test(name) ? 0x22ff22 : /eye/i.test(name) ? 0xff3333 : /seat/i.test(name) ? 0x3399ff : 0xffdd22;
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+      s.renderOrder = 10;
+      attach(s, v.meta.anchorParts?.[name], [p.x, p.y, p.z]);
+      anchorObjs.push({ name, obj: s, col });
+    }
+  }
+  return { scene, v, links, anchorObjs };
+}
+
+function drawLabels(cam, vp, anchorObjs) {
+  const w = new THREE.Vector3();
+  lg.save();
+  lg.beginPath();
+  lg.rect(vp[0], H - vp[1] - vp[3], vp[2], vp[3]);
+  lg.clip();
+  for (const a of anchorObjs) {
+    a.obj.getWorldPosition(w);
+    w.project(cam);
+    const x = vp[0] + (w.x * 0.5 + 0.5) * vp[2], y = H - (vp[1] + (w.y * 0.5 + 0.5) * vp[3]);
+    lg.fillStyle = '#000';
+    lg.fillText(a.name, x + 5, y - 3);
+    lg.fillStyle = '#' + a.col.toString(16).padStart(6, '0');
+    lg.fillText(a.name, x + 4, y - 4);
+  }
+  lg.restore();
+}
+
+function render(scene, cam, vp) {
+  renderer.setViewport(vp[0], vp[1], vp[2], vp[3]);
+  renderer.setScissor(vp[0], vp[1], vp[2], vp[3]);
+  renderer.render(scene, cam);
+}
+
+const r2 = (x) => x.toFixed(2);
+const idParam = params.get('id') || 'willys_mb';
+if (idParam === 'all' || idParam.includes(',')) {
+  const ids = idParam === 'all' ? Object.keys(VEHICLE_MODELS) : idParam.split(',');
+  const cols = Math.min(3, ids.length), rows = Math.ceil(ids.length / cols);
+  const cw = W / cols, ch = H / rows;
+  ids.forEach((id, i) => {
+    let s;
+    try { s = setup(id); } catch (e) { info.push(`${id}: ERROR ${e.stack}`); return; }
+    const { scene, v } = s;
+    const b = v.meta.bounds;
+    const c = new THREE.Vector3((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+    const L = Math.max(v.meta.dims.length, 3.5);
+    const cam = new THREE.PerspectiveCamera(30, cw / ch, 0.05, 100);
+    cam.position.set(c.x - L * 0.95, c.y + L * 0.55, c.z - L * 1.25);
+    cam.lookAt(c);
+    const vp = [(i % cols) * cw, H - (Math.floor(i / cols) + 1) * ch, cw, ch];
+    render(scene, cam, vp);
+    lg.fillStyle = '#fff';
+    lg.fillText(`${id}  ${v.meta.dims.length} x ${v.meta.dims.width} x ${v.meta.dims.height} m  prims ${v.stats.primitives}  tris ${v.stats.triangles}`, vp[0] + 6, H - vp[1] - vp[3] + 14);
+  });
+} else {
+  const id = idParam;
+  let s = null;
+  try { s = setup(id); } catch (e) { info.push(`${id}: ERROR ${e.stack}`); }
+  if (s) {
+    const { scene, v, links, anchorObjs } = s;
+    const m = v.meta;
+    const b = m.bounds;
+    const c = new THREE.Vector3((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+    const size = new THREE.Vector3(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]);
+    const hw = W / 2, hh = H / 2;
+    // Side view (from the right: front of the vehicle on the right of the image).
+    {
+      const aspect = hw / hh;
+      const half = Math.max(size.z * 0.56, size.y * 0.56 * aspect);
+      const cam = new THREE.OrthographicCamera(-half, half, half / aspect, -half / aspect, -50, 50);
+      cam.position.set(c.x + 20, c.y, c.z);
+      cam.lookAt(c.x, c.y, c.z);
+      const vp = [0, hh, hw, hh];
+      render(scene, cam, vp);
+      drawLabels(cam, vp, anchorObjs);
+    }
+    // Front view.
+    {
+      const aspect = hw / hh;
+      const half = Math.max(size.x * 0.6, size.y * 0.6 * aspect);
+      const cam = new THREE.OrthographicCamera(-half, half, half / aspect, -half / aspect, -50, 50);
+      cam.position.set(c.x, c.y, c.z - 20);
+      cam.lookAt(c.x, c.y, c.z);
+      const vp = [hw, hh, hw, hh];
+      render(scene, cam, vp);
+      drawLabels(cam, vp, anchorObjs);
+    }
+    const zoom = Number(params.get('zoom') || 1);
+    const focus = params.get('focus') ? new THREE.Vector3(...params.get('focus').split(',').map(Number)) : c;
+    const L = Math.max(size.z, 3.5) / zoom;
+    // 3/4 front-left.
+    {
+      const cam = new THREE.PerspectiveCamera(30, hw / hh, 0.05, 100);
+      cam.position.set(focus.x - L * 0.95, focus.y + L * 0.5, focus.z - L * 1.2);
+      cam.lookAt(focus);
+      const vp = [0, 0, hw, hh];
+      render(scene, cam, vp);
+      drawLabels(cam, vp, anchorObjs);
+    }
+    // 3/4 rear-right or top.
+    {
+      const vp = [hw, 0, hw, hh];
+      let cam;
+      if (params.get('br') === 'top') {
+        const aspect = hw / hh;
+        const half = Math.max(size.z * 0.56, size.x * 0.56 * aspect);
+        cam = new THREE.OrthographicCamera(-half, half, half / aspect, -half / aspect, -50, 50);
+        cam.position.set(c.x, c.y + 20, c.z);
+        cam.up.set(-1, 0, 0);
+        cam.lookAt(c.x, c.y, c.z);
+      } else {
+        cam = new THREE.PerspectiveCamera(30, hw / hh, 0.05, 100);
+        cam.position.set(focus.x + L * 0.95, focus.y + L * 0.62, focus.z + L * 1.15);
+        cam.lookAt(focus);
+      }
+      render(scene, cam, vp);
+      drawLabels(cam, vp, anchorObjs);
+    }
+    // Checks and summary.
+    info.push(`${id}  ${m.name ?? ''}  (${m.type})  dims L ${m.dims.length} W ${m.dims.width} H ${m.dims.height} m   primitives ${v.stats.primitives}  triangles ${v.stats.triangles}  draw calls ${v.stats.drawCalls}`);
+    if (m.specs) info.push(`specs ${JSON.stringify(m.specs)}`);
+    info.push(`parts ${Object.keys(v.parts).join(' ')}`);
+    info.push(`anchors ${Object.keys(v.anchors).join(' ')}`);
+    if (m.type === 'wheeled') {
+      const lows = ['wheelFL', 'wheelFR', 'wheelRL', 'wheelRR'].map((w) => { const bb = new THREE.Box3().setFromObject(v.parts[w]); return `${w} y0 ${bb.min.y.toFixed(3)} r ${((bb.max.y - bb.min.y) / 2).toFixed(3)}`; });
+      info.push(`wheelRadius ${m.wheelRadius} wheelbase ${m.wheelbase} trackWidth ${m.trackWidth}  ${lows.join('  ')}`);
+    } else if (m.track) {
+      const t = m.track;
+      let ymin = Infinity; for (const [, y] of t.path) ymin = Math.min(ymin, y);
+      info.push(`track width ${t.width} pitch ${t.pitch} thick ${t.linkThickness} offsetX ${t.offsetX}  path ${t.path.length} pts, length ${t.length} m = ${links ? links.n : '?'} links (real ${t.realLinks ?? '?'})  bottom ${(ymin - t.linkThickness / 2).toFixed(3)}  roadWheelRadius ${m.roadWheelRadius} contact ${m.wheelbase}`);
+      const mz = v.anchors.muzzle, gp = m.pivots.gun;
+      if (mz && gp) info.push(`muzzle vs gun axis: dx ${(mz.x - gp[0]).toFixed(3)} dy ${(mz.y - gp[1]).toFixed(3)}  gun pivot ${gp}  turret pivot ${m.pivots.turret}`);
+    }
+    const groups = new Map();
+    for (const a of m.armor) groups.set(a.name, { mm: a.mm, n: (groups.get(a.name)?.n ?? 0) + 1 });
+    info.push(`armor (${m.armor.length} boxes) ${[...groups].map(([k, g]) => `${k}:${g.mm}${g.n > 1 ? 'x' + g.n : ''}`).join(' ')}`);
+    info.push(`modules (${m.modules.length}) ${m.modules.map((a) => a.name).join(' ')}`);
+  }
+}
+document.getElementById('info').textContent = info.join('\n');
+window.__done = true;
+</script>
+</body>
+</html>

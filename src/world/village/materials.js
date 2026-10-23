@@ -20,7 +20,7 @@ export function scale(a, k) {
 // Wall paint/render colors found on French village houses (crepi and lime wash).
 export const PLASTER_COLORS = {
   cream: rgb(1.0, 0.95, 0.82),
-  ochre: rgb(1.0, 0.84, 0.58),
+  ochre: rgb(0.96, 0.83, 0.62),
   sand: rgb(0.95, 0.87, 0.72),
   grey: rgb(0.86, 0.85, 0.82),
   white: rgb(1.0, 0.99, 0.95),
@@ -332,7 +332,7 @@ export function makeVillageMaterials(textures, opts = {}) {
   };
   const atlas = paintAtlas();
   const mats = {
-    plaster: std('plasterWhite'),
+    plaster: std('crepi'),
     stone: std('stoneWall'),
     ashlar: std('ashlar'),
     brick: std('brick'),

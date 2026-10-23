@@ -109,6 +109,10 @@ export class Hud {
     this.weaponEl.textContent = w.def.name;
   }
 
+  setDeploy(text) {
+    this.el('.hud-dead .hint').textContent = text;
+  }
+
   flash(text, seconds = 1.6) {
     this.msgEl.textContent = text;
     this.msgT = seconds;

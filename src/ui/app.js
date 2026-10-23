@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Settings } from '../core/settings.js';
 import { Input } from '../core/input.js';
 import { Game } from '../game/game.js';
+import { AudioSystem } from '../audio/audio.js';
 
 export class App {
   constructor(root) {
@@ -32,17 +33,31 @@ export class App {
     renderer.toneMappingExposure = 1.0;
     this.renderer = renderer;
     this.input = new Input(canvas);
+    // Sound: generated in code while the game loads; it starts playing on the
+    // first click (browsers only allow audio after a user gesture).
+    this.audio = this.params.get('audio') === '0' ? null : new AudioSystem({ masterVolume: this.settings.get('masterVolume') ?? 0.8 });
+    const unlock = () => this.audio?.resume();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
 
     this.loading = this._makeLoading();
     const game = new Game(this, {
       map: this.params.get('map') || 'range',
-      mode: this.params.get('mode') || 'range',
+      mode: this.params.get('mode') || 'auto',
       faction: this.params.get('faction') || 'GE',
       cls: this.params.get('class') || 'infantry',
       loadout: this.params.get('weapon') ? [this.params.get('weapon'), null, null] : null,
     });
     this.game = game;
+    const soundReady = this.audio
+      ? this.audio.init({ onProgress: () => {} }).catch((e) => {
+          console.warn('Sound disabled:', e);
+          this.audio = null;
+          game.audio = null;
+        })
+      : Promise.resolve();
     await game.load((p, msg) => this._progress(p, msg));
+    await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();
     window.addEventListener('resize', () => this._resize());
     this.loading.el.classList.add('done');

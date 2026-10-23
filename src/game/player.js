@@ -78,7 +78,7 @@ export class PlayerController {
     if (!best.enter(s, seat)) return false;
     this.vehicleCtl.entered(best);
     this.game.hud?.flash(`${best.def.name}: ${best.seats[seat].name}`);
-    this.game.audio?.play?.('vehicleDoor', best.body.position, { volume: 0.6 });
+    this.game.audio?.play?.('weaponHandling', best.body.position, { volume: 0.8, rate: 0.7 });
     return true;
   }
 
@@ -329,6 +329,7 @@ export class PlayerController {
     g.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, dir.x, dir.y, dir.z, Math.min(2, impulse / 8));
     g.audio?.gunshot(d.sound, muzzle.x, muzzle.y, muzzle.z, { isLocal: true });
     g.onShot?.(s, w, start, dir);
+    s.lastShotTime = g.time;
   }
 
   _scatter(dir, sigma) {

@@ -38,14 +38,9 @@ function t34Sprocket({ r, gap, mat }) {
 }
 
 // ---------------------------------------------------------------------------------------
-// T-34/76 model 1942 (STZ/UVZ): hexagonal cast turret ("gaika") with two round roof hatches,
-// 76.2 mm F-34 gun, Christie suspension with 5 large road wheels a side, no return rollers,
-// rear drive sprocket, front idler, 550 mm waffle tracks (172 mm pitch, 72 links), external
-// fuel drums. 6.68 m long with the gun (hull 5.92), 3.0 m wide, 2.45 m high; 28.5 t.
-// Armor: upper glacis 45 mm at 60 deg, lower glacis 45 mm at 53 deg, upper sides 45 mm at
-// 40 deg, lower sides 45 mm, rear 40 mm at 47 / 45 deg, roof 20 mm, belly 16 / 13 mm;
-// turret front 52 mm, sides 52 / 45 mm, rear 45 mm, roof 20 mm, mantlet 45 mm.
-export function t34_76(b) {
+// T-34 hull shared by the T-34/76 and T-34-85: hull, Christie running gear, tracks,
+// external fuel drums, hull armor and hull modules. Returns helpers for the turret code.
+function t34Hull(b, { spoked = false } = {}) {
   const P = 'sovietGreen',
     C = 'sovietCast';
   // ---- Running gear -------------------------------------------------------------------------
@@ -58,7 +53,7 @@ export function t34_76(b) {
     IDL = { z: -2.56, y: 0.58 };
   runningGear(b, {
     wheels,
-    wheel: roadWheel({ r: RW, width: 0.36, gap: 0.08, tire: 0.06, dish: 0.035, hubR: 0.1, hubLen: 0.06, mat: P, bolts: 8 }),
+    wheel: roadWheel({ r: RW, width: 0.36, gap: 0.08, tire: 0.06, dish: 0.035, hubR: 0.1, hubLen: 0.06, mat: P, bolts: 8, holes: spoked ? 6 : 0, holeR: 0.075 }),
     wheelR: RW,
     sprocket: { ...SPR, r: 0.33 + T / 2, teeth: 6, items: t34Sprocket({ r: 0.33, gap: 0.13, mat: P }) },
     idler: { ...IDL, r: 0.3 + T / 2, items: roadWheel({ r: 0.3, width: 0.3, gap: 0.1, rubber: false, dish: 0.035, hubR: 0.08, hubLen: 0.05, mat: P, holes: 6 }) },
@@ -246,6 +241,71 @@ export function t34_76(b) {
     }
   }
 
+  // ---- Hull armor and modules (vehicle space) --------------------------------------------
+  // Upper glacis: hexagonal (nose corners, sponson front corners, roof edge).
+  b.armorPoly('upperGlacis', 'body', 45, [
+    [-0.95, 0.78, -2.95],
+    [0.95, 0.78, -2.95],
+    [1.42, 0.98, gz(0.98)],
+    [0.967, 1.52, gz(1.52)],
+    [-0.967, 1.52, gz(1.52)],
+    [-1.42, 0.98, gz(0.98)],
+  ], [0, 0.5, -1], 5, [1, 0, 0]);
+  b.armorZY('lowerGlacis', 'body', 45, [-2.45, 0.4], [-2.95, 0.78], -0.95, 0.95, [0, -0.5, -1]);
+  for (const s of [-1, 1]) {
+    const L = side(s);
+    b.armorPoly(`upperSide${L}`, 'body', 45, [
+      [s * 1.42, 0.98, gz(0.98)],
+      [s * 1.42, 0.98, rz(0.98)],
+      [s * 0.967, 1.52, rz(1.52)],
+      [s * 0.967, 1.52, gz(1.52)],
+    ], [s, 0.5, 0], 6, [0, 0, 1]);
+    b.armorXY(`lowerSide${L}`, 'body', 45, [s * 0.95, 0.4], [s * 0.95, 0.98], -2.5, 2.8, [s, 0, 0]);
+    b.armorZY(`sponsonFloor${L}`, 'body', 15, [gz(0.98), 0.98], [rz(0.98), 0.98], s * 0.95, s * 1.42, [0, -1, 0]);
+  }
+  b.armorZY('roof', 'body', 20, [gz(1.52), 1.52], [rz(1.52), 1.52], -0.967, 0.967, [0, 1, 0]);
+  b.armorPoly('rearUpper', 'body', 40, [
+    [-0.95, 0.88, 2.97],
+    [0.95, 0.88, 2.97],
+    [1.42, 0.98, rz(0.98)],
+    [0.967, 1.52, rz(1.52)],
+    [-0.967, 1.52, rz(1.52)],
+    [-1.42, 0.98, rz(0.98)],
+  ], [0, 0.5, 1], 5, [1, 0, 0]);
+  b.armorZY('rearLower', 'body', 40, [2.97, 0.88], [2.49, 0.4], -0.95, 0.95, [0, -0.5, 1]);
+  b.armorZY('bellyFront', 'body', 16, [-2.45, 0.4], [-0.5, 0.4], -0.95, 0.95, [0, -1, 0]);
+  b.armorZY('bellyRear', 'body', 13, [-0.5, 0.4], [2.49, 0.4], -0.95, 0.95, [0, -1, 0]);
+  b.module('engine', 'body', [0, 1.02, 1.5], [0.45, 0.4, 0.62]);
+  b.module('transmission', 'body', [0, 0.82, 2.5], [0.62, 0.3, 0.3]);
+  for (const s of [-1, 1]) {
+    b.module('fuel', 'body', [s * 1.02, 1.15, -0.55], [0.24, 0.18, 0.75]);
+    b.module('fuel', 'body', [s * 1.02, 1.12, 1.4], [0.24, 0.16, 0.45]);
+  }
+  for (const [s, z] of [
+    [1, 0.85],
+    [1, 1.85],
+    [-1, 1.85],
+  ]) {
+    const [dx, dy] = onSide(s, 0.48, 0.2);
+    b.module('fuel', 'body', [dx, dy, z], [0.18, 0.18, 0.34]); // external drums
+  }
+  b.module('ammo', 'body', [0, 0.56, -0.55], [0.72, 0.12, 0.55]);
+  for (const s of [-1, 1]) b.module('ammo', 'body', [s * 0.8, 1.2, -1.05], [0.14, 0.24, 0.3]);
+  b.module('driver', 'body', [-0.42, 1.02, -2.05], [0.25, 0.4, 0.35]);
+  b.module('radio', 'body', [0.45, 1.02, -2.0], [0.25, 0.4, 0.35]); // radio operator / bow gunner
+  return { P, C, gz, rz, onSide };
+}
+
+// ---------------------------------------------------------------------------------------
+// T-34/76 model 1942 (STZ/UVZ): hexagonal cast turret ("gaika") with two round roof hatches,
+// 76.2 mm F-34 gun, Christie suspension with 5 large road wheels a side, no return rollers,
+// rear drive sprocket, front idler, 550 mm waffle tracks (172 mm pitch, 72 links), external
+// fuel drums. 6.68 m long with the gun (hull 5.92), 3.0 m wide, 2.45 m high; 28.5 t.
+// Armor: upper glacis 45 mm at 60 deg, lower glacis 45 mm at 53 deg, upper sides 45 mm at
+// 40 deg, lower sides 45 mm, rear 40 mm at 47 / 45 deg, roof 20 mm, belly 16 / 13 mm;
+// turret front 52 mm, sides 52 / 45 mm, rear 45 mm, roof 20 mm, mantlet 45 mm.
+export function t34_76(b) {
+  const { P, C } = t34Hull(b);
   // ---- Turret: 1942 hexagonal cast turret ------------------------------------------------
   const zT = -0.95,
     yR = 1.52;
@@ -366,51 +426,173 @@ export function t34_76(b) {
     turretRing: { center: [0, yR, zT], radius: 0.71 },
     specs: { mass: 28500, maxSpeed: 53, power: 500, engine: 'V-2-34 diesel', fuel: 480, fuelExternal: 270 },
   });
-  b.armorZY('upperGlacis', 'body', 45, [-2.95, 0.78], [gz(1.52), 1.52], -1.2, 1.2, [0, 0.5, -1]);
-  b.armorZY('lowerGlacis', 'body', 45, [-2.45, 0.4], [-2.95, 0.78], -0.95, 0.95, [0, -0.5, -1]);
-  for (const s of [-1, 1]) {
-    const L = side(s);
-    b.armorXY(`upperSide${L}`, 'body', 45, [s * 1.42, 0.98], [s * 0.967, 1.52], gz(0.98), rz(0.98), [s, 0.5, 0]);
-    b.armorXY(`lowerSide${L}`, 'body', 45, [s * 0.95, 0.4], [s * 0.95, 0.98], -2.5, 2.8, [s, 0, 0]);
-    b.armorZY(`sponsonFloor${L}`, 'body', 15, [gz(0.98), 0.98], [rz(0.98), 0.98], s * 0.95, s * 1.42, [0, -1, 0]);
-  }
-  b.armorZY('roof', 'body', 20, [gz(1.52), 1.52], [rz(1.52), 1.52], -0.967, 0.967, [0, 1, 0]);
-  b.armorZY('rearUpper', 'body', 40, [rz(1.52), 1.52], [2.97, 0.88], -1.0, 1.0, [0, 0.5, 1]);
-  b.armorZY('rearLower', 'body', 40, [2.97, 0.88], [2.49, 0.4], -0.95, 0.95, [0, -0.5, 1]);
-  b.armorZY('bellyFront', 'body', 16, [-2.45, 0.4], [-0.5, 0.4], -0.95, 0.95, [0, -1, 0]);
-  b.armorZY('bellyRear', 'body', 13, [-0.5, 0.4], [2.49, 0.4], -0.95, 0.95, [0, -1, 0]);
   const tp = (x, dz, y) => [x, y, zT + dz];
-  b.armorQuad('turretFront', 'turret', 52, [tp(-0.55, -0.82, 1.54), tp(0.55, -0.82, 1.54), tp(0.44, -0.64, 2.25), tp(-0.44, -0.64, 2.25)], [0, 0, -1]);
+  b.armorPoly('turretFront', 'turret', 52, [tp(-0.55, -0.82, 1.54), tp(0.55, -0.82, 1.54), tp(0.44, -0.64, 2.25), tp(-0.44, -0.64, 2.25)], [0, 0, -1], 3, [1, 0, 0]);
   for (const s of [-1, 1]) {
     const L = side(s);
-    b.armorQuad(`turretFrontSide${L}`, 'turret', 52, [tp(s * 0.55, -0.82, 1.54), tp(s * 0.93, -0.22, 1.54), tp(s * 0.72, -0.17, 2.25), tp(s * 0.44, -0.64, 2.25)], [s, 0, -1]);
-    b.armorQuad(`turretSide${L}`, 'turret', 45, [tp(s * 0.93, -0.22, 1.54), tp(s * 0.64, 0.95, 1.54), tp(s * 0.5, 0.78, 2.25), tp(s * 0.72, -0.17, 2.25)], [s, 0, 0.2]);
+    b.armorPoly(`turretFrontSide${L}`, 'turret', 52, [tp(s * 0.55, -0.82, 1.54), tp(s * 0.93, -0.22, 1.54), tp(s * 0.72, -0.17, 2.25), tp(s * 0.44, -0.64, 2.25)], [s, 0, -1], 3);
+    b.armorPoly(`turretSide${L}`, 'turret', 45, [tp(s * 0.93, -0.22, 1.54), tp(s * 0.64, 0.95, 1.54), tp(s * 0.5, 0.78, 2.25), tp(s * 0.72, -0.17, 2.25)], [s, 0, 0.2], 4);
   }
-  b.armorQuad('turretRear', 'turret', 45, [tp(-0.64, 0.95, 1.54), tp(0.64, 0.95, 1.54), tp(0.5, 0.78, 2.25), tp(-0.5, 0.78, 2.25)], [0, 0, 1]);
-  b.armorZY('turretRoof', 'turret', 20, [zT - 0.6, 2.295], [zT + 0.74, 2.295], -0.62, 0.62, [0, 1, 0]);
+  b.armorPoly('turretRear', 'turret', 45, [tp(-0.64, 0.95, 1.54), tp(0.64, 0.95, 1.54), tp(0.5, 0.78, 2.25), tp(-0.5, 0.78, 2.25)], [0, 0, 1], 3, [1, 0, 0]);
+  b.armorPoly('turretRoof', 'turret', 20, roof.map(([x, dz]) => [x, 2.295, zT + dz]), [0, 1, 0], 4, [0, 0, 1]);
   b.armor('mantlet', 'gun', 45, [0, yG, zM - 0.17], [0.56, 0, 0], [0, 0.36, 0], [0, 0, -1]);
   b.armor('gunSleeve', 'gun', 45, [0, yG, zM - 0.5], [0.22, 0, 0], [0, 0.22, 0], [0, 0, -1]);
-  b.module('engine', 'body', [0, 1.02, 1.5], [0.45, 0.4, 0.62]);
-  b.module('transmission', 'body', [0, 0.82, 2.5], [0.62, 0.3, 0.3]);
-  for (const s of [-1, 1]) {
-    b.module('fuel', 'body', [s * 1.02, 1.15, -0.55], [0.24, 0.18, 0.75]);
-    b.module('fuel', 'body', [s * 1.02, 1.12, 1.4], [0.24, 0.16, 0.45]);
-  }
-  for (const [s, z] of [
-    [1, 0.85],
-    [1, 1.85],
-    [-1, 1.85],
-  ]) {
-    const [dx, dy] = onSide(s, 0.48, 0.2);
-    b.module('fuel', 'body', [dx, dy, z], [0.18, 0.18, 0.34]); // external drums
-  }
-  b.module('ammo', 'body', [0, 0.56, -0.55], [0.72, 0.12, 0.55]);
-  for (const s of [-1, 1]) b.module('ammo', 'body', [s * 0.8, 1.2, -1.05], [0.14, 0.24, 0.3]);
-  b.module('driver', 'body', [-0.42, 1.02, -2.05], [0.25, 0.4, 0.35]);
-  b.module('radio', 'body', [0.45, 1.02, -2.0], [0.25, 0.4, 0.35]); // radio operator / bow gunner
   b.module('gunner', 'turret', [-0.35, 1.75, zT - 0.15], [0.22, 0.5, 0.28]); // the commander aims the gun
   b.module('commander', 'turret', [-0.35, 1.75, zT - 0.15], [0.22, 0.5, 0.28]);
   b.module('loader', 'turret', [0.38, 1.65, zT + 0.05], [0.22, 0.5, 0.28]);
+}
+
+// ---------------------------------------------------------------------------------------
+// T-34-85 (1944, factory 183): the T-34 hull with the large three-man cast turret (1.60 m
+// ring), commander's cupola at the left rear, 85 mm ZiS-S-53 L/54.6, "starfish" spoked
+// road wheels. 8.15 m long with the gun, 3.0 m wide, 2.72 m high; 32 t; crew 5.
+// Armor: hull as the T-34/76; turret front and mantlet 90 mm, sides 75 mm at 20 deg, rear
+// 52 mm, roof 20 mm, cupola 90 mm.
+export function t34_85(b) {
+  const { P, C } = t34Hull(b, { spoked: true });
+  const zT = -0.8,
+    yR = 1.52;
+  b.part('turret', [0, yR, zT]);
+  const plan = mirrorHalf([
+    [0, -1.02],
+    [0.45, -1.0],
+    [0.72, -0.86],
+    [0.88, -0.55],
+    [0.94, -0.15],
+    [0.94, 0.35],
+    [0.88, 0.75],
+    [0.74, 1.05],
+    [0.45, 1.25],
+    [0, 1.3],
+  ]);
+  const L3 = (y, sc) => plan.map(([x, dz]) => [x * sc, y, zT + dz * sc]);
+  b.convex({ points: [...L3(1.54, 1.0), ...L3(1.66, 1.0), ...L3(2.12, 0.96), ...L3(2.33, 0.88), ...L3(2.42, 0.79)], mat: C, crease: 0.5 });
+  // Commander's cupola (left rear) with vision slits and split hatch, loader's hatch,
+  // periscopes, ventilator domes, pistol ports, lifting hooks.
+  const cx = -0.42,
+    cz = zT + 0.42;
+  b.latheDir({
+    profile: [
+      [0, 0],
+      [0.34, 0],
+      [0.34, 0.06],
+      [0.31, 0.08],
+      [0.31, 0.19],
+      [0.27, 0.22],
+      [0, 0.22],
+    ],
+    at: [cx, 2.39, cz],
+    dir: [0, 1, 0],
+    mat: C,
+    seg: 28,
+  });
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + ((i - 2) / 5) * Math.PI * 1.6;
+    b.box({ x: cx + Math.cos(a) * 0.312, y: 2.53, z: cz + Math.sin(a) * 0.312, w: 0.012, h: 0.035, d: 0.1, ry: -a + Math.PI / 2, r: 0.003, mat: 'dark' });
+  }
+  for (const sx of [-1, 1]) b.prismY({ points: [...circle(0.25, 20, cx, cz).filter(([x]) => sx * (x - cx) >= -1e-6), [cx + sx * 0.003, cz + sx * 0.25]], y0: 2.61, y1: 2.635, mat: P, bevel: 0.005 });
+  b.latheDir({
+    profile: [
+      [0, 0.045],
+      [0.22, 0.04],
+      [0.25, 0.02],
+      [0.25, 0],
+      [0, 0],
+    ],
+    at: [0.4, 2.4, zT + 0.3],
+    dir: [0, 1, 0],
+    mat: C,
+    seg: 24,
+  });
+  for (const [x, dz] of [
+    [-0.36, -0.32],
+    [0.4, -0.12],
+  ]) {
+    b.box({ x, y: 2.48, z: zT + dz, w: 0.12, h: 0.12, d: 0.16, r: 0.015, mat: P });
+    b.box({ x, y: 2.5, z: zT + dz - 0.081, w: 0.08, h: 0.04, d: 0.005, r: 0.002, mat: 'dark' });
+  }
+  for (const s of [-1, 1]) {
+    b.sphere({ x: s * 0.18, y: 2.41, z: zT + 0.88, r: 0.1, sy: 0.5, mat: C, seg: 12 });
+    b.cylAxis({ axis: 'x', x: s * 0.9, y: 1.96, z: zT + 0.45, len: 0.05, r: 0.05, mat: C, seg: 12 });
+    b.latheDir({ profile: torusProfile(0.04, 0.012, 6), at: [s * 0.78, 2.27, zT - 0.55], dir: [0, 0, 1], mat: P, seg: 10 });
+  }
+  b.at('turret', 'commanderEye', cx, 2.89, cz);
+  b.body();
+
+  // ---- Gun: 85 mm ZiS-S-53 in a curved cast mantlet -----------------------------------------
+  const yG = 1.96,
+    zG = zT - 0.8;
+  b.part('gun', [0, yG, zG]);
+  const mask = [];
+  for (let i = 0; i <= 10; i++) {
+    const a = -0.85 + (1.7 * i) / 10;
+    for (const x of [-0.47, 0.47]) mask.push([x, yG + 0.33 * Math.sin(a), zG - 0.33 * Math.cos(a)]);
+  }
+  b.convex({ points: mask, mat: C, crease: 0.45 });
+  const zF = zG - 0.33;
+  b.latheDir({
+    profile: [
+      [0, -0.02],
+      [0.15, -0.02],
+      [0.15, 0.05],
+      [0.13, 0.12],
+      [0.12, 0.34],
+      [0, 0.34],
+    ],
+    at: [0, yG, zF],
+    dir: [0, 0, -1],
+    mat: C,
+    seg: 22,
+  });
+  b.latheDir({
+    profile: [
+      [0, 0],
+      [0.082, 0],
+      [0.074, 0.15],
+      [0.066, 1.6],
+      [0.06, 2.84],
+      [0.066, 2.87],
+      [0.066, 2.92],
+      [0.0425, 2.92],
+      [0.0425, 2.88],
+      [0, 2.88],
+    ],
+    at: [0, yG, zF - 0.34],
+    dir: [0, 0, -1],
+    mat: P,
+    seg: 18,
+  });
+  const zMu = zF - 0.34 - 2.92;
+  b.cyl({ z0: zMu + 0.042, z1: zMu + 0.038, r0: 0.041, y: yG, mat: 'dark', seg: 14 });
+  b.cyl({ z0: zF - 0.01, z1: zF - 0.09, r0: 0.016, x: 0.24, y: yG - 0.02, mat: 'blued', seg: 8 }); // coax DT
+  b.cyl({ z0: zF + 0.005, z1: zF - 0.005, r0: 0.026, x: -0.24, y: yG + 0.05, mat: 'dark', seg: 10 }); // TSh-16 sight
+  b.at('gun', 'muzzle', 0, yG, zMu);
+  b.at('gun', 'coaxMuzzle', 0.24, yG - 0.02, zF - 0.09);
+  b.at('gun', 'gunnerEye', -0.24, yG + 0.05, zF - 0.005);
+  b.body();
+  b.meta.partParents = { gun: 'turret' };
+
+  Object.assign(b.meta, {
+    name: 'T-34-85 (1944)',
+    faction: 'su',
+    type: 'tracked',
+    crew: 5,
+    gun: { name: '85 mm ZiS-S-53', caliber: 85 },
+    gunElevation: [-5, 22],
+    turretTraverse: 26,
+    groundClearance: 0.4,
+    turretRing: { center: [0, yR, zT], radius: 0.8 },
+    specs: { mass: 32000, maxSpeed: 55, power: 500, engine: 'V-2-34 diesel', fuel: 545, fuelExternal: 270 },
+  });
+  b.armorShell('turret', 'turret', plan.map(([x, dz]) => [x, zT + dz]), [1.54, 1.0], [2.33, 0.88], [0, zT], (deg) => (deg < 50 ? 90 : deg < 140 ? 75 : 52));
+  b.armorPoly('turretRoof', 'turret', 20, L3(2.42, 0.79), [0, 1, 0], 4, [0, 0, 1]);
+  b.armor('cupola', 'turret', 90, [cx, 2.51, cz - 0.33], [0.66, 0, 0], [0, 0.24, 0], [0, 0, -1]);
+  b.armor('mantlet', 'gun', 90, [0, yG, zF], [0.94, 0, 0], [0, 0.5, 0], [0, 0, -1]);
+  b.armor('gunCollar', 'gun', 90, [0, yG, zF - 0.34], [0.26, 0, 0], [0, 0.26, 0], [0, 0, -1]);
+  b.module('gunner', 'turret', [-0.4, 1.84, zT - 0.3], [0.22, 0.5, 0.28]);
+  b.module('commander', 'turret', [cx, 2.05, cz], [0.22, 0.55, 0.28]);
+  b.module('loader', 'turret', [0.4, 1.8, zT + 0.05], [0.22, 0.52, 0.28]);
+  b.module('ammo', 'turret', [0, 2.0, zT + 1.05], [0.5, 0.15, 0.15]); // bustle ready rack
 }
 
 // ---------------------------------------------------------------------------------------

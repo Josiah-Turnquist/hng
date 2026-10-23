@@ -341,7 +341,7 @@ export class TrackedVehicle extends Vehicle {
       if (this.reloadT <= 0 && this.nextAmmo && this.stowed[this.nextAmmo] > 0) {
         this.loaded = this.nextAmmo;
         this.stowed[this.nextAmmo]--;
-        this.game.audio?.play?.('tankReloadDone', this.body.position, { volume: 0.5 });
+        this.game.audio?.play?.('boltClose', this.body.position, { volume: 0.9, rate: 0.55 });
       }
     }
     this.recoil = Math.max(0, this.recoil - dt * 2.5);

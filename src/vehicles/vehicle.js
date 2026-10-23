@@ -764,6 +764,8 @@ export class Vehicle {
   }
 
   removeFromWorld() {
+    if (this.snd) for (const h of Object.values(this.snd)) h?.stop?.(0.2);
+    this.snd = null;
     if (this.proxies) for (const p of this.proxies) this.world.collision.remove(p.box);
     this.model.root.removeFromParent();
   }

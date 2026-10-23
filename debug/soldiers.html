@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Soldier viewer</title>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre;text-shadow:0 1px 2px #000}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// The three factions side by side in a pose, simulated for a while and frozen.
+// Usage: debug/soldiers.html?pose=walk&t=0.3
+//   pose: idle aim walk run sprint strafe back crouch crouchaim crouchwalk prone
+//         proneaim crawl lean reload bolt throw bandage use dead seated drive
+//         recoil stand2prone (t = blend 0..1). A comma list makes one row per pose;
+//         pose=all shows idle, walk, run, aim, crouchaim, proneaim.
+//   ts=0,0.1,0.2  strip mode: the first faction at several moments, seen from the side
+//   t: action progress 0..1, seconds after death, or extra seconds of a cycle
+//   f=US,GE,SU  gun=kar98k|none (else a per-faction default)  kind=rifle
+//   hitboxes=1  muzzle=1  lod=1  seed=3  cam=three|front|side|left|back|top|low
+//   zoom=1.5  focus=i&dist=2  face=i&dist=0.8  pitch=deg yawoff=deg  live=1  flat=1
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { TextureLibrary } from '../src/render/textures.js';
+import { makeGunMaterials } from '../src/weapons/models/kit.js';
+import { MODELS, buildGun } from '../src/weapons/models/index.js';
+import { SoldierModel } from '../src/actors/soldierModel.js';
+
+const params = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const lib = new TextureLibrary(renderer, { size: 512 });
+const gunMats = makeGunMaterials(lib);
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+scene.background = new THREE.Color(0x8a9aa8);
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xbcd0e0, 0x5a5040, 0.6));
+// Gently rolling ground so feet and ragdolls have something to settle on.
+const ground = (x, z) => (params.has('flat') ? 0 : 0.06 * Math.sin(x * 0.9) * Math.cos(z * 0.7) + 0.03 * Math.sin(z * 2.1 + 1));
+const gGeo = new THREE.PlaneGeometry(60, 60, 120, 120);
+gGeo.rotateX(-Math.PI / 2);
+const gp = gGeo.attributes.position;
+for (let i = 0; i < gp.count; i++) gp.setY(i, ground(gp.getX(i), gp.getZ(i)));
+gGeo.computeVertexNormals();
+const uv = gGeo.attributes.uv;
+for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 20, uv.getY(i) * 20);
+const groundMesh = new THREE.Mesh(gGeo, lib.standard('grass'));
+groundMesh.receiveShadow = true;
+scene.add(groundMesh);
+
+const factions = (params.get('f') || 'US,GE,SU').split(',');
+const poses = (params.get('pose') === 'all' ? 'idle,walk,run,aim,crouchaim,proneaim' : params.get('pose') || 'idle').split(',');
+const lod = Number(params.get('lod') || 0);
+const seed = Number(params.get('seed') || 1);
+const T = params.has('t') ? Number(params.get('t')) : null;
+const DEG = Math.PI / 180;
+const DEFAULT_GUN = { US: 'm1_garand', GE: 'kar98k', SU: 'mosin_9130' };
+const gunFor = (f) => {
+  const want = params.get('gun') || DEFAULT_GUN[f];
+  return MODELS[want] ? want : 'kar98k';
+};
+const kindFor = (id) =>
+  params.get('kind') ||
+  (/mp40|mp34|thompson|m3_|ppsh|pps43|ppd|stg/.test(id) ? 'smg'
+    : /mg4|mg3|bar_|m1919|johnson|dp28|fg42/.test(id) ? 'lmg'
+    : /p38|luger|c96|m1911|m1917|tt33|nagant/.test(id) ? 'pistol'
+    : /schreck|faust|bazooka|ptrd/.test(id) ? 'launcher'
+    : /grenade|granate|rgd/.test(id) ? 'grenade'
+    : 'rifle');
+
+function baseState(pose, t) {
+  const s = { stance: 0, stanceBlend: 0, speed: 0, localVelX: 0, localVelZ: 0, sprinting: false, onGround: true, yaw: 0, aimPitch: Number(params.get('pitch') || 0) * DEG, aimYawOffset: Number(params.get('yawoff') || 0) * DEG, aiming: false, lean: 0, recoil: 0, action: null, actionT: 0, alive: true, deathT: 0, seated: false };
+  const mv = (vz, vx = 0) => { s.localVelZ = vz; s.localVelX = vx; s.speed = Math.hypot(vx, vz); };
+  switch (pose) {
+    case 'aim': s.aiming = true; break;
+    case 'walk': mv(-1.5); break;
+    case 'run': mv(-3.7); break;
+    case 'sprint': mv(-6.1); s.sprinting = true; break;
+    case 'strafe': mv(0, 1.2); s.aiming = true; break;
+    case 'back': mv(1.1); break;
+    case 'crouch': s.stance = 1; s.stanceBlend = 1; break;
+    case 'crouchaim': s.stance = 1; s.stanceBlend = 1; s.aiming = true; break;
+    case 'crouchwalk': s.stance = 1; s.stanceBlend = 1; mv(-1.6); break;
+    case 'prone': s.stance = 2; s.stanceBlend = 2; break;
+    case 'proneaim': s.stance = 2; s.stanceBlend = 2; s.aiming = true; break;
+    case 'crawl': s.stance = 2; s.stanceBlend = 2; mv(-0.8); break;
+    case 'lean': s.aiming = true; s.lean = 1; break;
+    case 'reload': s.action = 'reload'; break;
+    case 'bolt': s.action = 'bolt'; s.aiming = true; break;
+    case 'throw': s.action = 'throw'; break;
+    case 'bandage': s.action = 'bandage'; break;
+    case 'use': s.action = 'use'; break;
+    case 'seated': s.seated = true; break;
+    case 'drive': s.seated = true; s.action = 'use'; break;
+    case 'recoil': s.aiming = true; s.recoil = 1; break;
+    case 'stand2prone': s.stanceBlend = 2 * (t ?? 0.5); s.stance = Math.round(s.stanceBlend); break;
+    case 'dead': mv(params.has('runover') ? -3.7 : 0); break;
+  }
+  return s;
+}
+
+const soldiers = [];
+const S0 = []; // seat height (seated poses sit on an invisible 45 cm seat)
+// Strip mode: one faction, one pose, several moments laid out side by side.
+const strip = params.has('ts') ? params.get('ts').split(',').map(Number) : null;
+if (strip) {
+  strip.forEach((tt, i) => {
+    const f = factions[0];
+    const m = new SoldierModel(f, lib, { seed, lod });
+    const id = gunFor(f);
+    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
+    m.setGround(ground);
+    const z0 = i * 1.4;
+    m.root.position.set(0, ground(0, z0), z0);
+    scene.add(m.root);
+    soldiers.push({ m, pose: poses[0], x0: 0, z0, t: tt });
+  });
+} else
+poses.forEach((pose, row) => {
+  factions.forEach((f, i) => {
+    const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, variant: params.has('variant') ? Number(params.get('variant')) : undefined });
+    const id = gunFor(f);
+    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
+    m.setGround(ground);
+    const wide = /prone|crawl|dead/.test(pose);
+    const x0 = (i - (factions.length - 1) / 2) * (wide ? 1.3 : 1.1);
+    const z0 = row * 2.6;
+    S0[soldiers.length] = /seated|drive/.test(pose) ? 0.45 : 0;
+    m.root.position.set(x0, ground(x0, z0) + S0[soldiers.length], z0);
+    scene.add(m.root);
+    soldiers.push({ m, pose, x0, z0 });
+  });
+});
+
+// Simulate.
+const dt = 1 / 60;
+const cycles = ['walk', 'run', 'sprint', 'strafe', 'back', 'crouchwalk', 'crawl'];
+for (const S of soldiers) {
+  const { m, pose } = S;
+  const tT = S.t ?? T;
+  const s = baseState(pose, tT);
+  const act = s.action;
+  const warm = 2.0 + (cycles.includes(pose) ? tT ?? 0 : 0);
+  const steps = Math.round(warm / dt);
+  let x = S.x0, z = S.z0;
+  const actT = act ? tT ?? 0.4 : 0;
+  const ts = steps - Math.round((actT * 2) / dt);
+  for (let k = 0; k < steps; k++) {
+    // Move the feet with the body velocity (world = local at yaw 0).
+    x += s.localVelX * dt;
+    z += s.localVelZ * dt;
+    m.root.position.set(x, ground(x, z) + (S0[soldiers.indexOf(S)] || 0), z);
+    if (act) {
+      s.action = k >= ts ? act : null;
+      s.actionT = k >= ts ? Math.min(1, ((k - ts) * dt) / 2) : 0;
+    }
+    if (pose === 'recoil') s.recoil = Math.max(0, 1 - (steps - 1 - k) * 0.25);
+    m.update(dt, s);
+  }
+  if (pose === 'dead') {
+    s.alive = false;
+    if (!params.has('nohit')) s.hitDir = { x: Number(params.get('hx') ?? 0.3), z: Number(params.get('hz') ?? 1) };
+    const dead = tT ?? 3;
+    for (let k = 0; k < Math.round(dead / dt); k++) {
+      s.deathT = k * dt;
+      m.update(dt, s);
+    }
+  }
+  // Back to its slot so rows stay together (the pose is relative to the root).
+  if (!params.has('free') && pose !== 'dead') {
+    const seat = S0[soldiers.indexOf(S)] || 0;
+    m.root.position.set(S.x0, ground(S.x0, S.z0) + seat, S.z0);
+    m.update(0, s);
+  }
+  S.state = s;
+}
+
+// Hit capsules.
+if (params.has('hitboxes')) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff3030, wireframe: true, transparent: true, opacity: 0.5, depthTest: false });
+  for (const { m } of soldiers) {
+    for (const h of m.getHitboxes([])) {
+      const a = new THREE.Vector3(h.ax, h.ay, h.az), b = new THREE.Vector3(h.bx, h.by, h.bz);
+      const len = a.distanceTo(b);
+      const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(h.r, Math.max(1e-4, len), 4, 10), mat);
+      mesh.position.copy(a).add(b).multiplyScalar(0.5);
+      if (len > 1e-5) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      mesh.renderOrder = 5;
+      scene.add(mesh);
+    }
+  }
+}
+// Bore lines from the muzzles.
+if (params.has('muzzle')) {
+  for (const { m } of soldiers) {
+    const g = new THREE.BufferGeometry().setFromPoints([m.muzzleWorld.clone(), m.muzzleWorld.clone().addScaledVector(m.aimDir, 4)]);
+    scene.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false })));
+  }
+}
+
+// Camera framing the group.
+const box = new THREE.Box3();
+for (const { m } of soldiers) box.expandByPoint(m.root.position);
+const center = box.getCenter(new THREE.Vector3());
+const view = params.get('cam') || 'three';
+const rows = poses.length;
+const low = poses.every((p) => /prone|crawl|dead/.test(p));
+const cy = low ? 0.35 : 0.95;
+const dist = strip ? 2.2 + strip.length * 0.9 : 4.6 + (factions.length - 3) * 1.2 + (rows - 1) * 2.2;
+const cams = { three: [-0.48, 0.32, -0.87], front: [0, 0.03, -1], side: [1, 0.05, 0], left: [-1, 0.05, 0], back: [0.3, 0.2, 1], top: [0.1, 0.9, 0.45], low: [-0.4, 0.05, -0.9] };
+const dir = new THREE.Vector3(...(cams[strip && !params.has('cam') ? 'side' : view] || cams.three)).normalize();
+const camera = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
+const target = new THREE.Vector3(center.x, center.y + cy, center.z);
+camera.position.copy(target).addScaledVector(dir, dist);
+if (params.has('zoom')) camera.zoom = Number(params.get('zoom'));
+camera.updateProjectionMatrix();
+camera.lookAt(target);
+if (params.has('face')) {
+  const { m } = soldiers[Number(params.get('face'))];
+  const d = Number(params.get('dist') || 0.8);
+  const e = m.eyeWorld;
+  camera.position.set(e.x - 0.3 * d, e.y + 0.03, e.z - d);
+  camera.lookAt(e.x, e.y - 0.03, e.z);
+}
+if (params.has('focus')) {
+  const { m } = soldiers[Number(params.get('focus'))];
+  const p = m.root.position;
+  const d = Number(params.get('dist') || 2.2);
+  const t = new THREE.Vector3(p.x, p.y + (low ? 0.3 : 0.95), p.z);
+  camera.position.copy(t).addScaledVector(dir, d);
+  camera.lookAt(t);
+}
+sun.position.set(center.x + 3, 6, center.z - 4);
+sun.target.position.copy(center);
+const sc = sun.shadow.camera;
+sc.left = sc.bottom = -4 - rows * 2;
+sc.right = sc.top = 4 + rows * 2;
+sc.updateProjectionMatrix();
+
+function render() {
+  renderer.render(scene, camera);
+  const info = renderer.info.render;
+  const per = soldiers[0].m.meshes[lod].length;
+  document.getElementById('info').textContent = `${poses.join(',')}  t=${T ?? '-'}  scene: calls ${info.calls} tris ${info.triangles}  meshes/soldier ${per}`;
+}
+render();
+if (params.has('live')) {
+  let last = performance.now();
+  const loop = () => {
+    const now = performance.now();
+    const d = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    for (const S of soldiers) {
+      const s = S.state, p = S.m.root.position;
+      p.x += s.localVelX * d;
+      p.z += s.localVelZ * d;
+      p.y = ground(p.x, p.z);
+      S.m.update(d, s);
+    }
+    render();
+    requestAnimationFrame(loop);
+  };
+  loop();
+}
+window.__done = true;
+</script>
+</body>
+</html>

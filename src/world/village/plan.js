@@ -69,7 +69,8 @@ export function planVillage(terrain, def, rng) {
     const h = ed.averageHeight(b.x, b.z, b.w / 2, b.d / 2, b.yaw);
     b.ground = h;
     b.floorY = h + plinth;
-    site.occupy(b.x, b.z, b.w / 2 + (b.occupyMargin ?? 0.5), b.d / 2 + (b.occupyMargin ?? 0.5), b.yaw, b.tag || b.kind);
+    b.id = b.id || `${b.kind}${plan.buildings.length}`;
+    site.occupy(b.x, b.z, b.w / 2 + (b.occupyMargin ?? 0.5), b.d / 2 + (b.occupyMargin ?? 0.5), b.yaw, b.id);
     ed.flattenRect(b.x, b.z, b.w / 2 + margin, b.d / 2 + margin, b.yaw, h, blend);
     return b.floorY;
   };
@@ -171,7 +172,7 @@ export function planVillage(terrain, def, rng) {
     sq.memorial = { lx: 7, lz: midZ + 1.5 };
     sq.fountain = { lx: 7, lz: 15 };
     const tr = new RNG(ch.seed + 11);
-    for (const [lx, lz] of [[-6.6, 9], [-6.6, 18.5], [-6.6, 28], [21, 10], [21, 19.5], [21, 29], [13.5, 7.5], [0.5, 7.5]]) {
+    for (const [lx, lz] of [[-6.6, 9.5], [-6.6, 19], [-6.6, 28.5], [21, 10], [21, 19.5], [21, 29], [16.5, 7.8]]) {
       if (lz > sq.depth - 2.5) continue;
       const [wx, wz] = local(ch, lx, lz);
       plan.trees.push({ x: wx, z: wz, kind: 'plane', size: tr.range(0.9, 1.1), seed: tr.int(0, 1e6) });
@@ -268,7 +269,7 @@ export function planVillage(terrain, def, rng) {
         const clr = site.rectClearance(cx, cz, width / 2, depth / 2, yaw, 2);
         if (clr.road < 1 || clr.river < 30) continue;
         if (site.overlaps(cx, cz, width / 2, depth / 2, yaw, 1)) continue;
-        const farm = { kind: 'farm', tag: 'farm', x: cx, z: cz, yaw, w: width, d: depth, seed: seed() };
+        const farm = { kind: 'farm', tag: 'farm', x: cx, z: cz, yaw, w: width, d: depth, seed: seed(), barnSide: rng.chance(0.5) ? 1 : -1 };
         farm.ground = ed.averageHeight(cx, cz, width / 2, depth / 2, yaw);
         site.occupy(cx, cz, width / 2, depth / 2, yaw, 'farm');
         ed.flattenRect(cx, cz, width / 2 + 1, depth / 2 + 1, yaw, farm.ground, 6);
@@ -281,7 +282,7 @@ export function planVillage(terrain, def, rng) {
   // ------------------------------------------------------------------------------------
   // 6) Houses along the streets, densest near the square.
   {
-    const maxHouses = 40;
+    const maxHouses = 38;
     const sq = plan.square;
     const sqCenter = local(ch, 7, (4.6 + sq.depth) / 2);
     const coreR = 75;
@@ -312,13 +313,11 @@ export function planVillage(terrain, def, rng) {
       const total = arc[arc.length - 1];
       for (const sgn of [1, -1]) {
         let L = 0;
-        let prev = null;
         while (L < total) {
           const p = at(L);
           const dc = Math.hypot(p.x - center.x, p.z - center.z);
           if (dc > V.radius - 4) {
             L += 4;
-            prev = null;
             continue;
           }
           const dsq = Math.hypot(p.x - sqCenter[0], p.z - sqCenter[1]);
@@ -341,16 +340,28 @@ export function planVillage(terrain, def, rng) {
             site.occupy(cx, cz, w / 2, d / 2, yaw, 'lot');
             const gap = core ? (hr.chance(0.6) ? 0.0 : hr.range(1.5, 3.5)) : hr.range(3, 9);
             L += w + gap;
-            prev = candidates[candidates.length - 1];
           } else {
             L += 2;
-            prev = null;
           }
         }
       }
     }
-    // Keep the ones closest to the square.
-    candidates.sort((a, b) => a.dsq - b.dsq);
+    // Keep the ones closest to the square, and those lining the street that links the
+    // square to the gendarmerie (so the two objectives are joined by village streets).
+    const g = plan.gendarmerie;
+    for (const c of candidates) {
+      c.score = c.dsq;
+      if (g) {
+        const ax = sqCenter[0],
+          az = sqCenter[1];
+        const bx = g.x,
+          bz = g.z;
+        const t = Math.max(0, Math.min(1, ((c.x - ax) * (bx - ax) + (c.z - az) * (bz - az)) / ((bx - ax) ** 2 + (bz - az) ** 2)));
+        const dLink = Math.hypot(c.x - (ax + (bx - ax) * t), c.z - (az + (bz - az) * t));
+        c.score = Math.min(c.score, 25 + dLink * 1.5 + t * 20);
+      }
+    }
+    candidates.sort((a, b) => a.score - b.score);
     site.rects = site.rects.filter((r) => r.tag !== 'lot');
     let count = 0;
     for (const c of candidates) {
@@ -380,7 +391,14 @@ export function planVillage(terrain, def, rng) {
 
   // ------------------------------------------------------------------------------------
   // 7) Garden walls, fences and back gardens.
-  planGardens(plan, site, rng, local);
+  planGardens(plan, site, rng, local, ed);
+
+  // ------------------------------------------------------------------------------------
+  // 7b) Low walls, garden walls and fences along open stretches of street (cover).
+  planStreetWalls(plan, site, rng, roads, V, center);
+
+  // 7c) Signs: village entry boards, street plaques, painted adverts, the mairie.
+  planSigns(plan, site, rng, roads, V, center, local);
 
   // ------------------------------------------------------------------------------------
   // 8) Bridges where roads cross the river.
@@ -462,7 +480,6 @@ export function planVillage(terrain, def, rng) {
   if (plan.square) ed.paintPoly(plan.square.poly, SURF.COBBLE, { overRoad: true });
   // Cobbled streets in the village core.
   {
-    const r = hf.res;
     for (const road of terrain.roads) {
       for (const [x, z] of road.samples) {
         const dc = Math.hypot(x - center.x, z - center.z);
@@ -477,7 +494,6 @@ export function planVillage(terrain, def, rng) {
           }
       }
     }
-    void r;
   }
   for (const f of plan.farms) {
     ed.paintRect(f.x, f.z, f.w / 2 + 2, f.d / 2 + 2, f.yaw, SURF.DIRT);
@@ -555,21 +571,22 @@ export function makeHouse(rng, o) {
 
 // ---------------------------------------------------------------------------------------
 
-function planGardens(plan, site, rng, local) {
+function planGardens(plan, site, rng, local, ed) {
   const houses = plan.buildings.filter((b) => b.kind === 'house');
   // Group houses by street side to connect neighbors with frontage walls.
   for (const h of houses) {
     const r = new RNG(h.seed + 101);
-    // Back garden behind detached (non-core) houses.
-    if (!h.core || r.chance(0.35)) {
-      const gd = r.range(8, 14);
-      const gw = h.w + r.range(0, 4);
-      const [gx, gz] = local(h, (gw - h.w) / 2 * (r.chance(0.5) ? 1 : -1), -h.d / 2 - gd / 2 - 0.2);
-      const clr = site.rectClearance(gx, gz, gw / 2, gd / 2, h.yaw, 1.5);
-      if (clr.road > 1.2 && clr.river > 18 && !site.overlaps(gx, gz, gw / 2, gd / 2, h.yaw, 0.3)) {
+    // Back garden (or a small yard for terraced houses), shrinking until it fits.
+    if (r.chance(h.core ? 0.8 : 0.95)) {
+      const side = r.chance(0.5) ? 1 : -1;
+      for (const gd of h.core ? [9, 7, 5.5, 4] : [13, 11, 9, 7, 5.5]) {
+        const gw = h.w + (h.core ? 0 : r.range(0, 3));
+        const [gx, gz] = local(h, ((gw - h.w) / 2) * side, -h.d / 2 - gd / 2 - 0.05);
+        const clr = site.rectClearance(gx, gz, gw / 2, gd / 2, h.yaw, 1.5);
+        if (clr.road < 1.0 || clr.river < 18 || site.overlaps(gx, gz, gw / 2, gd / 2, h.yaw, 0.05, h.id)) continue;
         site.occupy(gx, gz, gw / 2, gd / 2, h.yaw, 'garden');
-        const kind = r.chance(0.55) ? 'stone' : 'fence';
-        const hgt = kind === 'stone' ? r.range(1.1, 1.8) : 1.1;
+        const kind = h.core ? (r.chance(0.8) ? 'stone' : 'fence') : r.chance(0.55) ? 'stone' : 'fence';
+        const hgt = kind === 'stone' ? r.range(1.2, 1.9) : 1.1;
         // Three sides (the house closes the fourth).
         const c = Math.cos(h.yaw),
           s = Math.sin(h.yaw);
@@ -578,13 +595,27 @@ function planGardens(plan, site, rng, local) {
           p1 = L(-gw / 2, -gd / 2),
           p2 = L(gw / 2, -gd / 2),
           p3 = L(gw / 2, gd / 2);
-        const gateAt = r.range(0.25, 0.75);
-        plan.walls.push({ kind, pts: [p0, p1, p2, p3], h: hgt, gate: { seg: 1, t: gateAt, w: 1.1 }, seed: r.int(0, 1e6), owner: h });
-        if (r.chance(0.5)) {
-          const [tx, tz] = local(h, r.range(-gw / 3, gw / 3), -h.d / 2 - gd * r.range(0.45, 0.75));
+        // A shed at one back corner of bigger gardens; the gate goes in the other half.
+        const shed = gd >= 7 && r.chance(0.5);
+        const shedSide = (r.chance(0.7) ? 1 : -1) * side;
+        const gateT = shed ? (shedSide > 0 ? r.range(0.15, 0.35) : r.range(0.65, 0.85)) : r.range(0.25, 0.75);
+        plan.walls.push({ kind, pts: [p0, p1, p2, p3], h: hgt, gate: { seg: 1, t: gateT, w: gd > 8 && r.chance(0.3) && !shed ? 2.6 : 1.1 }, seed: r.int(0, 1e6), owner: h.id });
+        if (gd >= 7 && r.chance(0.6)) {
+          const tlx = shed ? -shedSide * r.range(0.6, gw / 3) : r.range(-gw / 3, gw / 3);
+          const [tx, tz] = local(h, ((gw - h.w) / 2) * side + tlx, -h.d / 2 - gd * r.range(0.35, 0.6));
           plan.trees.push({ x: tx, z: tz, kind: 'fruit', size: r.range(0.75, 1.0), seed: r.int(0, 1e6) });
         }
+        if (shed) {
+          const aw = r.range(3.2, 4.6),
+            ad = r.range(2.8, 3.4);
+          const ax = shedSide * (gw / 2 - aw / 2 - 0.3);
+          const [x, z] = local(h, ((gw - h.w) / 2) * side + ax, -h.d / 2 - gd + ad / 2 + 0.35);
+          const ag = ed.averageHeight(x, z, aw / 2, ad / 2, h.yaw);
+          ed.flattenRect(x, z, aw / 2 + 0.6, ad / 2 + 0.6, h.yaw, ag, 2.5);
+          plan.buildings.push({ kind: 'annex', tag: 'annex', id: `annex${plan.buildings.length}`, x, z, yaw: h.yaw, w: +aw.toFixed(2), d: +ad.toFixed(2), ground: ag, floorY: ag + 0.08, wall: r.chance(0.6) ? 'stone' : 'plaster', wallColor: h.wallColor, roof: h.roof, seed: r.int(0, 1e6), damaged: r.chance(0.25) });
+        }
         h.garden = { gw, gd };
+        break;
       }
     }
   }
@@ -623,7 +654,6 @@ function planProps(plan, site, rng, local, roads, terrain) {
   const hf = terrain.hf;
   const props = plan.props;
   const pr = new RNG(Math.floor(rng.next() * 2 ** 31));
-  const free = (x, z, r = 1) => !site.overlaps(x, z, r, r, 0, 0) && site.roadEdgeDist(x, z) > -0.5;
 
   // Sandbag emplacements: { kind: 'sandbags', x, z, yaw, shape: 'line'|'u'|'l', len, h }
   const g = plan.gendarmerie;
@@ -751,11 +781,12 @@ function planProps(plan, site, rng, local, roads, terrain) {
     if (b.kind !== 'house') continue;
     const r = new RNG(b.seed + 55);
     if (r.chance(0.45)) {
-      const [x, z] = local(b, r.range(-b.w / 2, b.w / 2), b.d / 2 + 0.7);
+      // By a front corner, out of the way of the door.
+      const [x, z] = local(b, (r.chance(0.5) ? 1 : -1) * (b.w / 2 - r.range(0.35, 0.7)), b.d / 2 + 0.65);
       if (site.roadEdgeDist(x, z) > 0.3) props.push({ kind: r.chance(0.5) ? 'barrel' : 'crate', x, z, yaw: b.yaw + r.range(-0.3, 0.3), stack: r.chance(0.25) });
     }
     if (b.damage && r.chance(0.5)) {
-      const [x, z] = local(b, r.range(-b.w / 3, b.w / 3), b.d / 2 + 1.2);
+      const [x, z] = local(b, (r.chance(0.5) ? 1 : -1) * (b.w / 2 + r.range(0.4, 1.2)), b.d / 2 + 1.0);
       if (site.roadEdgeDist(x, z) > 0) props.push({ kind: 'debris', x, z, yaw: r.range(0, TAU), size: r.range(0.8, 1.4) });
     }
   }
@@ -767,5 +798,122 @@ function planProps(plan, site, rng, local, roads, terrain) {
       props.push({ kind: 'cart', x, z, yaw: ch.yaw + 1.3, hay: false });
     }
   }
-  void free;
+}
+
+// ---------------------------------------------------------------------------------------
+// Walls along the streets where no house fronts the road.
+function planStreetWalls(plan, site, rng, roads, V, center) {
+  const r = new RNG(Math.floor(rng.next() * 2 ** 31));
+  for (const id of ['main', 'north', 'south']) {
+    const road = roads[id];
+    if (!road) continue;
+    const s = road.samples;
+    for (const sgn of [1, -1]) {
+      let run = [];
+      const flush = () => {
+        if (run.length >= 5 && r.chance(0.7)) {
+          // Split long runs into pieces with gaps (gateways, broken sections).
+          let k = 0;
+          while (k < run.length - 3) {
+            const len = Math.min(run.length - k, r.int(5, 12));
+            const pts = run.slice(k, k + len);
+            if (pts.length >= 3) {
+              const roll = r.next();
+              const kind = roll < 0.5 ? 'low' : roll < 0.8 ? 'stone' : 'fence';
+              plan.walls.push({ kind, pts, h: kind === 'stone' ? r.range(1.2, 1.6) : kind === 'low' ? 0.9 : 1.1, gate: null, seed: r.int(0, 1e6), street: true });
+            }
+            k += len + r.int(1, 3);
+          }
+        }
+        run = [];
+      };
+      for (let i = 0; i < s.length; i += 2) {
+        const [x, z] = s[i];
+        const dc = Math.hypot(x - center.x, z - center.z);
+        if (dc > V.radius + 25 || dc < 25) {
+          flush();
+          continue;
+        }
+        const a = s[Math.max(0, i - 2)],
+          b = s[Math.min(s.length - 1, i + 2)];
+        const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        const nx = (-(b[1] - a[1]) / l) * sgn,
+          nz = ((b[0] - a[0]) / l) * sgn;
+        const off = road.width / 2 + 2.1;
+        const px = x + nx * off,
+          pz = z + nz * off;
+        const free = !site.overlaps(px, pz, 1.2, 1.2, 0, 0.6) && site.roadEdgeDist(px, pz, 0.8) > 1.0 && site.riverDist(px, pz) > 20;
+        if (free) run.push([px, pz]);
+        else flush();
+      }
+      flush();
+    }
+  }
+}
+
+// Entry boards at the village limits, enamel street plaques, faded painted adverts on
+// gable ends facing the street, and the MAIRIE band on the largest house by the square.
+function planSigns(plan, site, rng, roads, V, center, local) {
+  plan.signs = [];
+  const main = roads.main;
+  if (main) {
+    for (const end of [-1, 1]) {
+      const s = main.samples;
+      let best = null;
+      for (let i = 0; i < s.length; i++) {
+        const d = Math.hypot(s[i][0] - center.x, s[i][1] - center.z);
+        const side = s[i][0] - center.x;
+        if (Math.sign(side) !== end) continue;
+        const e = Math.abs(d - (V.radius + 8));
+        if (!best || e < best.e) best = { i, e };
+      }
+      if (!best) continue;
+      const i = best.i;
+      const a = s[Math.max(0, i - 2)],
+        b = s[Math.min(s.length - 1, i + 2)];
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const tx = (b[0] - a[0]) / l,
+        tz = (b[1] - a[1]) / l;
+      const side = 1;
+      const px = s[i][0] - tz * side * (main.width / 2 + 1.6),
+        pz = s[i][1] + tx * side * (main.width / 2 + 1.6);
+      // Face traffic arriving from outside the village.
+      const fx = end > 0 ? tx : -tx,
+        fz = end > 0 ? tz : -tz;
+      plan.signs.push({ kind: 'entry', x: px, z: pz, yaw: Math.atan2(fx, fz) });
+    }
+  }
+  const houses = plan.buildings.filter((b) => b.kind === 'house');
+  const r = new RNG(Math.floor(rng.next() * 2 ** 31));
+  // Street plaques on the front corner of one house per street.
+  const plaque = { main: 'streetGrande', north: 'streetMoulin', south: 'streetGare' };
+  for (const [street, key] of Object.entries(plaque)) {
+    const h = houses.filter((b) => b.street === street).sort((a, b) => Math.hypot(a.x - center.x, a.z - center.z) - Math.hypot(b.x - center.x, b.z - center.z))[0];
+    if (h) h.plaque = key;
+  }
+  // Painted adverts on free gable ends.
+  let ads = 0;
+  for (const h of houses) {
+    if (ads >= 3 || h.damage || h.storeys < 2) continue;
+    if (!h.attachedL && r.chance(0.35)) {
+      h.ad = { side: -1, key: ads % 2 ? 'ad2' : 'ad1' };
+      ads++;
+    } else if (!h.attachedR && r.chance(0.35)) {
+      h.ad = { side: 1, key: ads % 2 ? 'ad2' : 'ad1' };
+      ads++;
+    }
+  }
+  // The mairie: the widest undamaged two-storey house near the square.
+  const sq = plan.square;
+  if (sq) {
+    const [sx, sz] = local(sq.frame, 7, (4.6 + sq.depth) / 2);
+    const cand = houses.filter((b) => !b.shop && !b.damage && b.storeys === 2 && b.w >= 9).sort((a, b) => Math.hypot(a.x - sx, a.z - sz) - Math.hypot(b.x - sx, b.z - sz));
+    if (cand[0]) {
+      cand[0].mairie = true;
+      cand[0].wall = 'plaster';
+      cand[0].wallColor = 'white';
+      cand[0].quoins = true;
+      cand[0].roof = 'slate';
+    }
+  }
 }

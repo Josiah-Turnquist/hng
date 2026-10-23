@@ -110,17 +110,18 @@ export const MAPS = {
         kind: 'dirt',
       },
     ],
-    // Objectives and lines (access point first, then forward points).
+    // Objectives and lines: access point (X1) first, then X2-X4 toward the
+    // objective, four points per line as on the original map.
     objectives: [
       { id: 'O1', name: 'Police Station', x: 70, z: 115, radius: 22 },
       { id: 'O2', name: 'Church', x: -25, z: -45, radius: 26 },
     ],
     lines: [
-      { id: 'A', objective: 'O2', points: [[-560, -500], [-400, -340], [-240, -210]] },
-      { id: 'B', objective: 'O2', points: [[540, -560], [370, -380], [190, -230]] },
-      { id: 'C', objective: 'O1', points: [[720, 160], [480, 120], [320, 95]] },
-      { id: 'D', objective: 'O1', points: [[130, 740], [100, 500], [80, 330]] },
-      { id: 'E', objective: 'O1', points: [[-720, 300], [-480, 250], [-300, 230]] },
+      { id: 'A', objective: 'O2', points: [[-560, -500], [-400, -340], [-240, -210], [-140, -120]] },
+      { id: 'B', objective: 'O2', points: [[540, -560], [370, -380], [190, -230], [100, -140]] },
+      { id: 'C', objective: 'O1', points: [[720, 160], [480, 120], [320, 95], [200, 110]] },
+      { id: 'D', objective: 'O1', points: [[130, 740], [100, 500], [80, 330], [75, 235]] },
+      { id: 'E', objective: 'O1', points: [[-720, 300], [-480, 250], [-300, 230], [-120, 160]] },
     ],
     forests: [
       { x: -520, z: -480, r: 320, strength: 0.7 },

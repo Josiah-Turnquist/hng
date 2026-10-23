@@ -183,6 +183,7 @@ export function roller({ r, width, mat, rubber = true, hubLen = 0.03 }) {
 // Tracked running gear: creates the parts road{L,R}{i}, roller{L,R}{i}, sprocket{L,R} and
 // idler{L,R} (pivots at their centers) from local item lists, and fills meta.track.
 //   wheels: [[z, y], ...] road wheel centers, front to rear (index 0 = front)
+//   wheel: item list for every road wheel station, or (index, side) => item list
 //   rollers: [[z, y], ...] return roller centers (any order), [] for none
 //   sprocket / idler: { z, y, items, r }: r = track centerline radius around it (pitch
 //     radius for the sprocket, rim radius + linkThickness / 2 for the idler)
@@ -194,7 +195,7 @@ export function runningGear(b, { wheels, wheel, wheelR, rollers = [], roller: ro
   for (const s of [-1, 1]) {
     const S = s < 0 ? 'L' : 'R';
     const ry = s < 0 ? Math.PI : 0;
-    wheels.forEach(([z, y], i) => b.part(`road${S}${i}`, [s * offsetX, y, z]).addAll(wheel, { x: s * offsetX, y, z, ry }));
+    wheels.forEach(([z, y], i) => b.part(`road${S}${i}`, [s * offsetX, y, z]).addAll(typeof wheel === 'function' ? wheel(i, s) : wheel, { x: s * offsetX, y, z, ry }));
     const rx = (rollerX ?? offsetX) * s;
     rollers.forEach(([z, y], i) => b.part(`roller${S}${i}`, [rx, y, z]).addAll(rollerItems, { x: rx, y, z, ry }));
     b.part(`sprocket${S}`, [s * offsetX, spr.y, spr.z]).addAll(spr.items, { x: s * offsetX, y: spr.y, z: spr.z, ry });

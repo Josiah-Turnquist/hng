@@ -1,7 +1,7 @@
 // US vehicles. Conventions (vkit.js): meters, +X right, +Y up, -Z forward; origin on the
 // ground at the middle of the wheelbase (wheeled) or of the track contact length (tracked).
 import { S, DEG, TAU, ribbon, circle, roundRect, slotV, arc, torusProfile, section, layer, mirrorHalf } from './vkit.js';
-import { jeepWheel, roadWheel, sprocket, runningGear } from './parts.js';
+import { jeepWheel, roadWheel, sprocket, runningGear, steeringWheel } from './parts.js';
 
 const side = (s) => (s < 0 ? 'L' : 'R');
 
@@ -336,12 +336,12 @@ export function m4a1_sherman(b) {
     // Idler bracket and final drive housing.
     b.convex({
       points: [
-        [s * 0.79, 0.45, 2.58],
-        [s * 0.79, 0.85, 2.62],
-        [s * 0.79, 0.62, 2.3],
-        [s * 0.93, 0.66, 2.42],
-        [s * 0.93, 0.54, 2.42],
-        [s * 0.93, 0.6, 2.36],
+        [s * 0.79, IDL.y - 0.15, IDL.z + 0.16],
+        [s * 0.79, IDL.y + 0.23, IDL.z + 0.2],
+        [s * 0.79, IDL.y, IDL.z - 0.2],
+        [s * 0.93, IDL.y + 0.06, IDL.z],
+        [s * 0.93, IDL.y - 0.06, IDL.z],
+        [s * 0.93, IDL.y, IDL.z - 0.06],
       ],
       mat: P,
     });
@@ -642,4 +642,465 @@ export function m4a1_sherman(b) {
   b.module('gunner', 'turret', [0.34, 1.95, tz(-0.45)], [0.22, 0.45, 0.25]);
   b.module('commander', 'turret', [0.38, 2.1, tz(0.3)], [0.22, 0.48, 0.25]);
   b.module('loader', 'turret', [-0.42, 1.85, tz(0.0)], [0.22, 0.52, 0.26]);
+}
+
+// ---------------------------------------------------------------------------------------
+// M5A1 Stuart light tank (1943): welded hull with the 48 deg glacis carrying both driver
+// hatches, twin Cadillac engines at the rear, 37 mm M6 in the M44 mount with coax .30 cal,
+// .30 cal AA gun on the turret's right side, bow .30 cal. VVSS: 2 bogies a side (2 road
+// wheels each), 3 return rollers, front drive sprocket (14 teeth), large trailing idler on
+// the ground at the rear, T16 rubber block track (11.6 in wide, 5.5 in pitch, 66 links).
+// 4.84 m long, 2.29 m wide, 2.30 m high; 15.4 t.
+// Armor: glacis 29 mm at 48 deg, lower front 44 mm, sides 29 mm, rear 25 mm, top and belly
+// 13 mm; turret front 38 mm, mantlet 51 mm, sides and rear 32 mm, roof 13 mm.
+export function m5a1_stuart(b) {
+  const P = 'od';
+  // ---- Running gear -------------------------------------------------------------------------
+  const T = 0.05,
+    RW = 0.255,
+    yW = RW + T,
+    OX = 0.933;
+  const bogies = [-1.12, 0.28];
+  const wheels = [];
+  for (const zc of bogies) wheels.push([zc - 0.27, yW], [zc + 0.27, yW]);
+  const rollers = [
+    [-1.12, 0.74],
+    [-0.42, 0.75],
+    [0.28, 0.74],
+  ];
+  const SPR = { z: -2.1, y: 0.56 },
+    IDL = { z: 1.48, r: 0.3 };
+  IDL.y = IDL.r + T; // trailing idler runs on the ground
+  runningGear(b, {
+    wheels,
+    wheel: roadWheel({ r: RW, width: 0.17, gap: 0.04, tire: 0.04, dish: 0.025, hubR: 0.065, hubLen: 0.035, mat: P, bolts: 6 }),
+    wheelR: RW,
+    rollers,
+    roller: roadWheel({ r: 0.07, width: 0.1, tire: 0.018, dish: 0.01, hubR: 0.03, hubLen: 0.025, mat: P, seg: 16 }),
+    rollerR: 0.07,
+    sprocket: { ...SPR, r: 0.314, teeth: 14, items: sprocket({ n: 14, r0: 0.285, r1: 0.345, ringGap: 0.2, t: 0.03, drumR: 0.22, hubR: 0.12, hubLen: 0.07, mat: P, bolts: 8, tooth: 0.46, tip: 0.2 }) },
+    idler: { z: IDL.z, y: IDL.y, r: IDL.r + T / 2, items: roadWheel({ r: IDL.r, width: 0.17, gap: 0.04, rubber: false, dish: 0.03, hubR: 0.075, hubLen: 0.04, mat: P, holes: 6 }) },
+    track: { width: 0.295, pitch: 0.1397, thick: T, offsetX: OX, realLinks: 66 },
+  });
+  // The trailing idler runs on the ground: the contact length reaches its center.
+  b.meta.wheelbase = Math.round((IDL.z - wheels[0][0]) * 1000) / 1000;
+  for (const s of [-1, 1]) {
+    for (const zc of bogies) {
+      const pts = [];
+      for (const x of [0.66, 0.92])
+        for (const [dz, y] of [
+          [-0.2, 0.52],
+          [0.2, 0.52],
+          [0.16, 0.66],
+          [-0.16, 0.68],
+        ])
+          pts.push([s * x, y, zc + dz]);
+      b.convex({ points: pts, mat: P, crease: 0.3 });
+      b.span({ z0: zc - 0.04, z1: zc + 0.04, y0: 0.32, y1: 0.55, w: 0.16, x: s * 0.82, mat: P, r: 0.012 });
+      for (const d of [-1, 1]) b.rod({ from: [s * 0.8, 0.4, zc + d * 0.08], to: [s * 0.8, yW, zc + d * 0.27], r: 0.03, mat: P });
+    }
+    for (const [z, y] of rollers) b.cylAxis({ axis: 'x', x: s * 0.78, y, z, len: 0.16, r: 0.025, mat: P, seg: 8 });
+    b.rod({ from: [s * 0.7, 0.7, 1.1], to: [s * 0.82, IDL.y, IDL.z], r: 0.05, mat: P }); // idler arm
+    b.cylAxis({ axis: 'x', x: s * 0.74, y: SPR.y, z: SPR.z, len: 0.1, r: 0.17, mat: P, seg: 18 });
+  }
+
+  // ---- Hull ---------------------------------------------------------------------------------
+  const gl = (y) => -2.26 + (y - 0.92) * Math.tan(48 * DEG); // glacis surface z at height y
+  b.prismX({
+    points: [
+      [-1.86, 0.38],
+      [1.9, 0.38],
+      [2.12, 0.55],
+      [2.12, 0.93],
+      [-2.26, 0.93],
+      [-2.3, 0.72],
+      [-2.12, 0.46],
+    ],
+    x0: -0.7,
+    x1: 0.7,
+    mat: P,
+    bevel: 0.015,
+  });
+  b.prismX({
+    points: [
+      [-2.26, 0.92],
+      [2.12, 0.92],
+      [2.14, 1.58],
+      [2.08, 1.62],
+      [gl(1.62), 1.62],
+    ],
+    x0: -1.12,
+    x1: 1.12,
+    mat: P,
+    bevel: 0.015,
+  });
+  // Driver and assistant driver hatches with periscopes on the glacis, bow MG (right),
+  // headlights with brush guards, lifting eyes.
+  const gn = [0, Math.sin(42 * DEG), -Math.cos(42 * DEG)];
+  for (const s of [-1, 1]) {
+    const x = s * 0.48,
+      y0 = 1.36,
+      y1 = 1.6;
+    b.quad({
+      p: [
+        [x - 0.24, y0, gl(y0)],
+        [x + 0.24, y0, gl(y0)],
+        [x + 0.24, y1, gl(y1)],
+        [x - 0.24, y1, gl(y1)],
+      ].map((p) => [p[0] + gn[0] * 0.03, p[1] + gn[1] * 0.03, p[2] + gn[2] * 0.03]),
+      t: 0.03,
+      mat: P,
+      out: gn,
+    });
+    b.box({ x, y: 1.66, z: gl(1.62) + 0.12, w: 0.08, h: 0.08, d: 0.16, r: 0.01, mat: P });
+    b.box({ x, y: 1.68, z: gl(1.62) + 0.035, w: 0.06, h: 0.04, d: 0.005, r: 0.002, mat: 'dark' });
+    const hx = s * 0.95;
+    b.cyl({ z0: gl(1.1) - 0.13, z1: gl(1.1) - 0.03, r0: 0.07, r1: 0.065, x: hx, y: 1.12, mat: P, seg: 14 });
+    b.cyl({ z0: gl(1.1) - 0.136, z1: gl(1.1) - 0.128, r0: 0.06, x: hx, y: 1.12, mat: 'lamp', seg: 14 });
+    b.anchor(`headlight${side(s)}`, hx, 1.12, gl(1.1) - 0.14);
+    b.rod({ from: [hx - 0.09, 1.0, gl(1.0) - 0.02], to: [hx - 0.09, 1.24, gl(1.24) - 0.18], r: 0.009, mat: P });
+    b.rod({ from: [hx + 0.09, 1.0, gl(1.0) - 0.02], to: [hx + 0.09, 1.24, gl(1.24) - 0.18], r: 0.009, mat: P });
+    b.latheDir({ profile: torusProfile(0.04, 0.012, 6), at: [s * 0.62, 0.8, -2.28], dir: [1, 0, 0], mat: P, seg: 10 });
+    // Sand shields along the sponsons.
+    b.span({ z0: -1.9, z1: 2.05, y0: 0.84, y1: 0.93, w: 0.01, x: s * 1.125, mat: P, r: 0.003 });
+  }
+  b.anchor('driverEye', -0.48, 1.68, gl(1.62) + 0.03);
+  {
+    const bx = 0.3,
+      by = 1.2;
+    b.sphere({ x: bx, y: by, z: gl(by), r: 0.1, sz: 0.6, mat: P, seg: 14 });
+    b.cyl({ z0: gl(by) - 0.05, z1: gl(by) - 0.22, r0: 0.02, x: bx, y: by, mat: 'blued', seg: 10 });
+    b.anchor('bowMgMuzzle', bx, by, gl(by) - 0.22);
+  }
+  // Engine deck with grilles, rear plate with the exhaust deflector, stowage box.
+  b.box({ x: 0, y: 1.63, z: 1.4, w: 1.5, h: 0.03, d: 1.2, r: 0.01, mat: 'black' });
+  for (let i = 0; i < 7; i++) b.box({ x: 0, y: 1.65, z: 0.9 + i * 0.17, w: 1.5, h: 0.015, d: 0.04, r: 0.004, mat: P });
+  b.convex({
+    points: [
+      [-0.8, 0.95, 2.1],
+      [0.8, 0.95, 2.1],
+      [-0.8, 1.2, 2.16],
+      [0.8, 1.2, 2.16],
+      [-0.8, 0.95, 2.26],
+      [0.8, 0.95, 2.26],
+    ],
+    mat: P,
+  });
+  b.box({ x: 0, y: 1.42, z: 2.24, w: 1.4, h: 0.3, d: 0.22, r: 0.02, mat: P }); // stowage box
+  for (const s of [-1, 1]) b.anchor(`exhaust${side(s)}`, s * 0.45, 0.98, 2.25);
+
+  // ---- Turret ---------------------------------------------------------------------------------
+  const zT = -0.32,
+    yR = 1.62;
+  b.part('turret', [0, yR, zT]);
+  const plan = mirrorHalf([
+    [0, -0.66],
+    [0.5, -0.66],
+    [0.68, -0.48],
+    [0.72, -0.1],
+    [0.72, 0.4],
+    [0.6, 0.86],
+    [0.45, 1.0],
+    [0, 1.02],
+  ]);
+  const L3 = (y, sc) => plan.map(([x, dz]) => [x * sc, y, zT + dz * sc]);
+  b.convex({ points: [...L3(1.64, 1), ...L3(2.14, 0.9), ...L3(2.2, 0.86)], mat: P, crease: 0.3 });
+  for (const s of [-1, 1]) {
+    b.box({ x: s * 0.28, y: 2.21, z: zT + 0.2, w: 0.42, h: 0.03, d: 0.5, r: 0.01, mat: P }); // split hatches
+    b.box({ x: s * 0.28, y: 2.27, z: zT - 0.14, w: 0.08, h: 0.08, d: 0.15, r: 0.01, mat: P });
+  }
+  b.at('turret', 'commanderEye', -0.28, 2.45, zT + 0.2);
+  // AA .30 cal on its bracket on the turret's right side.
+  b.box({ x: 0.74, y: 1.95, z: zT + 0.35, w: 0.08, h: 0.18, d: 0.12, r: 0.01, mat: P });
+  const mg = [0.82, 2.24, zT + 0.35];
+  b.cylAxis({ axis: 'y', x: mg[0], y: 2.08, z: mg[2], len: 0.3, r: 0.022, mat: P, seg: 8 });
+  b.part('pintleMg', mg);
+  b.box({ x: mg[0], y: mg[1] + 0.05, z: mg[2] + 0.05, w: 0.07, h: 0.1, d: 0.4, r: 0.008, mat: 'blued' });
+  b.cyl({ z0: mg[2] - 0.15, z1: mg[2] - 0.45, r0: 0.024, x: mg[0], y: mg[1] + 0.05, mat: 'blued', seg: 10 });
+  b.cyl({ z0: mg[2] - 0.45, z1: mg[2] - 0.6, r0: 0.01, x: mg[0], y: mg[1] + 0.05, mat: 'blued', seg: 8 });
+  b.box({ x: mg[0] - 0.07, y: mg[1] + 0.02, z: mg[2], w: 0.08, h: 0.12, d: 0.2, r: 0.008, mat: P });
+  b.at('pintleMg', 'mgMount', mg[0], mg[1], mg[2]);
+  b.at('pintleMg', 'mgMuzzle', mg[0], mg[1] + 0.05, mg[2] - 0.6);
+  b.body();
+
+  // ---- Gun: 37 mm M6 in the M44 mount -------------------------------------------------------
+  const yG = 1.9,
+    zG = zT - 0.5;
+  b.part('gun', [0, yG, zG]);
+  const rot = [];
+  for (let i = 0; i <= 8; i++) {
+    const a = -0.9 + (1.8 * i) / 8;
+    for (const x of [-0.36, 0.36]) rot.push([x, yG + 0.2 * Math.sin(a), zG - 0.2 * Math.cos(a)]);
+  }
+  b.convex({ points: rot, mat: P, crease: 0.45 });
+  const zS = zG - 0.25;
+  b.box({ x: 0.04, y: yG, z: zS + 0.026, w: 0.5, h: 0.3, d: 0.052, r: 0.02, mat: P }); // gun shield
+  b.latheDir({
+    profile: [
+      [0, -0.02],
+      [0.05, -0.02],
+      [0.05, 0.12],
+      [0.034, 0.14],
+      [0.03, 1.3],
+      [0.033, 1.32],
+      [0.033, 1.36],
+      [0.0185, 1.36],
+      [0.0185, 1.33],
+      [0, 1.33],
+    ],
+    at: [0, yG, zS],
+    dir: [0, 0, -1],
+    mat: P,
+    seg: 16,
+  });
+  b.cyl({ z0: zS - 0.005, z1: zS - 0.09, r0: 0.012, x: 0.15, y: yG, mat: 'blued', seg: 8 }); // coax
+  b.cyl({ z0: zS + 0.005, z1: zS - 0.004, r0: 0.02, x: -0.15, y: yG + 0.05, mat: 'dark', seg: 10 }); // telescope port
+  b.at('gun', 'muzzle', 0, yG, zS - 1.36);
+  b.at('gun', 'coaxMuzzle', 0.15, yG, zS - 0.09);
+  b.at('gun', 'gunnerEye', -0.15, yG + 0.05, zS - 0.004);
+  b.body();
+  b.meta.partParents = { gun: 'turret', pintleMg: 'turret' };
+
+  // ---- Meta, armor, modules -----------------------------------------------------------------
+  Object.assign(b.meta, {
+    name: 'M5A1 Stuart',
+    faction: 'us',
+    type: 'tracked',
+    crew: 4,
+    gun: { name: '37 mm M6', caliber: 37 },
+    gunElevation: [-12, 20],
+    turretTraverse: 30,
+    groundClearance: 0.36,
+    turretRing: { center: [0, yR, zT], radius: 0.59 },
+    specs: { mass: 15400, maxSpeed: 58, power: 220, engine: '2x Cadillac Series 42 V8', fuel: 340 },
+  });
+  b.armorZY('glacis', 'body', 29, [-2.26, 0.92], [gl(1.62), 1.62], -1.12, 1.12, [0, 0.5, -1]);
+  b.armorZY('lowerFront', 'body', 44, [-2.12, 0.46], [-2.3, 0.72], -0.7, 0.7, [0, -0.3, -1]);
+  b.armorZY('lowerFrontUpper', 'body', 44, [-2.3, 0.72], [-2.26, 0.93], -0.7, 0.7, [0, 0, -1]);
+  for (const s of [-1, 1]) {
+    const L = side(s);
+    b.armorXY(`sideUpper${L}`, 'body', 29, [s * 1.12, 0.92], [s * 1.12, 1.62], gl(1.2), 2.12, [s, 0, 0]);
+    b.armorXY(`sideLower${L}`, 'body', 29, [s * 0.7, 0.38], [s * 0.7, 0.93], -2.1, 2.1, [s, 0, 0]);
+    b.armorZY(`sponsonFloor${L}`, 'body', 13, [-2.2, 0.92], [2.12, 0.92], s * 0.7, s * 1.12, [0, -1, 0]);
+  }
+  b.armorZY('roof', 'body', 13, [gl(1.62), 1.62], [2.08, 1.62], -1.12, 1.12, [0, 1, 0]);
+  b.armorZY('rear', 'body', 25, [2.12, 0.55], [2.14, 1.58], -1.12, 1.12, [0, 0, 1]);
+  b.armorZY('belly', 'body', 13, [-1.86, 0.38], [1.9, 0.38], -0.7, 0.7, [0, -1, 0]);
+  b.armorShell('turret', 'turret', plan.map(([x, dz]) => [x, zT + dz]), [1.64, 1], [2.14, 0.9], [0, zT], (deg) => (deg < 40 ? 38 : 32));
+  b.armorPoly('turretRoof', 'turret', 13, L3(2.2, 0.86), [0, 1, 0], 3, [0, 0, 1]);
+  b.armor('mantlet', 'gun', 51, [0.04, yG, zS], [0.5, 0, 0], [0, 0.3, 0], [0, 0, -1]);
+  b.module('engine', 'body', [0, 1.1, 1.35], [0.62, 0.38, 0.6]);
+  b.module('transmission', 'body', [0, 0.72, -1.9], [0.5, 0.25, 0.3]);
+  for (const s of [-1, 1]) {
+    b.module('fuel', 'body', [s * 0.92, 1.25, 1.2], [0.18, 0.3, 0.55]);
+    b.module('ammo', 'body', [s * 0.92, 1.25, -0.35], [0.18, 0.28, 0.45]);
+  }
+  b.module('driver', 'body', [-0.45, 1.15, -1.45], [0.24, 0.45, 0.3]);
+  b.module('radio', 'body', [0.45, 1.15, -1.45], [0.24, 0.45, 0.3]); // assistant driver / bow gunner
+  b.module('gunner', 'turret', [-0.32, 1.75, zT - 0.05], [0.2, 0.5, 0.25]); // the commander aims the gun
+  b.module('commander', 'turret', [-0.32, 1.75, zT - 0.05], [0.2, 0.5, 0.25]);
+  b.module('loader', 'turret', [0.34, 1.7, zT + 0.05], [0.2, 0.5, 0.25]);
+}
+
+// ---------------------------------------------------------------------------------------
+// M3A1 half-track personnel carrier (1943): armored body (6.35 mm sides, 12.7 mm front),
+// radiator armor with louvers, unditching roller, armored windshield cover, M49 ring mount
+// with a .50 cal over the cab, rear door, 10 seats in the back. Steered front wheels
+// (8.25-20, 0.464 m radius, 1.64 m tread) and a rear track unit per side: front drive
+// sprocket, rear idler, 4 bogie wheels, 1 return roller, 12 in continuous rubber band
+// track (meta.track.pitch is the spacing of its guide lugs). 6.18 m long, 2.22 m wide,
+// 2.69 m high over the ring mount; 9.3 t.
+// Halftrack conventions: type 'halftrack'; origin at the middle of the wheelbase measured
+// from the front axle to the center of the track bogie; parts wheelFL/wheelFR (steered and
+// spun like a wheeled vehicle) plus the tracked parts road*, roller*, sprocket*, idler*.
+export function m3_halftrack(b) {
+  const P = 'od';
+  const WB = 3.44,
+    R = 0.464,
+    TW = 0.22,
+    TRK = 1.64;
+  const zF = -WB / 2,
+    zBog = WB / 2,
+    xw = TRK / 2;
+  // ---- Front wheels -----------------------------------------------------------------------
+  const wheel = jeepWheel({ r: R, width: TW, rimR: 0.254, lugs: 20, lugH: 0.015, rimMat: P, splitBolts: 12, nuts: 8 });
+  for (const [name, x] of [
+    ['wheelFL', -xw],
+    ['wheelFR', xw],
+  ])
+    b.part(name, [x, R, zF]).addAll(wheel, { x, y: R, z: zF, ry: x < 0 ? Math.PI : 0 });
+  b.body();
+  // ---- Rear track units ---------------------------------------------------------------------
+  const T = 0.035,
+    RW = 0.125,
+    OX = 0.81;
+  const wheels = [-0.45, -0.15, 0.15, 0.45].map((d) => [zBog + d, RW + T]);
+  runningGear(b, {
+    wheels,
+    wheel: roadWheel({ r: RW, width: 0.2, gap: 0.05, tire: 0.03, dish: 0.012, hubR: 0.04, hubLen: 0.02, mat: P, seg: 18 }),
+    wheelR: RW,
+    rollers: [[zBog, 0.665]],
+    roller: roadWheel({ r: 0.07, width: 0.12, tire: 0.018, dish: 0.01, hubR: 0.03, hubLen: 0.02, mat: P, seg: 16 }),
+    rollerR: 0.07,
+    sprocket: { z: zBog - 0.92, y: 0.45, r: 0.29 + T / 2, teeth: 18, items: sprocket({ n: 18, r0: 0.27, r1: 0.31, ringGap: 0.06, t: 0.04, drumR: 0.2, hubR: 0.1, hubLen: 0.06, mat: P, bolts: 8, tooth: 0.35, tip: 0.15 }) },
+    idler: { z: zBog + 0.9, y: 0.45, r: 0.29 + T / 2, items: roadWheel({ r: 0.29, width: 0.22, gap: 0.05, rubber: false, dish: 0.03, hubR: 0.07, hubLen: 0.04, mat: P, holes: 6 }) },
+    track: { width: 0.305, pitch: 0.118, thick: T, offsetX: OX },
+  });
+  for (const s of [-1, 1]) {
+    // Bogie bracket with volute springs, track frame from the sprocket to the idler.
+    b.convex({
+      points: [0.7, 0.92].flatMap((x) => [
+        [s * x, 0.24, zBog - 0.32],
+        [s * x, 0.24, zBog + 0.32],
+        [s * x, 0.5, zBog + 0.22],
+        [s * x, 0.5, zBog - 0.22],
+      ]),
+      mat: P,
+    });
+    b.span({ z0: zBog - 0.92, z1: zBog + 0.9, y0: 0.42, y1: 0.5, w: 0.06, x: s * 0.66, mat: P, r: 0.01 });
+    b.cylAxis({ axis: 'x', x: s * 0.66, y: 0.45, z: zBog - 0.92, len: 0.14, r: 0.12, mat: P, seg: 16 });
+  }
+  // ---- Chassis, front axle, unditching roller -------------------------------------------------
+  for (const s of [-1, 1]) b.span({ z0: -3.0, z1: 2.75, y0: 0.62, y1: 0.8, w: 0.07, x: s * 0.42, mat: P, r: 0.01 });
+  b.cylAxis({ axis: 'x', x: 0, y: R, z: zF, len: TRK - 0.2, r: 0.055, mat: P });
+  b.sphere({ x: 0.1, y: R, z: zF, r: 0.14, mat: P });
+  b.cylAxis({ axis: 'x', x: 0, y: 0.62, z: -3.02, len: 1.5, r: 0.16, mat: P, seg: 20 });
+  for (const s of [-1, 1]) b.span({ z0: -3.08, z1: -2.75, y0: 0.56, y1: 0.68, w: 0.05, x: s * 0.78, mat: P, r: 0.008 });
+  b.box({ x: 0, y: 0.95, z: -2.05, w: 0.62, h: 0.48, d: 0.95, r: 0.05, mat: 'black' }); // engine
+  // ---- Hood, radiator armor, fenders, lamps ---------------------------------------------------
+  b.span({ z0: -2.72, z1: -1.32, y0: 0.82, y1: 1.4, w: 1.0, mat: P, r: 0.015 });
+  b.span({ z0: -2.76, z1: -2.7, y0: 0.72, y1: 1.4, w: 1.04, mat: P, r: 0.01 });
+  for (let i = 0; i < 7; i++) b.box({ x: 0, y: 0.8 + i * 0.085, z: -2.77, w: 0.9, h: 0.05, d: 0.012, rx: -0.5, r: 0.002, mat: P }); // louvers
+  for (const s of [-1, 1]) {
+    const fl = [
+      [-2.78, 0.9],
+      [-2.7, 1.04],
+      [-1.35, 1.04],
+      [-1.32, 1.0],
+    ];
+    b.prismX({ points: ribbon(fl, 0.012), x0: s * 0.5, x1: s * 1.1, mat: P, bevel: 0.004 });
+    b.cyl({ z0: -2.66, z1: -2.52, r0: 0.085, r1: 0.075, x: s * 0.68, y: 1.16, mat: P, seg: 16 });
+    b.cyl({ z0: -2.666, z1: -2.658, r0: 0.074, x: s * 0.68, y: 1.16, mat: 'lamp', seg: 16 });
+    b.rod({ from: [s * 0.58, 1.05, -2.5], to: [s * 0.58, 1.3, -2.72], r: 0.01, mat: P });
+    b.rod({ from: [s * 0.78, 1.05, -2.5], to: [s * 0.78, 1.3, -2.72], r: 0.01, mat: P });
+    b.anchor(`headlight${side(s)}`, s * 0.68, 1.16, -2.67);
+  }
+  b.cyl({ z0: -1.0, z1: -0.5, r0: 0.07, x: 0.62, y: 0.6, mat: 'black' });
+  b.anchor('exhaustR', 0.7, 0.6, -0.48);
+
+  // ---- Armored body: cab and rear compartment -----------------------------------------------
+  const bz0 = -1.32,
+    bz1 = 2.78,
+    hw = 0.98,
+    y0 = 0.8,
+    y1 = 1.75;
+  b.span({ z0: bz0, z1: bz1, y0, y1: y0 + 0.04, w: 2 * hw, mat: P, r: 0.008 }); // floor
+  const cabDoor = roundRect(-0.93, 1.3, 0.3, 0.38, 0.02);
+  for (const s of [-1, 1]) {
+    b.prismX({
+      points: [
+        [bz0, y0],
+        [bz1, y0],
+        [bz1, y1],
+        [-0.4, y1],
+        [-0.55, 1.62],
+        [bz0, 1.62],
+      ],
+      holes: [cabDoor],
+      x0: s * (hw - 0.012),
+      x1: s * hw,
+      mat: P,
+      bevel: 0.003,
+    });
+    const name = `doorF${side(s)}`;
+    b.part(name, [s * hw, 1.3, -1.23]);
+    b.prismX({ points: roundRect(-0.93, 1.3, 0.296, 0.376, 0.02), x0: s * (hw - 0.01), x1: s * (hw + 0.004), mat: P, bevel: 0.003 });
+    b.meta.hinges[name] = { axis: [0, 1, 0], open: s * 1.3 };
+    b.body();
+    // Rear fenders over the track units, rails.
+    b.span({ z0: 0.75, z1: 2.8, y0: 0.79, y1: 0.8, w: 0.18, x: s * (hw - 0.06), mat: P });
+  }
+  b.span({ z0: bz1 - 0.012, z1: bz1, y0, y1, w: 2 * hw, mat: P, r: 0.004 }); // rear wall
+  b.span({ z0: bz1, z1: bz1 + 0.012, y0: y0 + 0.08, y1: y1 - 0.12, w: 0.6, mat: P, r: 0.004 }); // rear door
+  b.span({ z0: bz0, z1: bz0 + 0.03, y0, y1: 1.4, w: 2 * hw, mat: P, r: 0.004 }); // dash
+  // Windshield with the armored cover raised, cab seats, steering.
+  b.span({ z0: bz0 - 0.004, z1: bz0 + 0.004, y0: 1.4, y1: 1.75, w: 1.86, mat: 'glass' });
+  b.span({ z0: bz0 - 0.02, z1: bz0 + 0.02, y0: 1.74, y1: 1.78, w: 1.96, mat: P, r: 0.008 });
+  b.span({ z0: bz0 - 0.36, z1: bz0, y0: 1.76, y1: 1.772, w: 1.9, mat: P, r: 0.004 }); // armor cover, raised
+  for (const s of [-1, 1]) b.rod({ from: [s * 0.9, 1.6, bz0 - 0.02], to: [s * 0.9, 1.76, bz0 - 0.32], r: 0.01, mat: P });
+  steeringWheel(b, { hub: [-0.5, 1.4, -1.0], col: [0, 0.62, 0.785], r: 0.22, spokes: [0, Math.PI, -Math.PI / 2], columnLen: 0.6 });
+  for (const x of [-0.5, 0.05, 0.6]) {
+    b.box({ x, y: 1.08, z: -0.62, w: 0.46, h: 0.09, d: 0.4, r: 0.03, mat: 'canvasOD' });
+    b.box({ x, y: 1.36, z: -0.4, w: 0.46, h: 0.4, d: 0.07, r: 0.03, rx: 0.1, mat: 'canvasOD' });
+  }
+  // Rear benches (5 a side, facing inward), fuel tanks behind the cab seats, stowage racks.
+  for (const s of [-1, 1]) {
+    b.box({ x: s * 0.72, y: 1.18, z: 1.2, w: 0.4, h: 0.08, d: 2.6, r: 0.03, mat: 'canvasOD' });
+    b.box({ x: s * 0.72, y: 1.0, z: 1.2, w: 0.36, h: 0.3, d: 2.5, r: 0.01, mat: P });
+    b.box({ x: s * 0.93, y: 1.45, z: 1.2, w: 0.06, h: 0.32, d: 2.6, r: 0.02, mat: 'canvasOD' });
+    b.box({ x: s * 0.68, y: 1.12, z: -0.16, w: 0.5, h: 0.6, d: 0.26, r: 0.02, mat: P }); // fuel tank
+  }
+  // M49 ring mount over the cab (right) with a .50 cal.
+  const rc = [0.32, 2.12, -0.72];
+  for (const [dx, dz] of [
+    [-0.36, -0.3],
+    [0.36, -0.3],
+    [0, 0.42],
+  ])
+    b.rod({ from: [rc[0] + dx, y0 + 0.05, rc[2] + dz], to: [rc[0] + dx * 1.05, rc[1], rc[2] + dz * 1.05], r: 0.03, mat: P });
+  b.latheDir({ profile: torusProfile(0.44, 0.025, 8), at: rc, dir: [0, 1, 0], mat: P, seg: 32 });
+  const mg = [rc[0], rc[1] + 0.14, rc[2] - 0.44];
+  b.part('pintleMg', mg);
+  b.box({ x: mg[0], y: mg[1] + 0.06, z: mg[2] + 0.12, w: 0.14, h: 0.17, d: 0.6, r: 0.012, mat: 'blued' });
+  b.cyl({ z0: mg[2] - 0.18, z1: mg[2] - 0.4, r0: 0.032, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
+  b.cyl({ z0: mg[2] - 0.4, z1: mg[2] - 1.06, r0: 0.022, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
+  b.cyl({ z0: mg[2] - 1.06, z1: mg[2] - 1.1, r0: 0.026, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
+  b.box({ x: mg[0] - 0.15, y: mg[1] + 0.03, z: mg[2] + 0.06, w: 0.11, h: 0.17, d: 0.28, r: 0.008, mat: P });
+  b.box({ x: mg[0], y: mg[1] - 0.06, z: mg[2] + 0.04, w: 0.1, h: 0.08, d: 0.16, r: 0.01, mat: P }); // carriage
+  b.at('pintleMg', 'mgMount', mg[0], mg[1], mg[2]);
+  b.at('pintleMg', 'mgMuzzle', mg[0], mg[1] + 0.07, mg[2] - 1.1);
+  b.body();
+
+  // ---- Anchors, meta ---------------------------------------------------------------------------
+  b.anchor('driverSeat', -0.5, 1.2, -0.6);
+  b.anchor('driverEye', -0.5, 1.88, -0.68);
+  b.anchor('seat1', 0.05, 1.2, -0.6);
+  b.anchor('seat2', 0.6, 1.2, -0.6); // under the ring mount (the gunner stands up to man it)
+  let n = 3;
+  for (const s of [-1, 1]) for (let i = 0; i < 5; i++) b.anchor(`seat${n++}`, s * 0.72, 1.3, 0.25 + i * 0.47);
+  b.anchor('gunnerEye', mg[0], mg[1] + 0.2, mg[2] + 0.75);
+  b.meta.anchorParts.gunnerEye = 'pintleMg';
+  Object.assign(b.meta, {
+    name: 'M3A1 Half-track',
+    faction: 'us',
+    type: 'halftrack',
+    crew: 2,
+    seats: 13,
+    wheelRadius: R,
+    wheelWidth: TW,
+    frontAxleZ: zF,
+    trackBogieZ: zBog,
+    maxSteer: 0.5,
+    groundClearance: 0.28,
+    wheels: { wheelFL: [-xw, R, zF], wheelFR: [xw, R, zF] },
+    specs: { mass: 9300, maxSpeed: 72, power: 147, engine: 'White 160AX', fuel: 227 },
+  });
+  // The track contact length (bogie wheels) went into meta.wheelbase from runningGear: the
+  // half-track's wheelbase is front axle -> bogie center instead.
+  b.meta.trackContactLength = b.meta.wheelbase;
+  b.meta.wheelbase = WB;
+  b.meta.trackWidth = TRK;
+  b.armorZY('radiator', 'body', 12.7, [-2.77, 0.72], [-2.77, 1.4], -0.52, 0.52, [0, 0, -1]);
+  b.armorZY('hood', 'body', 6.35, [-2.72, 1.4], [-1.32, 1.4], -0.5, 0.5, [0, 1, 0]);
+  for (const s of [-1, 1]) {
+    b.armorXY(`hoodSide${side(s)}`, 'body', 6.35, [s * 0.5, 0.82], [s * 0.5, 1.4], -2.72, -1.32, [s, 0, 0]);
+    b.armorXY(`side${side(s)}`, 'body', 6.35, [s * hw, y0], [s * hw, y1], bz0, bz1, [s, 0, 0]);
+  }
+  b.armorZY('windshieldCover', 'body', 12.7, [bz0, 1.4], [bz0, 1.75], -0.98, 0.98, [0, 0, -1]);
+  b.armorZY('rear', 'body', 6.35, [bz1, y0], [bz1, y1], -hw, hw, [0, 0, 1]);
+  b.armorZY('floor', 'body', 6.35, [bz0, y0], [bz1, y0], -hw, hw, [0, -1, 0]);
+  b.module('engine', 'body', [0, 1.05, -2.05], [0.34, 0.3, 0.5]);
+  for (const s of [-1, 1]) b.module('fuel', 'body', [s * 0.68, 1.12, -0.16], [0.25, 0.3, 0.13]);
+  b.module('driver', 'body', [-0.5, 1.45, -0.7], [0.24, 0.45, 0.28]);
+  b.module('gunner', 'body', [0.6, 1.55, -0.7], [0.24, 0.55, 0.28]);
 }

@@ -167,6 +167,14 @@ export class Frame {
     this.tag = opts.tag ?? null;
   }
 
+  // Terrain height under a local point, in this frame's y (needs builder.hf).
+  groundY(x, z) {
+    const hf = this.b.hf;
+    if (!hf) return 0;
+    const p = this.toWorld(x, 0, z);
+    return hf.getHeight(p[0], p[2]) - this.oy;
+  }
+
   // Local -> world position.
   toWorld(x, y, z, out = [0, 0, 0]) {
     out[0] = this.ox + this.c * x + this.s * z;
@@ -606,8 +614,12 @@ export class Wall {
   }
 
   // Emit the solid wall (minus holes) with colliders. extra: { colliders: false }
+  // A hole may carry colV1: the top of its collider opening (arched openings are
+  // solid above roughly half the arch rise).
   build(extra = {}) {
     const rects = wallRects(this.len, this.height, this.holes);
+    const colHoles = this.holes.some((h) => h.colV1 !== undefined || h.noCol) ? this.holes.filter((h) => !h.noCol).map((h) => ({ ...h, v1: h.colV1 ?? h.v1 })) : null;
+    const colRects = colHoles ? wallRects(this.len, this.height, colHoles) : rects;
     const t = this.t;
     const faces = { pz: this.mat, nz: this.inner };
     const split = this.inner !== this.mat || this.innerColor !== this.color;
@@ -619,7 +631,9 @@ export class Wall {
       } else {
         this.box(this.mat, r.u0, r.v0, -t / 2, r.u1, r.v1, t / 2, { faces, color: this.color });
       }
-      if (extra.colliders !== false) {
+    }
+    if (extra.colliders !== false) {
+      for (const r of colRects) {
         // Skip colliders for the buried foundation part.
         let v0 = r.v0;
         const ground = extra.groundV ?? -Infinity;
@@ -693,6 +707,38 @@ export function archPoints(r, spring, kind = 'round', segments = 10) {
     }
   }
   return pts;
+}
+
+// The part of a rectangular hole above the springing line that an arch leaves solid:
+// x in [-r, r], y in [0, rise(kind)], minus the arch. Extruded along z (thickness t, centered).
+export function archHeadGeometry(r, thick, kind = 'round', segments = 10, extraTop = 0) {
+  const rise = archRise(r, kind) + extraTop;
+  const sh = new THREE.Shape();
+  sh.moveTo(-r, 0);
+  sh.lineTo(-r, rise);
+  sh.lineTo(r, rise);
+  sh.lineTo(r, 0);
+  const pts = archPoints(r, 0, kind, segments);
+  for (let i = pts.length - 1; i >= 0; i--) sh.lineTo(pts[i][0], pts[i][1]);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: false, curveSegments: segments });
+  g.translate(0, 0, -thick / 2);
+  return g;
+}
+
+// Square plate with a round hole (oculus / rose window), side s, hole radius r, centered.
+export function roundHoleGeometry(s, r, thick, segments = 20) {
+  const sh = new THREE.Shape();
+  sh.moveTo(-s / 2, -s / 2);
+  sh.lineTo(s / 2, -s / 2);
+  sh.lineTo(s / 2, s / 2);
+  sh.lineTo(-s / 2, s / 2);
+  sh.lineTo(-s / 2, -s / 2);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, r, 0, Math.PI * 2, true);
+  sh.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: false, curveSegments: segments });
+  g.translate(0, 0, -thick / 2);
+  return g;
 }
 
 // Height of the arch apex above the springing line.

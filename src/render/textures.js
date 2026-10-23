@@ -109,6 +109,7 @@ export const PRESETS = {
   slate: { mat: 'slateRoof', world: 2, a: lin(0.25, 0.27, 0.3), b: lin(0.33, 0.34, 0.37) },
   ashlar: { mat: 'ashlar', world: 4, a: lin(0.74, 0.69, 0.58), b: lin(0.63, 0.59, 0.5) }, // dressed limestone
   floorTiles: { mat: 'tomettes', world: 1.6, a: lin(0.52, 0.25, 0.15), b: lin(0.64, 0.35, 0.21) }, // terracotta tomettes
+  crepi: { mat: 'crepi', world: 3, a: lin(0.85, 0.84, 0.8), b: lin(0.77, 0.76, 0.72) }, // lime render, tinted per house
   woodPaint: { mat: 'woodPlanks', world: 1.4, a: lin(0.86, 0.86, 0.84), b: lin(0.76, 0.76, 0.74) }, // white boards, tinted per object
   planeBark: { mat: 'planeBark', world: 1.2, a: lin(0.56, 0.55, 0.43), b: lin(0.4, 0.42, 0.33) },
   hay: { mat: 'hay', world: 1, a: lin(0.76, 0.63, 0.36), b: lin(0.48, 0.38, 0.19) },
