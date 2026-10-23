@@ -54,8 +54,8 @@ The tables below are generated from the game's data files.
 | M1919A6 Browning | US | lmg | .30-06 Ball M2 | 853 m/s | 500 rpm | 100 (belt) | 14.70 kg | 200-2400 yd |
 | Johnson M1941 LMG | US | lmg | .30-06 Ball M2 | 853 m/s | 550 rpm | 20 (box) | 5.90 kg | 200-1000 yd |
 | Colt M1911A1 | US | pistol | .45 Ball M1911 | 253 m/s | semi-auto | 7 (box) | 1.10 kg | fixed, 25 yd |
-| M1917 Revolver | US | revolver | .45 Ball M1911 | 240 m/s | semi-auto | 6 (moon) | 1.13 kg | fixed, 25 yd |
-| Bazooka M1A1 | US | launcher | 2.36 in Rocket M6A1 (HEAT) | 82 m/s | semi-auto | 1 (single) | 6.00 kg | 50-150 m |
+| M1917 Revolver | US | revolver | .45 Ball M1911 | 240 m/s | double action | 6 (moon) | 1.13 kg | fixed, 25 yd |
+| Bazooka M1A1 | US | launcher | 2.36 in Rocket M6A1 (HEAT) | 82 m/s | single shot | 1 (single) | 6.00 kg | 50-150 m |
 | Mk II grenade | US | grenade | Mk II fragmentation grenade | - | - | - | 0.60 kg | - |
 | Karabiner 98k | Germany | rifle | 7.92 mm s.S. Patrone | 760 m/s | bolt action | 5 (stripper) | 3.90 kg | 100-2000 m |
 | Kar 98k ZF39 (scoped) | Germany | sniper | 7.92 mm s.S. Patrone | 760 m/s | bolt action | 5 (stripper) | 4.60 kg | 4x scope |
@@ -69,8 +69,8 @@ The tables below are generated from the game's data files.
 | Walther P38 | Germany | pistol | 9 mm Pistolenpatrone 08 | 350 m/s | semi-auto | 8 (box) | 0.80 kg | fixed, 25 m |
 | Luger P08 | Germany | pistol | 9 mm Pistolenpatrone 08 | 350 m/s | semi-auto | 8 (box) | 0.87 kg | fixed, 50 m |
 | Mauser C96 | Germany | pistol | 9 mm Pistolenpatrone 08 | 425 m/s | semi-auto | 10 (stripper) | 1.13 kg | 50-500 m |
-| Panzerschreck RPzB 54 | Germany | launcher | 8.8 cm R.Pz.B.Gr. 4322 (HEAT) | 110 m/s | semi-auto | 1 (single) | 11.00 kg | 50-150 m |
-| Panzerfaust 60 | Germany | launcher | Panzerfaust 60 warhead (HEAT) | 45 m/s | semi-auto | 1 (disposable) | 6.10 kg | 30-80 m |
+| Panzerschreck RPzB 54 | Germany | launcher | 8.8 cm R.Pz.B.Gr. 4322 (HEAT) | 110 m/s | single shot | 1 (single) | 11.00 kg | 50-150 m |
+| Panzerfaust 60 | Germany | launcher | Panzerfaust 60 warhead (HEAT) | 45 m/s | single shot | 1 (disposable) | 6.10 kg | 30-80 m |
 | Stielhandgranate 24 | Germany | grenade | Stielhandgranate 24 | - | - | - | 0.60 kg | - |
 | Mosin-Nagant 1891/30 | USSR | rifle | 7.62 mm Type L light ball | 865 m/s | bolt action | 5 (stripper) | 4.00 kg | 100-2000 m |
 | Mosin-Nagant PU (scoped) | USSR | sniper | 7.62 mm Type L light ball | 865 m/s | bolt action | 5 (stripper) | 4.60 kg | 3.5x scope |
@@ -81,7 +81,7 @@ The tables below are generated from the game's data files.
 | PPD-40 | USSR | smg | 7.62 mm Type P | 488 m/s | 800 rpm | 71 (drum) | 3.63 kg | 50-500 m |
 | DP-28 | USSR | lmg | 7.62 mm Type L light ball | 840 m/s | 550 rpm | 47 (pan) | 9.12 kg | 100-1500 m |
 | Tokarev TT-33 | USSR | pistol | 7.62 mm Type P | 420 m/s | semi-auto | 8 (box) | 0.85 kg | fixed, 25 m |
-| Nagant M1895 | USSR | revolver | 7.62 mm Nagant revolver | 272 m/s | semi-auto | 7 (gate) | 0.80 kg | fixed, 25 m |
+| Nagant M1895 | USSR | revolver | 7.62 mm Nagant revolver | 272 m/s | double action | 7 (gate) | 0.80 kg | fixed, 25 m |
 | PTRD-41 | USSR | atRifle | 14.5 mm B-32 API | 1012 m/s | semi-auto | 1 (single) | 17.30 kg | 400-1000 m |
 | RGD-33 | USSR | grenade | RGD-33 with fragmentation sleeve | - | - | - | 0.75 kg | - |
 
