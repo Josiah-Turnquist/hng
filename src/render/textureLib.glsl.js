@@ -201,12 +201,14 @@ export const MATERIALS = {
       float ruts = fbm01(uv * vec2(1.0, 4.0), vec2(2.0, 8.0), 4, 32.0);
       float fine = fbm01(uv, vec2(36.0), 3, 33.0);
       float h = base * 0.06 + ruts * 0.04 + fine * 0.006;
-      float puddle = smoothstep(0.38, 0.32, base * 0.7 + ruts * 0.3);
+      // A few puddles in the deepest spots; small mirror-like ones would
+      // sparkle as white specks from a distance.
+      float puddle = smoothstep(0.31, 0.26, base * 0.7 + ruts * 0.3);
       vec3 wet = srgb(vec3(0.2, 0.15, 0.1));
       vec3 dryer = srgb(vec3(0.3, 0.23, 0.16));
       albedo = mix(wet, dryer, smoothstep(0.45, 0.8, base) * 0.8) * (0.85 + 0.3 * fine);
       albedo = mix(albedo, srgb(vec3(0.1, 0.09, 0.07)), puddle * 0.7);
-      rough = mix(0.62 - 0.15 * (1.0 - base), 0.08, puddle);
+      rough = mix(0.62 - 0.15 * (1.0 - base), 0.2, puddle);
       height = mix(h, 0.035, puddle * 0.9);
       metal = 0.0;
       alpha = 1.0;
