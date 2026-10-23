@@ -1,0 +1,360 @@
+# WWII Infantry Weapons: Technical Data for Ballistics and Handling Simulation
+
+**Status: PARTIAL.** Research stopped early because of tool limits (details in section 0). US weapons are mostly covered. The Karabiner 98k and 7.92x57 sS are partly covered. The rest of the German list, all Soviet weapons, the material-penetration section and the trajectory tables were **not researched**. Those sections list the fields still needed and the sources found for them.
+
+---
+
+## 0. Method, limits and legend
+
+**How the data was collected**
+- `WebFetch` failed on every host with a DNS error (`getaddrinfo ENOTFOUND`, including en.wikipedia.org). Direct `curl` through the egress proxy was refused for Wikipedia, archive.org, forgottenweapons.com, municion.org, jbmballistics.com, hornady.com, lonesentry.com, ibiblio.org, bulletpicker.com and biggerhammer.net.
+- Every value below therefore comes from **WebSearch result summaries**: the search tool's excerpts and paraphrases of the cited pages. No page was read in full. Re-check any value that matters against the cited page. Quoted manual figures (FM 23-5, TM 9-294, FM 23-45, MIS Special Series 14) are the most reliable items here.
+- After about 50 searches by this agent, the session hit its shared cap of 200 WebSearch calls per turn, which is shared with other agents. Research stopped there. To continue, send a follow-up message (which gives a new search budget) or raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`.
+
+**Legend**
+- **[U]**: uncertain. The value has a single weak source (forum, game wiki, auction listing, low-quality secondary site) or garbled source text.
+- **[C]**: sources conflict. Every value found is listed.
+- **[NF]**: not found in the sources checked.
+- **[NR]**: not researched because the search budget ran out.
+- "conv." marks a unit conversion I computed (1 gr = 0.0647989 g; 1 ft = 0.3048 m; 1 in = 25.4 mm; 1 lb = 0.4536 kg; 1 yd = 0.9144 m). No other numbers were derived or estimated.
+
+---
+
+## 1. Heroes & Generals additions (weapons the game had that are not on the original list)
+
+These come from the official H&G Fandom wiki category and class pages, via search excerpts. The wiki says the pages were last updated 53 to 286 days ago.
+
+| Faction | Category | Item (H&G name) | Source |
+|---|---|---|---|
+| US | Carbine | M1A1 Carbine (folding-stock paratrooper M1) | https://heroesandgenerals.fandom.com/wiki/Category:US_weapons |
+| US | Revolver | M1917 (.45 ACP revolver) | https://heroesandgenerals.fandom.com/wiki/M1917 ; https://heroesandgenerals.fandom.com/wiki/Infantryman |
+| US | Pistol | Colt M1903 Pocket Hammerless | https://heroesandgenerals.fandom.com/wiki/Weapons ; https://imfdb.org/wiki/Heroes_%26_Generals |
+| US | AT launcher | M18 recoilless rifle (57 mm) | https://heroesandgenerals.fandom.com/wiki/Infantryman |
+| US | AT grenade | No.74 ("sticky" ST grenade) | https://heroesandgenerals.fandom.com/wiki/No.74 |
+| US | Grenade | Mk IIIA1 (concussion) | https://heroesandgenerals.fandom.com/wiki/Explosives |
+| US | Explosive | "Infantry Demolition Kit M1" | https://heroesandgenerals.fandom.com/wiki/Explosives |
+| US | Mines | M2A3 (AP), M1A1 (AT) | https://heroesandgenerals.fandom.com/wiki/Explosives |
+| US | Flamethrower | M2 Flamethrower | https://heroesandgenerals.fandom.com/wiki/Infantryman |
+| GER | LMG | MG13 | https://heroesandgenerals.fandom.com/wiki/Weapons |
+| GER | LMG/automatic rifle | FG42 "Ausf. E" (the game's FG42 variant name) | https://heroesandgenerals.fandom.com/wiki/Weapons |
+| GER | AT rifle | PzB 39 | https://heroesandgenerals.fandom.com/wiki/Weapons ; https://www.imfdb.org/wiki/Panzerbuchse_38_/_39 |
+| GER | AT launcher | Granatbüchse 39 (GrB 39) | https://heroesandgenerals.fandom.com/wiki/Infantryman |
+| GER | AT grenades | Hafthohlladung H3 (the Infantryman page says "H3.5"), Panzerwurfmine (L) | https://heroesandgenerals.fandom.com/wiki/Explosives ; /wiki/Infantryman |
+| GER | Grenades | M24 Frag Sleeve (i.e., Splitterring), M24 "bundle version" (i.e., geballte Ladung) | https://heroesandgenerals.fandom.com/wiki/Explosives |
+| GER | Mines | S-Mine (AP bounding), Tellermine 42 (AT) | https://heroesandgenerals.fandom.com/wiki/S-Mine ; /wiki/Explosives |
+| GER | Pistol | "Model 1934" / Mauser 1934 Taschenpistole | https://imfdb.org/wiki/Heroes_%26_Generals (search excerpt); namu.wiki H&G page lists "Model 1934" without maker **[U]** |
+| GER | Flamethrower | Flammenwerfer 41 | https://heroesandgenerals.fandom.com/wiki/Infantryman |
+| USSR | Assault weapon | AVS-36 | https://heroesandgenerals.fandom.com/wiki/Weapons |
+| USSR | LMG | Maxim-Tokarev MT; Degtyarev DT-29 | https://heroesandgenerals.fandom.com/wiki/Category:Russian_weapons |
+| USSR | Pistol | Korovin TK | IMFDB excerpt only, not confirmed by a second search **[U]** |
+| USSR | AT launcher | Ampulomet Model 1941 | https://heroesandgenerals.fandom.com/wiki/Category:Russian_weapons |
+| USSR | Grenades | RG-42, RGD-33 Bundle ("five grenades strapped together") | https://heroesandgenerals.fandom.com/wiki/RGD-33_Bundle ; /wiki/Explosives |
+| USSR | Mines | PMK-40 (AP), TM-35 (AT; "several 200 g blocks of TNT") | https://heroesandgenerals.fandom.com/wiki/TM-35 |
+| USSR | Flamethrower | ROKS-3 | https://heroesandgenerals.fandom.com/wiki/Infantryman |
+
+Searches found no evidence that H&G had shotguns, the Gewehr 41, the AVT-40 or the M38/M44 carbines. The weapons-page excerpt was cut off before any shotgun section, so this is **unconfirmed** either way. No technical data was gathered for any of the H&G additions above **[NR]**.
+
+---
+
+## 2. United States
+
+### 2.1 M1 Garand (U.S. Rifle, Cal. .30, M1)
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge / service bullet | .30-06, Ball M2 (152 gr flat-base; see section 5) | https://www.biggerhammer.net/manuals/garand/ammo.htm |
+| Muzzle velocity | 2,800 ft/s (853 m/s) with M2 ammunition | FM 23-5 ch.1: https://www.biggerhammer.net/manuals/garand/intro.htm |
+| Muzzle velocity (2nd source) | 2,750 to 2,800 ft/s | TM 9-1005-222-12: https://www.biggerhammer.net/manuals/tm9100522212/M1GARA.PDF |
+| Action | Gas-operated, air-cooled, clip-fed, semiautomatic | FM 23-5 ch.1 (above) |
+| Fire modes | Semi only | FM 23-5 ch.1 |
+| Feed | 8-round en-bloc clip into an internal magazine. The clip is ejected after the last round and the bolt locks open. | https://en.wikipedia.org/wiki/M1_Garand ; https://www.outdoorlife.com/guns/m1-garand/ **[U]** |
+| Weight | 9.5 lb (4.31 kg); about 10.5 lb (4.76 kg) with bayonet | FM 23-5 ch.1; TM 9-1005-222-12 |
+| Weight range | 9.5 to 11.6 lb (4.31 to 5.3 kg) | https://en.wikipedia.org/wiki/M1_Garand |
+| Overall length | 43.6 in (1,107 mm conv.) per FM 23-5; 43.5 in per Wikipedia **[C]** | FM 23-5 ch.1; Wikipedia |
+| Barrel length | 24 in (610 mm) | FM 23-5 ch.1 |
+| Sight radius | 27.9 in (709 mm conv.) at the 100 yd setting | FM 23-5 ch.1; TM 9-1005-222-12 |
+| Rear sight | Adjustable aperture (peep). Elevation drum graduated 100 to 1,200 yd, even ranges marked. 1 MOA per click for elevation and windage on standard sights (National Match: ½ MOA). Receiver windage marks are 4 MOA each. | https://yarchive.net/gun/rifle/garand_sight.html ; https://www.americanrifleman.org/content/from-flush-nut-to-t105-the-evolution-of-the-m1-garand-rear-sight-assembly/ ; https://www.fulton-armory.com/how-do-i-sight-in-my-m1-garand-or-m1a-m14-type-rifle/ |
+| Click travel | Windage 16 clicks left or right of centre; elevation 0 to 72 clicks | https://www.biggerhammer.net/manuals/garand/sighting.htm |
+| Battle sight | Excerpt reads "300-yard zero, less two clicks" **[U]** (wording unclear) | https://www.biggerhammer.net/manuals/garand/sighting.htm |
+| Front sight | **[NF]** | |
+| Effective range | 500 yd (457 m) | https://en.wikipedia.org/wiki/M1_Garand |
+| Maximum range (M2 ball) | 3,500 yd | https://www.biggerhammer.net/manuals/garand/ammo.htm |
+| Safety | In the front of the trigger guard. Pushing it into the guard puts it in the "locked position (inside the trigger guard)". | FM 23-5: https://www.biggerhammer.net/manuals/garand/intro.htm |
+| Clip "ping" mechanics | After the last shot the operating-rod catch holds the op rod back and releases the clip latch. The clip ejector spring in the trigger assembly throws the empty clip out, and the bolt stays open. | https://www.outdoorlife.com/guns/m1-garand/ ; https://crateclub.com/blogs/loadout/understanding-how-an-m1-garand-works-a-comprehensive-guide **[U]** (secondary) |
+| Reload handling | "Garand thumb": the bolt can slam forward on the thumb that seats the clip. Shooters hold the op-rod handle back with the side of the right hand. | https://crateclub.com/blogs/loadout/how-to-load-an-m1-garand-a-comprehensive-guide **[U]** |
+| Sniper scopes (M1C/M1D) | M81 (crosshair) and M82 (tapered post): 2.5x, FOV 35 ft at 100 yd (Lyman Alaskan type). M84: 2.2x, FOV 27 ft at 100 yd, post plus horizontal wire. Source is a 1947 maintenance manual summary. | https://www.koreanwaronline.com/arms/m1sight.htm |
+| Sniper mount and dates | Griffin & Howe mount offset to the left so clips can still be loaded. M84 not available in quantity until Korea. M1D adopted Sept 1944 as substitute standard; none produced during WWII. | https://www.swatmag.com/article/long-guns-m1d-garand-sniper-rifle/ ; https://olive-drab.com/od_other_firearms_rifle_m1c-m1d.php ; https://gunsamerica.com/digest/m1-garand-sniper-variants-m1c-m1d-part-4-garands-from-the-government/ |
+| Mechanical accuracy | **[NF]** | |
+
+### 2.2 M1 / M1A1 / M2 Carbine
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge / bullet | .30 Carbine Ball M1, 110 gr (7.13 g conv.) | https://en.wikipedia.org/wiki/.30_carbine |
+| Muzzle velocity | 1,990 ft/s (607 m/s) | https://en.wikipedia.org/wiki/M1_carbine |
+| Muzzle velocity (others) | 1,900 to 2,000 ft/s (globalsecurity). The .30 carbine article gives "110 gr FMJ 1,900 ft/s (579 m/s)" (different test basis). **[C]** | https://www.globalsecurity.org/military/systems/ground/m1-car-specs.htm ; https://en.wikipedia.org/wiki/.30_carbine |
+| Fire modes | M1/M1A1 semi only. M2 semi and full auto, with the selector on the **left** side of the receiver near the chamber (the M2 stock is cut inside on the left for it). | https://www.rockislandauction.com/detail/74/1412/us-winchester-m2-carbine-class-iiinfa-machine-gun ; https://www.nramuseum.org/guns/the-galleries/wwii,-korea,-vietnam-and-beyond-1940-to-present/case-41-korean-war-firearms/us-m2-selective-fire-carbine-w-flash-hider.aspx |
+| Cyclic rate (M2) | 750 rpm in most sources; also 750 to 775; one outlier says about 900 **[C]** | https://weaponsystems.net/system/1230-M1+Carbine ; https://www.uscarbinecal30.com/modelm2.html |
+| Feed | 15- or 30-round detachable box. The 30-round magazine came in with the M2. | https://en.wikipedia.org/wiki/M1_carbine ; https://www.uscarbinecal30.com/modelm2.html |
+| Weight | 5.2 lb (2.36 kg) empty (Wikipedia); 5.5 lb with empty magazine (globalsecurity); M1 2.36 kg and M1A1 2.53 kg with empty magazine (weaponsystems.net); M2 5.5 lb **[U]** | Wikipedia; globalsecurity; https://weaponsystems.net/system/1230-M1+Carbine |
+| Overall length | 35.6 in (904 mm conv.) (Wikipedia); 35.58 in (globalsecurity) | as above |
+| Barrel length | 17.75 in (451 mm) (Wikipedia); 18 in (globalsecurity) **[C]** (likely measured differently) | as above |
+| Rear sight (early) | Type I "L" flip sight, two positions, **150 and 300 yd**, no windage, in most sources. Some forum posts say 100/300 **[C]**. | https://www.gunsandammo.com/editorial/restoring-an-m1-carbine-part-1/485927 ; https://www.worthpoint.com/worthopedia/m1-carbine-type-1-rear-flip-sight-inland-marked ; https://www.gunboards.com/threads/m1-carbine-rear-sight.1202793/ |
+| Rear sight (late) | Adjustable sight: Type II milled, Type III stamped. One forum post gives 100, 200, 250, 300 yd settings **[U]**. | https://www.shootersforum.com/threads/advice-needed-ref-sights-on-30-cal-m1-carbine.44368/ |
+| Sight radius | **[NF]** | |
+| M1A1 | M1 with a folding metal skeleton stock, made only by Inland: 140,591 in two runs (1942–43 and 1944) **[U]**. A single source in the search gave this; the excerpt did not say which page. | https://weaponsystems.net/system/1230-M1+Carbine ; https://www.uscarbinecal30.com/modelm2.html |
+| Effective range, accuracy, action detail | **[NF]** | |
+
+### 2.3 M1903 Springfield / M1903A3 / M1903A4 (sniper)
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .30-06 (M1/M2 ball) | https://en.wikipedia.org/wiki/M1903_Springfield |
+| Muzzle velocity | 2,800 ft/s (853 m/s) | https://en.wikipedia.org/wiki/M1903_Springfield |
+| Action / feed | Bolt action. 5-round internal box loaded with 5-round stripper clips (a 25-round magazine existed for an air-service variant). | https://en.wikipedia.org/wiki/M1903_Springfield |
+| Weight | 8.7 lb (3.9 kg) (Wikipedia); other sites give 8.5 lb and 8.67 lb | https://en.wikipedia.org/wiki/M1903_Springfield |
+| Overall length | 43.2 in (1,100 mm) | Wikipedia |
+| Barrel | 24 in (610 mm) | Wikipedia |
+| Rear sight (M1903, flip-up leaf) | Graduated to 2,700 yd (2,500 m). The 2,850 yd figure in the brief was **not** found. | https://en.wikipedia.org/wiki/M1903_Springfield |
+| M1903A3 rear sight | Receiver-mounted aperture, ramp-adjustable 200 to 800 yd (Shooting Times). Another excerpt gave a lower maximum (400 yd) **[C]**. | https://www.shootingtimes.com/editorial/longgun_reviews_st_springmola3a4_201003/99110 ; https://warfarehistorynetwork.com/article/forgotten-substitute/ |
+| M1903A4 build | Selected Remington M1903A3 rifles with the rear peep removed and the front blade never fitted, so no iron sights. Redfield mount. | https://www.milsurps.com/threads/a-summary-of-the-1903-a1-a3-a4-development-through-history.75146/ ; https://www.shootingtimes.com/editorial/longgun_reviews_st_springmola3a4_201003/99110 |
+| M1903A4 scope | Weaver 330C (Army M73B1). 2.5x per American Rifleman ("2.5X Weaver 330"); 2.75x per milsurps **[C]**. FOV described as "very restricted" (no number found). Reticle **[NF]**. | https://www.americanrifleman.org/content/m1903a4-development-the-u-s-army-s-search-for-a-sniper-rifle/ ; milsurps (above); https://warfarehistorynetwork.com/article/forgotten-substitute/ |
+| Sight radius, accuracy, effective range | **[NF]** | |
+
+### 2.4 Thompson M1928A1 and M1A1
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .45 ACP (Ball M1911, 230 gr) | see section 5 |
+| Muzzle velocity | 935 ft/s (285 m/s conv.) (Wikipedia); about 950 ft/s (dockeryarmory) **[U]** | https://en.wikipedia.org/wiki/Thompson_submachine_gun ; https://dockeryarmory.com/m1928a1-thompson/ |
+| Cyclic rate | M1928: 600 to 725 rpm. M1A1: 700 to 800 rpm (Wikipedia). Other figures seen: about 675, about 700 (game wiki), and 600 rpm ("older reference") **[C]**; the excerpts did not tie each to a page. | https://en.wikipedia.org/wiki/Thompson_submachine_gun ; https://www.koreanwaronline.com/arms/thompson.htm |
+| Feed | M1928A1: 20- and 30-round box, 50- and 100-round drum. M1/M1A1: box only, no drums. | https://hbsa-uk.org/knowledge-and-research/hbsa-dvd-index-and-content/hbsa-historic-machine-guns-dvd/thompson-m1928a1-45-sub-machine-gun/ ; Wikipedia |
+| Weight | M1928A1: 10.8 lb (4.9 kg) empty (Wikipedia); 10.75 lb (review) | Wikipedia ; https://shootingdiceblog.wordpress.com/2016/06/15/high-tech-auto-ordnance-m1928a1-thompson/ |
+| Weight (M1A1) | 10 lb (4.5 kg) empty (Wikipedia); about 10.5 lb (craftholsters); 11 lb (koreanwaronline) **[C]** | Wikipedia ; https://www.craftholsters.com/m1a1-thompson-review ; https://www.koreanwaronline.com/arms/thompson.htm |
+| Overall length (M1928A1) | 33.7 in (856 mm conv.) with compensator (Wikipedia); 33.75 in (review) | as above |
+| Barrel (M1928A1) | 10.5 in (267 mm), finned, with Lyman-made Cutts compensator. 12.44 in including the compensator (one source). | HBSA (above) |
+| Sights | M1928A1: adjustable Lyman rear. One listing says it is a folding ladder graduated to 650 yd **[U]**. M1A1: fixed rear sight and non-ribbed barrel. | HBSA ; https://dockeryarmory.com/m1928a1-thompson/ ; https://www.craftholsters.com/m1a1-thompson-review |
+| Bolt (M1A1) | Separate firing pin and hammer of the M1 replaced by a firing pin machined into the bolt face | https://www.craftholsters.com/m1a1-thompson-review |
+| Open/closed bolt, charging handle side, M1A1 length/barrel | **[NF]** in the excerpts | |
+
+### 2.5 M3 / M3A1 "Grease Gun"
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .45 ACP | https://en.wikipedia.org/wiki/M3_submachine_gun |
+| Muzzle velocity | 900 ft/s (274 m/s) (Wikipedia); 920 ft/s (americanspecialops) **[C]** | Wikipedia ; https://www.americanspecialops.com/delta-force/weapons/m3-grease-gun.php |
+| Cyclic rate | 450 rpm (Wikipedia); 350 to 450 rpm in another source | Wikipedia |
+| Action | Fires from an open bolt with a fixed firing pin (operating principle not stated in the excerpts) | https://www.americanrifleman.org/content/at-the-range-m3a1-submachine-gun/ ; https://gunsmagazine.com/guns/rifles/the-grease-gun/ |
+| Feed | 30-round steel stick magazine. The spring is stiff, so a loader was often needed; the M3A1 stock has a loader built in. | https://athlonoutdoors.com/article/grease-gun-m3-submachine-gun/ ; https://www.americanrifleman.org/content/at-the-range-m3a1-submachine-gun/ |
+| Weight | M3: 8.15 lb (3.70 kg) empty. M3A1: 7.95 lb (3.61 kg) (Wikipedia). Also seen: 7.65 lb; 7.8 lb without sling and magazine (vietnamgear). | Wikipedia ; https://www.vietnamgear.com/kit.aspx?kit=45 |
+| Length | 29.1 in (740 mm) stock extended, 21.9 in (556 mm) collapsed (Wikipedia); 29.8 / 22.8 in (americanspecialops) **[C]** | as above |
+| Barrel | 8 in (203 mm) | Wikipedia ; americanspecialops |
+| Sights | Fixed, set for 100 yd (91 m) | Wikipedia |
+| Effective range | 100 yd | https://www.vietnamgear.com/kit.aspx?kit=45 |
+| Cocking | M3: crank-type retracting handle on the **right** side of the receiver, fragile. M3A1: crank deleted; the shooter pulls the bolt back by a finger hole in the bolt. | https://gunsmagazine.com/guns/rifles/the-grease-gun/ ; https://athlonoutdoors.com/article/grease-gun-m3-submachine-gun/ |
+| Safety | No conventional safety. A projection on the hinged ejection-port cover locks the bolt (forward or cocked) when the cover is closed. Guns could still fire if dropped and the cover knocked open. | https://www.americanrifleman.org/content/at-the-range-m3a1-submachine-gun/ ; https://gunsmagazine.com/guns/rifles/the-grease-gun/ |
+
+### 2.6 Browning Automatic Rifle M1918A2
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .30-06 | https://en.wikipedia.org/wiki/M1918_Browning_automatic_rifle |
+| Fire modes | **Full-auto only** at two rates. The A2 has no semi. | Wikipedia ; https://machinegunboards.com/forums/index.php?%2Ftopic%2F5773-bar-1918a2-fire-rates%2F= |
+| Cyclic rate | Slow 300 to 450 rpm, fast 500 to 650 rpm (Wikipedia). One source says about 350 slow and 550 fast **[C]**. | Wikipedia ; https://www.shootingillustrated.com/content/the-m1918a2-browning-automatic-rifle/ |
+| Selector | Left side of the trigger group: **S** safe, **F** auto at the reduced rate, **A** auto at the normal rate | https://weaponsystems.net/system/1316-bar+m1918 ; https://www.historyofwar.org/articles/weapons_browning_automatic_rifle.html |
+| Rate reducer | In the buttstock with the buffer per one source; another (forum) puts it in the trigger group **[C]**. Hard to clean and prone to corrosion. | weaponsystems.net ; historyofwar.org |
+| Bolt | Fires from an open bolt (to avoid cook-offs) | Wikipedia |
+| Feed | 20-round detachable box | Wikipedia |
+| Weight | About 8.8 kg (19 lb) (Wikipedia); 19.4 lb (sproe) | Wikipedia ; http://www.sproe.com/b/bar.html |
+| Length / barrel | 1,215 mm (47.8 in) / 610 mm (24.0 in) | Wikipedia |
+| Sights | Rear sight adjustable 100 to 1,500 yd (91 to 1,372 m); sight radius 782 mm (30.8 in) on the A2 | Wikipedia |
+| Bipod | "Foldable bipod attached to the barrel" | Wikipedia |
+| Charging handle | Left side **[U]** (game-wiki source only) | https://battlefield.fandom.com/wiki/BAR_M1918 |
+| Effective range | 550 m and 600 yd in different secondary sources **[C]**. The excerpt did not say which page gave which figure: dday-overlord.com, modernfirearms.net, weaponsystems.net or sproe.com. | https://modernfirearms.net/en/machineguns/u-s-a-machineguns/browning-m1918-bar-eng/ ; https://www.dday-overlord.com/en/material/weaponry/bar-browning-automatic-rifle |
+
+### 2.7 Browning M1919A6 (with M1919A4 sight data)
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .30-06 | https://en.wikipedia.org/wiki/M1919_Browning_machine_gun |
+| Action | Recoil-operated, **closed bolt** | Wikipedia |
+| Cyclic rate | 400 to 600 rpm | Wikipedia |
+| Feed | 250-round cloth or disintegrating-link belt (Wikipedia); 150-round fabric belt (WWII Online game wiki) **[C/U]** | Wikipedia ; https://wiki.wwiionline.com/view/Browning_M1919A6 |
+| Length / barrel | 53 in (1,346 mm conv.) / 24 in | Wikipedia |
+| Weight | A6: 32 lb (Call of Duty wiki only) **[U]**. The 32.5 lb figure was **not** confirmed. Wikipedia gives 31 lb for the **A4**. | https://callofduty.fandom.com/wiki/Browning_M1919 ; Wikipedia |
+| A6 features | Bipod and carrying handle added. Shoulder stock and flash hider not confirmed in excerpts **[U]**. | https://battlefield.fandom.com/wiki/M1919_Browning |
+| Rear sight (M1919A4, FM 23-45) | Leaf graduated in 100 yd divisions up to 2,400 yd; set with the elevating-screw knob. Windage knob gives 10 mils left or right. Mil scale engraved on the left of the leaf. | https://www.ibiblio.org/hyperwar/USA/ref/FM/PDFs/FM23-45.pdf |
+| Sight radius (M1919A4) | 13.94 in (354 mm conv.) | FM 23-45 (above) |
+| Barrel change, A6-specific sight | **[NF]** | |
+
+### 2.8 Johnson M1941 rifle
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .30-06 | https://en.wikipedia.org/wiki/M1941_Johnson_rifle |
+| Action | Short recoil, rotating bolt | Wikipedia ; https://smallarmsreview.com/m1941-johnson-rifle-ar-15-progenitor/ |
+| Feed | 10-round rotary magazine, loaded with 5-round M1903 stripper clips. Loading side **[NF]**. | Wikipedia |
+| Muzzle velocity | 2,840 ft/s (866 m/s) (Wikipedia); 853 m/s (fandom) **[C]** | Wikipedia ; https://ww2-history.fandom.com/wiki/M1941_Johnson_(Rifle) |
+| Weight / length / barrel | 9.5 lb (4.31 kg) / 45.87 in (1,165 mm) / 22 in (560 mm) | Wikipedia |
+| Sights | Adjustable iron sights. Graduations **[NF]**. | Wikipedia |
+
+### 2.9 Johnson M1941 light machine gun
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .30-06 | https://en.wikipedia.org/wiki/M1941_Johnson_machine_gun |
+| Action / bolt | Short recoil, rotating bolt. **Open bolt** in full auto, **closed bolt** in semi. | Wikipedia ; https://www.americanrifleman.org/content/the-model-of-1941-johnson-light-machine-gun/ |
+| Cyclic rate | 450 to 600 rpm (Wikipedia); adjustable 200 to 600 rpm (military-history fandom) **[C]**. The 300 to 900 rpm figure in the brief was **not** found. | Wikipedia ; https://military-history.fandom.com/wiki/M1941_Johnson_machine_gun |
+| Feed | 20-round single-column box on the **left** side of the receiver. The fandom page cites a 25-round "brochure standard" **[U]**. | Wikipedia ; American Rifleman |
+| Weight | 13 lb (5.9 kg) (Wikipedia); "just over 12 lb" (American Rifleman) **[C]** | as above |
+| Length / barrel | 42 in / 22 in | Wikipedia |
+
+### 2.10 Trench shotguns (Winchester M1897 and M1912)
+
+| Field | Value | Source |
+|---|---|---|
+| M1897 weight | 8 lb (3.6 kg) | https://en.wikipedia.org/wiki/Winchester_Model_1897 |
+| M1897 barrel | 20 in (510 mm) on the trench gun | Wikipedia |
+| M1897 feed | 5-round tube magazine, plus 1 in the chamber | Wikipedia |
+| M1897 handling | No trigger disconnector, so it **slam-fires** if the trigger is held while pumping. Trench version has a perforated steel heat shield and a bayonet-lug adapter for the M1917 bayonet. 12 gauge. | Wikipedia |
+| M1912 barrel | 20 in, 20¾ in and 20⅞ in in different specimen descriptions **[C]** | https://www.rockislandauction.com/detail/53/1826 ; https://www.americanrifleman.org/content/i-have-this-old-gun-winchester-model-12-trench-gun/ |
+| M1912 feed | Tube magazine: 6 × 2¾ in shells or 5 × 3 in shells | https://www.rockislandauction.com/detail/53/1826 |
+| M1912 features | Ventilated heat shield (four rows of holes on WWII guns, six on the 1917 version) and M1917 bayonet lug. About 80,000 were made or bought in WWII, mainly for the Pacific. | American Rifleman (above); https://en.wikipedia.org/wiki/Winchester_Model_1912 |
+| M1912 weight / length | About 3.6 kg / about 100 cm **[U]** (fan wiki only) | https://ww2-history.fandom.com/wiki/Winchester_M12_shotgun |
+| 12 ga military buckshot load (pellet count, size, velocity) | **[NF]** | |
+
+### 2.11 Colt M1911A1
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge | .45 ACP Ball M1911, 230 gr (14.90 g conv.) | https://historynet.com/m1911-1911a1-weaponry/ |
+| Muzzle velocity | 830 ft/s (253 m/s) | https://en.wikipedia.org/wiki/M1911_pistol ; https://www.globalsecurity.org/military/systems/ground/m1911a1-specs.htm |
+| Feed | 7-round single-stack magazine | https://historynet.com/m1911-1911a1-weaponry/ |
+| Weight | 39 oz (1,100 g) empty with magazine (Wikipedia); 2.5 lb (1.14 kg) with empty magazine (globalsecurity). The 2.44 lb / 8.25 in figures in the brief belong to the MEU(SOC) pistol, not the M1911A1. | Wikipedia ; globalsecurity ; https://en.wikipedia.org/wiki/MEU(SOC)_pistol |
+| Length | 8.5 in (219 mm) | historynet (above) |
+| Barrel | 5.03 in (127 mm) | Wikipedia |
+| Sight radius, safety detail | **[NF]** | |
+
+### 2.12 2.36-inch Rocket Launcher M1A1 / M9 / M9A1 ("Bazooka")
+
+| Field | Value | Source |
+|---|---|---|
+| M1A1 launcher | Length about 54.5 in (1,384 mm conv.), weight about 13.26 lb (6.01 kg conv.) | TM 9-294 (1943): https://www.bulletpicker.com/pdf/TM-9-294-1943.pdf ; https://www.lonesentry.com/manuals/bazooka/bazooka-rocket-launcher-m1a1.html |
+| Rocket (per TM 9-294, 1943) | Length 21.6 in (549 mm conv.), weight 3.5 lb (1.59 kg conv.). The excerpt does not name the model; the M6A1 is likely **[U]**. | TM 9-294 (1943) |
+| Muzzle velocity | **265 ft/s (80.8 m/s conv.)** per TM 9-294. Also seen: 270 ft/s (82.3 m/s), 81 m/s, 80 m/s. | TM 9-294 ; https://ww2db.com/weapon.php?q=317 ; https://wiki.wwiionline.com/view/M9_Bazooka |
+| Sights (M1A1) | Rear peep. Front sight has three studs for 100, 200 and 300 yd; intermediate ranges, lead and windage are estimated. | TM 9-294 ; lonesentry (above) |
+| Range | Aimed fire up to 300 yd, maximum 700 yd (TM 9-294). Effective range in secondary sources: 100 yd (about 90 m), 100 m, 140 m, 150 m, or "150 to 300 yd depending on target" **[C]**. | TM 9-294 ; https://www.sonsoflibertymuseum.org/m9a1-bazooka.cfm ; https://www.ww2-weapons.com/bazooka/ |
+| Penetration | "Up to 100 mm" (early 60 mm HEAT) and "up to 125 mm" (improved rounds for the M9); 119.4 mm at 0° (4.7 in); M6A3 3.5 to 4 in (89 to 102 mm) **[C/U]**. All are from secondary sources, and the excerpts did not tie each figure to a specific page. | https://www.ww2-weapons.com/bazooka/ ; https://military-history.fandom.com/wiki/Bazooka ; https://weaponsystems.net/system/1185-M9+Bazooka |
+| Rocket shapes | M6A1/M7A1: pointed nose, fins without a rim. M6A3/M7A3: rounded nose, ring ("wheel-shaped") fin. | https://www.lonesentry.com/manuals/bazooka/bazooka-ammunition-rocket-m6a1.html |
+| M6A3 | 19.4 in (493 mm), 3.38 lb (1.53 kg) **[U]** | https://military-history.fandom.com/wiki/Bazooka |
+| M9 / M9A1 launcher | 61 in. Weight 15.87 lb (militaryfactory), 15.14 lb (sonsofliberty), or 16 lb (7.25 kg) (another source) **[C]**. The M9A1 breaks down into two sections. | https://www.militaryfactory.com/smallarms/detail.php?smallarms_id=1234 ; https://www.sonsoflibertymuseum.org/m9a1-bazooka.cfm |
+| Backblast | "Approximately 15 yards" danger area behind the launcher **[U]** (museum page only) | https://www.sonsoflibertymuseum.org/m9a1-bazooka.cfm |
+
+### 2.13 Mk 2 fragmentation grenade
+
+| Field | Value | Source |
+|---|---|---|
+| Total mass | About 1 lb 5 oz (about 600 g), depending on filling | https://en.wikipedia.org/wiki/Mk_2_grenade |
+| Body size | 3.5 in long × 2.3 in diameter | Wikipedia |
+| Filler | 2 oz (56.7 g conv.) of TNT or EC blank-fire powder (flaked or granular TNT; EC is the low-explosive filler). Wikipedia lists the filling only as "varied". | https://military-history.fandom.com/wiki/Mk_2_grenade ; https://www.ima-usa.com/products/original-u-s-wwii-inert-mkii-pineapple-grenade-with-underlying-yellow-paint-m10a2-fuze |
+| Fuzes | M5/M6/M204 detonating fuzes (HE filler); M10/M11 igniting fuzes (low-explosive filler) | Wikipedia |
+| Delay | Usually 4 to 5 s. M6A4C 4 s; M10A3 4.5 to 5.3 s. The M204 (1944) is described as "silent" and more reliable; early M10/M10A1 fuzes sometimes detonated prematurely. | Wikipedia |
+| Casualty radius | **[NF]** | |
+
+---
+
+## 3. Germany
+
+### 3.1 Karabiner 98k (partial)
+
+| Field | Value | Source |
+|---|---|---|
+| Cartridge / bullet | 7.92×57 mm, s.S. Patrone (see section 5) | https://en.wikipedia.org/wiki/7.92%C3%9757mm_Mauser |
+| Muzzle velocity | 760 m/s (Wikipedia). About 2,800 ft/s (MIS 1943 estimate). 2,600 to 2,700 ft/s (Lone Sentry enemy-ordnance catalogue) **[C]**. | https://en.wikipedia.org/wiki/Karabiner_98k ; https://www.lonesentry.com/manuals/german-infantry-weapons/kar98-german-rifle.html |
+| Weight | 3.7 to 4.1 kg (Wikipedia); about 9 lb (MIS 1943) | as above |
+| Overall length | 1,110 mm (Wikipedia); 43.5 in (MIS 1943) | as above |
+| Barrel | 600 mm (Wikipedia); 23.4 in (594 mm conv.) (MIS 1943) | as above |
+| Rear sight | Leaf with an open **V** notch on a ramp (tangent), graduated **100 to 2,000 m** in 100 m steps; **no windage adjustment** | MIS Special Series 14 (above); https://ussr.fandom.com/wiki/Karabiner_98k |
+| Front sight | Inverted-V "barleycorn" blade, sometimes with a detachable hood (hood standard from 1939 per one source **[U]**) | MIS 1943 ; https://vietnamwar.fandom.com/wiki/Karabiner_98k |
+| Sight radius | 500 mm **[U]** (fan wiki only) | https://military-history.fandom.com/wiki/Karabiner_98k |
+| Effective range | 500 m with iron sights, 800 to 1,000 m with a scope (Wikipedia). About 800 yd effective, about 3,000 yd maximum (MIS 1943). | as above |
+| Feed, safety, bolt detail, ZF39/ZF41 scopes | **[NR]** | |
+
+MIS 1943 caveat: the document itself warns that "data may be incomplete or inaccurate". It is a wartime intelligence estimate.
+
+### 3.2 Not yet researched [NR]
+
+Gewehr 41, Gewehr 43 and ZF4, Kar98k ZF39/ZF41, MP40, MP34/35, StG 44, FG 42, MG34, MG42, Walther P38, Luger P08, Mauser C96, Panzerschreck RPzB 54, Panzerfaust 30/60/100, Stielhandgranate 24, Eihandgranate 39. The same applies to the H&G extras (MG13, PzB 39, GrB 39, Hafthohlladung, Panzerwurfmine, Flammenwerfer 41, mines).
+
+Most promising source found (not read): **MIS Special Series No. 14, "German Infantry Weapons" (25 May 1943)**, reproduced on Lone Sentry. It has a separate page per weapon and an ammunition chart giving cartridge weight, bullet weight and MV:
+- https://www.lonesentry.com/manuals/german-infantry-weapons/ (index)
+- http://mobile.lonesentry.com/manuals/german-infantry-weapons/ammunition-chart.html
+- Lone Sentry "Catalog of Enemy Ordnance": https://www.lonesentry.com/ordnance/ (for example https://www.lonesentry.com/ordnance/2010/03/30/7-92-mm-granatbuchse-39-grenade-launching-rifle/)
+
+---
+
+## 4. USSR: not yet researched [NR]
+
+Mosin-Nagant M1891/30 (and PU/PE scopes), M1938 and M1944 carbines, SVT-40, AVT-40, PPSh-41, PPS-43, PPD-40, DP-28, TT-33, Nagant M1895, PTRD-41, PTRS-41, RPG-40, RPG-43, F-1, RGD-33. Also the H&G extras: AVS-36, Maxim-Tokarev, DT-29, Korovin TK, RG-42, Ampulomet, ROKS-3, PMK-40, TM-35.
+
+Suggested sources (from the brief and from search results, not read): the Soviet NSD manuals (Наставление по стрелковому делу) for the 1891/30 rifle, SVT and PPSh, which carry sight graduations and trajectory-height tables; FM 23-10 Appendix A, "Primary Sniper Weapons of the World", which may cover the PU scope (https://www.biggerhammer.net/manuals/23-10/appa.pdf); and TM 30-430, "Handbook on USSR Military Forces".
+
+---
+
+## 5. Ammunition (service loads found so far)
+
+| Cartridge | Service bullet | Bullet mass | MV (weapon / barrel) | BC | Powder charge | Sources |
+|---|---|---|---|---|---|---|
+| .30-06 | Ball M2 (flat-base) | 152 gr (9.85 g conv.); some sources say 150 gr | 2,805 ft/s (855 m/s) (Wikipedia); about 2,800 ft/s (853 m/s) in the M1 rifle (FM 23-5) | **[NF]** | About 50 gr (3.24 g) IMR 4895 (forum recollection) **[U]**; "max 48.0 gr IMR 4895 to approximate M2" (forum, citing old American Rifleman data) **[U]** | https://en.wikipedia.org/wiki/.30_carbine ; https://www.biggerhammer.net/manuals/garand/ammo.htm ; https://forum.accurateshooter.com/threads/30-06-help-loading-m2-ball-for-older-rifle.4091297/ ; https://www.m14forum.com/threads/imr-4895-load-for-m1-garand.149156/ |
+| .30-06 | Ball M2: other data | Bullet length 1.123 in; unpainted tip | Maximum range 3,500 yd | | | https://www.biggerhammer.net/manuals/garand/ammo.htm |
+| .30-06 | AP M2 (black tip) | **[NF]** | 2,770 ft/s; maximum range 3,160 yd | | | same |
+| .30-06 | Tracer M1 (red tip) | **[NF]** | 2,750 ft/s; maximum range 3,350 yd | | | same |
+| .30 Carbine | Ball M1 | 110 gr (7.13 g conv.) | 1,990 ft/s (607 m/s) from the M1 carbine (18 in test barrel); a generic 110 gr FMJ figure is 1,900 ft/s. Factory loads give 1,567 ft/s at 100 yd. | **[NF]** (the 0.136 figure belongs to Speer's 110 gr JHP, a different bullet) | About 13.5 gr (0.875 g) WC820 **[U]** (forum) | https://en.wikipedia.org/wiki/.30_carbine ; https://en.wikipedia.org/wiki/M1_carbine ; https://chuckhawks.com/30cal.htm ; https://www.gunhub.com/threads/m1-carbine.52319/ |
+| .45 ACP | Ball M1911 (FMJ) | 230 gr (14.90 g conv.) | 830 ft/s (253 m/s) from the M1911 (original spec reported as 850 ft/s, later 830); 935 ft/s from the Thompson; 900 ft/s from the M3 | **[NF]** | 5.0 gr (0.324 g) SR 7970, 885 ± 25 ft/s at 25.5 ft, 19,000 psi, per TM 43-0001-27 as quoted on a forum **[U]** | https://en.wikipedia.org/wiki/M1911_pistol ; https://chuckhawks.com/45ACP.htm ; https://castboolits.gunloads.com/archive/index.php/t-114977.html |
+| 7.92×57 | s.S. (schweres Spitzgeschoss, 1934) | 12.8 g (197.5 gr conv.) | 760 m/s from a Kar98k with 600 mm barrel | G1 **0.557 to 0.584**; elsewhere 0.593 to 0.557 and "about 0.595". Wikipedia calls BCs "debatable". **[C]** | **[NF]** (2.75 g belongs to the old Patrone 88) | https://en.wikipedia.org/wiki/7.92%C3%9757mm_Mauser |
+| 7.92×57 | S (1903 pointed bullet; reference only) | 9.9 g | n/a | G1 0.321 to 0.337 | | same |
+
+**[NR]:** 9×19 Pist.Patr.08 (and m.E.), 7.63×25 Mauser, 7.92×33 Kurz, 7.92×57 S.m.K., 7.62×54R (L light ball, D heavy ball), 7.62×25 Tokarev, 7.62×38R Nagant, 14.5×114 (B-32), 12-gauge military buckshot, and G7 BCs for every cartridge.
+
+---
+
+## 6. Material penetration: not yet researched [NR]
+
+No penetration data was gathered: wood (pine/oak), brick, concrete, sandbags/earth, sand and mild steel against .30-06, 7.92×57, 7.62×54R ball and 9×19, .45 ACP and 7.62×25. Sources to fetch next:
+- FM 5-15 *Field Fortifications* (1944 edition): protection thickness against rifle and MG bullets.
+- FM 5-103 *Survivability* (1985): direct-fire protection tables (7.62 mm ball and others).
+- FM 21-75 *Combat Skills of the Soldier*: material protection tables.
+- FM 90-10-1 / FM 3-06.11: urban-terrain penetration of brick, block and concrete.
+- The ibiblio Hyperwar FM PDF directory (https://www.ibiblio.org/hyperwar/USA/ref/FM/PDFs/), which hosts WWII FMs. FM 23-45 is confirmed there; FM 5-15 is likely but not confirmed.
+
+---
+
+## 7. Trajectory / bullet-drop tables: not yet researched [NR]
+
+No published drop or time-of-flight tables were gathered for .30-06 M2, 7.92×57 sS or 7.62×54R light ball. The only downrange figures found are the FM 23-5 maximum ranges in section 5. Sources to fetch next: Hatcher's Notebook ballistic tables for M1/M2 ball; the US FT (firing table) for the cal .30 M2 ball; German *Schußtafel* for s.S. ammunition, as printed in MG34/MG42 and rifle manuals (H.Dv. / D-series); the Soviet NSD *таблица превышений траектории* (trajectory-height table) for the 1908 light ball (L) in the 1891/30 manual. Computed solver output (for example from JBM) should not stand in for these published tables.
+
+---
+
+## 8. Fields still open for the covered US weapons
+
+- Loaded weights, apart from the M1 Garand's 10.5 lb with bayonet.
+- Front-sight types and sight radii: M1 Carbine, M1903 (A3/A4), Thompson, M3, Johnson rifle/LMG, M1911A1.
+- Mechanical accuracy (MOA or dispersion) for all weapons.
+- M1903A4 scope FOV and reticle.
+- Thompson open-bolt confirmation and charging-handle sides (M1928A1 top, M1A1 side).
+- M1919A6 weight and barrel-change procedure.
+- 12-gauge 00 buck load data.
+- Bazooka backblast from a primary manual.
+- Mk 2 grenade casualty radius from a primary manual.
+- Powder charges from primary sources (TM 9-1990, TM 9-1305-200, TM 43-0001-27).
+- G1/G7 BCs for M2 ball, Carbine M1 ball and .45 Ball M1911.
+
+Primary documents spotted in search results (not read in full):
+- FM 23-5 chapters: https://www.biggerhammer.net/manuals/garand/
+- TM 9-1275 intro: https://biggerhammer.net/manuals/garand/tm-intro.htm
+- FM 23-35 handguns: https://www.biggerhammer.net/manuals/23-35/fm23-_2.htm
+- FM 23-41 (M3 SMG) marksmanship: https://biggerhammer.net/manuals/fm23_41/CH4.PDF
+- FM 23-45 (M1919A4): https://www.ibiblio.org/hyperwar/USA/ref/FM/PDFs/FM23-45.pdf and https://patcosta.com/wp-content/uploads/2022/07/FM23-45-M-1919A4.pdf
+- TM 9-294 (bazooka, 1943): https://www.bulletpicker.com/pdf/TM-9-294-1943.pdf
+- Thompson manual excerpts: https://www.koreanwaronline.com/arms/thompson.htm
+- M1C/M1D scope manual excerpts: https://www.koreanwaronline.com/arms/m1sight.htm

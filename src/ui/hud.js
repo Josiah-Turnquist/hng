@@ -4,6 +4,8 @@
 import { STANCE } from '../actors/body.js';
 import { damp, clamp01 } from '../core/math.js';
 
+const FACTION_ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
+
 const STANCE_NAMES = ['Standing', 'Crouched', 'Prone'];
 
 export class Hud {
@@ -41,6 +43,7 @@ export class Hud {
       <div class="hud-gunmark"></div>
       <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
       <canvas class="hud-scope"></canvas>
+      <div class="hud-scores"></div>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint">Press SPACE to redeploy</div></div>`;
     document.getElementById('app').appendChild(root);
     this.root = root;
@@ -175,6 +178,7 @@ export class Hud {
       }
     }
     this._updateVehicle(p);
+    this._updateScores(g);
     // Compass: 30 px per 15 degrees.
     const yaw = s.vehicle ? p.camera.rotation.y : p.look.yaw;
     const deg = ((-yaw * 180) / Math.PI) % 360;
@@ -191,6 +195,25 @@ export class Hud {
     this.deadEl.style.display = s.alive ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;
     this._drawScope(p);
+  }
+
+  // Hold Tab: both sides' soldiers with kills, deaths and score.
+  _updateScores(g) {
+    const el = (this.scoresEl ??= this.el('.hud-scores'));
+    const show = g.input.is('scores') || !!g.mode?.over;
+    el.style.display = show ? 'flex' : 'none';
+    if (!show) return;
+    this._scoreT = (this._scoreT || 0) + 1;
+    if (this._scoreT % 15 !== 1) return;
+    const me = g.player.soldier;
+    const teams = [...new Set(g.soldiers.map((s) => s.team))].sort((a, b) => (a === me.team ? -1 : b === me.team ? 1 : a - b));
+    const side = (t) => {
+      const list = g.soldiers.filter((s) => s.team === t).sort((a, b) => b.score - a.score || b.kills - a.kills);
+      const f = list[0]?.faction;
+      const rows = list.map((s) => `<tr class="${s === me ? 'me' : ''}${s.alive ? '' : ' dead'}"><td>${s.name}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.score}</td></tr>`).join('');
+      return `<div class="side ${t === me.team ? 'own' : 'enemy'}"><h3>${f ? (FACTION_ARMY[f] || f) : ''}${g.mode?.points ? (t === 1 ? ' · attacking' : ' · defending') : ''}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th><th>Score</th></tr>${rows}</table></div>`;
+    };
+    el.innerHTML = teams.map(side).join('');
   }
 
   // Speed, gear, engine, damage, gun and seat while in a vehicle.

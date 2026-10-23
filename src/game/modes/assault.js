@@ -390,6 +390,8 @@ export class AssaultMode {
 
   _captured(p, team) {
     const g = this.game;
+    // Everyone of the capturing side on the point shares the credit.
+    for (const s of g.soldiers) if (s.alive && s.team === team && Math.hypot(s.body.x - p.x, s.body.z - p.z) < p.radius) s.score += p.kind === 'objective' ? 20 : 10;
     p.owner = team;
     p.c = team === DEF ? 1 : -1;
     if (team === ATT && p.kind !== 'access' && !this.capturedOnce.has(p.id)) {

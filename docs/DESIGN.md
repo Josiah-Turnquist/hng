@@ -1,0 +1,65 @@
+# How the game is built
+
+Plain ES modules and three.js, no build step during development (`npm start` serves the files). Everything runs in one browser page; the only worker is the sound generator.
+
+## Conventions
+
+- Units: meters, kilograms, seconds, newtons, m/s. Angles in radians in code (degrees only in data files where noted).
+- Axes: +X east (right), +Y up, -Z north (forward). A yaw of 0 faces -Z; positive yaw turns left (three.js convention).
+- Models (guns, vehicles, soldiers) are built at real scale facing -Z, with named parts and "anchors" (muzzle, eyes, seats, ejection port...).
+- The simulation runs at a fixed 120 steps per second (`src/core/loop.js`); rendering interpolates and runs as fast as the screen allows.
+
+## Main systems
+
+| System | Where | What it does |
+|---|---|---|
+| Terrain | `src/world/terrainGen.js`, `heightfield.js`, `terrainMesh.js` | 2 km heightfield at 2 m (town) with surfaces per cell (grass, dirt road, mud, fields...), river, roads, craters; GPU-textured mesh with distance detail. |
+| Village | `src/world/village/` | Plans the town (buildings, walls, square, bridges, farms) and builds merged meshes plus thousands of collision boxes, door positions, cover points and spawn spots. |
+| Collision | `src/physics/collision.js` | Oriented boxes in a 2D grid plus the heightfield. Ray casts for bullets and sight, sphere pushes for bodies and vehicles. Box flags say what a box stops (movement, bullets, sight) and its material. |
+| Ballistics | `src/ballistics/` | Drag tables (G1, G2, G7), atmosphere, projectile flight with Heun integration in steps of at most 1/400 s, material penetration and ricochet, armor penetration, and a zeroing solver used for sights. |
+| Weapons | `src/weapons/` | Weapon data (`defs.js`), ammunition (`ammo.js`), the mechanism state machine (`weapon.js`: loading, cycling, fire modes, heat), sight alignment (`sighting.js`), the first-person gun (`viewmodel.js`) and procedural gun models (`models/`). |
+| Soldiers | `src/actors/body.js`, `src/game/soldier.js` | Body movement (speeds, stances, stamina, steps, falls) and the soldier's health, wounds and weapons. `src/actors/soldierModel.js` is the skinned, procedurally animated model, which also supplies the hit zones. |
+| Vehicles | `src/vehicles/` | `vehicle.js` (rigid hull on raycast suspension, hull contacts, seats, armor plates and damage), `wheeled.js` (engine, gearbox, tires), `tracked.js` (tracks as gripping belts, steering systems, turret and gun), `trackMesh.js` (animated links), `models/` (procedural vehicle models). |
+| AI | `src/ai/` | `navgrid.js` (walkability grid and A*), `bot.js` (infantry), `tankBot.js` (tank crews). |
+| Game | `src/game/` | `game.js` (the match: update order, hits, explosions, vehicles, bots), `player.js` and `vehicleControl.js` (the player), `modes/` (Assault, firing range). |
+| Rendering | `src/render/` | HDR pipeline with atmosphere and fog, SSAO, bloom, filmic grade; cascaded shadow maps; GPU-baked procedural textures; particles and decals; spent cases. |
+| Sound | `src/audio/` | Every sound is synthesized at load (`synth.js` and `recipes/`); `audio.js` plays them with distance, air absorption, the speed of sound and reverb. |
+| UI | `src/ui/` | Menus, HUD, sights, scoreboard. |
+
+## One simulation step
+
+`Game.update(dt)`:
+
+1. The player's controls (on foot or in a vehicle) set intents and triggers.
+2. Vehicles step (4 sub-steps each for the stiff springs): suspension rays, gravity, drive train, hull contacts, air and water drag.
+3. Bots think (every 0.2-0.5 s) and act; every soldier's body moves.
+4. Footsteps, vehicles hitting people.
+5. Projectiles fly; each hit goes through `Game._onImpact` (soldier wounds, vehicle armor, effects, sound).
+6. The game mode updates (captures, timer, spawns).
+
+## How a bullet hits a soldier
+
+The projectile system asks `Game._raycastDynamic` for anything between two positions. Soldiers are tested with a bounding sphere, then the capsules of their posed model (17 body parts). The hit records the part, and the energy the bullet still had. `bulletDamage(energy, diameter)` times the part's multiplier gives the damage; bleeding depends on the wound. If the bullet goes through, it carries on with what speed it has left.
+
+## How a shell hits a tank
+
+Vehicles answer the same ray query with their armor plates (oriented boxes from the model data with real thickness in mm). `ProjectileSystem._hitArmor` compares the shell's penetration at its current speed with the plate's line-of-sight thickness (minus normalization for capped shells) and may decide on a ricochet. A penetration traces the shell on into the hull: modules on its path (engine, transmission, fuel, ammunition, gun, turret ring) are damaged and crew near the path are hurt, more with explosive filler. Tracks are separate plates that break.
+
+## Adding things
+
+- **A weapon:** add its data to `src/weapons/defs.js` (and its cartridge to `ammo.js` if new), a model builder in `src/weapons/models/` with the standard anchors (`muzzle`, `rearSight`, `frontSight`, grips, ejection port), then run `npm test`: the sighting test checks that its sights hit at the zero range.
+- **A vehicle:** add its data to `src/vehicles/defs.js` (mass, engine curve, gears, suspension, armor comes from the model) and a builder in `src/vehicles/models/` following the conventions in `vkit.js`. Add its expected top speed to `tests/vehicles.test.js`.
+- **A map:** add a definition to `src/world/maps.js` (terrain shape, river, roads, forests, objectives and lines for Assault).
+
+## Debug pages
+
+Open these through the dev server:
+
+- `debug/guns.html?gun=kar98k` (or `gun=all`; `sight=1&range=300` shows the sight picture)
+- `debug/vehicles.html?id=tiger1&armor=1`
+- `debug/soldiers.html?pose=walk`
+- `debug/village.html?view=aerial`
+- `debug/audio.html`
+- `debug/textures.html`
+
+`node tools/shot.mjs "map=town&quality=low" out.png` takes a screenshot of the game in a headless browser.

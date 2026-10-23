@@ -351,7 +351,10 @@ export class AudioSystem {
       };
       try {
         for (let i = 0; i < n; i++) {
-          const w = new Worker(new URL('./synthWorker.js', import.meta.url), { type: 'module' });
+          // The single-file build carries the worker's code inline.
+          const inline = globalThis.__HNG_SYNTH_WORKER_SRC;
+          const url = inline ? (this._workerUrl ??= URL.createObjectURL(new Blob([inline], { type: 'text/javascript' }))) : new URL('./synthWorker.js', import.meta.url);
+          const w = new Worker(url, { type: 'module' });
           w.onmessage = (e) => {
             const job = w.job;
             if (!job || e.data.error) return finish();

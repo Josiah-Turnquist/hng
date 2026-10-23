@@ -587,8 +587,16 @@ export class Game {
     if (s === this.player?.soldier) this.hud?.damage(amount);
   }
 
+  // Scores as in the original game: +5 a kill, -10 a team kill, -1 a suicide.
   onDeath(s, cause) {
-    this.hud?.killFeed(cause?.attacker, s, cause);
+    const a = cause?.attacker;
+    if (a && a !== s) {
+      if (a.team !== s.team) {
+        a.kills++;
+        a.score += 5;
+      } else a.score -= 10;
+    } else if (a === s) s.score -= 1;
+    this.hud?.killFeed(a, s, cause);
   }
 
   // Spent case thrown out of the player's gun (from the ejection port).

@@ -182,7 +182,7 @@ function paintAtlas() {
       const row = i % 10;
       text(n, r.x + r.w * (col ? 0.72 : 0.28), r.y + 340 + row * 54, `34px ${serif}`, ink, r.w * 0.4, 1);
     });
-    text('1914  —  1918', r.x + r.w / 2, r.y + r.h - 90, `bold 56px ${serif}`, ink, r.w - 60, 4);
+    text('1914 - 1918', r.x + r.w / 2, r.y + r.h - 90, `bold 56px ${serif}`, ink, r.w - 60, 4);
     age(r, 0.5, 13);
   }
   // 6) Church clock face (512 x 512).
@@ -236,7 +236,7 @@ function paintAtlas() {
     g.fillRect(r.x + 30, r.y + 30, r.w - 60, 140);
     text('VINS FINS', r.x + r.w / 2, r.y + 102, `bold 110px ${serif}`, '#5b2b28', r.w - 100, 12);
     text('LIQUEURS', r.x + r.w / 2, r.y + 270, `bold 130px ${sans}`, '#e8dcb8', r.w - 100, 10);
-    text('MAISON ROUSSEL — SAINT-AUBIN', r.x + r.w / 2, r.y + 420, `bold 48px ${serif}`, '#e8dcb8', r.w - 100, 3);
+    text('MAISON ROUSSEL · SAINT-AUBIN', r.x + r.w / 2, r.y + 420, `bold 48px ${serif}`, '#e8dcb8', r.w - 100, 3);
     // Fade: wash with the plaster color.
     g.fillStyle = 'rgba(214,204,182,0.38)';
     g.fillRect(r.x, r.y, r.w, r.h);

@@ -60,6 +60,11 @@ export class Input {
 
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
+      // Free-mouse mode has no browser exit key: Esc releases (pauses) here.
+      if (e.code === 'Escape' && this.freeMouse && this.locked) {
+        this.unlock();
+        return;
+      }
       if (this.locked && (e.code === 'Tab' || e.code.startsWith('F') || e.code === 'Space' || e.code === 'AltLeft')) e.preventDefault();
       if (e.repeat) return;
       this.down.add(e.code);
@@ -103,6 +108,7 @@ export class Input {
     );
     element.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
+      this.freeMouse = false;
       this.locked = document.pointerLockElement === element;
       if (!this.locked) {
         this.down.clear();
@@ -114,13 +120,33 @@ export class Input {
 
   lock() {
     if (this.locked) return;
-    const p = this.element.requestPointerLock?.({ unadjustedMovement: true });
+    let p = null;
+    try {
+      p = this.element.requestPointerLock?.({ unadjustedMovement: true });
+    } catch {
+      p = null;
+    }
     // Some browsers reject unadjustedMovement; fall back to a plain request.
     if (p && p.catch) p.catch(() => this.element.requestPointerLock?.());
+    // Where the mouse can't be captured at all (some embedded pages), play with
+    // the free mouse instead: its movement still turns the view.
+    clearTimeout(this._lockTimer);
+    this._lockTimer = setTimeout(() => {
+      if (this.locked || document.pointerLockElement) return;
+      this.freeMouse = true;
+      this.locked = true;
+      this.onLockChange?.(true);
+    }, 600);
   }
 
   unlock() {
     if (document.pointerLockElement) document.exitPointerLock();
+    if (this.freeMouse && this.locked) {
+      this.locked = false;
+      this.down.clear();
+      this.mouseDown = [false, false, false];
+      this.onLockChange?.(false);
+    }
   }
 
   // True while any key bound to the action is held.
