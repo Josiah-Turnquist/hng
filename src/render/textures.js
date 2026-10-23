@@ -93,6 +93,10 @@ export const PRESETS = {
   leatherBlack: { mat: 'fabric', world: 0.3, a: lin(0.08, 0.07, 0.06) },
   leatherBrown: { mat: 'fabric', world: 0.3, a: lin(0.25, 0.15, 0.09) },
   burlap: { mat: 'burlap', world: 0.6, a: lin(0.55, 0.47, 0.33), b: lin(0.45, 0.38, 0.27) },
+  // Neutral light-grey cloth and kit (leather / painted steel) for soldiers: the
+  // real colors come from vertex colors. Both average about 0.5 in linear albedo.
+  soldierCloth: { mat: 'fabric', world: 0.5, a: lin(0.78, 0.78, 0.78) },
+  soldierGear: { mat: 'soldierGear', world: 0.35, a: lin(0.735, 0.735, 0.735) },
   concrete: { mat: 'concrete', world: 3 },
   water: { mat: 'water', world: 4, normalScale: 1 },
   leavesOak: { mat: 'leaves', world: 1, alpha: true, a: lin(0.24, 0.32, 0.12), b: lin(0.34, 0.4, 0.15) },
@@ -109,6 +113,15 @@ export const PRESETS = {
   planeBark: { mat: 'planeBark', world: 1.2, a: lin(0.56, 0.55, 0.43), b: lin(0.4, 0.42, 0.33) },
   hay: { mat: 'hay', world: 1, a: lin(0.76, 0.63, 0.36), b: lin(0.48, 0.38, 0.19) },
   rubble: { mat: 'rubble', world: 2.5 },
+  // Vehicles (src/vehicles/models).
+  castOD: { mat: 'castArmor', world: 2, a: lin(0.29, 0.31, 0.2), b: lin(0.42, 0.4, 0.3) }, // cast hull/turret, olive drab
+  castSoviet: { mat: 'castArmor', world: 2, a: lin(0.27, 0.33, 0.19), b: lin(0.38, 0.4, 0.28) }, // cast turret, 4BO green
+  castGerman: { mat: 'castArmor', world: 2, a: lin(0.6, 0.52, 0.33), b: lin(0.66, 0.6, 0.45) }, // cast mantlet, dunkelgelb
+  rubberTire: { mat: 'rubber', world: 0.8, a: lin(0.075, 0.075, 0.075), b: lin(0.34, 0.3, 0.24) }, // b = dust
+  trackSteel: { mat: 'trackSteel', world: 0.6, a: lin(0.2, 0.19, 0.18), b: lin(0.3, 0.25, 0.18) }, // b = packed mud
+  canvasOD: { mat: 'fabric', world: 1.2, a: lin(0.37, 0.36, 0.25) }, // cotton duck tops and seat covers
+  canvasGerman: { mat: 'fabric', world: 1.2, a: lin(0.4, 0.39, 0.31) },
+  canvasSoviet: { mat: 'fabric', world: 1.2, a: lin(0.4, 0.4, 0.27) },
 };
 
 // Terrain layers (index = layer in the texture arrays; matches SURF ids 0..8).

@@ -67,9 +67,20 @@ function impactMud(rng, sr) {
   noiseBurst(out, rng, sr, { at, attack: 0.0002, decay: 0.002, amp: 0.25, filter: 'bp', f: 1400, q: 0.8 });
   thud(out, rng, sr, { at, amp: 1.0, f: rng.range(62, 80), tau: rng.range(0.03, 0.04), fc: 400, tone: 0.6, noise: 0.9 });
   // Squelch: a resonant band sweeping down as the mud closes over the hole.
-  noiseBurst(out, rng, sr, { at: at + 0.002, attack: 0.004, decay: 0.05, amp: 0.55, filter: 'bp', f: rng.range(800, 1000), f1: 280, glide: 0.03, q: 4 });
-  const n = rng.int(3, 6);
-  for (let k = 0; k < n; k++) bubble(out, sr, at + rng.range(0.03, 0.3), rng.range(250, 600), rng.range(0.08, 0.2), rng.range(0.012, 0.025), rng.range(1.4, 1.9));
+  noiseBurst(out, rng, sr, {
+    at: at + 0.002,
+    attack: 0.004,
+    decay: 0.05,
+    amp: 0.55,
+    filter: 'bp',
+    f: rng.range(800, 1000),
+    f1: 280,
+    glide: 0.03,
+    q: 4,
+  });
+  const n = rng.int(1, 3);
+  for (let k = 0; k < n; k++)
+    bubble(out, sr, at + rng.range(0.03, 0.3), rng.range(250, 600), rng.range(0.04, 0.1), rng.range(0.01, 0.02), rng.range(1.4, 1.9));
   scatter(rng, at + 0.01, 0.3, 60, (t, u) => noiseGrain(out, rng, nSamples(t, sr), rng.int(20, 60), rng.pareto(1.5, 0.05) * 0.12 * (1 - u), false));
   return finish(out, sr, 0.7);
 }
@@ -82,11 +93,11 @@ function impactWood(rng, sr) {
     amp: 0.8,
     f: rng.range(320, 520),
     ratios: RATIOS.wood,
-    tau: rng.range(0.025, 0.035),
+    tau: rng.range(0.012, 0.018),
     modes: 5,
-    damp: 0.8,
+    damp: 0.9,
     click: 0.4,
-    thump: 0.5,
+    thump: 0.6,
     thumpF: rng.range(110, 150),
   });
   // Splinters.
@@ -101,8 +112,9 @@ function impactWood(rng, sr) {
 function impactStone(rng, sr) {
   const out = buffer(0.6, sr);
   const at = 0.0008;
-  noiseBurst(out, rng, sr, { at, attack: 0.00004, decay: 0.0008, amp: 1.0, filter: 'hp', f: 2000 });
-  noiseBurst(out, rng, sr, { at, attack: 0.0002, decay: 0.006, amp: 0.6, filter: 'bp', f: rng.range(3200, 4800), q: 0.9 });
+  noiseBurst(out, rng, sr, { at, attack: 0.00004, decay: 0.0008, amp: 0.7, filter: 'hp', f: 2000 });
+  noiseBurst(out, rng, sr, { at, attack: 0.0002, decay: 0.006, amp: 0.7, filter: 'bp', f: rng.range(3200, 4800), q: 0.9 });
+  noiseBurst(out, rng, sr, { at, attack: 0.0003, decay: 0.012, amp: 0.6, filter: 'bp', f: rng.range(1500, 2200), q: 0.8 });
   strike(out, rng, sr, at, { amp: 0.35, f: rng.range(2800, 4200), tau: 0.008, modes: 4, click: 0 });
   thud(out, rng, sr, { at, amp: 0.35, f: 150, tau: 0.008, fc: 900 });
   // Chips and dust: pebbles ticking down, then fine dust.
@@ -118,7 +130,7 @@ function impactStone(rng, sr) {
       if (rng.chance(0.4)) noiseGrain(out, rng, i, rng.int(4, 16), a * 0.6);
     },
   );
-  noiseBurst(out, rng, sr, { at: at + 0.006, attack: 0.01, decay: 0.08, amp: 0.07, filter: 'bp', f: 3500, q: 0.5 });
+  noiseBurst(out, rng, sr, { at: at + 0.006, attack: 0.01, decay: 0.1, amp: 0.12, filter: 'bp', f: 3500, q: 0.5 });
   return finish(out, sr, 0.8);
 }
 
@@ -142,8 +154,8 @@ function impactMetal(rng, sr) {
   const out = buffer(1.1, sr);
   const at = 0.0008;
   noiseBurst(out, rng, sr, { at, attack: 0.00004, decay: 0.0006, amp: 0.9, filter: 'hp', f: 3000 });
-  plateModes(out, rng, sr, at, rng.range(480, 950), 0.7, 0.4, 10);
-  addMode(out, nSamples(at, sr), rng.range(4000, 6000), 0.3, 0.03, sr, 0);
+  plateModes(out, rng, sr, at, rng.range(480, 950), 0.7, 0.3, 10);
+  addMode(out, nSamples(at, sr), rng.range(4000, 6000), 0.4, 0.03, sr, 0);
   return finish(out, sr, 0.75, 0.08);
 }
 
@@ -167,7 +179,8 @@ function tinkle(out, rng, sr, at, amp) {
   const i0 = nSamples(at, sr);
   const f = rng.logRange(2800, 11000);
   const n = rng.int(1, 3);
-  for (let k = 0; k < n; k++) addMode(out, i0, f * RATIOS.glass[k] * rng.vary(1, 0.02), amp / (k + 1), rng.range(0.006, 0.04) / (k + 1), sr, rng.next() * TAU);
+  for (let k = 0; k < n; k++)
+    addMode(out, i0, f * RATIOS.glass[k] * rng.vary(1, 0.02), amp / (k + 1), rng.range(0.006, 0.04) / (k + 1), sr, rng.next() * TAU);
 }
 
 function impactGlass(rng, sr) {
@@ -275,7 +288,19 @@ const RECEIVER = [
 // case out, and the bolt stop clacks as the case springs free.
 function boltOpenAt(out, rng, sr, t0) {
   strike(out, rng, sr, t0 + 0.004, { amp: 0.45, f: rng.range(2400, 2900), tau: 0.008, thump: 0.3, thumpF: 240, modes: 4 });
-  scrape(out, rng, sr, { at: t0 + 0.008, dur: 0.075, amp: 0.22, f: 2600, f1: 3400, shape: 'rise', grains: 120, res: [[3100, 0.01], [4700, 0.008]] });
+  scrape(out, rng, sr, {
+    at: t0 + 0.008,
+    dur: 0.075,
+    amp: 0.22,
+    f: 2600,
+    f1: 3400,
+    shape: 'rise',
+    grains: 120,
+    res: [
+      [3100, 0.01],
+      [4700, 0.008],
+    ],
+  });
   strike(out, rng, sr, t0 + 0.088, { amp: 0.7, f: rng.range(2900, 3400), tau: 0.01, modes: 5 });
   scrape(out, rng, sr, { at: t0 + 0.12, dur: 0.15, amp: 0.3, f: 1900, f1: 2700, grains: 80, res: RECEIVER });
   strike(out, rng, sr, t0 + 0.24, { amp: 0.25, f: 4500, tau: 0.006, modes: 3 });
@@ -297,28 +322,35 @@ function boltCloseAt(out, rng, sr, t0) {
 
 function rattle(out, rng, sr, t0, t1, rate, amp, fLo = 3500, fHi = 5200) {
   scatter(rng, t0, t1, rate, (t, u) =>
-    strike(out, rng, sr, t, { amp: amp * (1 - u * 0.6) * rng.range(0.4, 1), f: rng.range(fLo, fHi), ratios: RATIOS.brass, tau: 0.006, modes: 3, click: 0.3 }),
+    strike(out, rng, sr, t, {
+      amp: amp * (1 - u * 0.6) * rng.range(0.4, 1),
+      f: rng.range(fLo, fHi),
+      ratios: RATIOS.brass,
+      tau: 0.006,
+      modes: 3,
+      click: 0.3,
+    }),
   );
 }
 
 const MECH = {
   boltOpen: {
     dur: 0.45,
-    level: 0.45,
+    level: 0.3,
     make(out, rng, sr) {
       boltOpenAt(out, rng, sr, 0);
     },
   },
   boltClose: {
     dur: 0.42,
-    level: 0.45,
+    level: 0.3,
     make(out, rng, sr) {
       boltCloseAt(out, rng, sr, 0);
     },
   },
   boltCycle: {
     dur: 0.8,
-    level: 0.45,
+    level: 0.3,
     make(out, rng, sr) {
       boltOpenAt(out, rng, sr, 0);
       boltCloseAt(out, rng, sr, rng.range(0.34, 0.38));
@@ -329,7 +361,7 @@ const MECH = {
   // the magazine lips.
   stripperClip: {
     dur: 1.0,
-    level: 0.42,
+    level: 0.28,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.005, { amp: 0.6, f: rng.range(3400, 4000), tau: 0.02, modes: 5 });
       scrape(out, rng, sr, { at: 0.01, dur: 0.04, amp: 0.18, f: 3500, grains: 50 });
@@ -345,7 +377,7 @@ const MECH = {
   },
   roundInsert: {
     dur: 0.3,
-    level: 0.38,
+    level: 0.25,
     make(out, rng, sr) {
       scrape(out, rng, sr, { at: 0.01, dur: 0.07, amp: 0.2, f: 3600, f1: 3000, grains: 60, res: [[4200, 0.01]] });
       strike(out, rng, sr, 0.08, { amp: 0.8, f: rng.range(3000, 3600), tau: 0.012, ratios: RATIOS.brass, modes: 5, thump: 0.2 });
@@ -357,7 +389,7 @@ const MECH = {
   // partials ~2.4-9 kHz, split mode pairs that shimmer, a tumble flutter.
   garandPing: {
     dur: 0.75,
-    level: 0.6,
+    level: 0.45,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.003, { amp: 0.25, f: 2100, tau: 0.01, thump: 0.25, modes: 4 });
       const t = 0.012;
@@ -382,7 +414,7 @@ const MECH = {
   // catches, the thumb gets out of the way, and the bolt slams home.
   garandClipIn: {
     dur: 0.5,
-    level: 0.45,
+    level: 0.32,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.004, { amp: 0.45, f: 3200, tau: 0.012, ratios: RATIOS.brass, modes: 4 });
       scrape(out, rng, sr, { at: 0.012, dur: 0.1, amp: 0.3, f: 2800, f1: 2200, shape: 'rise', grains: 100, res: [[3100, 0.01]] });
@@ -395,7 +427,7 @@ const MECH = {
   },
   magOut: {
     dur: 0.4,
-    level: 0.4,
+    level: 0.26,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.005, { amp: 0.45, f: 3000, tau: 0.006, modes: 4 });
       scrape(out, rng, sr, { at: 0.02, dur: 0.15, amp: 0.3, f: 1700, f1: 2400, shape: 'fall', grains: 60, res: [[2100, 0.01]] });
@@ -406,7 +438,7 @@ const MECH = {
   },
   magIn: {
     dur: 0.42,
-    level: 0.45,
+    level: 0.3,
     make(out, rng, sr) {
       scrape(out, rng, sr, { at: 0.005, dur: 0.13, amp: 0.28, f: 2000, f1: 2600, shape: 'rise', grains: 60, res: RECEIVER });
       strike(out, rng, sr, 0.14, { amp: 1.0, f: rng.range(2000, 2300), tau: 0.014, thump: 0.5, thumpF: 180, modes: 6 });
@@ -419,21 +451,45 @@ const MECH = {
   // rounds settling inside the drum.
   drumIn: {
     dur: 0.55,
-    level: 0.48,
+    level: 0.32,
     make(out, rng, sr) {
       scrape(out, rng, sr, { at: 0.0, dur: 0.09, amp: 0.25, f: 1800, f1: 2300, shape: 'rise', grains: 50 });
-      strike(out, rng, sr, 0.1, { amp: 1.0, f: rng.range(300, 360), ratios: RATIOS.can, tau: 0.06, modes: 6, click: 0.6, thump: 0.6, thumpF: 140, damp: 0.4 });
+      strike(out, rng, sr, 0.1, {
+        amp: 1.0,
+        f: rng.range(300, 360),
+        ratios: RATIOS.can,
+        tau: 0.06,
+        modes: 6,
+        click: 0.6,
+        thump: 0.6,
+        thumpF: 140,
+        damp: 0.4,
+      });
       strike(out, rng, sr, 0.108, { amp: 0.6, f: 2600, tau: 0.01, modes: 4 });
       rattle(out, rng, sr, 0.11, 0.42, 60, 0.12);
-      scatter(rng, 0.11, 0.35, 12, (t) => strike(out, rng, sr, t, { amp: 0.1, f: rng.range(450, 560), ratios: RATIOS.can, tau: 0.02, modes: 4, click: 0.2 }));
+      scatter(rng, 0.11, 0.35, 12, (t) =>
+        strike(out, rng, sr, t, { amp: 0.1, f: rng.range(450, 560), ratios: RATIOS.can, tau: 0.02, modes: 4, click: 0.2 }),
+      );
     },
   },
   chargingHandle: {
     dur: 0.5,
-    level: 0.45,
+    level: 0.3,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.004, { amp: 0.3, f: 2800, tau: 0.005, modes: 3 });
-      scrape(out, rng, sr, { at: 0.01, dur: 0.19, amp: 0.32, f: 1500, f1: 2600, shape: 'rise', grains: 90, res: [[1900, 0.012], [3300, 0.008]] });
+      scrape(out, rng, sr, {
+        at: 0.01,
+        dur: 0.19,
+        amp: 0.32,
+        f: 1500,
+        f1: 2600,
+        shape: 'rise',
+        grains: 90,
+        res: [
+          [1900, 0.012],
+          [3300, 0.008],
+        ],
+      });
       strike(out, rng, sr, 0.2, { amp: 0.55, f: 2400, tau: 0.01, modes: 4 });
       scrape(out, rng, sr, { at: 0.29, dur: 0.025, amp: 0.3, f: 2500, shape: 'flat', grains: 0 });
       strike(out, rng, sr, 0.317, { amp: 1.0, f: 1800, tau: 0.022, thump: 0.5, modes: 6 });
@@ -444,7 +500,7 @@ const MECH = {
   // stamped cover reaching its open stop.
   beltCoverOpen: {
     dur: 0.4,
-    level: 0.45,
+    level: 0.32,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.005, { amp: 0.7, f: 2800, tau: 0.01, modes: 4 });
       spring(out, rng, sr, 0.006, { f: 2000, amp: 0.08, tau: 0.03 });
@@ -454,7 +510,7 @@ const MECH = {
   },
   beltCoverClose: {
     dur: 0.4,
-    level: 0.5,
+    level: 0.34,
     make(out, rng, sr) {
       noiseBurst(out, rng, sr, { at: 0, attack: 0.03, decay: 0.02, amp: 0.04, filter: 'bp', f: 800 });
       strike(out, rng, sr, 0.06, { amp: 1.0, f: rng.range(560, 700), ratios: RATIOS.can, tau: 0.05, modes: 6, click: 0.7, thump: 0.35 });
@@ -464,7 +520,7 @@ const MECH = {
   },
   dryFire: {
     dur: 0.15,
-    level: 0.32,
+    level: 0.22,
     make(out, rng, sr) {
       scrape(out, rng, sr, { at: 0, dur: 0.02, amp: 0.05, f: 3000, grains: 0 });
       strike(out, rng, sr, 0.025, { amp: 1.0, f: rng.range(3200, 3800), tau: 0.006, modes: 4, click: 0.8, thump: 0.15 });
@@ -473,7 +529,7 @@ const MECH = {
   },
   fireModeSwitch: {
     dur: 0.12,
-    level: 0.22,
+    level: 0.15,
     make(out, rng, sr) {
       strike(out, rng, sr, 0.005, { amp: 0.7, f: 4200, tau: 0.004, modes: 3 });
       strike(out, rng, sr, 0.04, { amp: 0.5, f: 3900, tau: 0.004, modes: 3 });
@@ -484,14 +540,22 @@ const MECH = {
   // rolling.
   casingBrass: {
     dur: 0.8,
-    level: 0.3,
+    level: 0.2,
     make(out, rng, sr) {
       const f0 = rng.range(3300, 4300);
       let t = 0.002,
         gap = rng.range(0.09, 0.13),
         a = 1;
       for (let k = 0; k < 6; k++) {
-        strike(out, rng, sr, t, { amp: a * rng.range(0.7, 1), f: f0 * rng.vary(1, 0.03), ratios: RATIOS.brass, tau: 0.07 * (0.7 + 0.3 * a), modes: 5, click: 0.4, damp: 0.5 });
+        strike(out, rng, sr, t, {
+          amp: a * rng.range(0.7, 1),
+          f: f0 * rng.vary(1, 0.03),
+          ratios: RATIOS.brass,
+          tau: 0.07 * (0.7 + 0.3 * a),
+          modes: 5,
+          click: 0.4,
+          damp: 0.5,
+        });
         noiseBurst(out, rng, sr, { at: t, attack: 0.00005, decay: 0.0006, amp: 0.3 * a, filter: 'hp', f: 3000 });
         t += gap;
         gap *= rng.range(0.5, 0.65);
@@ -504,7 +568,7 @@ const MECH = {
   },
   casingSoft: {
     dur: 0.25,
-    level: 0.16,
+    level: 0.1,
     make(out, rng, sr) {
       thud(out, rng, sr, { at: 0.002, amp: 0.6, f: 140, tau: 0.01, fc: 1200 });
       strike(out, rng, sr, 0.002, { amp: 0.4, f: 2400, tau: 0.004, ratios: RATIOS.brass, modes: 3, click: 0.3 });
@@ -517,17 +581,19 @@ const MECH = {
   // Disintegrating belt link: a small, light steel strip.
   linkDrop: {
     dur: 0.35,
-    level: 0.2,
+    level: 0.13,
     make(out, rng, sr) {
       const f0 = rng.range(5200, 6800);
       const times = [0.002, rng.range(0.05, 0.07), rng.range(0.09, 0.12)];
-      times.forEach((t, k) => strike(out, rng, sr, t, { amp: [1, 0.5, 0.25][k], f: f0 * rng.vary(1, 0.03), ratios: RATIOS.bar, tau: 0.02, modes: 3, click: 0.5 }));
+      times.forEach((t, k) =>
+        strike(out, rng, sr, t, { amp: [1, 0.5, 0.25][k], f: f0 * rng.vary(1, 0.03), ratios: RATIOS.bar, tau: 0.02, modes: 3, click: 0.5 }),
+      );
     },
   },
   // Switching weapons: webbing and wool rustle, sling swivels, the stock knocking.
   weaponHandling: {
     dur: 0.7,
-    level: 0.26,
+    level: 0.18,
     make(out, rng, sr) {
       cloth(out, rng, sr, { at: 0, dur: 0.5, amp: 0.35, f: 2000, motion: 14 });
       strike(out, rng, sr, rng.range(0.1, 0.14), { amp: 0.25, f: 3400, tau: 0.01, modes: 4 });
@@ -540,7 +606,7 @@ const MECH = {
   // Raising a scoped rifle: a short rustle, the cheek meeting the stock, a tick.
   scopeIn: {
     dur: 0.35,
-    level: 0.18,
+    level: 0.12,
     make(out, rng, sr) {
       cloth(out, rng, sr, { at: 0, dur: 0.22, amp: 0.25, f: 1800 });
       thud(out, rng, sr, { at: 0.15, amp: 0.4, f: 180, tau: 0.012, fc: 600 });

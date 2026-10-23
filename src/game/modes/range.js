@@ -110,17 +110,47 @@ export class RangeMode {
 
     g.world.add(this.group);
 
+    // Motor pool behind the firing line, and tanks downrange to shoot at.
+    this.vehicleSpots = [
+      ['willys_mb', -26, 28, 0],
+      ['kubelwagen', -20, 28, 0],
+      ['gaz67', -14, 28, 0],
+      ['m4a1_sherman', 2, 32, 0],
+      ['panzer4_h', 12, 32, 0],
+      ['t34_76', 22, 32, 0],
+      ['panzer4_h', -42, -300, Math.PI],
+      ['m4a1_sherman', 44, -200, Math.PI / 2],
+      ['t34_76', -44, -500, Math.PI],
+    ].map(([id, x, z, yaw]) => ({ id, x, z, yaw, v: g.spawnVehicle(id, x, z, yaw), deadT: 0 }));
+
     // Range card UI.
     const card = document.createElement('div');
     card.className = 'range-card';
     card.innerHTML = '<h3>Range card</h3><div class="body">Shoot a target. Targets stand at 25 to 800 m to the north; the penetration test lane is 30 m to the north-east.</div>';
     g.hud.root.appendChild(card);
     this.card = card.querySelector('.body');
-    g.hud.hint('Firing range. RMB aims through the real sights; mouse wheel while aiming raises the sight for longer range. Targets: 25 to 800 m north. Press 1/2/3 to switch weapons, F2 to change weapon.', 14);
+    g.hud.hint('Firing range. RMB aims through the real sights; mouse wheel while aiming raises the sight for longer range. Targets: 25 to 800 m north; tanks at 200, 300 and 500 m. Vehicles are parked behind you: F gets in.', 14);
   }
 
   onImpact(p, info) {
     if (p.owner !== this.game.player.soldier) return;
+    if (info.target?.isVehicle) {
+      if (p.rangeReported) return;
+      p.rangeReported = true;
+      const v = info.target;
+      const d = Math.hypot(info.x - p.owner.body.x, info.z - p.owner.body.z);
+      const result = { penetrate: 'penetrated', nonpen: 'did not penetrate', ricochet: 'ricocheted' }[info.kind] || info.kind;
+      this.show(v.def.name, [
+        ['Plate', `${info.part || '?'} ${info.armorMM ?? '?'} mm`],
+        ['Impact angle', `${Math.round(((info.angle || 0) * 180) / Math.PI)} deg`],
+        ['Effective', `${Math.round(info.effMM || 0)} mm`],
+        ['Round could pierce', `${Math.round(info.penMM || 0)} mm`],
+        ['Result', result],
+        ['Distance', `${d.toFixed(0)} m`],
+        ['Speed', `${info.speed.toFixed(0)} m/s`],
+      ]);
+      return;
+    }
     const o = info.box?.owner;
     // Report the first thing a round hits (it may carry on through a paper target).
     if (p.rangeReported) return;
@@ -169,7 +199,20 @@ export class RangeMode {
     this.card.innerHTML = `<div><b>${title}</b></div>` + rows.map(([a, b]) => `<div class="row"><span>${a}</span><span>${b}</span></div>`).join('');
   }
 
-  update() {}
+  // Wrecks are towed away and replaced after a while.
+  update(dt) {
+    const g = this.game;
+    for (const spot of this.vehicleSpots || []) {
+      const v = spot.v;
+      if (v.alive) continue;
+      spot.deadT += dt;
+      if (spot.deadT < 20 || v.occupants.some((o) => o)) continue;
+      v.removeFromWorld();
+      g.vehicles.splice(g.vehicles.indexOf(v), 1);
+      spot.v = g.spawnVehicle(spot.id, spot.x, spot.z, spot.yaw);
+      spot.deadT = 0;
+    }
+  }
 }
 
 function makeTargetTexture() {

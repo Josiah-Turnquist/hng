@@ -286,3 +286,60 @@ canvas.game {
 .range-card h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); }
 .range-card .row { display: flex; justify-content: space-between; }
 .range-card .row span:last-child { font-family: var(--mono); }
+
+/* Vehicles */
+.hud-vehicle {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 300px;
+  text-align: right;
+  font-size: 11px;
+  display: none;
+}
+.hud-vehicle .vname { font-size: 13px; letter-spacing: 0.05em; color: var(--ink-dim); }
+.hud-vehicle .vrow { display: flex; justify-content: flex-end; gap: 12px; font-family: var(--mono); }
+.hud-vehicle .vspeed { font-size: 26px; font-weight: 700; }
+.hud-vehicle .vgear { font-size: 14px; align-self: flex-end; padding-bottom: 4px; color: var(--ink-dim); }
+.hud-vehicle .bar { height: 4px; background: rgba(0, 0, 0, 0.45); margin: 3px 0; }
+.hud-vehicle .fill { height: 100%; background: #c9c2a5; margin-left: auto; }
+.hud-vehicle .vmods { color: #e06450; font-weight: 600; margin: 4px 0; }
+.hud-vehicle .vgun { white-space: pre-line; font-family: var(--mono); margin-top: 6px; }
+.hud-vehicle .vseat { margin-top: 6px; color: var(--ink-dim); }
+.hud-gunmark {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(230, 120, 90, 0.85);
+  border-radius: 50%;
+  display: none;
+  pointer-events: none;
+}
+.hud-gunmark.ready { border-color: rgba(220, 220, 200, 0.9); }
+.hud-tankdir {
+  position: absolute;
+  left: 18px;
+  bottom: 110px;
+  width: 54px;
+  height: 54px;
+  display: none;
+}
+.hud-tankdir .hull {
+  position: absolute;
+  left: 15px;
+  top: 6px;
+  width: 24px;
+  height: 42px;
+  border: 2px solid rgba(220, 215, 195, 0.8);
+  border-radius: 3px;
+}
+.hud-tankdir .turret {
+  position: absolute;
+  left: 26px;
+  top: 4px;
+  width: 3px;
+  height: 24px;
+  background: rgba(230, 190, 120, 0.95);
+  transform-origin: 50% 100%;
+}

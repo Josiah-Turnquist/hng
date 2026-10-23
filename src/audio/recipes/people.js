@@ -49,7 +49,11 @@ function gait(rng) {
 function creak(out, rng, sr, at, dur, amp) {
   const i0 = nSamples(at, sr);
   const n = Math.min(out.length - i0, nSamples(dur, sr));
-  const res = [new Resonator(sr, rng.range(650, 800), 0.01), new Resonator(sr, rng.range(1200, 1450), 0.008), new Resonator(sr, rng.range(2000, 2300), 0.006)];
+  const res = [
+    new Resonator(sr, rng.range(650, 800), 0.01),
+    new Resonator(sr, rng.range(1200, 1450), 0.008),
+    new Resonator(sr, rng.range(2000, 2300), 0.006),
+  ];
   const f0 = rng.range(280, 420);
   const f1 = f0 * rng.range(0.8, 1.25);
   let ph = 0;
@@ -75,7 +79,7 @@ const STEPS = {
     noiseBurst(out, rng, sr, { at: heel, attack: 0.008, decay: 0.05, amp: 0.3, filter: 'bp', f: rng.range(3000, 4500), q: 0.6 });
     noiseBurst(out, rng, sr, { at: heel + toe, attack: 0.01, decay: 0.06, amp: 0.25 * toeAmp, filter: 'bp', f: rng.range(3500, 5000), q: 0.6 });
     scatter(rng, heel, heel + toe + 0.12, 250, (t) => noiseGrain(out, rng, nSamples(t, sr), rng.int(3, 10), rng.pareto(1.5, 0.05) * 0.18));
-    return 0.22;
+    return 0.12;
   },
   dirt(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
@@ -84,7 +88,7 @@ const STEPS = {
     noiseBurst(out, rng, sr, { at: heel, attack: 0.003, decay: 0.03, amp: 0.3, filter: 'bp', f: rng.range(1200, 1800), q: 0.7 });
     noiseBurst(out, rng, sr, { at: heel + toe, attack: 0.004, decay: 0.035, amp: 0.2 * toeAmp, filter: 'bp', f: rng.range(1500, 2200), q: 0.7 });
     scatter(rng, heel, heel + toe + 0.1, 150, (t) => noiseGrain(out, rng, nSamples(t, sr), rng.int(5, 20), rng.pareto(1.4, 0.05) * 0.15));
-    return 0.28;
+    return 0.15;
   },
   gravel(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
@@ -98,8 +102,9 @@ const STEPS = {
     crunch(heel, rng.range(0.07, 0.1), 900, 0.5);
     crunch(heel + toe, rng.range(0.08, 0.12), 700, 0.4 * toeAmp);
     const knocks = rng.int(2, 4);
-    for (let k = 0; k < knocks; k++) strike(out, rng, sr, heel + rng.range(0, toe + 0.08), { amp: rng.range(0.1, 0.25), f: rng.range(800, 1600), tau: 0.006, modes: 2, click: 0.3 });
-    return 0.35;
+    for (let k = 0; k < knocks; k++)
+      strike(out, rng, sr, heel + rng.range(0, toe + 0.08), { amp: rng.range(0.1, 0.25), f: rng.range(800, 1600), tau: 0.006, modes: 2, click: 0.3 });
+    return 0.18;
   },
   stone(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
@@ -110,16 +115,35 @@ const STEPS = {
     noiseBurst(out, rng, sr, { at: heel + toe - 0.01, attack: 0.004, decay: 0.02, amp: 0.25, filter: 'bp', f: 3000, q: 0.6 });
     noiseBurst(out, rng, sr, { at: heel + toe, attack: 0.00005, decay: 0.001, amp: 0.5 * toeAmp, filter: 'bp', f: 2500, q: 0.9 });
     strike(out, rng, sr, heel + toe, { amp: 0.2 * toeAmp, f: rng.range(1000, 1700), ratios: RATIOS.wood, tau: 0.005, modes: 3, click: 0.3 });
-    return 0.35;
+    return 0.18;
   },
   wood(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
     noiseBurst(out, rng, sr, { at: heel, attack: 0.00005, decay: 0.0015, amp: 0.8, filter: 'bp', f: 1500, q: 0.8 });
-    strike(out, rng, sr, heel, { amp: 0.7, f: rng.range(240, 380), ratios: RATIOS.wood, tau: 0.035, modes: 5, click: 0.2, damp: 0.7, thump: 0.6, thumpF: rng.range(95, 130) });
+    strike(out, rng, sr, heel, {
+      amp: 0.7,
+      f: rng.range(240, 380),
+      ratios: RATIOS.wood,
+      tau: 0.035,
+      modes: 5,
+      click: 0.2,
+      damp: 0.7,
+      thump: 0.6,
+      thumpF: rng.range(95, 130),
+    });
     addMode(out, nSamples(heel, sr), rng.range(110, 150), 0.3, 0.04, sr, 0);
-    strike(out, rng, sr, heel + toe, { amp: 0.4 * toeAmp, f: rng.range(260, 400), ratios: RATIOS.wood, tau: 0.03, modes: 4, click: 0.2, damp: 0.7, thump: 0.3 });
+    strike(out, rng, sr, heel + toe, {
+      amp: 0.4 * toeAmp,
+      f: rng.range(260, 400),
+      ratios: RATIOS.wood,
+      tau: 0.03,
+      modes: 4,
+      click: 0.2,
+      damp: 0.7,
+      thump: 0.3,
+    });
     if (rng.chance(0.4)) creak(out, rng, sr, heel + rng.range(0.05, 0.12), rng.range(0.08, 0.18), 0.12);
-    return 0.33;
+    return 0.17;
   },
   mud(out, rng, sr) {
     const { heel, toe } = gait(rng);
@@ -129,7 +153,7 @@ const STEPS = {
     const lift = heel + toe + rng.range(0.1, 0.16);
     noiseBurst(out, rng, sr, { at: lift, attack: 0.01, decay: 0.04, amp: 0.35, filter: 'bp', f: 300, f1: 900, glide: 0.04, q: 4 });
     bubble(out, sr, lift + 0.01, rng.range(150, 220), 0.35, 0.025, 2.2);
-    return 0.3;
+    return 0.13;
   },
   water(out, rng, sr) {
     const { heel, toe } = gait(rng);
@@ -145,7 +169,7 @@ const STEPS = {
     const lift = heel + toe + 0.08;
     noiseBurst(out, rng, sr, { at: lift, attack: 0.01, decay: 0.05, amp: 0.35, filter: 'bp', f: 2500, q: 0.5 });
     for (let k = 0; k < 4; k++) bubble(out, sr, lift + rng.range(0, 0.1), rng.range(700, 2000), 0.12, 0.01, 1.5);
-    return 0.35;
+    return 0.17;
   },
   leaves(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
@@ -160,7 +184,7 @@ const STEPS = {
     crackle(heel + toe, 0.16, 500, 0.3 * toeAmp);
     noiseBurst(out, rng, sr, { at: heel, attack: 0.01, decay: 0.08, amp: 0.15, filter: 'bp', f: 4500, q: 0.4 });
     noiseBurst(out, rng, sr, { at: heel + toe, attack: 0.01, decay: 0.07, amp: 0.1, filter: 'bp', f: 5000, q: 0.4 });
-    return 0.3;
+    return 0.15;
   },
   sand(out, rng, sr) {
     const { heel, toe, toeAmp } = gait(rng);
@@ -174,7 +198,7 @@ const STEPS = {
       (t) => 1500 * Math.exp(-(t - heel) / 0.12) + 50,
       (t) => noiseGrain(out, rng, nSamples(t, sr), rng.int(2, 6), rng.pareto(1.5, 0.05) * 0.1),
     );
-    return 0.22;
+    return 0.12;
   },
 };
 
@@ -236,17 +260,43 @@ function breathingHeavy(rng, sr) {
   const long = buffer(L + 1.5, sr);
   for (let k = 0; k < 4; k++) {
     const t0 = k * 1.2 + rng.range(0, 0.05);
-    breath(long, rng, sr, t0, rng.range(0.38, 0.45), rng.range(0.5, 0.6), [[rng.range(1700, 2100), 2], [2700, 3], [800, 2]], { hiss: 0.4, peak: 0.55 });
-    breath(long, rng, sr, t0 + rng.range(0.47, 0.52), rng.range(0.5, 0.6), rng.range(0.8, 1), [[rng.range(550, 700), 2.5], [1300, 3], [2500, 4]], {
-      hiss: 0.25,
-      voiced: rng.range(0.08, 0.18),
-      f0: rng.range(110, 130),
-      peak: 0.25,
-    });
+    breath(
+      long,
+      rng,
+      sr,
+      t0,
+      rng.range(0.38, 0.45),
+      rng.range(0.5, 0.6),
+      [
+        [rng.range(1700, 2100), 2],
+        [2700, 3],
+        [800, 2],
+      ],
+      { hiss: 0.4, peak: 0.55 },
+    );
+    breath(
+      long,
+      rng,
+      sr,
+      t0 + rng.range(0.47, 0.52),
+      rng.range(0.5, 0.6),
+      rng.range(0.8, 1),
+      [
+        [rng.range(550, 700), 2.5],
+        [1300, 3],
+        [2500, 4],
+      ],
+      {
+        hiss: 0.25,
+        voiced: rng.range(0.08, 0.18),
+        f0: rng.range(110, 130),
+        peak: 0.25,
+      },
+    );
   }
-  const out = fold(long, nSamples(L, sr));
-  dcBlock(out, sr, 60);
-  return normalize(out, 0.35);
+  // Filter before folding: LTI filtering then folding is circular (seamless).
+  dcBlock(long, sr, 60);
+  return normalize(fold(long, nSamples(L, sr)), 0.35);
 }
 
 function breathingCalm(rng, sr) {
@@ -254,12 +304,35 @@ function breathingCalm(rng, sr) {
   const long = buffer(L + 2, sr);
   for (let k = 0; k < 2; k++) {
     const t0 = k * 3 + rng.range(0, 0.1);
-    breath(long, rng, sr, t0, rng.range(1.0, 1.2), 0.4, [[rng.range(1000, 1200), 3], [2600, 4]], { hiss: 0.15, peak: 0.5 });
-    breath(long, rng, sr, t0 + 1.3, rng.range(1.3, 1.5), 0.5, [[rng.range(550, 650), 2], [1400, 3]], { hiss: 0.1, peak: 0.3 });
+    breath(
+      long,
+      rng,
+      sr,
+      t0,
+      rng.range(1.0, 1.2),
+      0.4,
+      [
+        [rng.range(1000, 1200), 3],
+        [2600, 4],
+      ],
+      { hiss: 0.15, peak: 0.5 },
+    );
+    breath(
+      long,
+      rng,
+      sr,
+      t0 + 1.3,
+      rng.range(1.3, 1.5),
+      0.5,
+      [
+        [rng.range(550, 650), 2],
+        [1400, 3],
+      ],
+      { hiss: 0.1, peak: 0.3 },
+    );
   }
-  const out = fold(long, nSamples(L, sr));
-  dcBlock(out, sr, 60);
-  return normalize(out, 0.2);
+  dcBlock(long, sr, 60);
+  return normalize(fold(long, nSamples(L, sr)), 0.2);
 }
 
 // Heartbeat at 100 bpm (raised by stress), heard from inside: "lub" (the AV
@@ -274,15 +347,15 @@ function heartbeat(rng, sr) {
     tone(long, sr, { at: t0 + 0.005, f: 30, f1: 26, glide: 0.05, attack: 0.015, decay: 0.05, amp: a * 0.5 });
     tone(long, sr, { at: t0 + 0.27, f: rng.range(62, 70), f1: 52, glide: 0.03, attack: 0.01, decay: 0.03, amp: a * 0.65, h2: 0.25 });
   }
-  const out = fold(long, nSamples(L, sr));
-  lowpass1(out, sr, 160);
-  lowpass1(out, sr, 200);
-  dcBlock(out, sr, 15);
-  return normalize(out, 0.45);
+  lowpass1(long, sr, 160);
+  lowpass1(long, sr, 200);
+  dcBlock(long, sr, 15);
+  return normalize(fold(long, nSamples(L, sr)), 0.45);
 }
 
-// Pain grunt: a jittery, falling glottal buzz shaped by "uh"-like formants, very
-// breathy, sharp onset, ending in an exhale.
+// Pain grunt: a jittery, falling glottal buzz shaped by "uh"-like formants, quite
+// breathy, sharp onset, ending in an exhale. The source is a sawtooth (the
+// classic -6 dB/octave glottal-plus-radiation spectrum) with jitter and shimmer.
 function hurtGrunt(rng, sr) {
   const out = buffer(0.6, sr);
   const f0 = rng.range(115, 160);
@@ -291,34 +364,34 @@ function hurtGrunt(rng, sr) {
   const n = nSamples(hold + 0.3, sr);
   const i0 = nSamples(at, sr);
   const F = [
-    [rng.range(550, 700), 7],
-    [rng.range(1000, 1250), 9],
-    [rng.range(2400, 2650), 12],
+    [rng.range(550, 700), 6],
+    [rng.range(1000, 1250), 8],
+    [rng.range(2400, 2650), 10],
   ];
   const bands = F.map(([f, q]) => new SVF(sr, f, q));
-  const gl1 = new SVF(sr, 250, 0.7);
-  const breathy = rng.range(0.45, 0.7);
+  const weights = [1, 0.7, 0.35];
+  const low = new SVF(sr, 400, 0.7);
+  const breathy = rng.range(0.25, 0.4);
   let ph = 0,
     shim = 1;
   for (let i = 0; i < n && i0 + i < out.length; i++) {
     const t = i / sr;
-    const env = t < 0.015 ? t / 0.015 : t < 0.015 + hold ? 1 : Math.exp(-(t - 0.015 - hold) / 0.06);
+    const env = (t < 0.015 ? t / 0.015 : t < 0.015 + hold ? 1 : Math.exp(-(t - 0.015 - hold) / 0.06)) * Math.min(1, (n - i) / (0.02 * sr));
     const f = f0 * (1 - 0.2 * Math.min(1, t / (hold + 0.15))) * (1 + 0.02 * rng.bi());
     ph += f / sr;
-    let pulse = 0;
     if (ph >= 1) {
       ph -= 1;
       shim = rng.range(0.85, 1.15);
-      pulse = 8 * shim;
     }
-    gl1.process(pulse);
-    const src = gl1.lp * (1 - breathy) * 3 + (rng.next() * 2 - 1) * breathy;
+    const src = (1 - 2 * ph) * shim * (1 - breathy) + (rng.next() * 2 - 1) * breathy;
     let x = 0;
     for (let k = 0; k < 3; k++) {
       bands[k].process(src);
-      x += bands[k].bpn * [1, 0.6, 0.3][k];
+      x += bands[k].bpn * weights[k];
     }
-    out[i0 + i] += x * env;
+    // Keep some of the chest resonance (the fundamental and low harmonics).
+    low.process(src);
+    out[i0 + i] += (x + low.lp * 0.5 * (1 - breathy)) * env;
   }
   saturate(out, 1.3);
   noiseBurst(out, rng, sr, { at: at + hold + 0.12, attack: 0.04, decay: 0.08, amp: 0.12, filter: 'bp', f: 1200, q: 0.8 });
@@ -326,7 +399,9 @@ function hurtGrunt(rng, sr) {
 }
 
 function rattleGear(out, rng, sr, t0, t1, rate, amp) {
-  scatter(rng, t0, t1, rate, (t, u) => strike(out, rng, sr, t, { amp: amp * (1 - 0.6 * u) * rng.range(0.4, 1), f: rng.range(1800, 4500), tau: 0.01, modes: 3, click: 0.3 }));
+  scatter(rng, t0, t1, rate, (t, u) =>
+    strike(out, rng, sr, t, { amp: amp * (1 - 0.6 * u) * rng.range(0.4, 1), f: rng.range(1800, 4500), tau: 0.01, modes: 3, click: 0.3 }),
+  );
 }
 
 // Landing from a jump: both boots, the webbing and the gear on it.
@@ -404,4 +479,3 @@ export const PEOPLE = {
   hurtGrunt: { dur: 0.6, make: hurtGrunt },
   bandage: { dur: 1.6, make: bandage },
 };
-

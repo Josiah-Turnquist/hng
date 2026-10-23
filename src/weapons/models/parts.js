@@ -1,15 +1,14 @@
 // Shared building blocks for the gun models (magazines, trigger guards, sights,
-// cartridges...). Not a model registry: nothing here is listed in MODELS.
-// Same conventions as kit.js: meters, bore along Z at x = y = 0, muzzle toward -Z,
-// trigger at z = 0, side-view outlines as [z, y] pairs.
+// cartridges, lofted stocks...). Not a model registry: nothing here is listed in
+// MODELS. Same conventions as kit.js: meters, bore along Z at x = y = 0, muzzle
+// toward -Z, trigger at z = 0, side-view outlines as [z, y] pairs.
+// loft() and arcTube() build their own geometry and hand it to GunBuilder._add()
+// (the same path kit.js uses), so materials, UVs and parts work as usual.
 import * as THREE from 'three';
 import { GunBuilder } from './kit.js';
 
 export const S = GunBuilder.smooth;
 
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _e = new THREE.Euler();
 const _v = new THREE.Vector3();
 const _one = new THREE.Vector3(1, 1, 1);
 
@@ -34,18 +33,6 @@ export function place(b, { pos = [0, 0, 0], rot = [0, 0, 0], order = 'XYZ' }, bu
 export function at(m, p) {
   _v.set(p[0], p[1], p[2]).applyMatrix4(m);
   return [_v.x, _v.y, _v.z];
-}
-
-// Rotate a 2D point list around a center (radians, counter-clockwise in [z, y]).
-export function rot2(points, ang, cz = 0, cy = 0) {
-  const c = Math.cos(ang),
-    s = Math.sin(ang);
-  return points.map(([z, y]) => [cz + (z - cz) * c - (y - cy) * s, cy + (z - cz) * s + (y - cy) * c]);
-}
-
-// Translate a 2D point list.
-export function move2(points, dz, dy) {
-  return points.map(([z, y]) => [z + dz, y + dy]);
 }
 
 // Regular polygon approximating a circle (for holes and round outlines).
@@ -122,7 +109,7 @@ export function bentLine(top, len, angle = 0, k = 0, steps = 10) {
 // Box magazine, straight or curved, seen from the side and extruded across.
 // top = [z, y] center of its top (the mag well), len along the body, depth =
 // front-to-back size, width = thickness across (x). angle/k as in bentLine.
-// taperDepth: depth at the bottom (single-feed mags narrow toward the top...).
+// depthBottom: depth at the bottom end if it differs from the top.
 // Adds a floor plate and a pressed rib on the sides. Returns { bottom, line }.
 export function boxMag(b, { top, len, depth, width, angle = 0, k = 0, mat = 'steel', x = 0, depthBottom = depth, plate = 0.006, lip = 0.0015, rib = true, ribMat = null, bevel = 0.0012 }) {
   const line = bentLine(top, len, angle, k, 12);
@@ -216,15 +203,6 @@ export function plateXY(b, { outline, holes = [], z, thick, mat = 'steel', bevel
   });
 }
 
-// Flat plate in the Z-X plane (seen from above, extruded along Y).
-// outline = [[z, x], ...]; y = plate center; thick along Y.
-export function plateZX(b, { outline, holes = [], y, thick, mat = 'steel', bevel = 0.0005 }) {
-  // Draw as [z, y'] with y' standing in for x, then turn 90 deg about Z.
-  return place(b, { pos: [0, y, 0], rot: [0, 0, Math.PI / 2] }, () => {
-    b.extrude({ points: outline.map(([pz, px]) => [pz, -px]), holes: holes.map((h) => h.map(([pz, px]) => [pz, -px])), width: thick, mat, bevel });
-  });
-}
-
 // kit.lathe() faces outward only when the profile runs from the breech toward
 // the muzzle (decreasing z). This wrapper orients any profile correctly.
 export function lathe(b, opts) {
@@ -253,24 +231,6 @@ export function tube(b, { x = 0, y = 0, z0, z1, rIn, rOut, rOut1 = rOut, rIn1 = 
       [rOut1, z1],
       [rIn1, z1],
       [rIn, z0],
-    ],
-  });
-}
-
-// Ring aperture facing the shooter: a disc of radius rOut with a hole rIn,
-// centered at (x, y, z), thickness along Z.
-export function ringZ(b, { x = 0, y, z, rIn, rOut, thick = 0.002, mat = 'steel', seg = 20 }) {
-  lathe(b, {
-    x,
-    y,
-    mat,
-    seg,
-    profile: [
-      [rIn, z - thick / 2],
-      [rOut, z - thick / 2],
-      [rOut, z + thick / 2],
-      [rIn, z + thick / 2],
-      [rIn, z - thick / 2],
     ],
   });
 }
@@ -402,12 +362,14 @@ export function loft(b, { points, width, taper = null, r = 0.007, rTop = r, rBot
     if (hi - lo > 2e-4) slices.push({ z, lo, hi });
   }
   const fr = (v, z) => (typeof v === 'function' ? v(z) : v);
+  // Ring of points around a rounded-rectangle section, starting at the bottom
+  // center (where the UV seam goes).
   const ring = ({ z, lo, hi }) => {
     const W = width * (taper ? taper(z, (lo + hi) / 2) : 1);
     const H = hi - lo;
     const rt = Math.max(0, Math.min(fr(rTop, z), W / 2 - 1e-5, H / 2 - 1e-5));
     const rb = Math.max(0, Math.min(fr(rBot, z), W / 2 - 1e-5, H / 2 - 1e-5));
-    const pts = [];
+    const pts = [[x, lo, z]];
     const corner = (cx, cy, rr, a0) => {
       for (let k = 0; k <= seg; k++) {
         const a = a0 + (k / seg) * (Math.PI / 2);
@@ -422,23 +384,58 @@ export function loft(b, { points, width, taper = null, r = 0.007, rTop = r, rBot
   };
   const rings = slices.map(ring);
   const M = rings[0].length;
-  const pos = [];
-  for (const rg of rings) for (const p of rg) pos.push(...p);
-  const idx = [];
+  // Smooth normals from a closed (wrapped) mesh...
+  const posW = [];
+  for (const rg of rings) for (const p of rg) posW.push(...p);
+  const idxW = [];
   for (let i = 0; i < rings.length - 1; i++) {
     for (let j = 0; j < M; j++) {
       const a = i * M + j,
         bb = i * M + ((j + 1) % M),
         c = (i + 1) * M + ((j + 1) % M),
         d = (i + 1) * M + j;
+      idxW.push(a, bb, c, a, c, d);
+    }
+  }
+  const gW = new THREE.BufferGeometry();
+  gW.setAttribute('position', new THREE.Float32BufferAttribute(posW, 3));
+  gW.setIndex(idxW);
+  gW.computeVertexNormals();
+  const nW = gW.attributes.normal;
+  // ...then an open mesh with the seam column duplicated, so the wood grain
+  // can run along Z with v = arc length around the section.
+  const material = typeof mat === 'string' ? b.mats[mat] : mat;
+  const sUV = 1 / ((material && material.userData.texWorld) || 0.3);
+  const pos = [],
+    nor = [],
+    uv = [];
+  rings.forEach((rg, i) => {
+    let arc = 0;
+    for (let j = 0; j <= M; j++) {
+      const p = rg[j % M];
+      if (j > 0) arc += Math.hypot(p[0] - rg[j - 1][0], p[1] - rg[j - 1][1]);
+      pos.push(...p);
+      const n = i * M + (j % M);
+      nor.push(nW.getX(n), nW.getY(n), nW.getZ(n));
+      uv.push(p[2] * sUV, arc * sUV);
+    }
+  });
+  const idx = [];
+  for (let i = 0; i < rings.length - 1; i++) {
+    for (let j = 0; j < M; j++) {
+      const a = i * (M + 1) + j,
+        bb = a + 1,
+        c = (i + 1) * (M + 1) + j + 1,
+        d = (i + 1) * (M + 1) + j;
       idx.push(a, bb, c, a, c, d);
     }
   }
   const side = new THREE.BufferGeometry();
   side.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  side.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   side.setIndex(idx);
-  side.computeVertexNormals();
   b._add(side, mat);
+  side.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); // replace the planar UVs
   // Flat end caps.
   for (const [rg, s, front] of [
     [rings[0], slices[0], true],
@@ -457,4 +454,18 @@ export function loft(b, { points, width, taper = null, r = 0.007, rTop = r, rBot
     cap.computeVertexNormals();
     b._add(cap, mat);
   }
+}
+
+// Open tube along Z covering only part of the circumference (e.g. the MG 42
+// jacket with its barrel-change opening). Angles in radians, measured in the
+// X-Y plane from +X toward +Y; gap = the uncovered sector.
+export function arcTube(b, { x = 0, y = 0, z0, z1, r, gapCenter = 0, gap = 0.8, mat = 'perforated', seg = 26 }) {
+  const len = Math.abs(z1 - z0);
+  const geo = new THREE.CylinderGeometry(r, r, len, seg, 1, true, 0, Math.PI * 2 - gap);
+  // CylinderGeometry: theta measured from +Z toward +X around Y. Turn Y -> Z.
+  geo.rotateX(Math.PI / 2);
+  // After that, theta = 0 sits at -Y and the uncovered sector spans
+  // [3pi/2 - gap, 3pi/2]; rotate it so it is centered on gapCenter.
+  geo.rotateZ(gapCenter + gap / 2 - (3 * Math.PI) / 2);
+  return b._add(geo, mat, { x, y, z: (z0 + z1) / 2 });
 }

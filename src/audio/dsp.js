@@ -104,13 +104,6 @@ export class Noise {
   }
 }
 
-// Closure form (convenient outside hot loops).
-export function makeNoise(rng, color = 'white') {
-  const n = new Noise(rng);
-  const code = colorCode(color);
-  return code === WHITE ? () => n.white() : code === PINK ? () => n.pink() : () => n.brown();
-}
-
 // Smoothly interpolated random value in [0, 1] with a new target `rate` times per
 // second (smoothstep between targets): gusts, roughness, flicker, "rolling".
 export class RandomCurve {
@@ -133,14 +126,62 @@ export class RandomCurve {
   }
 }
 
+// Fills a shared scratch buffer with n samples of colored noise and returns it.
+// Each color has its own tight loop (fast, monomorphic). The buffer is reused by
+// the next call, so callers must consume it before calling noiseScratch again.
+let scratchA = new Float64Array(1 << 15);
+export function noiseScratch(rng, n, code) {
+  if (scratchA.length < n) scratchA = new Float64Array(Math.ceil(n * 1.25));
+  const buf = scratchA;
+  let sd = (rng.next() * 4294967295) | 0 || 0x2545f491;
+  if (code === PINK) {
+    let b0 = 0,
+      b1 = 0,
+      b2 = 0,
+      b3 = 0,
+      b4 = 0,
+      b5 = 0,
+      b6 = 0;
+    for (let i = 0; i < n; i++) {
+      sd ^= sd << 13;
+      sd ^= sd >>> 17;
+      sd ^= sd << 5;
+      const x = sd * 4.656612873077393e-10;
+      b0 = 0.99886 * b0 + x * 0.0555179;
+      b1 = 0.99332 * b1 + x * 0.0750759;
+      b2 = 0.969 * b2 + x * 0.153852;
+      b3 = 0.8665 * b3 + x * 0.3104856;
+      b4 = 0.55 * b4 + x * 0.5329522;
+      b5 = -0.7616 * b5 - x * 0.016898;
+      buf[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + x * 0.5362) * 0.2;
+      b6 = x * 0.115926;
+    }
+  } else if (code === BROWN) {
+    let br = 0;
+    for (let i = 0; i < n; i++) {
+      sd ^= sd << 13;
+      sd ^= sd >>> 17;
+      sd ^= sd << 5;
+      br = (br + 0.04 * sd * 4.656612873077393e-10) * 0.985;
+      buf[i] = br * 2.2;
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      sd ^= sd << 13;
+      sd ^= sd >>> 17;
+      sd ^= sd << 5;
+      buf[i] = sd * 4.656612873077393e-10;
+    }
+  }
+  return buf;
+}
+
 // ---------------------------------------------------------------------------
 // Buffers and small utilities
 
 export const nSamples = (sec, sr) => Math.max(1, Math.round(sec * sr));
 export const buffer = (sec, sr) => new Float32Array(nSamples(sec, sr));
 export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-export const lerp = (a, b, t) => a + (b - a) * t;
-export const dbToGain = (db) => Math.pow(10, db / 20);
 
 export function peakOf(buf, start = 0, end = buf.length) {
   let m = 0;
@@ -216,47 +257,32 @@ export function lowpass1(buf, sr, f, start = 0, end = buf.length) {
   return buf;
 }
 
-// One-pole high-pass over a range, in place.
-export function highpass1(buf, sr, f, start = 0, end = buf.length) {
-  const a = Math.exp((-TAU * Math.min(f, sr * 0.49)) / sr);
-  let x1 = 0,
-    y1 = 0;
-  for (let i = start; i < end; i++) {
-    const x = buf[i];
-    y1 = a * (y1 + x - x1);
-    x1 = x;
-    buf[i] = y1;
-  }
-  return buf;
-}
-
 // Smooth saturation (tanh), normalized so full scale stays full scale. Models the
 // overload of ears and microphones that gives close gunfire its dense, "fat" sound.
+// Note its small-signal gain is drive / tanh(drive): apply it to whole buffers
+// (before adding later layers) rather than to a window, or the level steps at
+// the window's edge.
 export function saturate(buf, drive, start = 0, end = buf.length) {
   const k = 1 / Math.tanh(drive);
   for (let i = start; i < end; i++) buf[i] = Math.tanh(buf[i] * drive) * k;
   return buf;
 }
 
-// Mix src into out at sample offset i0.
-export function mixInto(out, src, i0 = 0, gain = 1) {
-  const n = Math.min(src.length, out.length - i0);
-  for (let i = Math.max(0, -i0); i < n; i++) out[i0 + i] += src[i] * gain;
-  return out;
-}
-
 // Add a delayed, darker copy of the first `span` seconds of buf onto itself
-// (ground reflection or a nearby wall). Uses a snapshot so copies don't feed back.
+// (ground reflection or a nearby wall). Uses a snapshot so copies don't feed
+// back; the copy is tapered over its last quarter so it never ends in a step.
 export function reflect(buf, sr, delay, gain, fc = 5000, span = 0.15) {
   const d = Math.max(1, Math.round(delay * sr));
   const n = Math.min(buf.length - d, Math.round(span * sr));
   if (n <= 0) return buf;
   const snap = buf.slice(0, n);
   const a = 1 - Math.exp((-TAU * Math.min(fc, sr * 0.49)) / sr);
+  const t0 = Math.floor(n * 0.75);
   let y = 0;
   for (let i = 0; i < n; i++) {
     y += a * (snap[i] - y);
-    buf[i + d] += y * gain;
+    const w = i < t0 ? 1 : 0.5 + 0.5 * Math.cos((Math.PI * (i - t0)) / (n - t0));
+    buf[i + d] += y * gain * w;
   }
   return buf;
 }
@@ -482,16 +508,8 @@ export function noiseBurst(out, rng, sr, o) {
   const invA = amp / nA;
   const fMax = sr * 0.47;
   const k = 1 / q;
-  // Everything lives in locals (much faster than object fields in V8).
-  let sd = (rng.next() * 4294967295) | 0 || 0x2545f491;
-  let b0 = 0,
-    b1 = 0,
-    b2 = 0,
-    b3 = 0,
-    b4 = 0,
-    b5 = 0,
-    b6 = 0,
-    br = 0;
+  const nb = noiseScratch(rng, len, col);
+  // Filter state lives in locals (much faster than object fields in V8).
   let ic1 = 0,
     ic2 = 0,
     a1 = 0,
@@ -514,24 +532,7 @@ export function noiseBurst(out, rng, sr, o) {
       e = env;
       env *= dk;
     } else e = i < nA ? (i + 1) * invA : amp;
-    sd ^= sd << 13;
-    sd ^= sd >>> 17;
-    sd ^= sd << 5;
-    let x = sd * 4.656612873077393e-10;
-    if (col === PINK) {
-      b0 = 0.99886 * b0 + x * 0.0555179;
-      b1 = 0.99332 * b1 + x * 0.0750759;
-      b2 = 0.969 * b2 + x * 0.153852;
-      b3 = 0.8665 * b3 + x * 0.3104856;
-      b4 = 0.55 * b4 + x * 0.5329522;
-      b5 = -0.7616 * b5 - x * 0.016898;
-      const y = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + x * 0.5362) * 0.2;
-      b6 = x * 0.115926;
-      x = y;
-    } else if (col === BROWN) {
-      br = (br + 0.04 * x) * 0.985;
-      x = br * 2.2;
-    }
+    let x = nb[i];
     if (filt >= 0) {
       const v3 = x - ic2;
       const v1 = a1 * ic1 + a2 * v3;
@@ -612,27 +613,25 @@ export function tone(out, sr, o) {
 
 // Low thud: a pitched-down sine plus low-passed noise (a body, boot or clod hitting
 // the ground, the "thump" in an impact).
+// Mostly noise: a sine that rings for more than a cycle or two sounds like a drum.
 export function thud(out, rng, sr, o) {
   const at = o.at || 0;
   const amp = o.amp ?? 1;
-  tone(out, sr, {
-    at,
-    f: o.f ?? 90,
-    f1: o.f1 ?? (o.f ?? 90) * 0.7,
-    glide: o.tau ?? 0.02,
-    attack: o.attack ?? 0.002,
-    decay: o.tau ?? 0.02,
-    amp: amp * (o.tone ?? 0.7),
-    h2: 0.15,
-  });
+  const tau = o.tau ?? 0.02;
+  const f = o.f ?? 90;
+  const fc = o.fc ?? 500;
+  tone(out, sr, { at, f, f1: o.f1 ?? f * 0.7, glide: tau * 0.5, attack: o.attack ?? 0.002, decay: tau * 0.45, amp: amp * (o.tone ?? 0.5), h2: 0.2 });
   noiseBurst(out, rng, sr, {
     at,
-    attack: o.attack ?? 0.001,
-    decay: (o.tau ?? 0.02) * 0.6,
-    amp: amp * (o.noise ?? 0.6),
+    attack: o.attack ?? 0.0015,
+    decay: tau,
+    amp: amp * (o.noise ?? 1),
     filter: 'lp',
-    f: o.fc ?? 500,
-    q: 0.6,
+    f: fc,
+    f1: fc * 0.5,
+    glide: tau,
+    q: 0.7,
+    color: 'pink',
   });
 }
 
@@ -731,7 +730,15 @@ export function scrape(out, rng, sr, o) {
     while (t < dur) {
       const u = t / dur;
       const env = shape === 'rise' ? u : shape === 'fall' ? 1 - u : Math.sin(Math.PI * u);
-      addMode(out, i0 + Math.round(t * sr), f0 * rng.range(1.1, 2.4), amp * 0.5 * env * rng.pareto(1.3, 0.1), rng.range(0.0005, 0.002), sr, Math.PI / 2);
+      addMode(
+        out,
+        i0 + Math.round(t * sr),
+        f0 * rng.range(1.1, 2.4),
+        amp * 0.5 * env * rng.pareto(1.3, 0.1),
+        rng.range(0.0005, 0.002),
+        sr,
+        Math.PI / 2,
+      );
       t += rng.exp(1 / grains);
     }
   }
@@ -774,7 +781,15 @@ export function cloth(out, rng, sr, o) {
   let t = rng.exp(1 / crinkle);
   while (t < dur) {
     const u = t / dur;
-    addMode(out, i0 + Math.round(t * sr), rng.range(2500, 7000), amp * 0.35 * Math.sin(Math.PI * u) * rng.pareto(1.4, 0.15), rng.range(0.0004, 0.0015), sr, Math.PI / 2);
+    addMode(
+      out,
+      i0 + Math.round(t * sr),
+      rng.range(2500, 7000),
+      amp * 0.35 * Math.sin(Math.PI * u) * rng.pareto(1.4, 0.15),
+      rng.range(0.0004, 0.0015),
+      sr,
+      Math.PI / 2,
+    );
     t += rng.exp(1 / crinkle);
   }
 }
@@ -858,15 +873,7 @@ export function rumble(out, rng, sr, o) {
   let ra = rng.next(),
     rb = rng.next(),
     rk = 0;
-  let sd = (rng.next() * 4294967295) | 0 || 0x2545f491;
-  let b0 = 0,
-    b1 = 0,
-    b2 = 0,
-    b3 = 0,
-    b4 = 0,
-    b5 = 0,
-    b6 = 0,
-    br = 0;
+  const nb = noiseScratch(rng, len, col);
   let ic1 = 0,
     ic2 = 0,
     a1 = 0,
@@ -890,25 +897,7 @@ export function rumble(out, rng, sr, o) {
       e = env;
       env *= dk;
     }
-    sd ^= sd << 13;
-    sd ^= sd >>> 17;
-    sd ^= sd << 5;
-    let x = sd * 4.656612873077393e-10;
-    if (col === PINK) {
-      b0 = 0.99886 * b0 + x * 0.0555179;
-      b1 = 0.99332 * b1 + x * 0.0750759;
-      b2 = 0.969 * b2 + x * 0.153852;
-      b3 = 0.8665 * b3 + x * 0.3104856;
-      b4 = 0.55 * b4 + x * 0.5329522;
-      b5 = -0.7616 * b5 - x * 0.016898;
-      const y = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + x * 0.5362) * 0.2;
-      b6 = x * 0.115926;
-      x = y;
-    } else if (col === BROWN) {
-      br = (br + 0.04 * x) * 0.985;
-      x = br * 2.2;
-    }
-    const v3 = x - ic2;
+    const v3 = nb[i] - ic2;
     const v1 = a1 * ic1 + a2 * v3;
     const v2 = ic2 + a2 * ic1 + a3 * v3;
     ic1 = 2 * v1 - ic1;
@@ -949,7 +938,16 @@ export function echoes(out, rng, sr, o) {
       q: 0.7,
       color: 'pink',
     });
-    if (o.thump) tone(out, sr, { at: at + t, f: o.thump * rng.range(0.85, 1.15), f1: o.thump * 0.7, glide: 0.05, attack: smear * 0.3, decay: smear * 1.5, amp: a * 0.6 });
+    if (o.thump)
+      tone(out, sr, {
+        at: at + t,
+        f: o.thump * rng.range(0.85, 1.15),
+        f1: o.thump * 0.7,
+        glide: 0.05,
+        attack: smear * 0.3,
+        decay: smear * 1.5,
+        amp: a * 0.6,
+      });
   }
 }
 

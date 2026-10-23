@@ -56,7 +56,7 @@ const stats = await page.evaluate(() => {
 });
 const errBox = await page.evaluate(() => document.querySelector('.error-box')?.textContent);
 if (errBox) logs.push(`[error-box] ${errBox}`);
-await page.screenshot({ path: out });
+await page.screenshot({ path: out, timeout: 180000 });
 console.log(`loaded in ${loadMs} ms`, JSON.stringify(stats));
 for (const l of logs) console.log(l);
 await browser.close();

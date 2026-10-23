@@ -130,6 +130,18 @@ export const AMMO = {
     drag: 'G1',
     powder: 0.00017,
   },
+  '50 M2': {
+    name: '.50 Ball M2',
+    caliber: '.50 BMG (12.7x99mm)',
+    diameter: 0.01295,
+    mass: 709 * GR,
+    mv: 887, // M2 heavy barrel, 45 in
+    bc: 0.62, // G1 (est. 0.60-0.67)
+    drag: 'G1',
+    powder: 240 * GR,
+    hardness: 1.4,
+    tracerBurn: 1800,
+  },
   // --- Anti-tank rifles --------------------------------------------------------
   '145 B32': {
     name: '14.5 mm B-32 API',

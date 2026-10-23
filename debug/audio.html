@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound viewer</title>
+<style>
+  :root { --bg: #15161a; --card: #1e2026; --ink: #ddd; --dim: #8b8f98; --accent: #d7a94b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 12px/1.35 Consolas, Menlo, monospace; }
+  header { position: sticky; top: 0; z-index: 2; background: #101114ee; padding: 8px 12px; border-bottom: 1px solid #2a2c33; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  header h1 { font-size: 14px; margin: 0 8px 0 0; }
+  button { background: #2b2e36; color: var(--ink); border: 1px solid #3a3e48; border-radius: 3px; padding: 3px 8px; font: inherit; cursor: pointer; }
+  button:hover { background: #363a44; }
+  #status { color: var(--dim); }
+  #flash { width: 22px; height: 22px; border-radius: 50%; background: #333; transition: background 0.05s; }
+  #flash.on { background: #ffd36b; box-shadow: 0 0 18px #ffb000; }
+  #flash.heard { background: #6bd3ff; }
+  main { padding: 10px 12px 30px; }
+  h2 { font-size: 13px; color: var(--accent); margin: 18px 0 6px; }
+  .grid { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; }
+  .card { background: var(--card); border-radius: 4px; padding: 5px 6px 6px; min-width: 0; }
+  .card .head { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; overflow: hidden; }
+  .card .head b { color: #fff; }
+  .card .head span { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  .card button { padding: 0 6px; }
+  canvas { display: block; width: 100%; margin-top: 4px; image-rendering: pixelated; }
+  .pipe { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .note { color: var(--dim); margin: 2px 0 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sound viewer</h1>
+  <button id="init">Init audio</button>
+  <button data-shot="400">Distant rifle shot at 400 m</button>
+  <button data-shot="100">at 100 m</button>
+  <button data-shot="800">at 800 m</button>
+  <button id="crackthump">Crack-thump (shot at you from 400 m)</button>
+  <button id="mgburst">MG 42 burst at 300 m</button>
+  <button id="localmg">Your MG 42 burst</button>
+  <span id="flash" title="muzzle flash (yellow) / report heard (blue)"></span>
+  <span id="status">Click any button to start audio.</span>
+</header>
+<main>
+  <h2>Distance pipeline (OfflineAudioContext render of AudioSystem.gunshot('rifle') at 10, 100 and 400 m)</h2>
+  <div class="note">Left channel. Dashed yellow line = expected arrival (distance / 343 m/s); red = measured onset minus the graph's constant latency.</div>
+  <div class="pipe" id="pipe"></div>
+  <div id="groups"></div>
+</main>
+<script type="module">
+// Lists every synthesized sound with a play button and a waveform (top) plus
+// log-frequency spectrogram (bottom), so the sounds can be checked visually.
+// Query: ?group=gunshots,impacts  ?ids=rifle,crack  ?cols=3  ?variant=1  ?pipeline=0
+import { SOUNDS, SOUND_IDS, GROUPS, generateSound } from '../src/audio/synth.js';
+import { AudioSystem, SPEED_OF_SOUND } from '../src/audio/audio.js';
+import { spectrogram, peak, rms, maxShortRms, toDb } from '../src/audio/analysis.js';
+
+const params = new URLSearchParams(location.search);
+const cols = Number(params.get('cols') || 3);
+const variant = Number(params.get('variant') || 0);
+const SR = 48000;
+document.querySelector('main').style.setProperty('--cols', cols);
+const groupFilter = params.get('group')?.split(',');
+const idFilter = params.get('ids')?.split(',');
+const statusEl = document.getElementById('status');
+const flashEl = document.getElementById('flash');
+
+// Colormap (inferno-like) for spectrograms.
+const STOPS = [
+  [0, 0, 0, 4], [0.15, 31, 12, 72], [0.3, 85, 15, 109], [0.45, 136, 34, 106],
+  [0.6, 186, 54, 85], [0.75, 227, 89, 51], [0.88, 249, 140, 10], [1, 252, 255, 164],
+];
+const PALETTE = new Uint8Array(256 * 3);
+for (let i = 0; i < 256; i++) {
+  const u = i / 255;
+  let k = 0;
+  while (k < STOPS.length - 2 && u > STOPS[k + 1][0]) k++;
+  const [u0, r0, g0, b0] = STOPS[k], [u1, r1, g1, b1] = STOPS[k + 1];
+  const t = (u - u0) / (u1 - u0);
+  PALETTE[i * 3] = r0 + (r1 - r0) * t;
+  PALETTE[i * 3 + 1] = g0 + (g1 - g0) * t;
+  PALETTE[i * 3 + 2] = b0 + (b1 - b0) * t;
+}
+
+function drawSound(canvas, x, sr, { markers = [], dashed = [], spec = true } = {}) {
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const wh = spec ? Math.round(H * 0.38) : H;
+  ctx.fillStyle = '#101116';
+  ctx.fillRect(0, 0, W, H);
+  // Waveform: min/max per column.
+  ctx.strokeStyle = '#2c3038';
+  ctx.beginPath();
+  ctx.moveTo(0, wh / 2 + 0.5);
+  ctx.lineTo(W, wh / 2 + 0.5);
+  ctx.stroke();
+  ctx.fillStyle = '#9fd0ff';
+  for (let c = 0; c < W; c++) {
+    const a = Math.floor((c / W) * x.length), b = Math.max(a + 1, Math.floor(((c + 1) / W) * x.length));
+    let lo = 0, hi = 0;
+    for (let i = a; i < b && i < x.length; i++) { if (x[i] < lo) lo = x[i]; if (x[i] > hi) hi = x[i]; }
+    const y0 = wh / 2 - hi * (wh / 2 - 1), y1 = wh / 2 - lo * (wh / 2 - 1);
+    ctx.fillRect(c, y0, 1, Math.max(1, y1 - y0));
+  }
+  const dur = x.length / sr;
+  for (const [t, color, dash] of [...markers.map((t) => [t, '#ff6b6b', false]), ...dashed.map((t) => [t, '#ffd36b', true])]) {
+    const px = Math.round((t / dur) * W) + 0.5;
+    ctx.strokeStyle = color;
+    ctx.setLineDash(dash ? [4, 3] : []);
+    ctx.beginPath();
+    ctx.moveTo(px, 0);
+    ctx.lineTo(px, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (!spec) return;
+  // Log-frequency spectrogram, 40 Hz .. Nyquist (max 20 kHz), -100..0 dB.
+  const size = sr > 30000 ? 1024 : 512;
+  const sg = spectrogram(x, sr, W, size);
+  const sh = H - wh - 2;
+  const img = ctx.createImageData(W, sh);
+  const fmin = 40, fmax = Math.min(20000, sr / 2);
+  const rowBin = new Int32Array(sh);
+  for (let y = 0; y < sh; y++) rowBin[y] = Math.min(sg.bins - 1, Math.round((fmin * Math.pow(fmax / fmin, 1 - y / (sh - 1))) / sg.binHz));
+  for (let c = 0; c < W; c++) {
+    for (let y = 0; y < sh; y++) {
+      const db = sg.data[c * sg.bins + rowBin[y]];
+      const v = Math.max(0, Math.min(255, Math.round(((db + 100) / 100) * 255)));
+      const o = (y * W + c) * 4;
+      img.data[o] = PALETTE[v * 3];
+      img.data[o + 1] = PALETTE[v * 3 + 1];
+      img.data[o + 2] = PALETTE[v * 3 + 2];
+      img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, wh + 2);
+  ctx.fillStyle = '#ffffffaa';
+  ctx.font = '9px monospace';
+  for (const f of [100, 1000, 10000]) {
+    if (f > fmax) continue;
+    const y = wh + 2 + (1 - Math.log(f / fmin) / Math.log(fmax / fmin)) * (sh - 1);
+    ctx.fillRect(0, Math.round(y), 4, 1);
+    ctx.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, 6, y + 3);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Live audio (needs a click)
+let audio = null;
+async function ensureAudio() {
+  if (!audio) {
+    audio = new AudioSystem();
+    window.__audio = audio;
+    statusEl.textContent = 'Generating sounds...';
+    await audio.init({ onProgress: (p) => (statusEl.textContent = `Generating sounds ${(p * 100).toFixed(0)}%`) });
+    statusEl.textContent = `Audio ready: ${audio.stats.buffers} buffers, ${audio.stats.seconds.toFixed(0)} s of audio, generated in ${audio.stats.generationMs.toFixed(0)} ms`;
+  }
+  await audio.resume();
+  audio.setListener(0, 1.7, 0, 0, 0, -1, 0, 1, 0);
+  return audio;
+}
+document.getElementById('init').onclick = ensureAudio;
+
+function showFlash(delaySec) {
+  flashEl.className = 'on';
+  setTimeout(() => (flashEl.className = ''), 90);
+  setTimeout(() => (flashEl.className = 'heard'), delaySec * 1000);
+  setTimeout(() => (flashEl.className = ''), delaySec * 1000 + 250);
+}
+
+for (const b of document.querySelectorAll('[data-shot]')) {
+  b.onclick = async () => {
+    const a = await ensureAudio();
+    const d = Number(b.dataset.shot);
+    showFlash(d / SPEED_OF_SOUND);
+    a.gunshot('rifle', 0, 1.7, -d);
+    statusEl.textContent = `Muzzle flash now; the report arrives after ${(d / SPEED_OF_SOUND).toFixed(2)} s (${d} m / ${SPEED_OF_SOUND} m/s)`;
+  };
+}
+document.getElementById('crackthump').onclick = async () => {
+  const a = await ensureAudio();
+  // 7.92 mm s.S. fired at you from 400 m: the bullet (~0.6 s flight, still
+  // supersonic) cracks past first, the muzzle report follows at 1.17 s.
+  showFlash(400 / SPEED_OF_SOUND);
+  a.gunshot('rifle', 0, 1.7, -400);
+  setTimeout(() => a.crack(1.2, 1.8, -0.5, 1.2, 560), 600);
+  statusEl.textContent = 'Crack at ~0.6 s (bullet), thump at 1.17 s (report)';
+};
+document.getElementById('mgburst').onclick = async () => {
+  const a = await ensureAudio();
+  showFlash(300 / SPEED_OF_SOUND);
+  // Scheduled with `delay` so the 50 ms cadence is exact (timers would jitter).
+  for (let i = 0; i < 18; i++) a.gunshot('mg', 30, 1.5, -298, { source: 'mg42', delay: i * 0.05 });
+  statusEl.textContent = 'MG 42 at 1200 rpm, 300 m: arrives after 0.87 s';
+};
+document.getElementById('localmg').onclick = async () => {
+  const a = await ensureAudio();
+  for (let i = 0; i < 15; i++) a.gunshot('mg', 0, 0, 0, { isLocal: true, delay: i * 0.05 });
+};
+
+// ---------------------------------------------------------------------------
+// Sound list
+const ids = SOUND_IDS.filter((id) => (!groupFilter || groupFilter.includes(SOUNDS[id].group)) && (!idFilter || idFilter.includes(id)));
+const groupsEl = document.getElementById('groups');
+const t0 = performance.now();
+let genMs = 0;
+for (const group of GROUPS) {
+  const list = ids.filter((id) => SOUNDS[id].group === group);
+  if (!list.length) continue;
+  const h = document.createElement('h2');
+  h.textContent = group;
+  groupsEl.appendChild(h);
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  groupsEl.appendChild(grid);
+  for (const id of list) {
+    const d = SOUNDS[id];
+    const sr = SR * d.rate;
+    const tg = performance.now();
+    const x = generateSound(id, Math.min(variant, d.variants - 1), sr);
+    genMs += performance.now() - tg;
+    const card = document.createElement('div');
+    card.className = 'card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    const btn = document.createElement('button');
+    btn.textContent = 'play';
+    btn.onclick = async () => {
+      const a = await ensureAudio();
+      if (d.loop) {
+        const hnd = a.loop(id, { volume: 0.8 });
+        setTimeout(() => hnd.stop(0.3), Math.max(3000, d.dur * 1500));
+      } else a.play(id, null);
+    };
+    const name = document.createElement('b');
+    name.textContent = id;
+    const info = document.createElement('span');
+    info.textContent = `${d.dur.toFixed(2)}s ${d.loop ? 'loop ' : ''}x${d.variants}${d.alias ? ` =${d.alias}` : ''} ${(sr / 1000).toFixed(0)}k pk ${toDb(peak(x)).toFixed(1)} rms ${toDb(rms(x)).toFixed(1)} max50ms ${toDb(maxShortRms(x, sr)).toFixed(1)} dB`;
+    head.append(btn, name, info);
+    const canvas = document.createElement('canvas');
+    canvas.width = Number(params.get('w') || 440);
+    canvas.height = Number(params.get('h') || 120);
+    card.append(head, canvas);
+    grid.appendChild(card);
+    drawSound(canvas, x, sr);
+  }
+}
+const synthInfo = `${ids.length} sounds (variant ${variant}) synthesized in ${genMs.toFixed(0)} ms, page drawn in ${(performance.now() - t0).toFixed(0)} ms`;
+statusEl.textContent = synthInfo;
+
+// ---------------------------------------------------------------------------
+// Offline pipeline check
+async function renderOffline(setup, dur = 3, ids = ['rifle', 'rifleFar', 'echoMedium'], sr = 48000) {
+  const ctx = new OfflineAudioContext(2, sr * dur, sr);
+  const sys = new AudioSystem();
+  await sys.init({ context: ctx, ids });
+  sys.setListener(0, 1.7, 0, 0, 0, -1, 0, 1, 0);
+  setup(sys);
+  const buf = await ctx.startRendering();
+  return { x: buf.getChannelData(0), sys };
+}
+
+function onsetOf(x, sr) {
+  const pk = peak(x);
+  for (let i = 0; i < x.length; i++) if (Math.abs(x[i]) > pk * 0.05) return i / sr;
+  return -1;
+}
+
+async function pipeline() {
+  const pipe = document.getElementById('pipe');
+  const sr = 48000;
+  // Constant processing latency of the graph (compressor/limiter look-ahead,
+  // HRTF), measured with a non-positional sound.
+  const base = await renderOffline((sys) => sys.play('rifle', null, { variation: false }), 0.5);
+  const latency = onsetOf(base.x, sr);
+  for (const dist of [10, 100, 400]) {
+    const { x, sys } = await renderOffline((s) => s.gunshot('rifle', 0, 1.7, -dist, { source: `p${dist}` }));
+    const pk = peak(x);
+    const onset = onsetOf(x, sr);
+    const expected = dist / SPEED_OF_SOUND;
+    const card = document.createElement('div');
+    card.className = 'card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML = `<b>${dist} m</b><span>expected arrival ${expected.toFixed(3)} s, measured ${(onset - latency).toFixed(3)} s (onset ${onset.toFixed(3)} s minus ${(latency * 1000).toFixed(1)} ms graph latency), peak ${toDb(pk).toFixed(1)} dBFS, rms ${toDb(rms(x)).toFixed(1)} dB, init ${sys.stats.generationMs.toFixed(0)} ms</span>`;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1360;
+    canvas.height = 130;
+    card.append(head, canvas);
+    pipe.appendChild(card);
+    drawSound(canvas, x, sr, { markers: [onset - latency], dashed: [expected] });
+    window.__pipeline = window.__pipeline || [];
+    window.__pipeline.push({ dist, expected, measured: onset - latency, latency, peak: pk });
+  }
+  // Automatic fire, scheduled sample-accurately with `delay`: the MG 42's 1200
+  // rounds/min (one every 50 ms) makes its "ripping" sound.
+  const mgIds = ['mg', 'mgFar', 'rifleFar', 'echoMedium'];
+  const bursts = [
+    ['MG 42 burst at 20 m (12 rounds, 1200 rpm)', (s) => { for (let i = 0; i < 12; i++) s.gunshot('mg', 4, 1.5, -20, { source: 'mg', delay: 0.05 + i * 0.05 }); }],
+    ['your own MG 42 burst (12 rounds)', (s) => { for (let i = 0; i < 12; i++) s.gunshot('mg', 0, 0, 0, { isLocal: true, delay: 0.05 + i * 0.05 }); }],
+    ['MG 42 burst at 300 m', (s) => { for (let i = 0; i < 12; i++) s.gunshot('mg', 40, 1.5, -297, { source: 'mg', delay: 0.05 + i * 0.05 }); }],
+  ];
+  for (const [label, setup] of bursts) {
+    const { x, sys } = await renderOffline(setup, 2.5, mgIds);
+    const card = document.createElement('div');
+    card.className = 'card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML = `<b>${label}</b><span>peak ${toDb(peak(x)).toFixed(1)} dBFS, rms ${toDb(rms(x)).toFixed(1)} dB, voices at end ${sys.activeVoices}</span>`;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1360;
+    canvas.height = 110;
+    card.append(head, canvas);
+    pipe.appendChild(card);
+    drawSound(canvas, x, sr);
+  }
+}
+if (params.get('pipeline') !== '0') {
+  try {
+    await pipeline();
+  } catch (e) {
+    console.error('pipeline failed', e);
+  }
+}
+statusEl.textContent = synthInfo + ' | click any button to hear';
+console.log(synthInfo);
+window.__done = true;
+</script>
+</body>
+</html>

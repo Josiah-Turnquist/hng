@@ -147,6 +147,8 @@ export class Heightfield {
   // because the ground can't rise faster than about 1 m per meter), then refines the
   // crossing with bisection.
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
+    // A bad (NaN) ray would never finish marching.
+    if (!Number.isFinite(ox + oy + oz + dx + dy + dz + maxDist)) return -1;
     const step = this.cell * 0.5;
     let prevT = 0;
     let t = 0;

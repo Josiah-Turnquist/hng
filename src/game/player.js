@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
+import { VehicleController } from './vehicleControl.js';
 import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
@@ -39,7 +40,54 @@ export class PlayerController {
     this.toggleCrouchState = false;
     this.camShake = 0;
     this.eye = new THREE.Vector3();
+    this.vehicleCtl = new VehicleController(this);
     this._equip(soldier.current);
+  }
+
+  // Get into the nearest vehicle within reach (driver's seat first).
+  _tryEnterVehicle() {
+    const s = this.soldier;
+    const b = s.body;
+    let best = null,
+      bestD = 1.8;
+    const p = new THREE.Vector3();
+    for (const v of this.game.vehicles || []) {
+      if (!v.alive) continue;
+      // Distance from the soldier to the vehicle's outline.
+      v.worldToModel(p.set(b.x, b.y + 1, b.z), p);
+      const [W, H, L] = v.def.dims;
+      const dx = Math.max(0, Math.abs(p.x) - W / 2);
+      const dz = Math.max(0, Math.abs(p.z) - L / 2);
+      const dy = Math.max(0, p.y - H - 0.5, -0.5 - p.y);
+      const d = Math.hypot(dx, dy, dz);
+      if (d < bestD) {
+        bestD = d;
+        best = v;
+      }
+    }
+    if (!best) return false;
+    const seat = best.freeSeat(0);
+    if (seat < 0) {
+      this.game.hud?.flash('No free seat');
+      return false;
+    }
+    const w = s.weapon;
+    if (w?.state === 'reloading') w.cancelReload();
+    w?.setTrigger(false);
+    s.aiming = false;
+    if (!best.enter(s, seat)) return false;
+    this.vehicleCtl.entered(best);
+    this.game.hud?.flash(`${best.def.name}: ${best.seats[seat].name}`);
+    this.game.audio?.play?.('vehicleDoor', best.body.position, { volume: 0.6 });
+    return true;
+  }
+
+  exitedVehicle(v) {
+    v.model.root.visible = true;
+    const f = v.forward;
+    this.look.yaw = Math.atan2(-f.x, -f.z);
+    this.look.pitch = 0;
+    this.fovCurrent = -1;
   }
 
   get baseFov() {
@@ -67,6 +115,11 @@ export class PlayerController {
       input.takeWheel();
       return;
     }
+    if (s.vehicle) {
+      this.vehicleCtl.frameInput(dt);
+      return;
+    }
+    if (input.hit('use') && this._tryEnterVehicle()) return;
     const w = s.weapon;
     // --- Looking -------------------------------------------------------------------
     const [mx, my] = input.takeMouse();
@@ -159,6 +212,11 @@ export class PlayerController {
   // Fixed-step simulation for the player.
   update(dt) {
     const s = this.soldier;
+    if (s.vehicle) {
+      this.vehicleCtl.update(dt);
+      s.update(dt);
+      return;
+    }
     s.yaw = this.look.yaw;
     s.pitch = this.look.pitch;
     s.update(dt);
@@ -322,6 +380,14 @@ export class PlayerController {
     const b = s.body;
     const cam = this.camera;
     const w = s.weapon;
+    if (s.vehicle) {
+      this.vehicleCtl.render(dt);
+      this.eye.copy(cam.position);
+      this.viewmodel.visible = false;
+      this.scoped = false;
+      this.fovCurrent = cam.fov;
+      return;
+    }
 
     // Eye position with head bob and landing dip.
     b.eyePosition(this.eye);

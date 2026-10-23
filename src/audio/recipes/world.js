@@ -57,12 +57,13 @@ function grenadeExplosion(rng, sr) {
   const out = buffer(2.6, sr);
   const at = 0.001;
   blastPulse(out, sr, { at, T: rng.vary(0.0035, 0.15), amp: 1, b: 1.15, rise: 1 / sr });
-  tone(out, sr, { at, f: rng.vary(70, 0.08), f1: 30, glide: 0.1, attack: 0.001, decay: 0.12, amp: 1.0, h2: 0.25 });
+  tone(out, sr, { at, f: rng.vary(70, 0.08), f1: 30, glide: 0.06, attack: 0.001, decay: 0.05, amp: 0.8, h2: 0.25 });
+  noiseBurst(out, rng, sr, { at, attack: 0.002, decay: 0.15, amp: 1.5, filter: 'lp', f: 280, f1: 100, glide: 0.12, color: 'brown' });
   noiseBurst(out, rng, sr, { at, attack: 0.0003, decay: 0.025, amp: 0.7, filter: 'lp', f: 9000, f1: 400, glide: 0.06, q: 0.6 });
   noiseBurst(out, rng, sr, { at, attack: 0.004, decay: 0.2, amp: 0.45, filter: 'lp', f: 2500, f1: 250, glide: 0.2, q: 0.7, color: 'pink' });
   scatter(rng, at + 0.003, at + 0.12, 600, (t, u) => noiseGrain(out, rng, nSamples(t, sr), rng.int(3, 12), rng.pareto(1.3, 0.1) * 0.4 * (1 - u)));
   reflect(out, sr, 0.005, 0.55, 4000, 0.3);
-  saturate(out, 3.0, 0, nSamples(0.5, sr));
+  saturate(out, 3.0);
   rumble(out, rng, sr, { at: at + 0.03, attack: 0.05, decay: 0.6, amp: 0.3, f: 1200, f1: 150, glide: 0.5, roll: 4, rollDepth: 0.55, color: 'brown' });
   echoes(out, rng, sr, { at, count: 6, first: 0.2, last: 1.6, amp: 0.25, fc: 900, smear: 0.05, thump: 50 });
   noiseBurst(out, rng, sr, { at: at + 0.02, attack: 0.03, decay: 0.25, amp: 0.12, filter: 'bp', f: 2500, q: 0.5 });
@@ -74,10 +75,22 @@ function explosionFar(rng, sr) {
   const out = buffer(3.5, sr);
   const at = 0.003;
   blastPulse(out, sr, { at, T: rng.vary(0.01, 0.15), amp: 0.8, b: 1.1, rise: 2 / sr });
-  tone(out, sr, { at, f: rng.vary(50, 0.1), f1: 25, glide: 0.15, attack: 0.006, decay: 0.16, amp: 1.0 });
+  tone(out, sr, { at, f: rng.vary(50, 0.1), f1: 25, glide: 0.1, attack: 0.006, decay: 0.08, amp: 0.8 });
+  noiseBurst(out, rng, sr, { at, attack: 0.006, decay: 0.2, amp: 1.5, filter: 'lp', f: 200, f1: 90, glide: 0.15, color: 'brown' });
   noiseBurst(out, rng, sr, { at, attack: 0.004, decay: 0.12, amp: 0.5, filter: 'lp', f: 900, f1: 200, glide: 0.1, q: 0.7, color: 'pink' });
-  filter(out, sr, 'lowpass', 900, 0.7, 0, 0, nSamples(0.4, sr));
-  rumble(out, rng, sr, { at: at + 0.03, attack: 0.08, decay: 1.0, amp: 0.4, f: 600, f1: 110, glide: 1.0, roll: 2.2, rollDepth: 0.65, color: 'brown' });
+  filter(out, sr, 'lowpass', 900, 0.7);
+  rumble(out, rng, sr, {
+    at: at + 0.03,
+    attack: 0.08,
+    decay: 1.0,
+    amp: 0.4,
+    f: 600,
+    f1: 110,
+    glide: 1.0,
+    roll: 2.2,
+    rollDepth: 0.65,
+    color: 'brown',
+  });
   echoes(out, rng, sr, { at, count: 9, first: 0.25, last: 3.0, amp: 0.35, fc: 500, smear: 0.07, thump: 40 });
   return finish(out, sr, 0.85, 0.4);
 }
@@ -110,7 +123,15 @@ function debrisRain(rng, sr) {
   debrisLayer(out, rng, sr, 0, 2.4, 70, 0.5);
   noiseBurst(out, rng, sr, { at: 0, attack: 0.15, decay: 0.9, amp: 0.08, filter: 'lp', f: 3000, color: 'pink' });
   const chunks = rng.int(3, 5);
-  for (let k = 0; k < chunks; k++) strike(out, rng, sr, rng.range(0.05, 1.2), { amp: rng.range(0.15, 0.35), f: rng.range(700, 1600), tau: 0.01, modes: 3, ratios: RATIOS.wood, thump: 0.4 });
+  for (let k = 0; k < chunks; k++)
+    strike(out, rng, sr, rng.range(0.05, 1.2), {
+      amp: rng.range(0.15, 0.35),
+      f: rng.range(700, 1600),
+      tau: 0.01,
+      modes: 3,
+      ratios: RATIOS.wood,
+      thump: 0.4,
+    });
   return finish(out, sr, 0.45, 0.2, 25);
 }
 
@@ -119,13 +140,15 @@ function shellExplosion(rng, sr) {
   const out = buffer(3.2, sr);
   const at = 0.001;
   blastPulse(out, sr, { at, T: rng.vary(0.006, 0.15), amp: 1, b: 1.1, rise: 1 / sr });
-  tone(out, sr, { at, f: rng.vary(58, 0.08), f1: 22, glide: 0.15, attack: 0.001, decay: 0.18, amp: 1.0, h2: 0.25 });
-  tone(out, sr, { at, f: 30, f1: 20, glide: 0.4, attack: 0.02, decay: 0.5, amp: 0.5 });
+  tone(out, sr, { at, f: rng.vary(58, 0.08), f1: 22, glide: 0.08, attack: 0.001, decay: 0.07, amp: 0.85, h2: 0.25 });
+  noiseBurst(out, rng, sr, { at, attack: 0.002, decay: 0.2, amp: 1.6, filter: 'lp', f: 260, f1: 90, glide: 0.15, color: 'brown' });
   noiseBurst(out, rng, sr, { at, attack: 0.0003, decay: 0.035, amp: 0.75, filter: 'lp', f: 10000, f1: 400, glide: 0.08, q: 0.6 });
   noiseBurst(out, rng, sr, { at, attack: 0.005, decay: 0.28, amp: 0.5, filter: 'lp', f: 3000, f1: 200, glide: 0.25, q: 0.7, color: 'pink' });
   scatter(rng, at + 0.003, at + 0.2, 500, (t, u) => noiseGrain(out, rng, nSamples(t, sr), rng.int(3, 14), rng.pareto(1.3, 0.1) * 0.4 * (1 - u)));
   reflect(out, sr, 0.006, 0.55, 3500, 0.4);
-  saturate(out, 3.2, 0, nSamples(0.6, sr));
+  saturate(out, 3.2);
+  // Ground shake: clean sub-bass, after the overload stage.
+  tone(out, sr, { at, f: 30, f1: 20, glide: 0.4, attack: 0.02, decay: 0.5, amp: 0.3 });
   rumble(out, rng, sr, { at: at + 0.03, attack: 0.05, decay: 0.8, amp: 0.32, f: 1100, f1: 120, glide: 0.7, roll: 3, rollDepth: 0.6, color: 'brown' });
   echoes(out, rng, sr, { at, count: 8, first: 0.25, last: 2.5, amp: 0.28, fc: 800, smear: 0.06, thump: 45 });
   noiseBurst(out, rng, sr, { at: at + 0.04, attack: 0.04, decay: 0.4, amp: 0.2, filter: 'bp', f: 1800, q: 0.5 });
@@ -140,14 +163,27 @@ function tankExplosion(rng, sr) {
   const out = buffer(5.0, sr);
   const at = 0.001;
   blastPulse(out, sr, { at, T: 0.008, amp: 1, b: 1.1, rise: 1 / sr });
-  tone(out, sr, { at, f: 45, f1: 18, glide: 0.25, attack: 0.002, decay: 0.3, amp: 1.0, h2: 0.3 });
-  tone(out, sr, { at, f: 28, f1: 18, glide: 0.5, attack: 0.03, decay: 0.9, amp: 0.5 });
+  tone(out, sr, { at, f: 45, f1: 18, glide: 0.12, attack: 0.002, decay: 0.12, amp: 0.85, h2: 0.3 });
+  noiseBurst(out, rng, sr, { at, attack: 0.003, decay: 0.3, amp: 1.6, filter: 'lp', f: 220, f1: 80, glide: 0.2, color: 'brown' });
   noiseBurst(out, rng, sr, { at, attack: 0.0003, decay: 0.05, amp: 0.8, filter: 'lp', f: 8000, f1: 300, glide: 0.1, q: 0.6 });
   noiseBurst(out, rng, sr, { at, attack: 0.006, decay: 0.4, amp: 0.55, filter: 'lp', f: 2500, f1: 150, glide: 0.3, q: 0.7, color: 'pink' });
-  strike(out, rng, sr, at, { amp: 0.35, f: rng.range(85, 120), ratios: RATIOS.steel, tau: 0.5, modes: 8, click: 0, damp: 0.4 });
   reflect(out, sr, 0.007, 0.5, 3000, 0.5);
-  saturate(out, 3.5, 0, nSamples(0.8, sr));
-  rumble(out, rng, sr, { at: at + 0.04, attack: 0.08, decay: 1.2, amp: 0.35, f: 900, f1: 100, glide: 1.0, roll: 2.5, rollDepth: 0.6, color: 'brown' });
+  saturate(out, 3.5);
+  // After the overload stage: the hull ringing and a clean sub-bass shake.
+  strike(out, rng, sr, at, { amp: 0.25, f: rng.range(85, 120), ratios: RATIOS.steel, tau: 0.5, modes: 8, click: 0, damp: 0.4 });
+  tone(out, sr, { at, f: 28, f1: 18, glide: 0.5, attack: 0.03, decay: 0.9, amp: 0.3 });
+  rumble(out, rng, sr, {
+    at: at + 0.04,
+    attack: 0.08,
+    decay: 1.2,
+    amp: 0.35,
+    f: 900,
+    f1: 100,
+    glide: 1.0,
+    roll: 2.5,
+    rollDepth: 0.6,
+    color: 'brown',
+  });
   echoes(out, rng, sr, { at, count: 10, first: 0.3, last: 3.8, amp: 0.3, fc: 700, smear: 0.07, thump: 40 });
   rumble(out, rng, sr, { at: 0.5, attack: 0.6, decay: 2.0, amp: 0.15, f: 600, f1: 300, glide: 2, roll: 7, rollDepth: 0.6, color: 'brown', dur: 4.4 });
   const bangs = rng.int(6, 11);
@@ -157,9 +193,19 @@ function tankExplosion(rng, sr) {
     blastPulse(out, sr, { at: t, T: rng.range(0.001, 0.003), amp: a, b: 1.2, rise: 1 / sr });
     noiseBurst(out, rng, sr, { at: t, attack: 0.0003, decay: 0.02, amp: a * 0.8, filter: 'lp', f: 5000, f1: 600, glide: 0.02 });
     tone(out, sr, { at: t, f: 90, f1: 50, glide: 0.03, attack: 0.001, decay: 0.03, amp: a * 0.6 });
-    if (rng.chance(0.5)) scatter(rng, t, t + rng.range(0.05, 0.25), 120, (tt) => noiseGrain(out, rng, nSamples(tt, sr), rng.int(2, 6), rng.pareto(1.3, 0.1) * 0.3));
+    if (rng.chance(0.5))
+      scatter(rng, t, t + rng.range(0.05, 0.25), 120, (tt) => noiseGrain(out, rng, nSamples(tt, sr), rng.int(2, 6), rng.pareto(1.3, 0.1) * 0.3));
   }
-  for (let k = 0; k < 3; k++) strike(out, rng, sr, rng.range(0.3, 1.5), { amp: rng.range(0.1, 0.2), f: rng.range(300, 700), ratios: RATIOS.can, tau: 0.08, modes: 5, click: 0.5, thump: 0.3 });
+  for (let k = 0; k < 3; k++)
+    strike(out, rng, sr, rng.range(0.3, 1.5), {
+      amp: rng.range(0.1, 0.2),
+      f: rng.range(300, 700),
+      ratios: RATIOS.can,
+      tau: 0.08,
+      modes: 5,
+      click: 0.5,
+      thump: 0.3,
+    });
   return finish(out, sr, 1.0, 0.5);
 }
 
@@ -392,10 +438,29 @@ function tracksClank(rng, sr) {
     for (let k = 0; k < n; k++) {
       const t = (k * period + off + rng.bi() * 0.06 * period + L) % L;
       const a = rng.range(0.5, 1);
-      strike(long, rng, sr, t, { amp: a, f: rng.range(180, 320), ratios: RATIOS.steel, tau: 0.04, modes: 6, click: 0.7, thump: 0.5, thumpF: 70, damp: 0.5 });
+      strike(long, rng, sr, t, {
+        amp: a,
+        f: rng.range(180, 320),
+        ratios: RATIOS.steel,
+        tau: 0.04,
+        modes: 6,
+        click: 0.7,
+        thump: 0.5,
+        thumpF: 70,
+        damp: 0.5,
+      });
       strike(long, rng, sr, t + 0.002, { amp: a * 0.3, f: rng.range(1200, 2200), tau: 0.012, modes: 4, click: 0.3 });
       const t2 = (t + period * rng.range(0.4, 0.6)) % L;
-      strike(long, rng, sr, t2, { amp: a * rng.range(0.25, 0.45), f: rng.range(150, 260), ratios: RATIOS.steel, tau: 0.03, modes: 5, click: 0.4, thump: 0.4, thumpF: 60 });
+      strike(long, rng, sr, t2, {
+        amp: a * rng.range(0.25, 0.45),
+        f: rng.range(150, 260),
+        ratios: RATIOS.steel,
+        tau: 0.03,
+        modes: 5,
+        click: 0.4,
+        thump: 0.4,
+        thumpF: 60,
+      });
     }
   }
   scatter(rng, 0, L, 40, (t) => strike(long, rng, sr, t, { amp: rng.range(0.06, 0.15), f: rng.range(800, 3000), tau: 0.008, modes: 3, click: 0.4 }));
@@ -403,7 +468,18 @@ function tracksClank(rng, sr) {
   for (let k = 0; k < squeals; k++) {
     const t = rng.range(0, L);
     const f = rng.range(700, 1300);
-    tone(long, sr, { at: t, f, f1: f * rng.range(0.9, 1.1), glide: 0.2, attack: 0.03, hold: rng.range(0.1, 0.25), decay: 0.05, amp: 0.1, h2: 0.3, h3: 0.1 });
+    tone(long, sr, {
+      at: t,
+      f,
+      f1: f * rng.range(0.9, 1.1),
+      glide: 0.2,
+      attack: 0.03,
+      hold: rng.range(0.1, 0.25),
+      decay: 0.05,
+      amp: 0.1,
+      h2: 0.3,
+      h3: 0.1,
+    });
   }
   const out = fold(long, len);
   const X = nSamples(0.3, sr);
@@ -426,7 +502,20 @@ function gearShift(rng, sr) {
   thud(out, rng, sr, { at: 0.01, amp: 0.6, f: 90, tau: 0.03, fc: 400 });
   strike(out, rng, sr, 0.05, { amp: 0.5, f: 900, ratios: RATIOS.steel, tau: 0.02, thump: 0.3, modes: 5 });
   scrape(out, rng, sr, { at: 0.08, dur: 0.12, amp: 0.2, f: 1200, f1: 1600, grains: 60 });
-  scrape(out, rng, sr, { at: 0.22, dur: 0.06, amp: 0.3, f: 1800, q: 3, rough: 0.9, roughRate: 600, grains: 400, res: [[1500, 0.01], [2600, 0.008]] });
+  scrape(out, rng, sr, {
+    at: 0.22,
+    dur: 0.06,
+    amp: 0.3,
+    f: 1800,
+    q: 3,
+    rough: 0.9,
+    roughRate: 600,
+    grains: 400,
+    res: [
+      [1500, 0.01],
+      [2600, 0.008],
+    ],
+  });
   strike(out, rng, sr, 0.29, { amp: 1.0, f: rng.range(600, 800), ratios: RATIOS.steel, tau: 0.03, modes: 6, thump: 0.6, thumpF: 120 });
   return finish(out, sr, 0.45, 0.05, 30);
 }
@@ -479,7 +568,7 @@ function brakeSqueal(rng, sr) {
   let ph = 0;
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const env = Math.min(1, t / 0.06) * Math.min(1, (1.15 - t) / 0.25) * (0.5 + 0.5 * rough[i]);
+    const env = Math.min(1, t / 0.06) * Math.max(0, Math.min(1, (1.15 - t) / 0.25)) * (0.5 + 0.5 * rough[i]);
     const f = f0 * (1 + 0.012 * (drift[i] - 0.5) - 0.03 * t);
     ph += (TAU * f) / sr;
     rub.process(rng.next() * 2 - 1);
@@ -532,7 +621,7 @@ function vehicleImpact(rng, sr) {
     (t, u) => strike(out, rng, sr, t, { amp: 0.15 * (1 - u), f: rng.range(1500, 4000), tau: 0.01, modes: 3 }),
   );
   scatter(rng, 0.05, 0.5, 30, (t) => addMode(out, nSamples(t, sr), rng.logRange(3000, 9000), 0.08, rng.range(0.008, 0.03), sr, 0));
-  saturate(out, 1.8, 0, nSamples(0.3, sr));
+  saturate(out, 1.8);
   return finish(out, sr, 0.9, 0.2);
 }
 
@@ -622,8 +711,8 @@ function windTrees(rng, sr) {
       noiseGrain(leaves, rng, i, rng.int(nSamples(0.002, sr), nSamples(0.012, sr)), rng.pareto(1.6, 0.1) * 0.25 * g);
     },
   );
+  filter(leaves, sr, 'highpass', 1500, 0.7);
   const l = fold(leaves, len);
-  filter(l, sr, 'highpass', 1500, 0.7);
   for (let i = 0; i < len; i++) out[i] += l[i];
   return normalizeRms(settleLoop(out, sr, 30), 0.06);
 }
@@ -650,7 +739,9 @@ function riverWater(rng, sr) {
   const out = loopify(all, len, true);
   const ev = new Float32Array(len + nSamples(0.3, sr));
   // Babble: bubbles ringing at their Minnaert frequency, rising as they shrink.
-  scatter(rng, 0, L, 160, (t) => bubble(ev, sr, t, rng.logRange(350, 2200), rng.pareto(1.6, 0.05) * 0.5, rng.range(0.004, 0.014), rng.range(1.2, 1.8)));
+  scatter(rng, 0, L, 160, (t) =>
+    bubble(ev, sr, t, rng.logRange(350, 2200), rng.pareto(1.6, 0.05) * 0.5, rng.range(0.004, 0.014), rng.range(1.2, 1.8)),
+  );
   scatter(rng, 0, L, 6, (t) => bubble(ev, sr, t, rng.range(120, 300), 0.3, rng.range(0.03, 0.06), rng.range(1.2, 1.6)));
   const e = fold(ev, len);
   for (let i = 0; i < len; i++) out[i] += e[i];
@@ -678,7 +769,15 @@ function distantBattle(rng, sr) {
   const pop = (t, a, fc) => {
     blastPulse(long, sr, { at: t, T: rng.range(0.003, 0.006), amp: a, b: 1.1, rise: 2 / sr });
     noiseBurst(long, rng, sr, { at: t, attack: 0.001, decay: 0.01, amp: a * 0.4, filter: 'lp', f: fc });
-    for (let k = 0; k < 3; k++) noiseBurst(long, rng, sr, { at: t + rng.range(0.15, 1.2), attack: 0.005, decay: 0.04, amp: a * rng.range(0.1, 0.25), filter: 'lp', f: fc * 0.6 });
+    for (let k = 0; k < 3; k++)
+      noiseBurst(long, rng, sr, {
+        at: t + rng.range(0.15, 1.2),
+        attack: 0.005,
+        decay: 0.04,
+        amp: a * rng.range(0.1, 0.25),
+        filter: 'lp',
+        f: fc * 0.6,
+      });
   };
   const shots = rng.int(5, 9);
   for (let k = 0; k < shots; k++) {
@@ -704,8 +803,8 @@ function distantBattle(rng, sr) {
     noiseBurst(long, rng, sr, { at: t, attack: 0.01, decay: 0.2, amp: a * 0.4, filter: 'lp', f: 400, color: 'pink' });
     addActivity(t, a, 1.4);
   }
+  filter(long, sr, 'lowpass', 2500, 0.7);
   const ev = fold(long, len);
-  filter(ev, sr, 'lowpass', 2500, 0.7);
   const act = fold(activity, len);
   const X = nSamples(0.5, sr);
   const bed = new Float32Array(len + X);
@@ -781,9 +880,8 @@ function birds(rng, sr) {
     }
   }
   reflect(long, sr, 0.12, 0.2, 3000, long.length / sr);
-  const out = fold(long, len);
-  lowpass1(out, sr, 7000);
-  return normalize(settleLoop(out, sr, 200), 0.25);
+  lowpass1(long, sr, 7000);
+  return normalize(settleLoop(fold(long, len), sr, 200), 0.25);
 }
 
 // Burning vehicle: a low, flickering roar, hiss, and crackling (sharp clicks in
@@ -815,7 +913,9 @@ function fire(rng, sr) {
     noiseGrain(ev, rng, nSamples(t, sr), rng.int(2, 12), rng.pareto(1.2, 0.05) * 0.8);
     if (rng.chance(0.2)) addMode(ev, nSamples(t, sr), rng.range(1500, 5000), rng.pareto(1.2, 0.05) * 0.3, rng.range(0.001, 0.004), sr, Math.PI / 2);
   });
-  scatter(rng, 0, L, 4, (t0) => scatter(rng, t0, t0 + 0.03, 200, (t) => noiseGrain(ev, rng, nSamples(t, sr), rng.int(2, 6), rng.pareto(1.3, 0.05) * 0.4)));
+  scatter(rng, 0, L, 4, (t0) =>
+    scatter(rng, t0, t0 + 0.03, 200, (t) => noiseGrain(ev, rng, nSamples(t, sr), rng.int(2, 6), rng.pareto(1.3, 0.05) * 0.4)),
+  );
   scatter(rng, 0, L, 1.5, (t) => {
     noiseBurst(ev, rng, sr, { at: t, attack: 0.0003, decay: 0.004, amp: 0.5, filter: 'bp', f: 1200 });
     thud(ev, rng, sr, { at: t, amp: 0.2, f: 150, tau: 0.008, fc: 800 });

@@ -497,6 +497,24 @@ export const MATERIALS = {
       height = lines * 0.00015 + fine * 0.0001 - pores * 0.00008;
       alpha = 1.0;
     }`,
+  soldierGear: /* glsl */ `
+    // Neutral leather / painted steel for soldiers' kit (tinted by vertex colors):
+    // fine pebbled grain, creases, scuffs. uPaintA is the base albedo.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float grain = fbm01(uv, vec2(90.0), 3, 251.0);
+      float pores = vnoise(uv * 260.0, vec2(260.0), 252.0);
+      float big = fbm01(uv, vec2(4.0), 4, 253.0);
+      float crease = ridged(uv * vec2(1.0, 3.0), vec2(6.0, 18.0), 3, 254.0);
+      float scuff = smoothstep(0.62, 0.8, fbm01(uv, vec2(8.0), 5, 255.0));
+      float cr = smoothstep(0.72, 1.0, crease);
+      albedo = uPaintA * (0.9 + 0.12 * grain) * (0.88 + 0.24 * big);
+      albedo *= 1.0 - 0.18 * cr;
+      albedo = mix(albedo, uPaintA * 1.3, scuff * 0.3);
+      rough = 0.5 + 0.2 * grain + 0.18 * scuff;
+      metal = 0.0;
+      height = grain * 0.0004 + pores * 0.0002 - cr * 0.0005;
+      alpha = 1.0;
+    }`,
   fabric: /* glsl */ `
     // Wool serge / cotton twill for uniforms. Fine diagonal weave + wear.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
@@ -783,6 +801,63 @@ export const MATERIALS = {
       rough = 0.92;
       height = ea * domeA * 0.06 + eb * domeB * step(0.55, b.w) * 0.03 + fine * 0.004;
       metal = 0.0;
+      alpha = 1.0;
+    }`,
+  // ---- Vehicle materials (src/vehicles/models) ----------------------------------------
+  castArmor: /* glsl */ `
+    // Cast steel armor (cast hulls, turrets, mantlets): lumpy surface with casting pits,
+    // painted uPaintA (faded toward uPaintB) with chips, rust streaks and dust.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float big = fbm01(uv, vec2(3.0), 5, 311.0);
+      float lumps = fbm01(uv, vec2(9.0), 5, 312.0);
+      float fine = fbm01(uv, vec2(48.0), 4, 313.0);
+      vec4 pit = voronoiVec(uv, vec2(36.0), 1.0, 314.0);
+      float pits = step(0.84, pit.w) * (1.0 - smoothstep(0.08, 0.28, length(pit.xy)));
+      float chip = smoothstep(0.73, 0.77, fbm01(uv, vec2(10.0), 6, 315.0));
+      float streak = smoothstep(0.6, 0.9, fbm01(uv * vec2(1.0, 0.3), vec2(12.0, 3.0), 4, 316.0));
+      vec3 paint = uPaintA * (0.85 + 0.25 * big) * (0.92 + 0.12 * fine) * (0.94 + 0.12 * lumps);
+      paint = mix(paint, uPaintB, smoothstep(0.55, 0.9, big) * 0.35);
+      paint *= 1.0 - pits * 0.3;
+      paint = mix(paint, srgb(vec3(0.33, 0.2, 0.1)), streak * 0.16);
+      albedo = mix(paint, srgb(vec3(0.17, 0.16, 0.15)), chip);
+      rough = mix(0.68 + 0.14 * fine, 0.48, chip);
+      metal = chip * 0.6;
+      height = lumps * 0.004 + fine * 0.0009 - pits * 0.0012 - chip * 0.0003;
+      alpha = 1.0;
+    }`,
+  rubber: /* glsl */ `
+    // Tire and road wheel rubber: near black, fine grain, dust (uPaintB) and scuffs.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float fine = fbm01(uv, vec2(64.0), 4, 321.0);
+      float big = fbm01(uv, vec2(4.0), 4, 322.0);
+      float dust = smoothstep(0.45, 0.85, fbm01(uv, vec2(6.0), 5, 323.0));
+      float scuff = smoothstep(0.7, 0.9, fbm01(uv * vec2(1.0, 0.25), vec2(20.0, 5.0), 3, 324.0));
+      albedo = uPaintA * (0.85 + 0.3 * fine) * (0.9 + 0.2 * big);
+      albedo = mix(albedo, uPaintB, dust * 0.4);
+      albedo = mix(albedo, uPaintA * 1.6, scuff * 0.3);
+      rough = 0.82 + 0.1 * fine - scuff * 0.1;
+      metal = 0.0;
+      height = fine * 0.0006 + big * 0.001;
+      alpha = 1.0;
+    }`,
+  trackSteel: /* glsl */ `
+    // Cast manganese-steel track links: dark oxide, rust, packed mud (uPaintB) and polished
+    // wear on the contact faces.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float fine = fbm01(uv, vec2(70.0), 4, 331.0);
+      float big = fbm01(uv, vec2(5.0), 5, 332.0);
+      float rust = smoothstep(0.5, 0.8, fbm01(uv, vec2(8.0), 5, 333.0));
+      float mud = smoothstep(0.56, 0.76, fbm01(uv, vec2(4.0), 5, 334.0));
+      float wear = smoothstep(0.68, 0.8, fbm01(uv, vec2(14.0), 4, 335.0));
+      vec3 steel = uPaintA * (0.8 + 0.4 * fine);
+      vec3 rustc = srgb(vec3(0.36, 0.2, 0.1)) * (0.8 + 0.3 * big);
+      albedo = mix(steel, rustc, rust * 0.6);
+      albedo = mix(albedo, srgb(vec3(0.55, 0.53, 0.5)), wear * 0.7);
+      albedo = mix(albedo, uPaintB * (0.8 + 0.3 * fine), mud * 0.85);
+      rough = mix(mix(0.7, 0.85, rust), 0.35, wear);
+      rough = mix(rough, 0.95, mud);
+      metal = mix(mix(0.6, 0.2, rust), 0.9, wear) * (1.0 - mud);
+      height = fine * 0.0008 + mud * 0.003 + big * 0.002;
       alpha = 1.0;
     }`,
 };

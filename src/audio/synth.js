@@ -89,7 +89,14 @@ for (const type of GUN_TYPES) {
     });
 }
 for (const size of ECHO_SIZES) {
-  def(`echo${cap(size)}`, { group: 'gunshots', dur: ECHO_DUR[size], variants: 2, rate: 0.5, cls: size === 'heavy' ? 'heavy' : 'gun', make: (rng, sr) => gunEcho(size, rng, sr) });
+  def(`echo${cap(size)}`, {
+    group: 'gunshots',
+    dur: ECHO_DUR[size],
+    variants: 2,
+    rate: 0.5,
+    cls: size === 'heavy' ? 'heavy' : 'gun',
+    make: (rng, sr) => gunEcho(size, rng, sr),
+  });
 }
 
 def('crack', {
@@ -115,7 +122,15 @@ for (const [id, d] of Object.entries(MECHANICAL)) {
 }
 
 for (const s of SURFACES) {
-  def(`step${cap(s)}`, { group: 'footsteps', dur: STEP_DUR[s], variants: 6, cls: 'step', pitchVar: 0.05, volVar: 0.15, make: (rng, sr) => footstep(s, rng, sr) });
+  def(`step${cap(s)}`, {
+    group: 'footsteps',
+    dur: STEP_DUR[s],
+    variants: 6,
+    cls: 'step',
+    pitchVar: 0.05,
+    volVar: 0.15,
+    make: (rng, sr) => footstep(s, rng, sr),
+  });
 }
 
 const PEOPLE_VARIANTS = { jumpLand: 2, bodyFall: 2, proneDown: 2, hurtGrunt: 4 };

@@ -50,6 +50,8 @@ export class Soldier {
     this.team = team;
     this.name = name || `Soldier ${this.id}`;
     this.isPlayer = isPlayer;
+    this.vehicle = null;
+    this.seat = -1;
     const y = game.world.hf.getHeight(x, z);
     this.body = new Body(game.world.collision, x, y, z);
     this.weapons = loadout.map((id) => (id ? new Weapon(WEAPONS[id]) : null));
@@ -107,7 +109,8 @@ export class Soldier {
     const intent = this.intent;
     intent.yaw = this.yaw;
     intent.aiming = this.aiming;
-    this.body.update(dt, intent);
+    // Riding in a vehicle: the vehicle carries the body.
+    if (!this.vehicle) this.body.update(dt, intent);
 
     // Fall damage.
     if (this.body.fallDamage > 0) {
@@ -201,6 +204,15 @@ export class Soldier {
     this.deaths++;
     this.killer = cause?.attacker || null;
     for (const w of this.weapons) w?.setTrigger(false);
+    // The dead are left where they fell (out of the seat).
+    if (this.vehicle) {
+      const v = this.vehicle;
+      const i = v.occupants.indexOf(this);
+      if (i >= 0) v.occupants[i] = null;
+      if (i === 0) v.driverInput(0, 0, true);
+      this.vehicle = null;
+      this.seat = -1;
+    }
     this.game.onDeath?.(this, cause);
   }
 

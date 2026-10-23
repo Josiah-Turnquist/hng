@@ -13,6 +13,8 @@ import { FACTIONS, DEFAULT_LOADOUT } from '../weapons/defs.js';
 import { Hud } from '../ui/hud.js';
 import { RangeMode } from './modes/range.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
+import { spawnVehicle } from '../vehicles/index.js';
+import { updateVehicleEffects, charModel } from '../vehicles/effects.js';
 import { clamp } from '../core/math.js';
 
 export class Game {
@@ -28,6 +30,7 @@ export class Game {
     this.camera.rotation.order = 'YXZ';
     this.spectator = { yaw: 0, pitch: 0, speed: 12 };
     this.soldiers = [];
+    this.vehicles = [];
     this.tmpHit = new RayHit();
     this.cameraMode = 'first';
     this.audio = app.audio || null;
@@ -45,7 +48,7 @@ export class Game {
     this.projectiles = new ProjectileSystem({
       world: this.world.collision,
       atmosphere: this.world.atmosphere,
-      dynamicRaycast: (ox, oy, oz, dx, dy, dz, max, p) => this._raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p),
+      dynamicRaycast: (ox, oy, oz, dx, dy, dz, max, p) => this._raycastDynamic(ox, oy, oz, dx, dy, dz, max, p),
     });
     this.projectiles.onImpact = (p, info) => this._onImpact(p, info);
     this.projectiles.onExpire = (p, why) => this._onExpire(p, why);
@@ -97,19 +100,77 @@ export class Game {
     this.hud?.resize(w, h);
   }
 
+  spawnVehicle(id, x, z, yaw = 0) {
+    const v = spawnVehicle(this, id, x, z, yaw);
+    this.vehicles.push(v);
+    return v;
+  }
+
   // --- simulation ----------------------------------------------------------------------
   update(dt) {
     this.time += dt;
     this.player.update(dt);
+    for (const v of this.vehicles) v.step(dt);
     for (const s of this.soldiers) if (!s.isPlayer) s.update(dt);
+    this._runOver();
     this.projectiles.update(dt);
     this.mode.update?.(dt);
+  }
+
+  // Vehicles knock down (and hurt) people in their way; slow ones just push.
+  _runOver() {
+    const p = new THREE.Vector3();
+    for (const v of this.vehicles) {
+      const b = v.body;
+      const [W, H, L] = v.def.dims;
+      const reach = Math.hypot(W, L) / 2 + 0.6;
+      for (const s of this.soldiers) {
+        if (!s.alive || s.vehicle) continue;
+        const sb = s.body;
+        const dx = sb.x - b.position.x,
+          dz = sb.z - b.position.z;
+        if (dx * dx + dz * dz > reach * reach) continue;
+        v.worldToModel(p.set(sb.x, sb.y + 0.5, sb.z), p);
+        const r = 0.35;
+        if (p.y < -0.3 || p.y > H + 0.3) continue;
+        const ox = W / 2 + r - Math.abs(p.x),
+          oz = L / 2 + r - Math.abs(p.z);
+        if (ox <= 0 || oz <= 0) continue;
+        // Relative speed of the vehicle where it touches the soldier.
+        const vel = b.pointVelocity(new THREE.Vector3(sb.x, sb.y + 0.5, sb.z), new THREE.Vector3());
+        const rel = Math.hypot(vel.x - sb.vx, vel.z - sb.vz);
+        if (rel > 2.2) {
+          const dmg = 2 * rel * rel * Math.pow(v.def.mass / 1000, 0.3);
+          s.damage(dmg, { kind: 'vehicle', attacker: v.driver || v.lastDriver, vehicle: v, weapon: { name: v.def.name } });
+        }
+        // Push out sideways (or ahead) of the hull.
+        const side = ox < oz ? new THREE.Vector3(Math.sign(p.x) || 1, 0, 0) : new THREE.Vector3(0, 0, Math.sign(p.z) || 1);
+        side.applyQuaternion(b.quaternion);
+        const push = Math.min(ox, oz) + 0.02;
+        sb.x += side.x * push;
+        sb.z += side.z * push;
+        sb.vx = vel.x * 0.8 + side.x * 2;
+        sb.vz = vel.z * 0.8 + side.z * 2;
+      }
+    }
+  }
+
+  _raycastDynamic(ox, oy, oz, dx, dy, dz, max, p) {
+    let best = this._raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p);
+    for (const v of this.vehicles) {
+      if (v === p.ignoreTarget || (v === p.ignoreVehicle && p.distance < 40)) continue;
+      const hit = v.raycastArmor(ox, oy, oz, dx, dy, dz, best ? best.t : max);
+      if (hit && (!best || hit.t < best.t)) best = hit;
+    }
+    return best;
   }
 
   _raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p) {
     let best = null;
     for (const s of this.soldiers) {
       if (s === p.owner || s === p.ignoreTarget) continue;
+      // Crews inside tanks are behind armor (hit through the vehicle damage model).
+      if (s.vehicle && s.vehicle.def.kind === 'tracked') continue;
       const b = s.body;
       // Quick reject with a bounding sphere around the soldier.
       const cx = b.x - ox,
@@ -133,6 +194,10 @@ export class Game {
 
   _onImpact(p, info) {
     const fx = this.effects;
+    if (info.target?.isVehicle) {
+      this._vehicleImpact(p, info);
+      return;
+    }
     if (info.detonate) {
       this.explode(info.x, info.y, info.z, p);
       return;
@@ -163,6 +228,49 @@ export class Game {
     else this.audio?.impact(m, info.x, info.y, info.z, info.energy);
   }
 
+  // A bullet or shell hitting a vehicle's armor.
+  _vehicleImpact(p, info) {
+    const v = info.target;
+    const fx = this.effects;
+    const wasAlive = v.alive;
+    const res = v.onHit(info, p);
+    const big = p.ammo.diameter >= 0.019 || p.ammo.heat;
+    fx.impact({ ...info, effect: 'sparks', energy: big ? info.energy * 0.05 : info.energy });
+    if (info.kind === 'ricochet') this.audio?.play?.('ricochet', info, { volume: big ? 1 : 0.6 });
+    else this.audio?.impact?.('armor', info.x, info.y, info.z, big ? 20000 : info.energy);
+    if (big && info.kind === 'penetrate') {
+      fx.spawn?.('spark', info.x, info.y, info.z, { count: 30, dir: [info.dirX * 4, info.dirY * 4, info.dirZ * 4], spread: 3, speed: 3 });
+      fx.flashLight?.(info.x, info.y, info.z, 30, 10, 0.08);
+    }
+    if (info.detonate) this.explode(info.x, info.y, info.z, p, v);
+    if (p.owner === this.player?.soldier && big) {
+      const msg = info.kind === 'penetrate' ? 'Penetration' : info.kind === 'ricochet' ? 'Ricochet' : 'No penetration';
+      this.hud?.flash(`${msg} (${Math.round(info.penMM || 0)} mm vs ${Math.round(info.effMM || 0)} mm)`, 2);
+      if (info.kind === 'penetrate') this.hud.hitMarker(wasAlive && !v.alive ? 2 : 1);
+    }
+    this.mode.onImpact?.(p, info);
+    return res;
+  }
+
+  onVehicleDestroyed(v, attacker, cause) {
+    const p = v.body.position;
+    const big = v.def.kind === 'tracked';
+    this.effects.explosion(p.x, p.y + 0.5, p.z, big ? (cause === 'ammo' ? 4 : 2.5) : 1.6);
+    this.audio?.explosion?.('shellExplosion', p.x, p.y, p.z);
+    charModel(v);
+    this.hud?.killFeed(attacker, { name: v.def.name, faction: v.def.faction }, { kind: 'vehicle', weapon: { name: cause } });
+    if (attacker === this.player?.soldier) this.hud?.hitMarker(2);
+    // An ammunition explosion throws the turret off.
+    if (cause === 'ammo' && v.model.parts?.turret) {
+      v.turretFly = { vy: 9 + Math.random() * 5, vx: (Math.random() - 0.5) * 3, vz: (Math.random() - 0.5) * 3, spin: (Math.random() - 0.5) * 4 };
+    }
+  }
+
+  onVehicleEvent(v, kind, attacker) {
+    if (attacker === this.player?.soldier) this.hud?.flash(kind === 'track' ? 'Track destroyed' : kind === 'fire' ? 'Target on fire' : kind, 2);
+    if (this.player?.soldier.vehicle === v) this.hud?.flash(kind === 'track' ? 'Our track is broken!' : kind === 'fire' ? 'We are on fire!' : kind, 2.5);
+  }
+
   _onExpire(p, why) {
     if (why === 'fuse' && p.ammo.explosive) this.explode(p.x, p.y, p.z, p);
   }
@@ -191,7 +299,7 @@ export class Game {
   }
 
   // HE explosion: blast and fragments (fragments are real projectiles).
-  explode(x, y, z, p) {
+  explode(x, y, z, p, skipVehicle = null) {
     const ex = p.ammo.explosive;
     this.effects.explosion(x, y, z, 0.6 + Math.sqrt(ex.blast) * 1.2);
     this.audio?.explosion(ex.blast > 0.3 ? 'shellExplosion' : 'grenadeExplosion', x, y, z);
@@ -206,6 +314,15 @@ export class Game {
       if (!this.world.collision.lineOfSight(x, y + 0.2, z, s.body.x, s.body.y + 1, s.body.z)) continue;
       const blast = (ex.blast * 900) / Math.max(1, d * d);
       if (blast > 1) s.damage(blast, { kind: 'explosion', attacker: p.owner, weapon: p.weapon });
+    }
+    // Vehicles: blast against thin-skinned ones, tracks of tanks close by.
+    for (const v of this.vehicles) {
+      if (!v.alive || v === skipVehicle) continue;
+      const vp = v.body.position;
+      const d = Math.max(0.5, Math.hypot(vp.x - x, vp.y - y, vp.z - z) - Math.hypot(...v.def.dims) / 4);
+      if (d > ex.radius * 1.5) continue;
+      const armored = v.def.kind === 'tracked';
+      v.damage((ex.blast * (armored ? 60 : 900)) / (d * d), p.owner, 'blast');
     }
     // Fragments.
     const n = Math.min(60, ex.fragments || 30);
@@ -239,17 +356,19 @@ export class Game {
     if (this.cameraMode === 'spectate') this._spectate(frameDt);
     else this.player.frameInput(frameDt);
     input.endFrame();
+    for (const v of this.vehicles) v.syncModel(frameDt);
     if (this.cameraMode === 'first') this.player.render(frameDt);
     else this.camera.updateMatrixWorld();
 
     const camPos = this.camera.position;
+    for (const v of this.vehicles) updateVehicleEffects(this, v, frameDt);
     this.world.update(this.time, camPos);
     this.world.shadows.update();
     this.effects.update(frameDt, camPos, this.world.fogColor);
     const colors = FACTION_TRACERS;
     this.effects.updateTracers(this.projectiles.active, (p) => colors[p.owner?.faction] || colors.GE);
     this.hud.update(frameDt);
-    const vm = this.cameraMode === 'first' ? this.player.viewmodel : null;
+    const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;
     this.pipeline.grade.uniforms.uDamage.value = clamp(this.hud.damageFlash, 0, 1);
     this.pipeline.render(this.world.scene, this.camera, vm?.scene, vm?.camera, this.time);
   }

@@ -1,6 +1,6 @@
 // US small arms. See kit.js for the coordinate conventions:
 // meters, bore along Z at x = y = 0, muzzle toward -Z, trigger at z = 0.
-import { S, place, at, circle, slot, offset, boxMag, guard, trigger, plateXY, plateZX, lathe, tube, ringZ, cartridge, swivel, rot2, move2, taperZ, path, loft } from './parts.js';
+import { S, place, circle, slot, boxMag, guard, trigger, plateXY, lathe, tube, cartridge, swivel, taperZ, path, loft } from './parts.js';
 
 const PI = Math.PI;
 
@@ -221,11 +221,15 @@ function carbine(b, v) {
     b.body();
     b.meta.sightKind = 'slide';
   } else {
-    // Early L-type flip sight (150 / 300 yd apertures): fixed for the game.
+    // Early L-type flip sight (150 / 300 yd apertures): the game raises the
+    // aperture straight up between the two settings.
     b.span({ z0: -0.022, z1: 0.014, y0: 0.0105, y1: 0.0155, w: 0.016, mat: P, r: 0.0015 });
-    plateXY(b, { outline: [[-0.006, 0.0145], [0.006, 0.0145], [0.006, 0.0275], [0.003, 0.03], [-0.003, 0.03], [-0.006, 0.0275]], holes: [circle(0, 0.024, 0.0012, 14)], z: 0.0, thick: 0.0026, mat: P });
     b.span({ z0: 0.0, z1: 0.012, y0: 0.0145, y1: 0.0175, w: 0.012, mat: P, r: 0.001 });
+    b.part('rearSight', [0, 0.024, 0.0]);
+    plateXY(b, { outline: [[-0.006, 0.0145], [0.006, 0.0145], [0.006, 0.0275], [0.003, 0.03], [-0.003, 0.03], [-0.006, 0.0275]], holes: [circle(0, 0.024, 0.0013, 14)], z: 0.0, thick: 0.0026, mat: P });
     b.anchor('rearSight', 0, 0.024, 0.0);
+    b.body();
+    b.meta.sightKind = 'slide';
   }
 
   if (v.stock === 'wood') {
@@ -561,8 +565,8 @@ export function thompson_m1a1(b) {
   // Barrel and front sight blade.
   lathe(b, { mat: P, profile: [[0, -0.205], [0.0118, -0.205], [0.0108, -0.3], [0.0098, -0.465], [0, -0.465]] });
   b.cyl({ z0: -0.462, z1: -0.446, r0: 0.0118, mat: P });
-  b.extrude({ points: [[-0.46, 0.008], [-0.448, 0.008], [-0.451, 0.0375], [-0.457, 0.0375]], width: 0.0024, mat: P, bevel: 0.0004 });
-  b.anchor('frontSight', 0, 0.0375, -0.454);
+  b.extrude({ points: [[-0.46, 0.008], [-0.448, 0.008], [-0.451, 0.034], [-0.457, 0.034]], width: 0.0024, mat: P, bevel: 0.0004 });
+  b.anchor('frontSight', 0, 0.034, -0.454);
   // Receiver: rounded block with ejection port (right) and cocking slot.
   b.box({ x: 0, y: 0.0025, z: -0.0725, w: 0.032, h: 0.041, d: 0.265, mat: P, r: 0.006 });
   b.cyl({ z0: -0.215, z1: -0.2, r0: 0.0135, mat: P });
@@ -658,8 +662,8 @@ export function m3_greasegun(b) {
   b.cyl({ z0: -0.3, z1: 0.098, r0: R, mat: P, seg: 28 });
   lathe(b, { mat: P, profile: [[0, 0.096], [R - 0.001, 0.096], [R - 0.003, 0.104], [0, 0.106]] });
   // Front sight (on the receiver) and fixed rear aperture with guards.
-  b.extrude({ points: [[-0.298, 0.02], [-0.282, 0.02], [-0.286, 0.0415], [-0.293, 0.0415]], width: 0.0025, mat: P, bevel: 0.0004 });
-  b.anchor('frontSight', 0, 0.0415, -0.2895);
+  b.extrude({ points: [[-0.298, 0.02], [-0.282, 0.02], [-0.286, 0.0387], [-0.293, 0.0387]], width: 0.0025, mat: P, bevel: 0.0004 });
+  b.anchor('frontSight', 0, 0.0387, -0.2895);
   b.span({ z0: 0.068, z1: 0.096, y0: 0.022, y1: 0.03, w: 0.016, mat: P, r: 0.0015 });
   for (const sx of [-1, 1]) b.extrude({ points: [[0.07, 0.028], [0.094, 0.028], [0.094, 0.047], [0.084, 0.047]], width: 0.002, x: sx * 0.0075, mat: P, bevel: 0.0004 });
   plateXY(b, { outline: [[-0.006, 0.028], [0.006, 0.028], [0.006, 0.045], [-0.006, 0.045]], holes: [circle(0, 0.0415, 0.0015, 14)], z: 0.088, thick: 0.0025, mat: P });
@@ -765,11 +769,14 @@ export function bar_m1918a2(b) {
   // Rear sight: base with ears; the leaf carries the aperture (raised by range).
   b.span({ z0: 0.005, z1: 0.05, y0: 0.02, y1: 0.0275, w: 0.022, mat: P, r: 0.0015 });
   for (const sx of [-1, 1]) b.extrude({ points: [[0.012, 0.026], [0.048, 0.026], [0.048, 0.042], [0.03, 0.049], [0.02, 0.048]], width: 0.0025, x: sx * 0.0095, mat: P, bevel: 0.0004 });
-  b.part('rearSight', [0, 0.028, 0.044]);
-  plateXY(b, { outline: [[-0.0055, 0.0265], [0.0055, 0.0265], [0.0055, 0.05], [-0.0055, 0.05]], holes: [circle(0, 0.0465, 0.0013, 14)], z: 0.0395, thick: 0.0025, mat: P });
-  b.anchor('rearSight', 0, 0.0465, 0.0395);
+  // Aperture slide on the raised leaf: moves straight up with the range.
+  for (const sx of [-1, 1]) b.extrude({ points: [[0.037, 0.026], [0.043, 0.026], [0.043, 0.072], [0.037, 0.072]], width: 0.0032, x: sx * 0.0058, mat: P, bevel: 0.0006 }); // leaf rails
+  b.span({ z0: 0.037, z1: 0.043, y0: 0.069, y1: 0.073, w: 0.0148, mat: P, r: 0.0008 });
+  b.part('rearSight', [0, 0.0465, 0.0345]);
+  plateXY(b, { outline: [[-0.0068, 0.04], [0.0068, 0.04], [0.0068, 0.053], [-0.0068, 0.053]], holes: [circle(0, 0.0465, 0.0013, 14)], z: 0.0345, thick: 0.0025, mat: P });
+  b.anchor('rearSight', 0, 0.0465, 0.0345);
   b.body();
-  b.meta.sightKind = 'leaf';
+  b.meta.sightKind = 'slide';
 
   // Butt stock with pistol grip; butt plate with folded shoulder support.
   loft(b, {
@@ -859,17 +866,23 @@ export function m1919a6(b) {
   // Receiver box with trunnion; front sight on the left of the trunnion.
   b.span({ z0: -0.322, z1: 0.016, y0: -0.034, y1: 0.03, w: 0.044, mat: P, r: 0.003 });
   b.span({ z0: -0.33, z1: -0.25, y0: -0.036, y1: 0.031, w: 0.047, mat: P, r: 0.003 });
+  for (const sx of [-1, 1]) for (const [z, y] of [[-0.23, -0.024], [-0.15, -0.024], [-0.07, -0.024], [-0.23, 0.02], [-0.03, 0.0]]) b.cylAxis({ axis: 'x', x: sx * 0.0222, y, z, len: 0.0012, r: 0.0028, mat: 'steel', seg: 10 }); // rivets
+  b.span({ z0: -0.322, z1: 0.016, y0: -0.0345, y1: -0.031, w: 0.046, mat: P, r: 0.001 }); // bottom plate
   const SX = -0.026; // sight line offset to the left
   b.span({ z0: -0.322, z1: -0.296, y0: 0.028, y1: 0.04, w: 0.012, x: SX + 0.002, mat: P, r: 0.0015 });
   b.extrude({ points: [[-0.316, 0.039], [-0.302, 0.039], [-0.305, 0.0605], [-0.312, 0.0605]], width: 0.0024, x: SX, mat: P, bevel: 0.0004 });
   b.anchor('frontSight', SX, 0.0605, -0.3085);
-  // Rear sight: leaf with aperture on the left rear of the receiver.
+  // Rear sight on the left rear of the receiver: raised leaf, notched slide
+  // that moves up the leaf with the range.
   b.span({ z0: -0.06, z1: -0.015, y0: 0.01, y1: 0.035, w: 0.01, x: SX + 0.002, mat: P, r: 0.0015 });
-  b.part('rearSight', [SX, 0.035, -0.035]);
-  plateXY(b, { outline: [[SX - 0.006, 0.033], [SX + 0.006, 0.033], [SX + 0.006, 0.066], [SX - 0.006, 0.066]], holes: [circle(SX, 0.0605, 0.0016, 14)], z: -0.035, thick: 0.003, mat: P });
-  b.anchor('rearSight', SX, 0.0605, -0.035);
+  for (const sx of [-1, 1]) b.extrude({ points: [[-0.04, 0.033], [-0.034, 0.033], [-0.034, 0.1], [-0.04, 0.1]], width: 0.003, x: SX + sx * 0.0062, mat: P, bevel: 0.0006 }); // leaf rails
+  b.span({ z0: -0.04, z1: -0.034, y0: 0.097, y1: 0.101, w: 0.0154, x: SX, mat: P, r: 0.0008 });
+  b.part('rearSight', [SX, 0.0605, -0.0315]);
+  for (const sx of [-1, 1]) plateXY(b, { outline: [[SX + sx * 0.0013, 0.055], [SX + sx * 0.0075, 0.055], [SX + sx * 0.0075, 0.0645], [SX + sx * 0.0013, 0.0645]], z: -0.0315, thick: 0.003, mat: P });
+  plateXY(b, { outline: [[SX - 0.0075, 0.055], [SX + 0.0075, 0.055], [SX + 0.0075, 0.0605], [SX - 0.0075, 0.0605]], z: -0.0315, thick: 0.003, mat: P });
+  b.anchor('rearSight', SX, 0.0605, -0.0315);
   b.body();
-  b.meta.sightKind = 'leaf';
+  b.meta.sightKind = 'slide';
   // Feedway on the left, belt guide.
   b.span({ z0: -0.29, z1: -0.215, y0: 0.012, y1: 0.03, w: 0.018, x: -0.03, mat: P, r: 0.002 });
   // Backplate, pistol grip and trigger.
@@ -949,9 +962,8 @@ export function m1919a6(b) {
   b.anchor('trigger', 0, -0.045, 0.0);
   b.anchor('gripL', 0, -0.03, 0.17); // left hand on the stock under the cheek (bipod fire)
   b.anchor('shoulder', 0, -0.09, 0.366);
-  b.meta.sight = 'aperture';
+  b.meta.sight = 'notch';
   b.meta.boltThrow = 0.09;
-  b.meta.openBolt = false;
 }
 
 // Johnson M1941 light machine gun: .30-06, 1067 mm, 559 mm barrel, ventilated
@@ -1123,11 +1135,11 @@ export function m1911a1(b) {
   for (let i = 0; i < 8; i++) for (const sx of [-1, 1]) b.box({ x: sx * 0.0117, y: -0.0005, z: 0.031 + i * 0.0035, w: 0.0008, h: 0.015, d: 0.0011, mat: 'black', r: 0.0002 });
   tube(b, { z0: -0.1265, z1: -0.118, rIn: 0.0065, rOut: 0.0088, mat: P, seg: 16 });
   b.cyl({ z0: -0.1265, z1: -0.12, r0: 0.0052, y: -0.015, mat: P, seg: 14 });
-  b.extrude({ points: [[-0.1205, 0.009], [-0.1125, 0.009], [-0.1135, 0.0148], [-0.1195, 0.0148]], width: 0.0028, mat: P, bevel: 0.0004 });
+  b.extrude({ points: [[-0.1205, 0.009], [-0.1125, 0.009], [-0.1135, 0.0144], [-0.1195, 0.0144]], width: 0.0028, mat: P, bevel: 0.0004 });
   for (const sx of [-1, 1]) b.extrude({ points: [[0.044, 0.009], [0.052, 0.009], [0.052, 0.0168], [0.045, 0.0168]], width: 0.0042, x: sx * 0.0035, mat: P, bevel: 0.0004 });
   b.span({ z0: 0.044, z1: 0.052, y0: 0.009, y1: 0.0148, w: 0.0028, mat: P, r: 0.0003 });
   b.body();
-  b.anchor('frontSight', 0, 0.0148, -0.1165);
+  b.anchor('frontSight', 0, 0.0144, -0.1165);
   b.anchor('rearSight', 0, 0.0148, 0.048);
 
   // Hammer (cocked), pivoting on its pin.
@@ -1159,8 +1171,8 @@ export function m1917_revolver(b) {
   const cy = -0.0135; // cylinder axis
   // Barrel, half-moon front sight, ejector rod and its locking lug.
   lathe(b, { mat: P, profile: [[0, -0.052], [0.0094, -0.052], [0.0088, -0.12], [0.0083, -0.192], [0, -0.192]] });
-  b.extrude({ points: S([[-0.19, 0.006], [-0.176, 0.006], [-0.18, 0.0145], [-0.185, 0.017], [-0.189, 0.013]]), width: 0.0028, mat: P, bevel: 0.0004 });
-  b.anchor('frontSight', 0, 0.017, -0.1845);
+  b.extrude({ points: S([[-0.19, 0.006], [-0.176, 0.006], [-0.18, 0.014], [-0.185, 0.0164], [-0.189, 0.0125]]), width: 0.0028, mat: P, bevel: 0.0004 });
+  b.anchor('frontSight', 0, 0.0164, -0.1845);
   b.span({ z0: -0.104, z1: -0.088, y0: cy - 0.004, y1: -0.006, w: 0.007, mat: P, r: 0.0015 });
   b.cyl({ z0: -0.098, z1: -0.044, r0: 0.0026, y: cy, mat: P, seg: 10 });
   b.cyl({ z0: -0.098, z1: -0.09, r0: 0.0042, y: cy, mat: P, seg: 12 });
@@ -1174,11 +1186,11 @@ export function m1917_revolver(b) {
       [0.004, 0.0168],
       [0.03, 0.0168],
       [0.04, 0.012],
-      [0.046, -0.002],
-      [0.048, -0.02],
-      [0.058, -0.06],
-      [0.062, -0.085],
-      [0.03, -0.085],
+      [0.048, -0.002],
+      [0.052, -0.02],
+      [0.066, -0.06],
+      [0.072, -0.085],
+      [0.034, -0.085],
       [0.016, -0.048],
       [0.01, -0.046],
       [0.006, -0.06],
@@ -1207,8 +1219,8 @@ export function m1917_revolver(b) {
   for (const sx of [-1, 1]) b.span({ z0: 0.004, z1: 0.032, y0: 0.0155, y1: 0.0188, w: 0.0055, x: sx * 0.0042, mat: P, r: 0.0006 });
   b.anchor('rearSight', 0, 0.017, 0.026);
   // Round-butt walnut grips and lanyard ring.
-  b.extrude({ points: S([[0.019, -0.042], [0.045, -0.028], [0.056, -0.056], [0.068, -0.092], [0.064, -0.108], [0.046, -0.112], [0.033, -0.1], [0.021, -0.07]]), width: 0.034, mat: 'walnut', bevel: 0.006 });
-  swivel(b, { y: -0.1155, z: 0.054, r: 0.0055, t: 0.0014, w: 0.002 });
+  b.extrude({ points: S([[0.019, -0.042], [0.048, -0.028], [0.062, -0.056], [0.079, -0.094], [0.076, -0.11], [0.056, -0.115], [0.04, -0.103], [0.023, -0.07]]), width: 0.034, mat: 'walnut', bevel: 0.006 });
+  swivel(b, { y: -0.1185, z: 0.063, r: 0.0055, t: 0.0014, w: 0.002 });
   // Cylinder latch (left), trigger.
   b.box({ x: -0.0105, y: -0.004, z: 0.006, w: 0.004, h: 0.007, d: 0.014, mat: P, r: 0.001 });
   trigger(b, { z: 0, yTop: -0.037, len: 0.02, curve: 0.006, w: 0.006, mat: P });
@@ -1236,9 +1248,9 @@ export function m1917_revolver(b) {
   b.body();
 
   b.anchor('muzzle', 0, 0, -0.192);
-  b.anchor('gripR', 0, -0.07, 0.045);
+  b.anchor('gripR', 0, -0.07, 0.05);
   b.anchor('trigger', 0, -0.047, 0.0);
-  b.anchor('gripL', -0.024, -0.08, 0.042);
+  b.anchor('gripL', -0.024, -0.08, 0.047);
   b.meta.sight = 'notch';
   b.meta.cylinderRounds = 6;
 }
@@ -1254,15 +1266,19 @@ export function bazooka_m1a1(b) {
   for (const z of [-0.45, 0.4]) tube(b, { z0: z - 0.008, z1: z + 0.008, rIn: 0.031, rOut: 0.0345, mat: 'steel', seg: 28 });
   // Rocket latch on top at the rear.
   b.span({ z0: 0.44, z1: 0.505, y0: 0.03, y1: 0.037, w: 0.012, mat: 'steel', r: 0.0015 });
-  // Sights on the left: front frame with range posts, rear peep.
-  const SX = -0.056,
-    SY = 0.028;
-  b.span({ z0: -0.56, z1: -0.54, y0: 0.0, y1: 0.012, w: 0.03, x: -0.036, mat: 'steel', r: 0.002 });
-  plateXY(b, { outline: [[SX - 0.012, -0.004], [SX + 0.012, -0.004], [SX + 0.012, SY + 0.006], [SX - 0.012, SY + 0.006]], holes: [[[SX - 0.0095, -0.0015], [SX + 0.0095, -0.0015], [SX + 0.0095, SY + 0.0035], [SX - 0.0095, SY + 0.0035]]], z: -0.55, thick: 0.002, mat: 'steel' });
-  for (let i = 0; i < 4; i++) b.span({ z0: -0.551, z1: -0.549, y0: SY - 0.0008 - i * 0.008, y1: SY - i * 0.008, w: 0.019, x: SX, mat: 'steel', r: 0.0002 });
-  b.anchor('frontSight', SX, SY, -0.55);
-  b.span({ z0: 0.035, z1: 0.065, y0: 0.0, y1: 0.012, w: 0.03, x: -0.036, mat: 'steel', r: 0.002 });
-  plateXY(b, { outline: [[SX - 0.006, 0.006], [SX + 0.006, 0.006], [SX + 0.006, SY + 0.006], [SX - 0.006, SY + 0.006]], holes: [circle(SX, SY, 0.0018, 14)], z: 0.05, thick: 0.0025, mat: 'steel' });
+  // Sights on the left: front frame with range bars for 50 / 100 / 150 m, rear
+  // peep on a bracket (the bars sit where the solved elevations put them).
+  const SX = -0.058,
+    SY = 0.07,
+    bars = [0.0475, 0.0247, 0.0007];
+  b.span({ z0: -0.56, z1: -0.54, y0: -0.012, y1: 0.0, w: 0.03, x: -0.038, mat: 'steel', r: 0.002 });
+  plateXY(b, { outline: [[SX - 0.012, -0.008], [SX + 0.012, -0.008], [SX + 0.012, 0.056], [SX - 0.012, 0.056]], holes: [[[SX - 0.0095, -0.0055], [SX + 0.0095, -0.0055], [SX + 0.0095, 0.0535], [SX - 0.0095, 0.0535]]], z: -0.55, thick: 0.002, mat: 'steel' });
+  for (const y of bars) b.span({ z0: -0.551, z1: -0.549, y0: y - 0.0009, y1: y, w: 0.019, x: SX, mat: 'steel', r: 0.0002 });
+  b.anchor('frontSight', SX, bars[1], -0.55);
+  b.meta.sightRanges = { 50: bars[0], 100: bars[1], 150: bars[2] };
+  b.span({ z0: 0.035, z1: 0.065, y0: 0.0, y1: 0.012, w: 0.03, x: -0.038, mat: 'steel', r: 0.002 });
+  b.span({ z0: 0.044, z1: 0.056, y0: 0.008, y1: SY - 0.005, w: 0.006, x: SX - 0.006, mat: 'steel', r: 0.001 });
+  plateXY(b, { outline: [[SX - 0.006, SY - 0.008], [SX + 0.006, SY - 0.008], [SX + 0.006, SY + 0.006], [SX - 0.006, SY + 0.006]], holes: [circle(SX, SY, 0.0018, 14)], z: 0.05, thick: 0.0025, mat: 'steel' });
   b.anchor('rearSight', SX, SY, 0.05);
   // Front grip.
   b.extrude({ points: S([[-0.34, -0.028], [-0.31, -0.028], [-0.306, -0.07], [-0.302, -0.12], [-0.316, -0.13], [-0.334, -0.124], [-0.338, -0.07]]), width: 0.032, mat: 'walnut', bevel: 0.007 });
@@ -1292,7 +1308,7 @@ export function bazooka_m1a1(b) {
   b.anchor('trigger', 0, -0.048, 0.0);
   b.anchor('gripL', 0, -0.08, -0.32);
   b.anchor('shoulder', 0, -0.08, 0.27);
-  b.meta.sight = 'aperture';
+  b.meta.sight = 'post'; // range bars on the front frame, peep at the rear
   b.meta.rocketAxis = [0, 0, 1]; // loaded from the rear
 }
 
@@ -1301,7 +1317,7 @@ export function bazooka_m1a1(b) {
 // origin at the body center.
 export function mk2_grenade(b) {
   const a = 0.0255,
-    c = 0.039;
+    c = 0.043;
   b.sphere({ r: 1, sx: a, sy: c, sz: a, seg: 20, mat: 'olive' });
   for (let row = 0; row < 5; row++) {
     const phi = ((row - 2) * PI) / 6.6;
@@ -1318,20 +1334,20 @@ export function mk2_grenade(b) {
     }
   }
   // Fuze: neck, body, striker housing; spoon down the side; pin and ring.
-  b.cylAxis({ axis: 'y', y: 0.039, len: 0.008, r: 0.011, mat: 'olive' });
-  b.cylAxis({ axis: 'y', y: 0.049, len: 0.014, r: 0.0085, mat: 'steel' });
-  b.cylAxis({ axis: 'y', y: 0.0585, len: 0.006, r: 0.0065, mat: 'steel' });
-  place(b, { pos: [0, 0, 0], rot: [0, PI / 2, 0] }, () => {
+  b.cylAxis({ axis: 'y', y: 0.043, len: 0.008, r: 0.011, mat: 'olive' });
+  b.cylAxis({ axis: 'y', y: 0.053, len: 0.014, r: 0.0085, mat: 'steel' });
+  b.cylAxis({ axis: 'y', y: 0.0625, len: 0.006, r: 0.0065, mat: 'steel' });
+  place(b, { pos: [0, 0.004, 0], rot: [0, PI / 2, 0] }, () => {
     b.extrude({ points: [[-0.003, 0.0625], [0.01, 0.0605], [0.02, 0.05], [0.028, 0.032], [0.031, 0.01], [0.031, -0.008], [0.0285, -0.008], [0.0285, 0.01], [0.0255, 0.031], [0.018, 0.048], [0.009, 0.0585], [-0.003, 0.06]], width: 0.011, mat: 'olive', bevel: 0.0004 });
   });
-  b.cylAxis({ axis: 'z', x: -0.004, y: 0.052, z: 0.0, len: 0.024, r: 0.0011, mat: 'steelBright' });
-  place(b, { pos: [-0.004, 0.052, -0.02], rot: [0, 0, 0] }, () => {
+  b.cylAxis({ axis: 'z', x: -0.004, y: 0.056, z: 0.0, len: 0.024, r: 0.0011, mat: 'steelBright' });
+  place(b, { pos: [-0.004, 0.056, -0.02], rot: [0, 0, 0] }, () => {
     b.extrude({ points: circle(0, 0, 0.011, 18), holes: [circle(0, 0, 0.0088, 18)], width: 0.0018, mat: 'steelBright', bevel: 0.0005 });
   });
   b.anchor('gripR', 0.012, 0.0, 0.0);
-  b.anchor('gripL', -0.004, 0.052, -0.02); // pull ring
-  b.anchor('pin', -0.004, 0.052, -0.02);
-  b.anchor('spoon', 0.03, 0.02, 0.0);
+  b.anchor('gripL', -0.004, 0.056, -0.02); // pull ring
+  b.anchor('pin', -0.004, 0.056, -0.02);
+  b.anchor('spoon', 0.03, 0.024, 0.0);
   b.meta.kind = 'grenade';
   b.meta.fuse = 4.5; // s (M204 fuze 4-5 s)
 }

@@ -2,7 +2,7 @@
 // no crosshair (you aim with the real sights), ammo and sight setting at the
 // bottom right, health and stamina at the bottom left, a compass at the top.
 import { STANCE } from '../actors/body.js';
-import { damp } from '../core/math.js';
+import { damp, clamp01 } from '../core/math.js';
 
 const STANCE_NAMES = ['Standing', 'Crouched', 'Prone'];
 
@@ -28,6 +28,18 @@ export class Hud {
         <div class="hud-mode"></div>
       </div>
       <div class="hud-hint"></div>
+      <div class="hud-vehicle">
+        <div class="vname"></div>
+        <div class="vrow"><span class="vspeed"></span><span class="vgear"></span></div>
+        <div class="bar rpm"><div class="fill"></div></div>
+        <div class="bar hp"><div class="fill"></div></div>
+        <div class="vmods"></div>
+        <div class="vgun"></div>
+        <div class="bar reload"><div class="fill"></div></div>
+        <div class="vseat"></div>
+      </div>
+      <div class="hud-gunmark"></div>
+      <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
       <canvas class="hud-scope"></canvas>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint">Press SPACE to redeploy</div></div>`;
     document.getElementById('app').appendChild(root);
@@ -48,6 +60,23 @@ export class Hud {
     this.hintEl = this.el('.hud-hint');
     this.deadEl = this.el('.hud-dead');
     this.objectivesEl = this.el('.hud-objectives');
+    this.vehEl = this.el('.hud-vehicle');
+    this.vEls = {
+      name: this.el('.hud-vehicle .vname'),
+      speed: this.el('.hud-vehicle .vspeed'),
+      gear: this.el('.hud-vehicle .vgear'),
+      rpm: this.el('.hud-vehicle .rpm .fill'),
+      hp: this.el('.hud-vehicle .hp .fill'),
+      mods: this.el('.hud-vehicle .vmods'),
+      gun: this.el('.hud-vehicle .vgun'),
+      reload: this.el('.hud-vehicle .reload .fill'),
+      reloadBar: this.el('.hud-vehicle .reload'),
+      seat: this.el('.hud-vehicle .vseat'),
+    };
+    this.gunMark = this.el('.hud-gunmark');
+    this.tankDir = this.el('.hud-tankdir');
+    this.tankDirHull = this.el('.hud-tankdir .hull');
+    this.tankDirTurret = this.el('.hud-tankdir .turret');
     this.scope = this.el('.hud-scope');
     this.scopeCtx = this.scope.getContext('2d');
     this.damageFlash = 0;
@@ -141,8 +170,10 @@ export class Hud {
         this.modeEl.textContent = `${mode} · sight ${w.zeroRange} ${d.sight.unit}${status}${heat}`;
       }
     }
+    this._updateVehicle(p);
     // Compass: 30 px per 15 degrees.
-    const deg = ((-p.look.yaw * 180) / Math.PI) % 360;
+    const yaw = s.vehicle ? p.camera.rotation.y : p.look.yaw;
+    const deg = ((-yaw * 180) / Math.PI) % 360;
     const heading = (deg + 360) % 360;
     this.compassStrip.style.transform = `translateX(${-(heading / 15) * 30 - 360 / 15 * 30 + 150}px)`;
 
@@ -158,10 +189,93 @@ export class Hud {
     this._drawScope(p);
   }
 
+  // Speed, gear, engine, damage, gun and seat while in a vehicle.
+  _updateVehicle(p) {
+    const s = p.soldier;
+    const v = s.vehicle;
+    const inV = !!v && s.alive;
+    this.vehEl.style.display = inV ? 'block' : 'none';
+    this.el('.hud-right').style.display = inV ? 'none' : 'block';
+    this.el('.hud-stance').style.display = inV ? 'none' : 'block';
+    const vc = p.vehicleCtl;
+    const role = inV ? vc.role : null;
+    const showMark = inV && role === 'gunner' && !vc.sight && v.alive;
+    this.gunMark.style.display = showMark ? 'block' : 'none';
+    this.tankDir.style.display = inV && v.def.kind === 'tracked' ? 'block' : 'none';
+    if (!inV) return;
+    const E = this.vEls;
+    const d = v.def;
+    E.name.textContent = v.alive ? d.name : `${d.name} (destroyed)`;
+    E.speed.textContent = `${Math.round(Math.abs(v.speed) * 3.6)} km/h`;
+    const gear = v.shiftTimer > 0 ? '-' : v.gear < 0 ? 'R' : v.gear === 0 ? 'N' : String(v.gear);
+    E.gear.textContent = `gear ${gear}`;
+    E.rpm.style.width = `${Math.min(100, (v.rpm / d.engine.redline) * 100)}%`;
+    E.rpm.style.background = v.rpm > d.engine.redline * 0.95 ? '#d29a4a' : '#8a9b6a';
+    const hp = Math.max(0, v.hp / v.maxHp);
+    E.hp.style.width = `${hp * 100}%`;
+    E.hp.style.background = hp > 0.5 ? '#c9c2a5' : hp > 0.25 ? '#d29a4a' : '#c4513f';
+    const m = v.modules;
+    const bad = [];
+    if (m.engine <= 0) bad.push('engine destroyed');
+    else if (m.engine < 1) bad.push('engine damaged');
+    if (m.transmission <= 0) bad.push('transmission destroyed');
+    if (m.trackL <= 0) bad.push('left track broken');
+    if (m.trackR <= 0) bad.push('right track broken');
+    if (m.turret <= 0) bad.push('turret ring jammed');
+    if (m.gun <= 0) bad.push('gun disabled');
+    if (v.fire > 0 && v.alive) bad.push('ON FIRE');
+    E.mods.textContent = bad.join(' · ');
+    E.mods.style.display = bad.length ? 'block' : 'none';
+    if (role === 'gunner') {
+      const types = v.ammoTypes.map((id, i) => `${i + 1} ${id} ${v.stowed[id] + (v.loaded === id ? 1 : 0)}${v.nextAmmo === id ? '*' : ''}`).join('   ');
+      const state = v.loaded ? `${v.loaded} loaded` : v.nextAmmo ? 'loading...' : 'no ammunition';
+      E.gun.textContent = `${state} · sight ${v.sightRange} m\n${types}\ncoax ${v.coax.loaded}/${v.coax.belts} belts`;
+      E.reloadBar.style.display = 'block';
+      const frac = v.loaded ? 1 : 1 - Math.max(0, v.reloadT) / d.gun.reload;
+      E.reload.style.width = `${clamp01(frac) * 100}%`;
+    } else if (role === 'bowMg') {
+      E.gun.textContent = `${d.bowMg.name} · ${v.bowMg.loaded} / ${v.bowMg.belts} belts${v.bowMg.reloadT > 0 ? ' · reloading' : ''}`;
+      E.reloadBar.style.display = 'none';
+    } else {
+      E.gun.textContent = '';
+      E.reloadBar.style.display = 'none';
+    }
+    E.seat.textContent = `${v.seats[s.seat]?.name || ''} · F exit · V camera · F1-F${v.seats.length} seats`;
+    // Turret direction relative to the hull (top view, camera up).
+    if (v.def.kind === 'tracked') {
+      const camYaw = p.camera.rotation.y;
+      const f = v.forward;
+      const hullYaw = Math.atan2(-f.x, -f.z);
+      this.tankDirHull.style.transform = `rotate(${(-(hullYaw - camYaw) * 180) / Math.PI}deg)`;
+      this.tankDirTurret.style.transform = `rotate(${(-(hullYaw + v.turretYaw - camYaw) * 180) / Math.PI}deg)`;
+    }
+    if (showMark) {
+      const pt = vc.gunPoint.clone().project(p.camera);
+      const W = this.root.clientWidth,
+        H = this.root.clientHeight;
+      if (pt.z < 1) {
+        this.gunMark.style.left = `${((pt.x + 1) / 2) * W}px`;
+        this.gunMark.style.top = `${((1 - pt.y) / 2) * H}px`;
+      }
+      this.gunMark.classList.toggle('ready', !!v.loaded);
+    }
+  }
+
   // Telescopic sight picture: black around the eyepiece and the period reticle.
   _drawScope(p) {
+    const vc = p.vehicleCtl;
+    const v = p.soldier.vehicle;
+    if (v && p.soldier.alive && vc && ((vc.role === 'gunner' && vc.sight) || (vc.role === 'bowMg' && vc.view === 'first' && v.def.bowMg.sight))) {
+      const sd = vc.role === 'gunner' ? v.def.gun.sight : v.def.bowMg.sight;
+      const key = `tank:${v.id}:${vc.role}:${v.sightRange}:${v.loaded}:${this.scope.width}x${this.scope.height}`;
+      if (key === this.lastScope) return;
+      this.lastScope = key;
+      drawTankSight(this.scopeCtx, this.scope.width, this.scope.height, sd, vc.role === 'gunner' ? v : null, p.camera.fov);
+      this.scope.style.display = 'block';
+      return;
+    }
     const w = p.soldier.weapon;
-    const show = p.scoped && w?.def.scope;
+    const show = p.scoped && w?.def.scope && !v;
     const key = show ? `${w.def.id}:${this.scope.width}x${this.scope.height}` : null;
     if (key === this.lastScope) return;
     this.lastScope = key;
@@ -231,5 +345,103 @@ export class Hud {
       c.lineTo(cx, cy + R);
       c.stroke();
     }
+  }
+}
+
+// Tank gunner's sight: round field (90% of the screen height = the true field of
+// view), with each army's reticle. 1 mil = 1/6400 of a circle (German "Strich").
+function drawTankSight(c, W, H, sd, v, fovDeg) {
+  c.clearRect(0, 0, W, H);
+  // Pixels per radian at the screen center for the camera's field of view.
+  const f = H / 2 / Math.tan((fovDeg * Math.PI) / 360);
+  const R = Math.min(H * 0.48, f * Math.tan((sd.fieldDeg * Math.PI) / 360));
+  const cx = W / 2,
+    cy = H / 2;
+  c.fillStyle = '#000';
+  c.beginPath();
+  c.rect(0, 0, W, H);
+  c.arc(cx, cy, R, 0, Math.PI * 2, true);
+  c.fill();
+  const g = c.createRadialGradient(cx, cy, R * 0.8, cx, cy, R);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.85)');
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(cx, cy, R, 0, Math.PI * 2);
+  c.fill();
+  // Pixels per mil (1/6400 of a circle) at the center of the view.
+  const mil = f * ((2 * Math.PI) / 6400);
+  const ink = 'rgba(8,8,8,0.92)';
+  c.fillStyle = ink;
+  c.strokeStyle = ink;
+  c.lineWidth = Math.max(1, mil * 0.15);
+  const reticle = sd.reticle || 'german';
+  if (reticle === 'german') {
+    // TZF 5: a big aiming triangle with smaller ones every 4 mils for lead.
+    const tri = (x, h, w) => {
+      c.beginPath();
+      c.moveTo(x, cy);
+      c.lineTo(x - w / 2, cy + h);
+      c.lineTo(x + w / 2, cy + h);
+      c.closePath();
+      c.fill();
+    };
+    tri(cx, 4 * mil, 4 * mil);
+    for (let k = 1; k <= 6; k++) {
+      tri(cx - k * 8 * mil, 2 * mil, 2 * mil);
+      tri(cx + k * 8 * mil, 2 * mil, 2 * mil);
+    }
+    c.fillRect(cx - 0.12 * mil, cy + 4 * mil, 0.24 * mil, R);
+  } else if (reticle === 'us') {
+    // M70: crosshair line with mil marks for lead; range lines below the center.
+    c.beginPath();
+    c.moveTo(cx - R, cy);
+    c.lineTo(cx - 2 * mil, cy);
+    c.moveTo(cx + 2 * mil, cy);
+    c.lineTo(cx + R, cy);
+    c.moveTo(cx, cy - R);
+    c.lineTo(cx, cy - 2 * mil);
+    c.stroke();
+    for (let k = 1; k <= 8; k++) {
+      for (const sgn of [-1, 1]) {
+        const x = cx + sgn * k * 5 * mil;
+        c.beginPath();
+        c.moveTo(x, cy - mil * (k % 2 ? 1 : 2));
+        c.lineTo(x, cy + mil * (k % 2 ? 1 : 2));
+        c.stroke();
+      }
+    }
+    for (let k = 0; k <= 6; k++) {
+      const y = cy + k * 4 * mil;
+      c.beginPath();
+      c.moveTo(cx - mil * (k % 2 ? 1.5 : 3), y);
+      c.lineTo(cx + mil * (k % 2 ? 1.5 : 3), y);
+      c.stroke();
+    }
+  } else {
+    // Soviet TMFD: an inverted V aiming mark with smaller marks every 4 mils.
+    const chev = (x, s) => {
+      c.beginPath();
+      c.moveTo(x - 2 * s * mil, cy + 3 * s * mil);
+      c.lineTo(x, cy);
+      c.lineTo(x + 2 * s * mil, cy + 3 * s * mil);
+      c.stroke();
+    };
+    c.lineWidth = Math.max(1.5, mil * 0.35);
+    chev(cx, 1);
+    c.lineWidth = Math.max(1, mil * 0.2);
+    for (let k = 1; k <= 5; k++) {
+      chev(cx - k * 8 * mil, 0.5);
+      chev(cx + k * 8 * mil, 0.5);
+    }
+  }
+  // Sight label: range drum setting and the shell it's graduated for.
+  if (v) {
+    c.font = `${Math.round(H * 0.022)}px monospace`;
+    c.fillStyle = 'rgba(20,20,20,0.85)';
+    c.textAlign = 'left';
+    c.fillText(`${v.sightRange} m  ${v.loaded || v.nextAmmo || ''}`, cx - R * 0.62, cy + R * 0.72);
+    c.textAlign = 'right';
+    c.fillText(sd.name || '', cx + R * 0.62, cy + R * 0.72);
   }
 }

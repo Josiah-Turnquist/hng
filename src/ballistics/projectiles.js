@@ -6,7 +6,7 @@
 // (ricochet), or punch through with reduced speed and a slight deflection.
 // This file has no graphics code so it can be tested on its own.
 import { TABLES, dragDecel } from './drag.js';
-import { MATERIALS, residualSpeed, ricochetChance } from './materials.js';
+import { MATERIALS, residualSpeed, ricochetChance, armorPenetrationMM, effectiveArmorMM, penetrationDepth } from './materials.js';
 import { RayHit, FLAG_BULLET } from '../physics/collision.js';
 import { G } from '../core/math.js';
 
@@ -330,7 +330,7 @@ export class ProjectileSystem {
     }
 
     if (mat.isArmor) {
-      this._hitArmor(p, info, hit.tExit - hit.t, cosN);
+      this._hitArmor(p, info, cosN, dx, dy, dz);
       return;
     }
 
@@ -362,11 +362,75 @@ export class ProjectileSystem {
     this._impact(p, { ...info, kind: 'exit', x: p.x, y: p.y, z: p.z, nx: dx, ny: dy, nz: dz });
   }
 
-  _hitArmor(p, info, thicknessM, cosN) {
-    // Plates on vehicles carry their real thickness in mm; the box thickness is visual.
+  // Armor plate. Plates carry their real thickness in mm. Kinetic rounds
+  // penetrate when their penetration at this speed beats the plate's effective
+  // (line-of-sight) thickness; steep hits may glance off. Shaped charges (HEAT)
+  // and high explosive go off on contact either way.
+  _hitArmor(p, info, cosN, dx, dy, dz) {
+    const ammo = p.ammo;
+    const speed = p.speed;
     const angle = Math.acos(Math.min(1, Math.max(0, cosN)));
+    const mm = Math.max(1, info.armorMM || 0);
+    let pen = armorPenetrationMM(ammo, speed);
+    if (!pen && !ammo.heat) pen = penetrationDepth(speed, p.mass, p.area, MATERIALS.armor, ammo.hardness || 1) * 1000;
+    const eff = effectiveArmorMM(mm, angle, ammo);
     info.angle = angle;
-    info.kind = 'armor';
+    info.penMM = pen;
+    info.effMM = eff;
+    // Glancing blows off sloped plates, unless the round is far bigger than the plate is thick.
+    const limitDeg = ammo.heat ? 80 : ammo.capped ? 70 : ammo.penRefMM ? 66 : 62;
+    const calMM = ammo.diameter * 1000;
+    if (angle > (limitDeg * Math.PI) / 180 && calMM < mm * 3 && !(ammo.heat && angle < (80 * Math.PI) / 180) && Math.random() < 0.9) {
+      const vn = p.vx * info.nx + p.vy * info.ny + p.vz * info.nz;
+      p.vx -= 2 * vn * info.nx;
+      p.vy -= 2 * vn * info.ny;
+      p.vz -= 2 * vn * info.nz;
+      const keep = ammo.explosive && !ammo.penRefMM ? 0 : 0.6;
+      info.kind = 'ricochet';
+      if (keep === 0) {
+        // HE shell hitting at a glancing angle bursts on the surface.
+        info.kind = 'nonpen';
+        info.detonate = !!ammo.explosive;
+        this._impact(p, info);
+        this._expire(p, 'armor');
+        return;
+      }
+      p.vx *= keep;
+      p.vy *= keep;
+      p.vz *= keep;
+      deflect(p, 0.08);
+      p.tumble = 3;
+      p.x += info.nx * 0.01;
+      p.y += info.ny * 0.01;
+      p.z += info.nz * 0.01;
+      p.ignoreTarget = info.target;
+      this._impact(p, info);
+      return;
+    }
+    if (pen >= eff) {
+      info.kind = 'penetrate';
+      // Bullets through sheet metal (jeeps, fenders) carry on and can hit whoever is behind.
+      if (mm <= 6 && !ammo.explosive && !ammo.heat) {
+        const k = Math.sqrt(Math.max(0.05, 1 - (eff / pen) ** 2));
+        info.exitSpeed = speed * k;
+        this._impact(p, info);
+        p.vx *= k;
+        p.vy *= k;
+        p.vz *= k;
+        p.x += dx * 0.01;
+        p.y += dy * 0.01;
+        p.z += dz * 0.01;
+        p.ignoreTarget = info.target;
+        deflect(p, 0.03);
+        return;
+      }
+      info.detonate = !!(ammo.explosive || ammo.heat);
+      this._impact(p, info);
+      this._expire(p, 'penetrated');
+      return;
+    }
+    info.kind = 'nonpen';
+    info.detonate = !!(ammo.explosive || ammo.heat);
     this._impact(p, info);
     this._expire(p, 'armor');
   }
@@ -392,15 +456,16 @@ export class ProjectileSystem {
       dirY: dy,
       dirZ: dz,
       armorMM: d.armorMM ?? 0,
+      plate: d.plate ?? null,
       detonate: false,
     };
-    if (this._explosive(p, info)) return;
     if (p.ammo.thrown) return this._bounce(p, { nx: d.nx, ny: d.ny, nz: d.nz }, info);
     if (mat.isArmor) {
       const cosN = -(dx * d.nx + dy * d.ny + dz * d.nz);
-      this._hitArmor(p, info, 0, cosN);
+      this._hitArmor(p, info, cosN, dx, dy, dz);
       return;
     }
+    if (this._explosive(p, info)) return;
     const thickness = Math.max(0.01, (d.tExit ?? d.t + 0.2) - d.t);
     const exitSpeed = residualSpeed(speed, thickness, p.mass, p.area, mat, p.ammo.hardness || 1);
     info.exitSpeed = exitSpeed;
