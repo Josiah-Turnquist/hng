@@ -1,0 +1,102 @@
+:root {
+  --ink: #e9e4d6;
+  --ink-dim: #b9b29f;
+  --accent: #c9a24a;
+  --danger: #c4513f;
+  --panel: rgba(18, 19, 16, 0.82);
+  --panel-edge: rgba(201, 162, 74, 0.35);
+  --font: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Consolas', 'SFMono-Regular', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0d0e0c;
+  color: var(--ink);
+  font-family: var(--font);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+canvas.game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+/* Loading screen */
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: radial-gradient(ellipse at center, #22231d 0%, #0d0e0c 75%);
+  z-index: 50;
+  transition: opacity 0.6s;
+}
+.loading h1 {
+  font-size: clamp(28px, 6vw, 64px);
+  letter-spacing: 0.3em;
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+.loading .sub {
+  color: var(--ink-dim);
+  letter-spacing: 0.15em;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+.loading .bar {
+  width: min(420px, 80vw);
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.loading .bar > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.25s;
+}
+.loading .status {
+  font-size: 13px;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+}
+.loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.error-box {
+  position: absolute;
+  inset: auto 16px 16px 16px;
+  padding: 12px 16px;
+  background: rgba(120, 20, 10, 0.9);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  z-index: 100;
+  max-height: 40vh;
+  overflow: auto;
+}

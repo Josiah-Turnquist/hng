@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Texture viewer</title>
+<style>body{margin:0;background:#111;color:#ddd;font:12px monospace}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<script type="module">
+// Shows every procedural texture tiled 2x2 so seams and repetition are easy to spot.
+import * as THREE from 'three';
+import { TextureLibrary, PRESETS } from '../src/render/textures.js';
+const params = new URLSearchParams(location.search);
+const names = (params.get('names') || Object.keys(PRESETS).join(',')).split(',');
+const kind = params.get('kind') || 'map';
+const cols = Number(params.get('cols') || 6);
+const cell = Number(params.get('cell') || 200);
+const rows = Math.ceil(names.length / cols);
+const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true });
+renderer.setSize(cols * cell, rows * (cell + 14));
+document.body.appendChild(renderer.domElement);
+const lib = new TextureLibrary(renderer, { size: Number(params.get('size') || 256) });
+const scene = new THREE.Scene();
+const cam = new THREE.OrthographicCamera(0, cols * cell, 0, -rows * (cell + 14), -1, 1);
+names.forEach((n, i) => {
+  const t = lib.get(n);
+  const tex = t[kind];
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: kind === 'map' && t.alpha });
+  const geo = new THREE.PlaneGeometry(cell, cell);
+  const uv = geo.attributes.uv;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * 2, uv.getY(k) * 2);
+  const m = new THREE.Mesh(geo, mat);
+  const c = i % cols, r = Math.floor(i / cols);
+  m.position.set(c * cell + cell / 2, -r * (cell + 14) - cell / 2 - 14, 0);
+  scene.add(m);
+  const label = document.createElement('div');
+  label.textContent = n;
+  label.style.cssText = `position:absolute;left:${c * cell + 4}px;top:${r * (cell + 14)}px`;
+  document.body.appendChild(label);
+});
+renderer.setClearColor(0x335533);
+renderer.render(scene, cam);
+window.__done = true;
+</script>
+</body>
+</html>

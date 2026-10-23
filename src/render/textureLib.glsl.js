@@ -1,0 +1,608 @@
+// GLSL source for procedurally painted, seamlessly tiling surface textures.
+// Each material is a function `surface(uv, ...)` that returns color, roughness,
+// height (in meters) and metalness. The baker renders them into textures once at
+// load time, including normal maps derived from the height.
+
+export const NOISE_GLSL = /* glsl */ `
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * .1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+vec2 hash22(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.xx + p3.yz) * p3.zy);
+}
+vec3 hash32(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+  p3 += dot(p3, p3.yxz + 33.33);
+  return fract((p3.xxy + p3.yzz) * p3.zyx);
+}
+// Periodic gradient noise. p in lattice units, per = period (integer lattice cells).
+float gnoise(vec2 p, vec2 per, float seed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  vec2 s = vec2(seed * 17.0, seed * 59.0);
+  vec2 g00 = hash22(mod(i, per) + s) * 2.0 - 1.0;
+  vec2 g10 = hash22(mod(i + vec2(1.0, 0.0), per) + s) * 2.0 - 1.0;
+  vec2 g01 = hash22(mod(i + vec2(0.0, 1.0), per) + s) * 2.0 - 1.0;
+  vec2 g11 = hash22(mod(i + vec2(1.0, 1.0), per) + s) * 2.0 - 1.0;
+  float a = dot(g00, f);
+  float b = dot(g10, f - vec2(1.0, 0.0));
+  float c = dot(g01, f - vec2(0.0, 1.0));
+  float d = dot(g11, f - vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 1.4;
+}
+// Periodic value noise, 0..1
+float vnoise(vec2 p, vec2 per, float seed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  vec2 s = vec2(seed * 13.0, seed * 7.0);
+  float a = hash12(mod(i, per) + s);
+  float b = hash12(mod(i + vec2(1.0, 0.0), per) + s);
+  float c = hash12(mod(i + vec2(0.0, 1.0), per) + s);
+  float d = hash12(mod(i + vec2(1.0, 1.0), per) + s);
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+// Fractal noise on the unit square that tiles. freq must be an integer (or vec2 of integers).
+float fbm(vec2 uv, vec2 freq, int oct, float seed) {
+  float sum = 0.0, amp = 0.5, norm = 0.0;
+  vec2 f = freq;
+  for (int i = 0; i < 9; i++) {
+    if (i >= oct) break;
+    sum += amp * gnoise(uv * f, f, seed + float(i) * 3.1);
+    norm += amp;
+    amp *= 0.5;
+    f *= 2.0;
+  }
+  return sum / norm; // about -1..1
+}
+float fbm01(vec2 uv, vec2 freq, int oct, float seed) { return fbm(uv, freq, oct, seed) * 0.5 + 0.5; }
+float ridged(vec2 uv, vec2 freq, int oct, float seed) {
+  float sum = 0.0, amp = 0.5, norm = 0.0;
+  vec2 f = freq;
+  for (int i = 0; i < 8; i++) {
+    if (i >= oct) break;
+    float n = 1.0 - abs(gnoise(uv * f, f, seed + float(i) * 5.7));
+    sum += amp * n * n;
+    norm += amp;
+    amp *= 0.5;
+    f *= 2.0;
+  }
+  return sum / norm;
+}
+// Periodic Voronoi. Returns (F1, F2, cell id 0..1). jitter 0..1.
+vec3 voronoi(vec2 uv, vec2 freq, float jitter, float seed) {
+  vec2 p = uv * freq;
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float F1 = 8.0, F2 = 8.0, id = 0.0;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 cell = mod(i + g, freq);
+      vec2 o = 0.5 + (hash22(cell + seed * 11.0) - 0.5) * jitter;
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < F1) { F2 = F1; F1 = d; id = hash12(cell + seed * 3.0 + 7.0); }
+      else if (d < F2) { F2 = d; }
+    }
+  }
+  return vec3(sqrt(F1), sqrt(F2), id);
+}
+// Voronoi variant that also returns the vector to the cell center (for rounded stones).
+vec4 voronoiVec(vec2 uv, vec2 freq, float jitter, float seed) {
+  vec2 p = uv * freq;
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float F1 = 8.0, id = 0.0;
+  vec2 best = vec2(0.0);
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 cell = mod(i + g, freq);
+      vec2 o = 0.5 + (hash22(cell + seed * 11.0) - 0.5) * jitter;
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < F1) { F1 = d; id = hash12(cell + seed * 3.0 + 7.0); best = r; }
+    }
+  }
+  // Distance to the nearest cell border (Inigo Quilez method).
+  float border = 8.0;
+  for (int y = -2; y <= 2; y++) {
+    for (int x = -2; x <= 2; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 cell = mod(i + g, freq);
+      vec2 o = 0.5 + (hash22(cell + seed * 11.0) - 0.5) * jitter;
+      vec2 r = g + o - f;
+      if (dot(best - r, best - r) > 0.00001)
+        border = min(border, dot(0.5 * (best + r), normalize(r - best)));
+    }
+  }
+  return vec4(best, border, id);
+}
+float sat(float x) { return clamp(x, 0.0, 1.0); }
+vec3 srgb(vec3 c) { return pow(c, vec3(2.2)); } // author colors in sRGB, convert to linear
+`;
+
+// Every material function has this signature:
+//   void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha)
+// height is in meters; the texture covers uWorld meters.
+export const MATERIALS = {
+  grass: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float big = fbm01(uv, vec2(3.0), 4, 1.0);
+      float patchy = fbm01(uv, vec2(7.0), 3, 2.0);
+      // Thin blade streaks in random directions: layered stretched noise.
+      float blades = 0.0;
+      for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        vec2 dir = normalize(hash22(vec2(fk, 3.0)) - 0.5);
+        mat2 R = mat2(dir.x, -dir.y, dir.y, dir.x);
+        vec2 q = uv;
+        blades += vnoise(uv * vec2(160.0, 160.0) + vec2(fk * 31.0), vec2(160.0), 4.0 + fk) * 0.25;
+      }
+      float fine = fbm01(uv, vec2(48.0), 3, 5.0);
+      float clover = smoothstep(0.62, 0.7, fbm01(uv, vec2(10.0), 3, 9.0));
+      vec3 green = srgb(vec3(0.27, 0.36, 0.12));
+      vec3 yellow = srgb(vec3(0.45, 0.43, 0.2));
+      vec3 dark = srgb(vec3(0.13, 0.19, 0.07));
+      vec3 soil = srgb(vec3(0.27, 0.21, 0.14));
+      albedo = mix(green, yellow, smoothstep(0.3, 0.8, big) * 0.25);
+      albedo = mix(albedo, dark, (1.0 - blades) * 0.55);
+      albedo *= 0.8 + 0.4 * fine;
+      albedo = mix(albedo, srgb(vec3(0.2, 0.33, 0.1)), clover * 0.5);
+      float bare = smoothstep(0.72, 0.82, patchy) * (1.0 - blades);
+      albedo = mix(albedo, soil, bare * 0.7);
+      rough = 0.82 + 0.1 * fine;
+      height = blades * 0.025 + fine * 0.01 - bare * 0.01;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  dryGrass: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float big = fbm01(uv, vec2(3.0), 4, 11.0);
+      float blades = vnoise(uv * vec2(220.0, 90.0), vec2(220.0, 90.0), 3.0) * 0.6 + vnoise(uv * vec2(90.0, 220.0), vec2(90.0, 220.0), 4.0) * 0.4;
+      float fine = fbm01(uv, vec2(40.0), 3, 12.0);
+      vec3 straw = srgb(vec3(0.55, 0.48, 0.28));
+      vec3 olive = srgb(vec3(0.36, 0.37, 0.17));
+      vec3 dark = srgb(vec3(0.22, 0.2, 0.11));
+      albedo = mix(olive, straw, 0.55 + 0.25 * (big - 0.5));
+      albedo = mix(dark, albedo, 0.45 + 0.55 * blades);
+      albedo *= 0.85 + 0.3 * fine;
+      rough = 0.88;
+      height = blades * 0.02 + fine * 0.008;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  dirt: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float base = fbm01(uv, vec2(4.0), 5, 21.0);
+      float fine = fbm01(uv, vec2(32.0), 4, 22.0);
+      vec4 peb = voronoiVec(uv, vec2(28.0), 0.9, 23.0);
+      float pebMask = step(0.82, peb.w) * smoothstep(0.0, 0.08, peb.z);
+      float pebH = sqrt(max(0.0, 1.0 - dot(peb.xy, peb.xy) * 2.2)) * pebMask;
+      vec3 c1 = srgb(vec3(0.36, 0.28, 0.2));
+      vec3 c2 = srgb(vec3(0.26, 0.2, 0.14));
+      albedo = mix(c2, c1, 0.5 + 0.4 * (base - 0.5)) * (0.85 + 0.3 * fine);
+      vec3 stone = srgb(mix(vec3(0.45, 0.42, 0.38), vec3(0.6, 0.55, 0.48), hash12(vec2(peb.w * 91.0))));
+      albedo = mix(albedo, stone, pebMask * smoothstep(0.0, 0.3, pebH));
+      rough = 0.9 - pebMask * 0.15;
+      height = base * 0.03 + fine * 0.01 + pebH * 0.012;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  mud: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float base = fbm01(uv, vec2(3.0), 5, 31.0);
+      float ruts = fbm01(uv * vec2(1.0, 4.0), vec2(2.0, 8.0), 4, 32.0);
+      float fine = fbm01(uv, vec2(36.0), 3, 33.0);
+      float h = base * 0.06 + ruts * 0.04 + fine * 0.006;
+      float puddle = smoothstep(0.38, 0.32, base * 0.7 + ruts * 0.3);
+      vec3 wet = srgb(vec3(0.2, 0.15, 0.1));
+      vec3 dryer = srgb(vec3(0.3, 0.23, 0.16));
+      albedo = mix(wet, dryer, smoothstep(0.45, 0.8, base) * 0.8) * (0.85 + 0.3 * fine);
+      albedo = mix(albedo, srgb(vec3(0.1, 0.09, 0.07)), puddle * 0.7);
+      rough = mix(0.62 - 0.15 * (1.0 - base), 0.08, puddle);
+      height = mix(h, 0.035, puddle * 0.9);
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  rock: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float r = ridged(uv, vec2(3.0), 6, 41.0);
+      float base = fbm01(uv, vec2(5.0), 5, 42.0);
+      vec3 cr = voronoi(uv, vec2(6.0), 1.0, 43.0);
+      float crack = 1.0 - smoothstep(0.0, 0.05, cr.y - cr.x);
+      float lichen = smoothstep(0.6, 0.72, fbm01(uv, vec2(9.0), 4, 44.0));
+      vec3 g1 = srgb(vec3(0.45, 0.44, 0.41));
+      vec3 g2 = srgb(vec3(0.3, 0.29, 0.27));
+      albedo = mix(g2, g1, base) * (0.75 + 0.4 * r);
+      albedo = mix(albedo, srgb(vec3(0.42, 0.45, 0.28)), lichen * 0.6);
+      albedo *= 1.0 - crack * 0.5;
+      rough = 0.78 + 0.15 * (1.0 - r);
+      height = r * 0.12 + base * 0.05 - crack * 0.03;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  plowed: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float wob = fbm(uv, vec2(2.0), 3, 51.0) * 0.08;
+      float furrow = sin((uv.x + wob) * 6.2831853 * 6.0) * 0.5 + 0.5; // 6 furrows across the tile
+      float clods = voronoi(uv, vec2(40.0), 1.0, 52.0).x;
+      float fine = fbm01(uv, vec2(30.0), 4, 53.0);
+      float stubble = step(0.93, vnoise(uv * vec2(260.0, 60.0), vec2(260.0, 60.0), 54.0));
+      vec3 c1 = srgb(vec3(0.3, 0.22, 0.15));
+      vec3 c2 = srgb(vec3(0.2, 0.15, 0.1));
+      albedo = mix(c2, c1, furrow * 0.7 + fine * 0.3);
+      albedo = mix(albedo, srgb(vec3(0.5, 0.45, 0.3)), stubble * 0.6);
+      rough = 0.92;
+      height = furrow * 0.09 + (1.0 - clods) * 0.02 + fine * 0.01;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  cobble: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec4 v = voronoiVec(uv, vec2(10.0, 12.0), 0.75, 61.0);
+      float edge = smoothstep(0.0, 0.12, v.z);
+      float dome = sqrt(max(0.0, 1.0 - dot(v.xy, v.xy) * 1.6));
+      float fine = fbm01(uv, vec2(64.0), 3, 62.0);
+      vec3 stone = srgb(mix(vec3(0.42, 0.4, 0.37), vec3(0.58, 0.55, 0.5), v.w));
+      stone *= 0.8 + 0.35 * fine;
+      vec3 grout = srgb(vec3(0.22, 0.19, 0.15));
+      albedo = mix(grout, stone, edge);
+      rough = mix(0.95, 0.55 + 0.2 * fine, edge);
+      height = edge * (0.02 + dome * 0.03) + fine * 0.003;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  forest: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec3 soil = srgb(vec3(0.2, 0.15, 0.1));
+      albedo = soil * (0.8 + 0.4 * fbm01(uv, vec2(8.0), 4, 71.0));
+      height = 0.0;
+      // Several layers of fallen leaves.
+      for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        vec4 v = voronoiVec(uv + vec2(fk * 0.37, fk * 0.71), vec2(26.0 + fk * 6.0), 1.0, 72.0 + fk);
+        float ang = v.w * 6.2831;
+        vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
+        float leaf = 1.0 - smoothstep(0.24, 0.3, length(d * vec2(1.0, 2.2)));
+        vec3 lc = srgb(mix(vec3(0.42, 0.26, 0.1), vec3(0.55, 0.4, 0.15), hash12(vec2(v.w * 37.0))));
+        lc = mix(lc, srgb(vec3(0.28, 0.2, 0.12)), hash12(vec2(v.w * 13.0)) * 0.6);
+        float present = step(0.3, hash12(vec2(v.w * 71.0, fk)));
+        albedo = mix(albedo, lc, leaf * present);
+        height = max(height, leaf * present * (0.006 + fk * 0.003));
+      }
+      float twig = smoothstep(0.985, 1.0, sin((uv.x * 0.6 + uv.y) * 140.0 + fbm(uv, vec2(6.0), 3, 79.0) * 30.0)) * step(0.65, fbm01(uv, vec2(5.0), 2, 80.0));
+      albedo = mix(albedo, srgb(vec3(0.3, 0.22, 0.14)), twig);
+      rough = 0.85;
+      height += twig * 0.01;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  sand: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float ripple = sin((uv.y + fbm(uv, vec2(3.0), 3, 91.0) * 0.1) * 6.2831853 * 18.0) * 0.5 + 0.5;
+      float fine = fbm01(uv, vec2(80.0), 3, 92.0);
+      float base = fbm01(uv, vec2(4.0), 4, 93.0);
+      albedo = mix(srgb(vec3(0.5, 0.45, 0.35)), srgb(vec3(0.62, 0.56, 0.44)), 0.5 + 0.3 * (base - 0.5)) * (0.9 + 0.2 * fine);
+      rough = 0.9;
+      height = ripple * 0.006 + fine * 0.002 + base * 0.02;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  roadDirt: /* glsl */ `
+    // u runs across the road (0..1), v runs along it.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float across = uv.x;
+      float wob = fbm(vec2(0.0, uv.y) + vec2(0.3, 0.0), vec2(1.0, 4.0), 3, 101.0) * 0.03;
+      float rutL = exp(-pow((across - 0.27 - wob) / 0.06, 2.0));
+      float rutR = exp(-pow((across - 0.73 - wob) / 0.06, 2.0));
+      float ruts = rutL + rutR;
+      float crown = 1.0 - pow(abs(across - 0.5) * 2.0, 2.0);
+      float base = fbm01(uv, vec2(4.0, 8.0), 5, 102.0);
+      float fine = fbm01(uv, vec2(40.0, 80.0), 3, 103.0);
+      vec4 peb = voronoiVec(uv, vec2(30.0, 60.0), 0.9, 104.0);
+      float pebMask = step(0.55, peb.w) * smoothstep(0.0, 0.1, peb.z);
+      float puddle = smoothstep(0.62, 0.7, base) * ruts;
+      float grassMid = smoothstep(0.75, 0.95, 1.0 - abs(across - 0.5) * 6.0) * smoothstep(0.35, 0.6, fbm01(uv, vec2(3.0, 12.0), 3, 105.0));
+      vec3 c1 = srgb(vec3(0.48, 0.4, 0.3));
+      vec3 c2 = srgb(vec3(0.34, 0.27, 0.19));
+      albedo = mix(c1, c2, ruts * 0.6 + base * 0.3) * (0.85 + 0.3 * fine);
+      albedo = mix(albedo, srgb(vec3(0.55, 0.52, 0.47)), pebMask * 0.5);
+      albedo = mix(albedo, srgb(vec3(0.3, 0.33, 0.15)), grassMid * 0.8);
+      albedo = mix(albedo, srgb(vec3(0.18, 0.15, 0.12)), puddle * 0.8);
+      rough = mix(0.88, 0.1, puddle);
+      height = crown * 0.04 - ruts * 0.05 + base * 0.02 + fine * 0.005 + pebMask * 0.004;
+      metal = 0.0;
+      // Soft, irregular road edges.
+      float edgeNoise = fbm(vec2(across * 0.2, uv.y), vec2(1.0, 16.0), 3, 106.0) * 0.06;
+      alpha = smoothstep(0.0, 0.1, across + edgeNoise) * smoothstep(1.0, 0.9, across - edgeNoise);
+    }`,
+  brick: /* glsl */ `
+    // 0.25 x 0.065 m bricks (Reichsformat-like), 1 cm mortar. Tile covers 2x2 m.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec2 grid = vec2(8.0, 26.0); // bricks per tile horizontally, rows per tile
+      vec2 p = uv * grid;
+      float row = floor(p.y);
+      p.x += mod(row, 2.0) * 0.5;
+      vec2 cell = floor(p);
+      vec2 f = fract(p);
+      vec2 cid = vec2(mod(cell.x, grid.x), row);
+      float mx = 0.045, my = 0.14;
+      float mortar = 1.0 - smoothstep(0.0, mx, f.x) * smoothstep(1.0, 1.0 - mx, f.x) * smoothstep(0.0, my, f.y) * smoothstep(1.0, 1.0 - my, f.y);
+      vec3 h3 = hash32(cid);
+      vec3 brickCol = srgb(mix(vec3(0.48, 0.21, 0.14), vec3(0.62, 0.32, 0.2), h3.x));
+      brickCol = mix(brickCol, srgb(vec3(0.33, 0.16, 0.12)), step(0.86, h3.y) * 0.7); // burnt bricks
+      float fine = fbm01(uv, vec2(48.0), 4, 111.0);
+      float chips = smoothstep(0.7, 0.8, fbm01(uv, vec2(24.0), 3, 112.0));
+      float dirt = fbm01(uv, vec2(3.0), 4, 113.0);
+      brickCol *= 0.8 + 0.35 * fine;
+      vec3 mortarCol = srgb(vec3(0.62, 0.6, 0.55)) * (0.8 + 0.3 * fine);
+      albedo = mix(brickCol, mortarCol, mortar);
+      albedo *= 0.75 + 0.35 * dirt;
+      rough = mix(0.82, 0.95, mortar);
+      height = (1.0 - mortar) * 0.008 + fine * 0.002 - chips * (1.0 - mortar) * 0.004;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  plaster: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float stucco = fbm01(uv, vec2(40.0), 4, 121.0);
+      float big = fbm01(uv, vec2(3.0), 5, 122.0);
+      float streaks = fbm01(uv * vec2(1.0, 0.15), vec2(16.0, 2.0), 4, 123.0); // rain streaks run down
+      float damage = smoothstep(0.66, 0.7, fbm01(uv, vec2(4.0), 5, 124.0));
+      vec3 wall = mix(uPaintA, uPaintB, big);
+      wall *= 0.88 + 0.18 * stucco;
+      wall *= 1.0 - smoothstep(0.55, 0.85, streaks) * 0.25;
+      // Exposed brick where plaster fell off.
+      vec2 p = uv * vec2(8.0, 26.0);
+      p.x += mod(floor(p.y), 2.0) * 0.5;
+      vec2 f = fract(p);
+      float mortar = 1.0 - smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.15, f.y) * smoothstep(1.0, 0.85, f.y);
+      vec3 brick = mix(srgb(vec3(0.5, 0.24, 0.16)), srgb(vec3(0.62, 0.6, 0.55)), mortar) * (0.8 + 0.3 * stucco);
+      albedo = mix(wall, brick, damage);
+      rough = 0.9;
+      height = stucco * 0.002 + (1.0 - damage) * 0.012 + damage * (1.0 - mortar) * 0.004;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  stoneWall: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec4 v = voronoiVec(uv * vec2(1.0, 1.6), vec2(6.0, 10.0), 0.8, 131.0);
+      float edge = smoothstep(0.02, 0.1, v.z);
+      float fine = fbm01(uv, vec2(50.0), 4, 132.0);
+      float dome = sqrt(max(0.0, 1.0 - dot(v.xy, v.xy) * 1.3));
+      vec3 s = srgb(mix(vec3(0.52, 0.49, 0.43), vec3(0.66, 0.62, 0.54), v.w));
+      s = mix(s, srgb(vec3(0.45, 0.42, 0.36)), step(0.8, hash12(vec2(v.w * 9.0))) * 0.6);
+      s *= 0.8 + 0.3 * fine;
+      vec3 mortar = srgb(vec3(0.55, 0.53, 0.48)) * (0.7 + 0.3 * fine);
+      albedo = mix(mortar, s, edge);
+      rough = mix(0.95, 0.75, edge);
+      height = edge * (0.02 + dome * 0.04) + fine * 0.004;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  roofTiles: /* glsl */ `
+    // Clay beaver-tail tiles in overlapping rows. v runs down the roof slope.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec2 grid = vec2(11.0, 13.0);
+      vec2 p = uv * grid;
+      float row = floor(p.y);
+      p.x += mod(row, 2.0) * 0.5;
+      vec2 f = fract(p);
+      vec2 cid = vec2(mod(floor(p.x), grid.x), row);
+      vec3 h3 = hash32(cid + 5.0);
+      // Rounded tile bottom edge and slope within each row.
+      float shape = 1.0 - smoothstep(0.38, 0.5, length(vec2(f.x - 0.5, max(0.0, f.y - 0.5)) * vec2(1.0, 1.2)));
+      float gap = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x);
+      float fine = fbm01(uv, vec2(64.0), 3, 141.0);
+      float moss = smoothstep(0.58, 0.75, fbm01(uv, vec2(5.0), 4, 142.0));
+      vec3 clay = srgb(mix(vec3(0.5, 0.2, 0.12), vec3(0.62, 0.3, 0.16), h3.x));
+      clay = mix(clay, srgb(vec3(0.33, 0.15, 0.1)), step(0.88, h3.y) * 0.6);
+      clay *= 0.82 + 0.3 * fine;
+      clay = mix(clay, srgb(vec3(0.25, 0.27, 0.15)), moss * 0.6);
+      float t = shape * gap;
+      albedo = mix(srgb(vec3(0.12, 0.08, 0.06)), clay, t * 0.9 + 0.1);
+      rough = 0.78 + 0.1 * moss;
+      height = t * (0.01 + f.y * 0.012) + fine * 0.001;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  woodPlanks: /* glsl */ `
+    // Vertical weathered boards (barns, doors, shutters). u across, v along the grain.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float boards = 7.0;
+      float bx = uv.x * boards;
+      float id = floor(bx);
+      float fx = fract(bx);
+      float seam = smoothstep(0.0, 0.04, fx) * smoothstep(1.0, 0.96, fx);
+      float shift = hash12(vec2(id, 1.0));
+      float grain = fbm01(vec2(uv.x * 2.0, uv.y + shift), vec2(boards * 6.0, 2.0), 5, 151.0);
+      float lines = sin((uv.x * boards * 18.0 + grain * 6.0) * 3.14159) * 0.5 + 0.5;
+      float knots = smoothstep(0.08, 0.0, length(fract(vec2(fx, uv.y * 3.0 + shift * 7.0)) - vec2(0.5, 0.5)) - 0.03) * step(0.7, hash12(vec2(id, floor(uv.y * 3.0 + shift * 7.0))));
+      vec3 c1 = mix(uPaintA, uPaintB, hash12(vec2(id, 9.0)));
+      albedo = c1 * (0.75 + 0.3 * lines) * (0.85 + 0.25 * grain);
+      albedo = mix(albedo, albedo * 0.4, knots);
+      albedo *= 0.35 + 0.65 * seam;
+      rough = 0.85;
+      height = seam * (0.006 + lines * 0.0015) - knots * 0.001;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  bark: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float r = ridged(uv * vec2(1.0, 0.25), vec2(10.0, 2.0), 5, 161.0);
+      float fine = fbm01(uv, vec2(30.0), 4, 162.0);
+      float moss = smoothstep(0.55, 0.75, fbm01(uv, vec2(4.0), 4, 163.0));
+      albedo = mix(uPaintA * 0.5, uPaintA, r) * (0.8 + 0.3 * fine);
+      albedo = mix(albedo, srgb(vec3(0.25, 0.3, 0.12)), moss * 0.5);
+      rough = 0.92;
+      height = r * 0.025 + fine * 0.003;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  paintedMetal: /* glsl */ `
+    // Vehicle armor/body paint with chipping, rust, dust and subtle cast/rolled texture.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float big = fbm01(uv, vec2(3.0), 5, 171.0);
+      float fine = fbm01(uv, vec2(60.0), 4, 172.0);
+      float cast = fbm01(uv, vec2(12.0), 4, 173.0);
+      float chip = smoothstep(0.72, 0.76, fbm01(uv, vec2(10.0), 6, 174.0));
+      float rust = smoothstep(0.6, 0.85, fbm01(uv * vec2(1.0, 0.4), vec2(8.0, 3.0), 5, 175.0)) * 0.6;
+      vec3 paint = uPaintA * (0.85 + 0.25 * big) * (0.95 + 0.1 * fine);
+      paint = mix(paint, uPaintB, smoothstep(0.55, 0.9, big) * 0.35); // faded/dusty
+      vec3 primer = srgb(vec3(0.18, 0.17, 0.16));
+      vec3 rustc = srgb(vec3(0.35, 0.18, 0.08));
+      albedo = mix(paint, rustc, rust * 0.5);
+      albedo = mix(albedo, primer, chip);
+      rough = mix(0.62 + 0.15 * fine, 0.45, chip);
+      metal = chip * 0.6;
+      height = cast * 0.0015 - chip * 0.0003;
+      alpha = 1.0;
+    }`,
+  gunSteel: /* glsl */ `
+    // Blued or parkerized steel. uPaintA tints (bluish black vs grey-green phosphate).
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float fine = fbm01(uv, vec2(90.0), 4, 181.0);
+      float wear = smoothstep(0.62, 0.8, fbm01(uv, vec2(6.0), 5, 182.0));
+      float brushed = vnoise(uv * vec2(400.0, 12.0), vec2(400.0, 12.0), 183.0);
+      albedo = mix(uPaintA, srgb(vec3(0.42, 0.42, 0.42)), wear * 0.5) * (0.9 + 0.2 * fine);
+      rough = mix(uPaintB.r, 0.32, wear) + brushed * 0.06;
+      metal = mix(0.75, 0.95, wear);
+      height = fine * 0.0002;
+      alpha = 1.0;
+    }`,
+  stockWood: /* glsl */ `
+    // Walnut / beech / birch gunstock wood with varnish. u along the stock.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float warp = fbm(uv, vec2(2.0, 3.0), 4, 191.0);
+      float rings = sin((uv.y * 22.0 + warp * 5.0 + fbm(uv, vec2(1.0, 8.0), 3, 192.0) * 2.0) * 6.2831853) * 0.5 + 0.5;
+      float streak = vnoise(uv * vec2(4.0, 120.0), vec2(4.0, 120.0), 193.0);
+      float fine = fbm01(uv, vec2(40.0, 120.0), 3, 194.0);
+      float wear = smoothstep(0.65, 0.8, fbm01(uv, vec2(5.0), 4, 195.0));
+      vec3 c = mix(uPaintA, uPaintB, pow(rings, 2.5) * 0.7 + streak * 0.3);
+      c *= 0.85 + 0.2 * fine;
+      c = mix(c, c * 1.35, wear * 0.5); // handled wood gets lighter where finish wore off
+      albedo = c;
+      rough = mix(0.38, 0.65, wear) + fine * 0.05;
+      metal = 0.0;
+      height = rings * 0.0003 + fine * 0.0002;
+      alpha = 1.0;
+    }`,
+  fabric: /* glsl */ `
+    // Wool serge / cotton twill for uniforms. Fine diagonal weave + wear.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec2 p = uv * 160.0;
+      float twill = sin((p.x + p.y) * 3.14159) * 0.5 + 0.5;
+      float warp = sin(p.x * 3.14159 * 2.0) * 0.5 + 0.5;
+      float big = fbm01(uv, vec2(4.0), 5, 201.0);
+      float fine = fbm01(uv, vec2(50.0), 3, 202.0);
+      float dirt = smoothstep(0.55, 0.85, fbm01(uv, vec2(3.0), 4, 203.0));
+      albedo = uPaintA * (0.85 + 0.2 * twill * warp) * (0.85 + 0.25 * big) * (0.92 + 0.12 * fine);
+      albedo = mix(albedo, srgb(vec3(0.24, 0.2, 0.15)), dirt * 0.3);
+      rough = 0.95;
+      metal = 0.0;
+      height = twill * warp * 0.0004 + big * 0.001;
+      alpha = 1.0;
+    }`,
+  burlap: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec2 p = uv * 90.0;
+      float wx = sin(p.x * 3.14159 * 2.0) * 0.5 + 0.5;
+      float wy = sin(p.y * 3.14159 * 2.0) * 0.5 + 0.5;
+      float weave = mix(wx, wy, step(0.5, fract(floor(p.x) * 0.5 + floor(p.y) * 0.5)));
+      float big = fbm01(uv, vec2(4.0), 5, 211.0);
+      float dirt = smoothstep(0.45, 0.85, fbm01(uv, vec2(3.0), 4, 212.0));
+      albedo = mix(uPaintA, uPaintB, big) * (0.75 + 0.35 * weave);
+      albedo = mix(albedo, srgb(vec3(0.25, 0.2, 0.15)), dirt * 0.5);
+      rough = 0.97;
+      metal = 0.0;
+      height = weave * 0.0015 + big * 0.004;
+      alpha = 1.0;
+    }`,
+  concrete: /* glsl */ `
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float big = fbm01(uv, vec2(3.0), 5, 221.0);
+      float fine = fbm01(uv, vec2(70.0), 3, 222.0);
+      float pores = step(0.82, vnoise(uv * 220.0, vec2(220.0), 223.0));
+      float streaks = fbm01(uv * vec2(1.0, 0.2), vec2(12.0, 2.0), 4, 224.0);
+      albedo = mix(srgb(vec3(0.5, 0.49, 0.46)), srgb(vec3(0.62, 0.61, 0.57)), big) * (0.9 + 0.15 * fine);
+      albedo *= 1.0 - pores * 0.35;
+      albedo *= 1.0 - smoothstep(0.6, 0.9, streaks) * 0.2;
+      rough = 0.88;
+      metal = 0.0;
+      height = fine * 0.001 - pores * 0.0015 + big * 0.003;
+      alpha = 1.0;
+    }`,
+  water: /* glsl */ `
+    // Small wind ripples for water normal maps.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float h = 0.0;
+      h += fbm(uv, vec2(4.0), 5, 241.0) * 0.012;
+      h += sin((uv.x * 7.0 + uv.y * 3.0) * 6.2831853 + fbm(uv, vec2(3.0), 3, 242.0) * 3.0) * 0.004;
+      h += sin((uv.x * -2.0 + uv.y * 9.0) * 6.2831853 + fbm(uv, vec2(5.0), 3, 243.0) * 2.0) * 0.003;
+      albedo = vec3(0.05, 0.07, 0.06);
+      rough = 0.04;
+      metal = 0.0;
+      height = h;
+      alpha = 1.0;
+    }`,
+  leaves: /* glsl */ `
+    // A card full of leaves with transparency, used on tree and bush foliage.
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      alpha = 0.0;
+      albedo = uPaintA;
+      height = 0.0;
+      // Fade out near the card edges so cards blend into a soft clump.
+      float edgeFade = smoothstep(0.0, 0.18, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
+      for (int k = 0; k < 3; k++) {
+        float fk = float(k);
+        vec4 v = voronoiVec(uv + vec2(fk * 0.31, fk * 0.53), vec2(9.0 + fk * 3.0), 1.0, 231.0 + fk);
+        float ang = v.w * 6.2831;
+        vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
+        float shape = length(d * vec2(1.0, 1.9));
+        float leaf = 1.0 - smoothstep(0.3, 0.36, shape);
+        float present = step(0.25 + 0.3 * (1.0 - edgeFade), hash12(vec2(v.w * 17.0, fk)));
+        if (leaf * present > 0.5) {
+          vec3 lc = mix(uPaintA, uPaintB, hash12(vec2(v.w * 31.0)));
+          lc *= 0.75 + 0.4 * (1.0 - shape * 1.8);
+          // Central vein.
+          lc *= 1.0 - 0.25 * smoothstep(0.03, 0.0, abs(d.x)) * step(abs(d.y), 0.25);
+          albedo = lc;
+          alpha = 1.0;
+          height = 0.002 * (1.0 - shape) + fk * 0.001;
+        }
+      }
+      rough = 0.7;
+      metal = 0.0;
+    }`,
+  grassCard: /* glsl */ `
+    // Blades of grass on a transparent card (u across, v up).
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      alpha = 0.0;
+      albedo = uPaintA;
+      for (int k = 0; k < 14; k++) {
+        float fk = float(k);
+        vec3 h = hash32(vec2(fk, 7.0));
+        float x0 = 0.05 + 0.9 * h.x;
+        float tall = 0.55 + 0.45 * h.y;
+        float lean = (h.z - 0.5) * 0.35;
+        float y = uv.y / tall;
+        if (y > 1.0) continue;
+        float cx = x0 + lean * y * y;
+        float w = 0.018 * (1.0 - y) + 0.002;
+        if (abs(uv.x - cx) < w) {
+          alpha = 1.0;
+          albedo = mix(uPaintB, uPaintA, y) * (0.85 + 0.3 * h.y);
+          height = 0.001;
+        }
+      }
+      rough = 0.75;
+      metal = 0.0;
+    }`,
+};

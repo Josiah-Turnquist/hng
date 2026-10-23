@@ -1,0 +1,20 @@
+{
+  "name": "hng",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A realistic WWII combined-arms shooter that runs in the browser, inspired by Heroes & Generals.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "build": "node tools/build.mjs",
+    "test": "node --test tests/",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  },
+  "license": "UNLICENSED"
+}
