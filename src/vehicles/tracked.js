@@ -35,11 +35,13 @@ export class TrackedVehicle extends Vehicle {
     const s = def.suspension;
     this.partPivots = {};
     for (const [k, g] of Object.entries(parts)) this.partPivots[k] = g.position.clone();
-    // The gun elevates inside the turret: make it a child of the turret.
-    if (parts.turret && parts.gun) {
-      const gun = parts.gun;
-      parts.turret.add(gun);
-      gun.position.copy(this.partPivots.gun).sub(this.partPivots.turret);
+    // Parts that ride on others (the gun and roof MG on the turret) become their children.
+    const parents = { ...(model.meta?.partParents || {}) };
+    if (parts.gun && parts.turret && !parents.gun) parents.gun = 'turret';
+    for (const [child, parent] of Object.entries(parents)) {
+      if (!parts[child] || !parts[parent]) continue;
+      parts[parent].add(parts[child]);
+      parts[child].position.copy(this.partPivots[child]).sub(this.partPivots[parent]);
     }
     // Road wheels from the model (roadL0, roadL1... front to back) or evenly spaced.
     const r = def.roadWheelRadius;
@@ -53,7 +55,9 @@ export class TrackedVehicle extends Vehicle {
       for (let i = 0; i < n; i++) {
         const p = list[i]?.position;
         const z = -def.contactLength / 2 + (def.contactLength * i) / Math.max(1, n - 1);
-        const w = this.addWheel({ pos: p ? [p.x, p.y, p.z] : [(sx * def.trackCenters) / 2, r, z], radius: r, k: s.k, c: s.c, side: sx, part: list[i] || null });
+        // On the models the road wheels ride on the track links: the wheel center is
+        // its radius plus the link thickness above the ground.
+        const w = this.addWheel({ pos: p ? [p.x, p.y, p.z] : [(sx * def.trackCenters) / 2, r, z], radius: p ? p.y : r, k: s.k, c: s.c, side: sx, part: list[i] || null });
         w.track = side === 'L' ? 0 : 1;
       }
     }

@@ -6,8 +6,7 @@
 // gunner's sight, mouse wheel sets the sight range, 1/2 choose the shell, V
 // switches camera, F1-F4 change seat, F gets out.
 import * as THREE from 'three';
-import { clamp, damp, DEG, gaussRandom } from '../core/math.js';
-import { AMMO } from '../weapons/ammo.js';
+import { clamp, damp, DEG } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 
 const BASE_SENS = 0.0022;
@@ -180,33 +179,7 @@ export class VehicleController {
   }
 
   _mgShot(v, mg, anchor, dir) {
-    const g = this.game;
-    const d = mg.def;
-    const ammo = AMMO[d.ammo];
-    const m = v.anchorWorld(anchor, _v) || v.muzzleWorld?.(_v) || _v.copy(v.body.position);
-    const dd = dir.clone();
-    const sig = 0.0012;
-    dd.x += gaussRandom(0, sig);
-    dd.y += gaussRandom(0, sig);
-    dd.z += gaussRandom(0, sig);
-    dd.normalize();
-    const mv = ammo.mv * (1 + gaussRandom(0, 0.006));
-    const bv = v.body.velocity;
-    const p = g.projectiles.fire({
-      x: m.x,
-      y: m.y,
-      z: m.z,
-      vx: dd.x * mv + bv.x,
-      vy: dd.y * mv + bv.y,
-      vz: dd.z * mv + bv.z,
-      ammo,
-      owner: this.soldier,
-      weapon: { name: d.name, vehicle: true },
-      tracer: d.tracerEvery > 0 && mg.shots % d.tracerEvery === 0,
-    });
-    p.ignoreTarget = v;
-    g.effects?.muzzle(m.x, m.y, m.z, dd.x, dd.y, dd.z, 0.6);
-    g.audio?.gunshot?.(d.sound, m.x, m.y, m.z, { isLocal: true });
+    this.game.vehicleMgShot(v, mg, anchor, dir, this.soldier);
   }
 
   // Per-frame camera.

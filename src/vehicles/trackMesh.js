@@ -30,7 +30,7 @@ export function defaultTrackPath(def) {
     }
   };
   // Bottom run (front to back), rear idler, top run (back to front), front sprocket.
-  pts.push([-L / 2, 0], [L / 2, 0]);
+  pts.push([-L / 2, 0.015], [L / 2, 0.015]);
   arc(rear, top / 2, top / 2, -Math.PI / 2, Math.PI / 2, 8);
   pts.push([L / 2, top], [-L / 2, top]);
   arc(front, top / 2, top / 2, Math.PI / 2, (3 * Math.PI) / 2, 8);
@@ -121,8 +121,8 @@ export class TrackRenderer {
         }
         _m.makeBasis(_x2, _y, _z);
         _q.setFromRotationMatrix(_m);
-        // The path traces the ground face of the track: lift the link half its thickness.
-        _p.set(x, y, z).addScaledVector(_y, this.thick * 0.5);
+        // The path is the links' centerline.
+        _p.set(x, y, z);
         _m.compose(_p, _q, _s);
         mesh.setMatrixAt(k, _m);
       }

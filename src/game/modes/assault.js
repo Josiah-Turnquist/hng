@@ -15,6 +15,7 @@ import { Soldier } from '../soldier.js';
 import { BotBrain } from '../../ai/bot.js';
 import { DEFAULT_LOADOUT, weaponsFor, FACTIONS } from '../../weapons/defs.js';
 import { attachSoldierModel } from '../soldierView.js';
+import { TankBrain } from '../../ai/tankBot.js';
 
 export const DEF = 0; // defenders' team index
 export const ATT = 1; // attackers
@@ -106,9 +107,14 @@ export class AssaultMode {
     const ps = g.player.soldier;
     ps.team = this.playerTeam;
     // Bots fill both sides.
+    // Each side has a tank or two crewed by bots (more in bigger battles).
+    const tanks = this.perSide >= 16 ? 3 : this.perSide >= 10 ? 2 : this.perSide >= 6 ? 1 : 0;
     for (const team of [DEF, ATT]) {
       const n = this.perSide - (team === this.playerTeam ? 1 : 0);
-      for (let i = 0; i < n; i++) this._makeBot(team, i);
+      for (let i = 0; i < n; i++) {
+        const s = this._makeBot(team, i);
+        if (i < tanks) s.tankCrew = true;
+      }
     }
     // Jeeps wait at each side's spawn points.
     this.vehicleSpots = [];
@@ -182,6 +188,9 @@ export class AssaultMode {
     const pick = prim[(i * 7 + 3) % prim.length];
     const loadout = base.slice();
     if (pick && i % 2 === 1) loadout[0] = pick.id;
+    // Every fifth man carries the army's anti-tank weapon.
+    const at = { US: 'bazooka_m1a1', GE: 'panzerschreck', SU: 'ptrd41' }[faction];
+    if (i % 5 === 4 && at) loadout[0] = at;
     return loadout;
   }
 
@@ -320,11 +329,19 @@ export class AssaultMode {
       if (s.respawnT === undefined || s.respawnT === null) s.respawnT = this._spawnDelay(this.points[0], s.team);
       s.respawnT -= dt;
       if (s.respawnT <= 0 && s.deathTime > 3) {
-        const pts = this._spawnPoints(s.team);
+        let pts = this._spawnPoints(s.team);
+        // Tanks come in only at access points (attackers) and objectives (defenders).
+        if (s.tankCrew) pts = pts.filter((p) => p.kind === (s.team === ATT ? 'access' : 'objective'));
         if (!pts.length) continue;
         const p = pts[(Math.random() * Math.min(2, pts.length)) | 0];
         this.spawnSoldier(s, p);
-        s.respawnT = null;
+        s.respawnT = s.tankCrew ? 40 : null;
+        if (s.tankCrew) {
+          const v = g._deployInTank(s);
+          if (v) s.brain = new TankBrain(g, s, v);
+          else s.brain = new BotBrain(g, s); // no room for a tank: fight on foot
+          s.respawnT = null;
+        }
       }
     }
     // Wrecked vehicles are replaced after a while.

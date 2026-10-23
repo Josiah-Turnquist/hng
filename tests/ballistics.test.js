@@ -148,7 +148,8 @@ function flatWorld() {
 test('projectile system: bullets fly, hit walls, and pass through thin wood', () => {
   const world = flatWorld();
   world.add(new Box(50, 1.5, 0, 0.01, 1.5, 3, 0, 'wood')); // 2 cm plank fence
-  world.add(new Box(80, 1.5, 0, 0.12, 1.5, 3, 0, 'brick')); // 24 cm brick wall
+  // 24 cm brick wall, big enough to catch the round even after the plank knocks it off line.
+  world.add(new Box(80, 4, 0, 0.12, 4, 8, 0, 'brick'));
   const sys = new ProjectileSystem({ world, atmosphere: std });
   const events = [];
   sys.onImpact = (p, info) => events.push({ kind: info.kind, material: info.material, x: info.x });

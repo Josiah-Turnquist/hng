@@ -46,6 +46,12 @@ export class BotBrain {
     this.strafeT = 0;
   }
 
+  // Carrying a bazooka, Panzerschreck, Panzerfaust or anti-tank rifle.
+  get hasAT() {
+    const t = this.s.weapon?.def.type;
+    return t === 'launcher' || t === 'atRifle';
+  }
+
   get enemies() {
     return this.game.soldiers.filter((o) => o.alive && o.team !== this.s.team);
   }
@@ -72,35 +78,40 @@ export class BotBrain {
       fz = -Math.cos(s.yaw);
     const coll = this.game.world.collision;
     let checks = 0;
+    const at = this.hasAT;
     const list = this.enemies
-      .map((e) => ({ e, d: Math.hypot(e.body.x - b.x, e.body.z - b.z) }))
-      .filter((o) => o.d < 520)
-      .sort((a, b2) => a.d - b2.d);
+      .filter((e) => !(e.vehicle && e.vehicle.def.kind === 'tracked'))
+      .map((e) => ({ e, d: Math.hypot(e.body.x - b.x, e.body.z - b.z) }));
+    if (at) for (const v of this.game.vehicles) if (v.alive && v.team !== s.team && v.occupants.some((o) => o)) list.push({ e: v, d: Math.hypot(v.body.position.x - b.x, v.body.position.z - b.z) });
+    list.sort((a, b2) => a.d - b2.d);
     for (const { e, d } of list) {
+      if (d > 520) continue;
       let a = this.aware.get(e) || 0;
-      const dx = e.body.x - b.x,
-        dz = e.body.z - b.z;
+      const ti = tinfo(e, _ti);
+      const dx = ti.x - b.x,
+        dz = ti.z - b.z;
       const inView = (dx * fx + dz * fz) / Math.max(d, 1e-3) > 0.35 || d < 6;
-      const firing = this.game.time - (e.lastShotTime ?? -99) < 1.2;
-      const heard = firing && d < 120;
+      const firing = e.isVehicle ? Math.abs(e.speed) > 0.5 || e.engineOn : this.game.time - (e.lastShotTime ?? -99) < 1.2;
+      const heard = firing && d < (e.isVehicle ? 250 : 120);
       let visible = false;
       if ((inView || heard || a > 0.3) && checks < 5) {
         checks++;
-        const ty = e.body.y + targetHeight(e) * 0.85;
-        const vx = e.body.x - _eye.x,
+        const ty = ti.y + ti.h * 0.85;
+        const vx = ti.x - _eye.x,
           vy = ty - _eye.y,
-          vz = e.body.z - _eye.z;
+          vz = ti.z - _eye.z;
         const len = Math.hypot(vx, vy, vz);
-        // Ignore the target's own vehicle and our own when looking.
-        visible = !coll.raycast(_eye.x, _eye.y, _eye.z, vx / len, vy / len, vz / len, len - 0.4, _hit, FLAG_SIGHT, true) || (_hit.box?.owner?.isVehicle && _hit.box.owner === e.vehicle);
+        // A hit on the target's own vehicle counts as seeing it.
+        const veh = e.isVehicle ? e : e.vehicle;
+        visible = !coll.raycast(_eye.x, _eye.y, _eye.z, vx / len, vy / len, vz / len, len - 0.4, _hit, FLAG_SIGHT, true) || (veh && _hit.box?.owner === veh);
       }
       if (visible && (inView || heard)) {
-        // How fast we notice: close, moving, standing, shooting people stand out.
-        const stance = e.body.stance === STANCE.PRONE ? 0.3 : e.body.stance === STANCE.CROUCH ? 0.65 : 1;
-        const moving = e.body.moving > 1 ? 1.6 : 1;
+        // How fast we notice: close, moving, standing, shooting people stand out; vehicles more so.
+        const stance = e.isVehicle ? 2 : e.body.stance === STANCE.PRONE ? 0.3 : e.body.stance === STANCE.CROUCH ? 0.65 : 1;
+        const moving = (e.isVehicle ? Math.abs(e.speed) > 1 : e.body.moving > 1) ? 1.6 : 1;
         const rate = (this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70);
         a = Math.min(1.5, a + rate * dt * (inView ? 1 : 0.5));
-        this.lastSeen.set(e, { x: e.body.x, y: e.body.y, z: e.body.z, t: this.game.time, visible: true });
+        this.lastSeen.set(e, { x: ti.x, y: ti.y, z: ti.z, t: this.game.time, visible: true });
       } else {
         a = Math.max(0, a - dt * 0.25);
         const ls = this.lastSeen.get(e);
@@ -119,8 +130,11 @@ export class BotBrain {
       if (!e.alive || a < 1) continue;
       const ls = this.lastSeen.get(e);
       if (!ls?.visible) continue;
-      const d = Math.hypot(e.body.x - b.x, e.body.z - b.z);
-      const score = -d + (this.game.time - (e.lastShotTime ?? -99) < 2 ? 40 : 0) + (e === this.target ? 25 : 0);
+      const ti = tinfo(e, _ti);
+      const d = Math.hypot(ti.x - b.x, ti.z - b.z);
+      // With an anti-tank weapon, vehicles in range come first; without, only men.
+      if (e.isVehicle && (!at || d > 220)) continue;
+      const score = -d + (e.isVehicle ? 400 : 0) + (this.game.time - (e.lastShotTime ?? -99) < 2 ? 40 : 0) + (e === this.target ? 25 : 0);
       if (score > bestScore) {
         bestScore = score;
         best = e;
@@ -132,7 +146,8 @@ export class BotBrain {
         const r = this.skill.reaction;
         this.reactT = r[0] + Math.random() * (r[1] - r[0]);
         // Starting aim error grows with distance (finding the target in the sights).
-        const d = Math.hypot(best.body.x - b.x, best.body.z - b.z);
+        const ti = tinfo(best, _ti);
+        const d = Math.hypot(ti.x - b.x, ti.z - b.z);
         const e0 = (this.skill.aim * (0.6 + d / 120)) * DEG;
         this.err.yaw = gaussRandom(0, e0 * 2.2);
         this.err.pitch = gaussRandom(0, e0 * 1.6);
@@ -160,7 +175,8 @@ export class BotBrain {
     }
     // Stance: crouch when fighting at range, prone with machine guns or under heavy fire.
     if (this.target) {
-      const d = Math.hypot(this.target.body.x - b.x, this.target.body.z - b.z);
+      const ti = tinfo(this.target, _ti);
+      const d = Math.hypot(ti.x - b.x, ti.z - b.z);
       const lmg = w?.def.type === 'lmg' || w?.def.proneOrBipodOnly;
       const want = (lmg && d > 40) || (d > 140 && Math.random() < 0.5) ? STANCE.PRONE : d > 25 ? STANCE.CROUCH : STANCE.STAND;
       if (b.targetStance !== want && Math.random() < 0.5) b.setStance(want);
@@ -244,11 +260,29 @@ export class BotBrain {
         wz += (dz / d) * (2 - d) * 0.6;
       }
     }
+    // Get out of the way of vehicles coming at us.
+    for (const v of this.game.vehicles) {
+      if (!v.alive || Math.abs(v.speed) < 1) continue;
+      const p = v.body.position;
+      const dx = b.x - p.x,
+        dz = b.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 14 || d < 1e-3) continue;
+      const f = v.forward.multiplyScalar(Math.sign(v.speed));
+      const ahead = (dx * f.x + dz * f.z) / d;
+      if (ahead < 0.3) continue;
+      // Step to the side of its path we're already on.
+      const side = Math.sign(dx * f.z - dz * f.x) || 1;
+      wx += f.z * side * 2.5;
+      wz += -f.x * side * 2.5;
+      this.strafe = 0;
+    }
     // While shooting: stop (rifles) or creep, sidestepping now and then.
     let speed = 1;
     if (engaging) {
       const auto = s.weapon && (s.weapon.mode === 'auto' || s.weapon.mode === 'slow');
-      const d = Math.hypot(this.target.body.x - b.x, this.target.body.z - b.z);
+      const ti = tinfo(this.target, _ti);
+      const d = Math.hypot(ti.x - b.x, ti.z - b.z);
       speed = auto && d < 40 ? 0.5 : 0;
       this.strafeT -= dt;
       if (this.strafeT <= 0) {
@@ -316,13 +350,14 @@ export class BotBrain {
     if (t && t.alive) {
       if (this.reactT > 0) this.reactT -= dt;
       b.eyePosition(_eye);
-      const d = Math.hypot(t.body.x - b.x, t.body.z - b.z);
+      const ti = tinfo(t, _ti);
+      const d = Math.hypot(ti.x - b.x, ti.z - b.z);
       // Lead a moving target by the bullet's flight time; hold over for drop.
       const mv = w?.def.mv || 700;
       const tof = d / (mv * 0.85);
-      const tx = t.body.x + t.body.vx * tof,
-        tz = t.body.z + t.body.vz * tof;
-      const ty = t.body.y + targetHeight(t) * 0.72 + t.body.vy * tof * 0.5;
+      const tx = ti.x + ti.vx * tof,
+        tz = ti.z + ti.vz * tof;
+      const ty = ti.y + ti.h * (t.isVehicle ? 0.5 : 0.72) + ti.vy * tof * 0.5;
       const dx = tx - _eye.x,
         dy = ty - _eye.y,
         dz = tz - _eye.z;
@@ -344,11 +379,11 @@ export class BotBrain {
       wantYaw += e.yaw;
       wantPitch += e.pitch;
       // Fire once the sights settle on the target (its angular size).
-      const size = 0.35 / Math.max(d, 1);
+      const size = ti.size / Math.max(d, 1);
       const off = Math.hypot(e.yaw, e.pitch);
       this.holdFire -= dt;
       if (this.reactT <= 0 && off < size * 1.6 + 0.004 && this.holdFire <= 0 && w && w.state === 'ready' && w.loaded > 0) {
-        if (!this._friendlyInLine(t, d)) pull = true;
+        if (!this._friendlyInLine(ti, d)) pull = true;
       }
       s.aiming = d > 12 && w?.def.type !== 'lmg';
     } else {
@@ -366,7 +401,8 @@ export class BotBrain {
       if (pull && auto) {
         if (this.burstLeft <= 0) {
           const [lo, hi] = this.skill.burst;
-          const d = Math.hypot(t.body.x - b.x, t.body.z - b.z);
+          const ti = tinfo(t, _ti);
+          const d = Math.hypot(ti.x - b.x, ti.z - b.z);
           this.burstLeft = Math.max(2, Math.round((lo + Math.random() * (hi - lo)) * (d > 80 ? 0.6 : 1)));
         }
       }
@@ -391,11 +427,11 @@ export class BotBrain {
     }
   }
 
-  _friendlyInLine(t, d) {
+  _friendlyInLine(ti, d) {
     const s = this.s;
     const b = s.body;
-    const dx = (t.body.x - b.x) / d,
-      dz = (t.body.z - b.z) / d;
+    const dx = (ti.x - b.x) / d,
+      dz = (ti.z - b.z) / d;
     for (const o of this.game.soldiers) {
       if (o === s || !o.alive || o.team !== s.team) continue;
       const ox = o.body.x - b.x,
@@ -407,6 +443,34 @@ export class BotBrain {
     return false;
   }
 }
+
+// Where a target is and how it moves: soldiers and vehicles alike.
+function tinfo(t, out) {
+  if (t.isVehicle) {
+    const p = t.body.position,
+      v = t.body.velocity;
+    out.x = p.x;
+    out.y = p.y - t.cg.y;
+    out.z = p.z;
+    out.vx = v.x;
+    out.vy = v.y;
+    out.vz = v.z;
+    out.h = t.def.dims[1] * 0.75;
+    out.size = 2.2;
+  } else {
+    const b = t.body;
+    out.x = b.x;
+    out.y = b.y;
+    out.z = b.z;
+    out.vx = b.vx;
+    out.vy = b.vy;
+    out.vz = b.vz;
+    out.h = targetHeight(t);
+    out.size = 0.35;
+  }
+  return out;
+}
+const _ti = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, h: 0, size: 0 };
 
 export function targetHeight(e) {
   const st = e.body.stance;

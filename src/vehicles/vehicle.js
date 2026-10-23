@@ -581,7 +581,7 @@ export class Vehicle {
   anchorWorld(name, out = new THREE.Vector3()) {
     const a = this.model.anchors?.[name];
     if (!a) return null;
-    const partName = ANCHOR_PART[name];
+    const partName = this.model.meta?.anchorParts?.[name] ?? ANCHOR_PART[name];
     const part = partName && this.model.parts?.[partName];
     const pivot = part && this.partPivots?.[partName];
     if (pivot) return out.copy(a).sub(pivot).applyMatrix4(part.matrixWorld);

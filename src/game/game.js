@@ -17,6 +17,7 @@ import { NavGrid } from '../ai/navgrid.js';
 import { attachSoldierModel, updateSoldierView } from './soldierView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
+import { AMMO } from '../weapons/ammo.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
 import { updateVehicleEffects, charModel } from '../vehicles/effects.js';
@@ -76,6 +77,9 @@ export class Game {
       const t0 = performance.now();
       this.nav = new NavGrid(this.world, { radius: (def.playRadius || 700) + 60 });
       this.nav.build({ doors: this.world.village?.doors || [] });
+      // Vehicles need wider gaps and no doorways.
+      this.vnav = new NavGrid(this.world, { radius: (def.playRadius || 700) + 60 });
+      this.vnav.build({ doors: [], agentRadius: 1.6, maxSlopeDeg: 28 });
       console.log(`navigation grid ${this.nav.n}x${this.nav.n} built in ${Math.round(performance.now() - t0)} ms`);
       const enemy = this.opts.enemy || (faction === 'GE' ? 'US' : 'GE');
       const attack = (this.opts.side || 'attack') === 'attack';
@@ -131,19 +135,71 @@ export class Game {
     this.hud?.resize(w, h);
   }
 
-  // Put a soldier in a fresh tank of their army next to where they stand.
+  // A clear, level spot for a vehicle near (x, z), or null.
+  findParking(x, z, minR = 0, maxR = 60, half = 2.5, nav = this.nav) {
+    const hf = this.world.hf;
+    const coll = this.world.collision;
+    for (let r = minR; r < maxR; r += 5) {
+      const n = r < 1 ? 1 : 10;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + r * 0.37;
+        const px = x + Math.cos(a) * r,
+          pz = z + Math.sin(a) * r;
+        if (nav && !nav.walkable(px, pz)) continue;
+        if (this.world.waterLevelAt?.(px, pz) != null) continue;
+        const h = hf.getHeight(px, pz);
+        if (Math.abs(hf.getHeight(px + half, pz) - hf.getHeight(px - half, pz)) > half * 0.25) continue;
+        if (Math.abs(hf.getHeight(px, pz + half) - hf.getHeight(px, pz - half)) > half * 0.25) continue;
+        if (coll.query(px - half, h + 0.2, pz - half * 1.4, px + half, h + 2.5, pz + half * 1.4, [], 1).length) continue;
+        return { x: px, z: pz };
+      }
+    }
+    return null;
+  }
+
+  // Put a soldier in a fresh tank of their army near where they stand.
   _deployInTank(s) {
     const id = { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' }[s.faction];
     if (!id) return null;
     const b = s.body;
-    const yaw = s.yaw;
-    const x = b.x - Math.sin(yaw) * 6,
-      z = b.z - Math.cos(yaw) * 6;
-    const v = this.spawnVehicle(id, x, z, yaw);
+    // Somewhere a tank can actually drive out of (not wedged between houses).
+    const spot = this.findParking(b.x, b.z, 8, 160, 3.5, this.vnav || this.nav) || this.findParking(b.x, b.z, 6, 80, 3.5) || { x: b.x - Math.sin(s.yaw) * 6, z: b.z - Math.cos(s.yaw) * 6 };
+    const v = this.spawnVehicle(id, spot.x, spot.z, s.yaw);
     v.team = s.team;
     v.enter(s, 0);
     if (s.isPlayer) this.player.vehicleCtl.entered(v);
     return v;
+  }
+
+  // One round from a vehicle's machine gun (coaxial, bow or roof).
+  vehicleMgShot(v, mg, anchor, dir, owner) {
+    const d = mg.def;
+    const ammo = AMMO[d.ammo];
+    const m = v.anchorWorld(anchor, new THREE.Vector3()) || v.muzzleWorld?.(new THREE.Vector3()) || v.body.position.clone();
+    const dd = dir.clone();
+    const sig = 0.0012;
+    dd.x += gaussRandom(0, sig);
+    dd.y += gaussRandom(0, sig);
+    dd.z += gaussRandom(0, sig);
+    dd.normalize();
+    const mv = ammo.mv * (1 + gaussRandom(0, 0.006));
+    const bv = v.body.velocity;
+    const p = this.projectiles.fire({
+      x: m.x,
+      y: m.y,
+      z: m.z,
+      vx: dd.x * mv + bv.x,
+      vy: dd.y * mv + bv.y,
+      vz: dd.z * mv + bv.z,
+      ammo,
+      owner,
+      weapon: { name: d.name, vehicle: true },
+      tracer: d.tracerEvery > 0 && mg.shots % d.tracerEvery === 0,
+    });
+    p.ignoreTarget = v;
+    if (owner) owner.lastShotTime = this.time;
+    this.effects.muzzle(m.x, m.y, m.z, dd.x, dd.y, dd.z, 0.6);
+    this.audio?.gunshot?.(d.sound, m.x, m.y, m.z, { isLocal: owner === this.player?.soldier, source: `v${v.id}` });
   }
 
   spawnVehicle(id, x, z, yaw = 0) {
