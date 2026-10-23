@@ -67,7 +67,7 @@ export function showMainMenu(app) {
     const setup = loadSetup();
     const root = el('div', 'menu');
     root.innerHTML = `
-      <div class="menu-head"><h1>HNG</h1><div class="sub">WWII combined arms · an unofficial Heroes &amp; Generals tribute</div></div>
+      <div class="menu-head"><h1>HNG</h1><div class="sub">WWII combined arms · an unofficial Heroes &amp; Generals tribute</div><div class="touch-note" hidden>This game needs a keyboard and mouse. Open it on a computer to play.</div></div>
       <div class="menu-tabs"><button data-tab="battle" class="on">Battle</button><button data-tab="settings">Settings</button><button data-tab="controls">Controls</button><button data-tab="about">About</button><button class="fullscreen" title="Fill the whole screen (Esc leaves it)">Full screen</button></div>
       <div class="menu-body"></div>`;
     app.root.appendChild(root);
@@ -88,6 +88,8 @@ export function showMainMenu(app) {
         tabs[b.dataset.tab]();
       }),
     );
+    // Phones and tablets: say up front that a keyboard and mouse are needed.
+    root.querySelector('.touch-note').hidden = !matchMedia('(hover: none) and (pointer: coarse)').matches;
     // Full screen, where the page is allowed to use it.
     const fs = root.querySelector('.fullscreen');
     fs.hidden = !document.fullscreenEnabled;

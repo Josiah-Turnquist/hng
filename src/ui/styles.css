@@ -405,6 +405,7 @@ canvas.game {
 .menu-head { text-align: center; margin-bottom: 18px; }
 .menu-head h1 { margin: 0; font-size: clamp(34px, 7vw, 72px); letter-spacing: 0.35em; font-weight: 800; }
 .menu-head .sub { color: var(--ink-dim); letter-spacing: 0.15em; font-size: 12px; text-transform: uppercase; }
+.menu-head .touch-note { margin-top: 10px; padding: 8px 12px; border: 1px solid var(--accent); color: var(--ink); font-size: 13px; }
 .menu-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; justify-content: center; }
 .menu button, .pause button {
   font: inherit;
