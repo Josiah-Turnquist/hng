@@ -24,7 +24,7 @@ import './soldierKitUS.js';
 import './soldierKitGE.js';
 import './soldierKitSU.js';
 import { SkinBuilder } from './soldierGeo.js';
-import { soldierMaterial } from './soldierMaterials.js';
+import { soldierMaterial, CELL } from './soldierMaterials.js';
 import { SoldierAnimator, clamp } from './soldierAnim.js';
 import { SoldierArms, weaponInfo, Xf } from './soldierArms.js';
 import { Ragdoll } from './soldierRagdoll.js';
@@ -48,6 +48,54 @@ function outfitFor(faction, cls, variant, role, lod) {
   }
   return g;
 }
+// Each man's kit has its own wear: per soldier and per material (so a jacket
+// and the trousers differ), the colors a little lighter or darker (+-7%) and
+// more or less faded (est.; dye lots, washing and sun varied a lot). Applied to
+// a copy of the outfit's colors, the rest of the geometry stays shared.
+const TINT_SKIP = new Set([CELL.skin, CELL.hair, CELL.metal, CELL.hand]);
+function tintColors(src, mat, count, seed, out = new Float32Array(src.length)) {
+  const k = new Map();
+  for (let i = 0; i < count; i++) {
+    const c = Math.round(mat[i * 2]);
+    let t = k.get(c);
+    if (!t) {
+      const h = (n) => {
+        const x = Math.sin(seed * 12.9898 + c * 78.233 + n * 37.719) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      const amp = c === CELL.leather || c === CELL.paint ? 0.5 : 1;
+      t = [1 + (h(1) - 0.5) * 0.14 * amp, h(2) * 0.14 * amp];
+      k.set(c, t);
+    }
+    const r = src[i * 3],
+      g = src[i * 3 + 1],
+      b = src[i * 3 + 2];
+    if (TINT_SKIP.has(c)) {
+      out[i * 3] = r;
+      out[i * 3 + 1] = g;
+      out[i * 3 + 2] = b;
+      continue;
+    }
+    const L = r * 0.3 + g * 0.59 + b * 0.11;
+    out[i * 3] = (r + (L - r) * t[1]) * t[0];
+    out[i * 3 + 1] = (g + (L - g) * t[1]) * t[0];
+    out[i * 3 + 2] = (b + (L - b) * t[1]) * t[0];
+  }
+  for (let i = count * 3; i < src.length; i++) out[i] = src[i];
+  return out;
+}
+// The shared outfit geometry with this soldier's own colors (the other
+// attributes are the same objects, so they upload once).
+function tintedGeometry(geo, seed) {
+  const g = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(geo.attributes)) g.setAttribute(name, attr);
+  g.setIndex(geo.index);
+  const col = geo.attributes.color;
+  g.setAttribute('color', new THREE.BufferAttribute(tintColors(col.array, geo.attributes.soldierMat.array, col.count, seed), 3));
+  g.boundingSphere = geo.boundingSphere;
+  return g;
+}
+
 export function clearOutfitCache() {
   for (const g of OUTFIT_CACHE.values()) g.geo?.dispose();
   OUTFIT_CACHE.clear();
@@ -139,10 +187,13 @@ export class SoldierModel {
       this.outfitInfo = og.info;
       if (lod === 0) {
         const pg = buildPerson(this.person, 0, og.info).toGeometry();
+        const outfit = tintedGeometry(og.geo, this.seed);
         this._geos.push(pg);
-        this.meshes[0].push(this._mesh(og.geo, this.material), this._mesh(pg, this.material));
+        this._tinted = outfit;
+        this.meshes[0].push(this._mesh(outfit, this.material), this._mesh(pg, this.material));
       } else {
         const b = new SkinBuilder(1).append(og.b).append(buildPerson(this.person, lod, og.info));
+        tintColors(b.col, b.mat, og.b.count, this.seed, b.col);
         const geo = b.toGeometry();
         this._geos.push(geo);
         this.meshes[lod].push(this._mesh(geo, this.material));
@@ -347,6 +398,14 @@ export class SoldierModel {
   dispose() {
     for (const g of this._geos) g.dispose();
     this._geos.length = 0;
+    if (this._tinted) {
+      // Free only this soldier's colors: the rest belongs to the shared outfit.
+      const g = this._tinted;
+      for (const n of Object.keys(g.attributes)) if (n !== 'color') g.deleteAttribute(n);
+      g.setIndex(null);
+      g.dispose();
+      this._tinted = null;
+    }
     this.root.removeFromParent();
   }
 }

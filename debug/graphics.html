@@ -16,8 +16,9 @@
 //   option on top: aa=off|fxaa|msaa|taa  shadows=off|low|medium|high|ultra
 //   shadowDistance=300  ao=off|normal|high  bloom=0|1  shafts=0|1  scale=0.75
 //   motion=0|1  dof=0|1 (with a stand-in rifle held aimed)  effects=low|medium|high
-//   view=lane|street|square|church|river|bridge|field|forest|sun|sunfield|aerial
-//   cam=x,y,z,yawDeg,pitchDeg (free camera; yaw 0 looks north / -z)
+//   view=lane|street|square|church|nave|river|bridge|field|meadow|forest|woods|sun|sunfield|aerial
+//   cam=x,y,z,yawDeg,pitchDeg (free camera; yaw 0 looks north / -z), look=x,y,z
+//   sun=elevation,azimuth (degrees: another time of day than the map's)
 //   frames=N (frames drawn before the picture: TAA and eye adaptation settle)
 //   turn=deg (turn the camera by this much per frame: motion blur, TAA in motion)
 //   fx=smoke|explosion|muzzle|dust|fire|impacts (effects 15-40 m in front), fxt=seconds
@@ -66,7 +67,12 @@ renderer.toneMapping = THREE.NoToneMapping;
 document.body.appendChild(renderer.domElement);
 const camera = new THREE.PerspectiveCamera(Number(params.get('fov') || 55), W / H, 0.1, quality.viewDistance);
 camera.rotation.order = 'YXZ';
-const def = MAPS[params.get('map') || 'town'];
+let def = MAPS[params.get('map') || 'town'];
+// sun=elevation,azimuth (degrees) tries another time of day.
+if (params.get('sun')) {
+  const [elevation, azimuth] = params.get('sun').split(',').map(Number);
+  def = { ...def, sun: { elevation, azimuth } };
+}
 const world = new World(renderer, camera, { quality }, def);
 const t0 = performance.now();
 await world.build((p, msg) => (info.textContent = `${Math.round(p * 100)}% ${msg}`));
@@ -96,6 +102,8 @@ const views = {
   street: () => look(new THREE.Vector3(-75, gy(-75, 46) + 1.8, 46.5), new THREE.Vector3(20, gy(20, 15) + 2, 15)),
   church: () => plan && look(loc(plan.church, 9, 1.7, 36), loc(plan.church, 2, 9, -4)),
   square: () => plan && look(loc(plan.church, -5, 2.0, 40), loc(plan.church, 12, 2, 4)),
+  // Indoors: down the church nave.
+  nave: () => plan && look(loc(plan.church, -2, 1.7, -1.5), loc(plan.church, 1, 4.5, -26)),
   // On the bank, looking along the river (at=0..1 picks the spot along its course).
   river: () => {
     const rv = world.terrain.river;
@@ -153,6 +161,27 @@ const views = {
     }
     look(pos(e.x + (dx / L) * 30, e.z + (dz / L) * 30, 1.7), pos(e.x + (dx / L) * 70 - (dz / L) * 20, e.z + (dz / L) * 70 + (dx / L) * 20, 3));
   },
+  // Deep in the big wood (where line A spawns), looking east-south-east.
+  woods: () => {
+    const f = def.forests[0];
+    look(pos(f.x - 40, f.z - 20, 1.7), pos(f.x, f.z - 4, 1.4));
+  },
+  // Standing in a meadow (grass or pasture all around), the sun ahead to the right.
+  meadow: () => {
+    const meadowy = (x, z) => [SURF.GRASS, SURF.DRY_GRASS].includes(hf.getSurface(x, z));
+    let best = null;
+    for (let k = 0; k < 6000 && !best; k++) {
+      const x = Math.cos(k * 2.4) * (120 + k * 0.12), z = Math.sin(k * 2.4) * (120 + k * 0.12);
+      if (!meadowy(x, z) || veg.site.forest(x, z) > 0) continue;
+      let ok = true;
+      for (let a = 0; a < 8 && ok; a++) for (const r of [8, 18, 30]) if (!meadowy(x + Math.cos(a) * r, z + Math.sin(a) * r)) ok = false;
+      if (ok) best = [x, z];
+    }
+    best ??= [0, 0];
+    const s = world.sky.sunDir;
+    const a = Math.atan2(s.z, s.x) - 0.6;
+    look(pos(best[0], best[1], 1.7), pos(best[0] + Math.cos(a) * 40, best[1] + Math.sin(a) * 40, 0.6));
+  },
   // Straight at the sun from the open field (sun disc, glare, rays).
   sunfield: () => {
     views.field();
@@ -172,6 +201,7 @@ if (cam) {
   camera.position.set(x, y, z);
   const yr = ((yaw || 0) * Math.PI) / 180, pr = ((pitch || 0) * Math.PI) / 180;
   target.set(x - Math.sin(yr) * Math.cos(pr) * 10, y + Math.sin(pr) * 10, z - Math.cos(yr) * Math.cos(pr) * 10);
+  if (params.get('look')) target.set(...params.get('look').split(',').map(Number));
 } else (views[viewName] || views.lane)();
 camera.lookAt(target);
 camera.updateMatrixWorld();

@@ -7,7 +7,8 @@
 // from the tiles in range and in view when the camera moves or turns; farther tiles
 // contribute only their lowest-ranked plants. In the shader every clump fades by rank
 // (fewer, bigger clumps with distance) and all of them sink into the ground at the
-// far end, so there's no visible edge. One draw call, no shadows cast.
+// far end, so there's no visible edge. One draw call; the nearest clumps also cast
+// shadows (a second mesh in vegetation.js draws them into the shadow maps only).
 import * as THREE from 'three';
 import { SURF } from '../heightfield.js';
 import { GC } from './species.js';
@@ -15,13 +16,14 @@ import { EX_BUILDING, EX_FLAT } from './site.js';
 import { ViewFilter, RefillTrigger } from './lod.js';
 
 const TILE = 16;
-const MAX_DENSITY = 11; // clumps per m2 at grassDensity 1 (wheat)
+const MAX_DENSITY = 12; // clumps per m2 at grassDensity 1 (meadows, wheat)
 
-// Per surface: clumps per m2 and the mix of plants.
+// Per surface: clumps per m2 and the mix of plants. Late summer: the meadows have
+// grown knee-high and gone to seed (straw, tan and olive, still green low down).
 const COVER = [];
-COVER[SURF.GRASS] = { d: 7, mix: [[GC.grass, 0.8], [GC.flowers, 0.07], [GC.tall, 0.09], [GC.weeds, 0.04]] };
-// Pasture: grazed short, green with dry tufts.
-COVER[SURF.DRY_GRASS] = { d: 6, mix: [[GC.grass, 0.5], [GC.dry, 0.4], [GC.tall, 0.05], [GC.flowers, 0.05]] };
+COVER[SURF.GRASS] = { d: 12, mix: [[GC.grass, 0.46], [GC.dry, 0.2], [GC.tall, 0.24], [GC.flowers, 0.06], [GC.weeds, 0.04]] };
+// Pasture: grazed a little shorter and drier.
+COVER[SURF.DRY_GRASS] = { d: 11, mix: [[GC.dry, 0.45], [GC.grass, 0.27], [GC.tall, 0.22], [GC.flowers, 0.06]] };
 COVER[SURF.WHEAT] = { d: 11, mix: [[GC.wheat, 0.955], [GC.poppies, 0.03], [GC.tall, 0.015]] };
 COVER[SURF.FOREST] = { d: 1.3, mix: [[GC.fern, 0.75], [GC.tall, 0.1], [GC.weeds, 0.15]] };
 COVER[SURF.DIRT] = { d: 0.6, mix: [[GC.grass, 0.5], [GC.weeds, 0.5]] };
@@ -30,13 +32,13 @@ COVER[SURF.FIELD] = { d: 2.5, edge: true, mix: [[GC.weeds, 0.55], [GC.grass, 0.3
 // Nothing on mud, rock, cobbles, sand, water or roads.
 // Width and height ranges (m) per plant card.
 const SIZE = [];
-SIZE[GC.grass] = [0.45, 0.6, 0.3, 0.5];
-SIZE[GC.dry] = [0.45, 0.6, 0.2, 0.34];
+SIZE[GC.grass] = [0.55, 0.75, 0.38, 0.62];
+SIZE[GC.dry] = [0.55, 0.75, 0.42, 0.66];
 SIZE[GC.wheat] = [0.5, 0.62, 0.82, 1.02];
 SIZE[GC.fern] = [0.9, 1.3, 0.5, 0.8];
-SIZE[GC.flowers] = [0.45, 0.55, 0.4, 0.55];
+SIZE[GC.flowers] = [0.5, 0.6, 0.45, 0.6];
 SIZE[GC.poppies] = [0.5, 0.6, 0.62, 0.82];
-SIZE[GC.tall] = [0.5, 0.65, 0.6, 0.9];
+SIZE[GC.tall] = [0.6, 0.8, 0.7, 1.0];
 SIZE[GC.weeds] = [0.4, 0.55, 0.18, 0.3];
 
 // The value noise and border wobble of the terrain shader (terrainMesh.js), so plants
@@ -85,7 +87,7 @@ export class GroundCover {
     const geo = geometry;
     this.geo = geo;
     // Room for the most clumps any setting asks for (so settings can change live).
-    const most = 72000;
+    const most = 104000;
     this.aA = new THREE.InstancedBufferAttribute(new Float32Array(most * 4), 4).setUsage(THREE.DynamicDrawUsage);
     this.aB = new THREE.InstancedBufferAttribute(new Float32Array(most * 4), 4).setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('iA', this.aA);
@@ -109,7 +111,10 @@ export class GroundCover {
     this.distance = Math.max(20, quality.grassDistance ?? 60);
     this.spacing = 1 / Math.sqrt(MAX_DENSITY * this.density);
     this.full = Math.min(14, this.distance * 0.2); // full density out to here
-    this.cap = Math.round(36000 * Math.min(2, Math.max(0.5, this.density * (this.distance / 70) ** 1.2)));
+    this.cap = Math.round(52000 * Math.min(2, Math.max(0.5, this.density * (this.distance / 70) ** 1.2)));
+    // Thinner settings grow fewer but wider tufts (not taller ones: cover from
+    // grass is the same at every setting), so the ground stays covered.
+    this.tuft = Math.min(1.5, Math.max(0.85, Math.pow(1 / this.density, 0.35)));
   }
 
   // New grass density or distance while playing: the tiles are made again. Returns
@@ -230,10 +235,10 @@ export class GroundCover {
         const sz = SIZE[type];
         const a = hash(i, j, tx * 3 + tz * 7);
         const b = hash(j, i, tx * 5 + tz * 11);
-        const w = sz[0] + (sz[1] - sz[0]) * a;
+        const w = (sz[0] + (sz[1] - sz[0]) * a) * (type === GC.wheat ? 1 : this.tuft);
         // Patchy heights: some meadow patches grow taller.
         const patch = 0.85 + 0.3 * (0.5 + 0.5 * noise.noise2(x / 23 + 7.7, z / 23 - 3.1));
-        const h = (sz[2] + (sz[3] - sz[2]) * b) * (type === GC.wheat ? 1 : patch) * (mown ? 0.45 : 1) * (surf === SURF.DRY_GRASS && type === GC.grass ? 0.65 : 1);
+        const h = (sz[2] + (sz[3] - sz[2]) * b) * (type === GC.wheat ? 1 : patch) * (mown ? 0.45 : 1) * (surf === SURF.DRY_GRASS && type === GC.grass ? 0.8 : 1);
         const y = site.hf.getHeight(x, z);
         const tint = Math.min(0.99, Math.max(0, 0.5 + 0.45 * noise.noise2(x / 17 - 4.1, z / 17 + 2.3) + (a - 0.5) * 0.25));
         tmp.push([x, y - 0.03, z, hash(i, j, 77) * Math.PI * 2, w, h, type + tint, hash(i * 13 + 1, j * 7 + 3, tx + tz)]);

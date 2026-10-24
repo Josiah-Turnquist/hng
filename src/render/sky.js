@@ -93,11 +93,12 @@ export class SkySystem {
       .replace('L0 += ( vSunE * 19000.0 * Fex ) * sundisk;', 'L0 += ( vSunE * 19000.0 * Fex ) * sundisk * uSunDisk;')
       .replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( retColor * uSkyScale, 1.0 );')
       .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float uSunDisk;\nuniform float uSkyScale;');
-    // A summer day over Normandy: fairly clear, with some haze low down.
-    u.turbidity.value = 4.6;
-    u.rayleigh.value = 1.7;
-    u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.8;
+    // A late summer afternoon over Normandy: fairly clear, with haze low down that
+    // glows around the sun.
+    u.turbidity.value = 5.2;
+    u.rayleigh.value = 1.6;
+    u.mieCoefficient.value = 0.0055;
+    u.mieDirectionalG.value = 0.86;
     scene.add(this.sky);
 
     this.cloudMat = new THREE.ShaderMaterial({
@@ -153,12 +154,16 @@ export class SkySystem {
     this.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
     this.sky.material.uniforms.sunPosition.value.copy(this.sunDir).multiplyScalar(450000);
 
-    // Sunlight gets warmer and dimmer near the horizon (longer path through air).
-    const h = Math.max(0.0, Math.sin(el));
-    const warm = 1 - Math.min(1, h / 0.5);
-    this.sunColor.setRGB(1.0, 0.94 - warm * 0.25, 0.84 - warm * 0.45);
+    // Sunlight gets warmer and dimmer near the horizon: the air it crosses (air mass,
+    // Kasten and Young) scatters blue away more than red. A late afternoon sun about
+    // 20 degrees up is golden; at 30 degrees and more it is nearly white.
+    const elDeg = Math.max(0, el / DEG);
+    const airMass = 1 / (Math.sin(Math.max(el, 0)) + 0.15 * Math.pow(elDeg + 3.885, -1.253));
+    const t = [0.09, 0.14, 0.28].map((tau) => Math.exp(-tau * airMass));
+    this.sunColor.setRGB(1, t[1] / t[0], t[2] / t[0]);
     this.sun.color.copy(this.sunColor);
-    this.sun.intensity = 4.6 * Math.min(1, h * 3 + 0.05);
+    const lum = 0.2126 * t[0] + 0.7152 * t[1] + 0.0722 * t[2];
+    this.sun.intensity = 6.0 * lum * Math.min(1, elDeg / 3);
     this.cloudMat.uniforms.uSunColor.value.setRGB(1.25 * this.sunColor.r, 1.2 * this.sunColor.g, 1.12 * this.sunColor.b);
 
     // Capture the sky (with clouds, without the sun disc) for fog color, and at full

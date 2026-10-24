@@ -27,6 +27,8 @@ export const CELL = {
   waterCamo: 13, // German Sumpftarn 1943 (own colors)
   amoeba: 14, // Soviet amoeba (MKK) camouflage (own colors)
   burlap: 15, // hessian scrim
+  wrinkle: 16, // folds and creases of worn cloth (a coarser layer over the cloth cells)
+  hand: 17, // bare hands, painted in a fixed layout (soldierHead.buildHand sets the UVs)
 };
 // Mid-grey vertex color for cells with their own colors (x2 in the material = 1).
 export const CAMO_GREY = new THREE.Color(0.5, 0.5, 0.5);
@@ -283,6 +285,135 @@ const GLSL = {
       height = w * 0.0001 + mott * 0.0002;
       alpha = 1.0;
     }`,
+  soldierHand: /* glsl */ `
+    // The skin of a bare hand in a fixed layout (buildHand sets the UVs): the
+    // palm and the back of the hand in u 0.01-0.49, round the hand from the
+    // little-finger edge (0.13 palm, 0.25 thumb edge, 0.37 back) and v from the
+    // wrist (0) to the knuckles (1); the five fingers in strips of 0.1 from
+    // u 0.5 (thumb first), round the finger (0 pad, 0.5 nail side) and v from
+    // the root (0) through the knuckle (0.19) and the joints (0.52, 0.76) to
+    // the tip (0.94) and its rounded end. Creases of the palm and the joints, wrinkles over the knuckles,
+    // veins on the back, nails with moons and dirty free edges. Sizes from an
+    // adult man's hand (est.): palm 10 x 8.5 cm, fingers 1.5-1.9 cm across.
+    float hLine(float d, float w) { return exp(-(d * d) / (w * w)); }
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      vec3 tint = vec3(1.0);
+      float h = 0.0;
+      float crease = 0.0;
+      rough = 0.56;
+      if (uv.x < 0.5) {
+        float U = clamp((uv.x - 0.01) / 0.48, 0.0, 1.0);
+        float V = clamp((uv.y - 0.005) / 0.99, 0.0, 1.0);
+        vec2 mm = vec2(U * 200.0, V * 102.0);
+        float fine = vnoise(mm * 1.1, vec2(4096.0), 601.0);
+        float mott = vnoise(mm * 0.12, vec2(4096.0), 602.0);
+        tint *= (0.96 + 0.08 * fine) * (0.94 + 0.12 * mott);
+        h += fine * 0.0004;
+        float palm = 1.0 - smoothstep(0.17, 0.25, abs(U - 0.25));
+        float back = 1.0 - smoothstep(0.17, 0.25, abs(U - 0.75));
+        // Palm: the heart line from the little-finger edge toward the gap
+        // between index and middle, the head line from the index edge across,
+        // the life line round the ball of the thumb, bracelets at the wrist.
+        float cU = clamp(U, 0.02, 0.37);
+        float lH = hLine((V - (0.72 + 0.4 * cU + 0.04 * sin(cU * 9.0))) * 102.0, 0.75) * smoothstep(0.0, 0.04, U) * smoothstep(0.39, 0.33, U);
+        float lHd = hLine((V - (0.6 + 0.12 * (U - 0.1) / 0.37 + 0.02 * sin(U * 14.0))) * 102.0, 0.7) * smoothstep(0.08, 0.16, U) * smoothstep(0.5, 0.45, U);
+        float uL = 0.3 + 0.16 * sin(clamp(V / 0.71, 0.0, 1.0) * 1.5708);
+        float lL = hLine((U - uL) * 200.0, 0.8) * smoothstep(0.08, 0.2, V) * smoothstep(0.76, 0.68, V);
+        float lW = (hLine((V - 0.03) * 102.0, 0.5) + 0.7 * hLine((V - 0.075) * 102.0, 0.45)) * smoothstep(0.06, 0.12, U) * smoothstep(0.44, 0.38, U);
+        float fl = smoothstep(0.62, 0.9, vnoise(vec2(mm.x * 0.35, mm.y * 1.4), vec2(4096.0), 603.0));
+        crease += palm * (max(max(lH, lHd), max(lL, lW)) + fl * 0.18);
+        tint *= mix(vec3(1.0), vec3(1.04, 0.97, 0.95), palm * 0.5);
+        // Back: veins from the wrist toward the gaps between the knuckles,
+        // wrinkles over the knuckles, a fine diamond grain.
+        float vein = 0.0;
+        for (int i = 0; i < 3; i++) {
+          float fi = float(i);
+          float u0 = 0.68 + fi * 0.07 + 0.012 * sin(V * 8.0 + fi * 2.1) + 0.02 * (V - 0.5) * (fi - 1.0);
+          vein = max(vein, hLine((U - u0) * 200.0, 1.3) * smoothstep(0.05, 0.25, V) * smoothstep(0.88, 0.7, V));
+        }
+        tint *= mix(vec3(1.0), vec3(0.84, 0.88, 1.05), vein * 0.6 * back);
+        h += vein * back * 0.0015;
+        float kw = 0.0;
+        for (int i = 0; i < 4; i++) {
+          float uk = i == 0 ? 0.663 : i == 1 ? 0.735 : i == 2 ? 0.78 : 0.847;
+          vec2 d = vec2((U - uk) * 200.0, (V - 0.97) * 102.0);
+          float r = length(d * vec2(1.0, 1.3));
+          kw = max(kw, (0.5 + 0.5 * cos(r * 1.9)) * smoothstep(9.0, 3.0, r) * smoothstep(1.5, 3.0, r));
+        }
+        float dia = abs(sin((mm.x + mm.y) * 2.2)) * abs(sin((mm.x - mm.y) * 2.2));
+        crease += back * (kw * 0.6 + (1.0 - dia) * 0.1);
+      } else {
+        float k = floor((uv.x - 0.5) / 0.1);
+        float Uf = clamp(((uv.x - 0.5 - k * 0.1) / 0.1 - 0.01) / 0.98, 0.0, 1.0);
+        float V = clamp((uv.y - 0.005) / 0.99, 0.0, 1.0);
+        float circ = k < 0.5 ? 53.0 : 48.0;
+        vec2 mm = vec2(Uf * circ, V * 110.0);
+        float fine = vnoise(mm * 1.2, vec2(4096.0), 611.0 + k);
+        tint *= 0.96 + 0.08 * fine;
+        h += fine * 0.0003;
+        float dp = min(Uf, 1.0 - Uf);
+        float pad = 1.0 - smoothstep(0.14, 0.3, dp);
+        float dor = 1.0 - smoothstep(0.12, 0.3, abs(Uf - 0.5));
+        // Flexion creases under the joints (the thumb has no crease at its root).
+        float c = 0.0;
+        if (k > 0.5) c = max(c, hLine((V - 0.24) * 110.0, 0.6) + 0.8 * hLine((V - 0.272) * 110.0, 0.5));
+        c = max(c, hLine((V - 0.51) * 110.0, 0.6) + 0.8 * hLine((V - 0.535) * 110.0, 0.5));
+        c = max(c, hLine((V - 0.755) * 110.0, 0.6));
+        crease += pad * min(1.0, c);
+        // Wrinkles over the middle and end joints, bowed toward the tip.
+        float kj = 0.0;
+        for (int j = 0; j < 2; j++) {
+          float vc = j == 0 ? 0.52 : 0.76;
+          float span = j == 0 ? 7.0 : 4.5;
+          vec2 d = vec2((Uf - 0.5) * circ, (V - vc) * 110.0);
+          float bow = d.y + 0.012 * d.x * d.x;
+          kj = max(kj, (0.5 + 0.5 * cos(bow * 2.4)) * smoothstep(span, span * 0.4, abs(bow)) * smoothstep(9.0, 4.0, abs(d.x)));
+        }
+        crease += dor * kj * 0.65;
+        // The nail: plate, the fold and cuticle round its base, the moon, the free edge.
+        float nw = k < 0.5 ? 0.125 : 0.105;
+        vec2 nq = vec2((Uf - 0.5) / nw, (V - 0.8925) / 0.0625);
+        float nd = pow(pow(abs(nq.x), 3.0) + pow(abs(nq.y), 3.0), 1.0 / 3.0);
+        float nail = 1.0 - smoothstep(0.9, 1.0, nd);
+        float fold = hLine((nd - 1.0) * 6.0, 0.6) * step(nq.y, 0.3);
+        float moon = smoothstep(-0.6, -0.95, nq.y) * nail;
+        float edge = smoothstep(0.62, 0.8, nq.y) * nail;
+        tint = mix(tint, tint * vec3(1.16, 1.0, 0.98), nail);
+        tint = mix(tint, vec3(1.25, 1.18, 1.12), moon * 0.35);
+        tint = mix(tint, vec3(1.35, 1.3, 1.2), edge * 0.6);
+        tint *= 1.0 - 0.35 * fold;
+        tint *= 1.0 - 0.45 * hLine((nq.y - 0.68) * 8.0, 0.7) * nail;
+        h += nail * 0.0006 - fold * 0.0004;
+        rough = mix(rough, 0.32, nail);
+        tint *= mix(vec3(1.0), vec3(1.03, 0.97, 0.95), pad * smoothstep(0.8, 0.93, V));
+      }
+      float cr = clamp(crease, 0.0, 1.0);
+      tint *= 1.0 - 0.5 * cr;
+      albedo = vec3(0.5) * tint;
+      height = h - cr * 0.0012;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
+  soldierWrinkle: /* glsl */ `
+    // Folds and creases of worn cloth, at the scale of a hand so they still read
+    // a few meters away: soft ridges running round the limb or body (along u),
+    // 2.5 to 4 cm apart, wandering and breaking off, and a few diagonal
+    // creases; up to ~4 mm high. The albedo is the cavity (darker in the hollows).
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float w1 = fbm(uv, vec2(3.0), 3, 501.0);
+      float w2 = fbm(uv, vec2(2.0, 4.0), 2, 502.0);
+      float f = 0.5 + 0.5 * sin((uv.y * 10.0 + w1 * 1.8 + w2 * 0.7) * 6.2831853);
+      f = pow(f, 2.0);
+      float keep = smoothstep(0.4, 0.75, fbm01(uv, vec2(3.0, 5.0), 3, 503.0));
+      float dg = 0.5 + 0.5 * sin((uv.x * 2.0 + uv.y * 6.0 + w2 * 0.9) * 6.2831853);
+      dg = pow(dg, 5.0) * smoothstep(0.45, 0.75, fbm01(uv, vec2(3.0), 2, 504.0));
+      float h = clamp(f * keep + 0.7 * dg, 0.0, 1.2);
+      height = h * 0.004;
+      albedo = vec3(0.5 * (0.82 + 0.18 * smoothstep(0.0, 0.8, h)) / 0.9);
+      rough = 0.9;
+      metal = 0.0;
+      alpha = 1.0;
+    }`,
 };
 
 // Presets: [name, glsl material, tile size (m), normal strength].
@@ -303,6 +434,8 @@ const CELLS = [
   ['soldierWaterCamo', 0.6, 1],
   ['soldierAmoeba', 0.7, 1],
   ['burlap', null, 1], // the library's own hessian
+  ['soldierWrinkle', 0.32, 1],
+  ['soldierHand', 1, 1], // one hand per cell
 ];
 const presets = {};
 for (const [name, world, ns] of CELLS) {
@@ -312,6 +445,7 @@ for (const [name, world, ns] of CELLS) {
 if (!PRESETS.soldierWoolTex) addMaterials(GLSL, presets);
 export const CELL_PRESETS = CELLS.map(([name]) => (GLSL[name] ? `${name}Tex` : name));
 const COLS = 4;
+const ROWS = Math.ceil(CELLS.length / COLS);
 
 // ---------------------------------------------------------------------------
 // The shader patch: sample the atlas cell of each vertex, tiled by the vertex
@@ -322,37 +456,118 @@ const VERT_DECL = /* glsl */ `
 attribute vec2 soldierMat;
 flat varying float vSCell;
 varying float vSGloss;
-varying vec2 vSUv;`;
-const VERT_MAIN = /* glsl */ `
+varying vec2 vSUv;
+varying float vSCrease;`;
+// Crease strength: some everywhere (base), most where the skin weights blend
+// between bones (elbows, knees, the waist, armpits, the crotch), where cloth
+// bunches. The first-person sleeves, seen from a hand's breadth, get more.
+const vertMain = (base) => /* glsl */ `
 vSCell = soldierMat.x;
 vSGloss = soldierMat.y;
-vSUv = uv;`;
+vSUv = uv;
+#ifdef USE_SKINNING
+  float sMaxW = max( max( skinWeight.x, skinWeight.y ), max( skinWeight.z, skinWeight.w ) );
+  vSCrease = ${base.toFixed(2)} + 0.9 * smoothstep( 0.0, 0.3, 1.0 - sMaxW );
+#else
+  vSCrease = ${base.toFixed(2)};
+#endif`;
 const FRAG_DECL = /* glsl */ `
-uniform vec4 uSCells[16];
+uniform vec4 uSCells[${CELLS.length}];
 flat varying float vSCell;
 varying float vSGloss;
 varying vec2 vSUv;
+varying float vSCrease;
 vec2 sAtlasUv;
 vec2 sDx;
 vec2 sDy;
-float sSkin = 0.0;`;
+vec2 sWrUv;
+vec2 sWDx;
+vec2 sWDy;
+float sSkin = 0.0;
+float sCloth = 0.0;
+float sCrease = 0.0;`;
+// First person only: the gun held in the hands darkens the skin and cloth
+// round it (no shadow maps in the view model scene): three capsules in world
+// space (fore-end, grip, the stock between them) occlude the light by their
+// share of the view from the surface, so the fingers wrapped round the wood
+// are dark where they touch it.
+const VM_VERT_DECL = /* glsl */ `
+varying vec3 vSWPos;`;
+const VM_VERT_MAIN = /* glsl */ `
+vSWPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`;
+const VM_FRAG_DECL = /* glsl */ `
+uniform vec4 uSOcc[ 6 ];
+varying vec3 vSWPos;
+float sGunOcclusion( vec3 p, vec3 n ) {
+  float vis = 1.0;
+  for ( int i = 0; i < 3; i ++ ) {
+    vec4 A = uSOcc[ i * 2 ];
+    vec4 Bc = uSOcc[ i * 2 + 1 ];
+    if ( A.w > 0.0 ) {
+      vec3 ab = Bc.xyz - A.xyz;
+      float h = clamp( dot( p - A.xyz, ab ) / max( dot( ab, ab ), 1e-8 ), 0.0, 1.0 );
+      vec3 d = A.xyz + ab * h - p;
+      float l = max( length( d ), 1e-5 );
+      float c = max( 0.0, dot( n, d / l ) );
+      float k = A.w / max( l, A.w );
+      vis *= 1.0 - 0.9 * c * k;
+    }
+  }
+  return vis;
+}`;
+const VM_FRAG_AO = /* glsl */ `
+{
+  float sGO = sGunOcclusion( vSWPos, inverseTransformDirection( normal, viewMatrix ) );
+  reflectedLight.indirectDiffuse *= sGO;
+  reflectedLight.indirectSpecular *= sGO;
+  reflectedLight.directDiffuse *= mix( 1.0, sGO, 0.65 );
+  reflectedLight.directSpecular *= sGO;
+}`;
+
+// (Cells are square in texels; with fewer rows than columns they are shorter
+// in v: the cell's v size is its u size times columns / rows.)
 const FRAG_MAP = /* glsl */ `
 {
   int sc = int( vSCell + 0.5 );
   vec4 cr = uSCells[ sc ];
   vec2 t = vSUv * cr.w;
   float pad = 0.006;
-  float span = cr.z * ( 1.0 - 2.0 * pad );
-  sAtlasUv = cr.xy + cr.z * pad + fract( t ) * span;
+  vec2 csz = vec2( cr.z, cr.z * ${(COLS / ROWS).toFixed(6)} );
+  vec2 span = csz * ( 1.0 - 2.0 * pad );
+  sAtlasUv = cr.xy + csz * pad + fract( t ) * span;
   vec2 gx = dFdx( t ) * span;
   vec2 gy = dFdy( t ) * span;
   float m = max( length( gx ), length( gy ) );
-  float lim = cr.z / 20.0;
+  float lim = min( csz.x, csz.y ) / 20.0;
   if ( m > lim ) { gx *= lim / m; gy *= lim / m; }
   sDx = gx;
   sDy = gy;
-  sSkin = sc == 10 ? 1.0 : 0.0;
+  sSkin = ( sc == 10 || sc == ${CELL.hand} ) ? 1.0 : 0.0;
+  sCloth = ( sc <= 5 || ( sc >= 12 && sc <= 15 ) ) ? 1.0 : 0.0;
   diffuseColor *= textureGrad( map, sAtlasUv, sDx, sDy );
+  // Dyed wool and cotton reflect little light (uniform cloth ~5-15%, est.):
+  // the swatch colors are taken down so a soldier reads darker than sunlit grass.
+  diffuseColor.rgb *= 1.0 - 0.28 * sCloth;
+  // Skin of men a summer outdoors: a little darker and warmer than the swatch.
+  diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.86, 0.79, 0.74 ), sSkin );
+  // Folds and creases: a coarser layer on the garment cloths (wool, cotton,
+  // herringbone, camouflage; less on canvas and knit).
+  // (On skin the same layer, much finer, makes the creases over knuckles and
+  // wrists, where the joints bend.)
+  vec4 wr = uSCells[ ${CELL.wrinkle} ];
+  vec2 wt = vSUv * wr.w * ( sc == 10 ? 7.0 : 1.0 );
+  vec2 wsz = vec2( wr.z, wr.z * ${(COLS / ROWS).toFixed(6)} );
+  vec2 wspan = wsz * ( 1.0 - 2.0 * pad );
+  sWrUv = wr.xy + wsz * pad + fract( wt ) * wspan;
+  vec2 wx = dFdx( wt ) * wspan;
+  vec2 wy = dFdy( wt ) * wspan;
+  float wm = max( length( wx ), length( wy ) );
+  if ( wm > lim ) { wx *= lim / wm; wy *= lim / wm; }
+  sWDx = wx;
+  sWDy = wy;
+  float wk = sc <= 2 ? 1.0 : sc == 3 ? 0.6 : sc == 5 ? 0.3 : ( sc >= 12 && sc <= 14 ) ? 1.0 : 0.0;
+  sCrease = sc == 10 ? 0.5 * smoothstep( 0.4, 1.0, vSCrease ) : wk * vSCrease; // (the hand cell has its own)
+  if ( sCrease > 0.001 ) diffuseColor.rgb *= mix( 1.0, textureGrad( map, sWrUv, sWDx, sWDy ).r * 2.0, min( 1.0, sCrease ) );
 }`;
 
 function cellUniforms(atlas) {
@@ -394,19 +609,42 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
     // The neutral textures average ~0.5, so vertex colors carry the real colors.
     mat.color.setScalar(2);
     const cells = { value: cellUniforms(atlas) };
-    addPatch(mat, 'soldier-atlas', (shader) => {
+    // First person: the gun's occluding capsules, set each frame (FirstPersonArms.place).
+    const occ = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
+    if (viewmodel) mat.userData.gunOcc = occ;
+    addPatch(mat, viewmodel ? 'soldier-atlas-vm' : 'soldier-atlas', (shader) => {
       shader.uniforms.uSCells = cells;
       let vs = shader.vertexShader;
       vs = after(vs, '#include <common>', VERT_DECL);
-      vs = after(vs, '#include <uv_vertex>', VERT_MAIN);
+      vs = after(vs, '#include <uv_vertex>', vertMain(viewmodel ? 0.6 : 0.22));
+      if (viewmodel) {
+        shader.uniforms.uSOcc = occ;
+        vs = after(vs, '#include <common>', VM_VERT_DECL);
+        vs = after(vs, '#include <worldpos_vertex>', VM_VERT_MAIN);
+      }
       shader.vertexShader = vs;
       let fs = shader.fragmentShader;
       fs = after(fs, '#include <common>', FRAG_DECL);
+      if (viewmodel) {
+        fs = after(fs, '#include <common>', VM_FRAG_DECL);
+        fs = after(fs, '#include <aomap_fragment>', VM_FRAG_AO);
+        // The player's own hands, a hand's breadth from the eye and never in a
+        // shadow map, come out lighter than skin out in the world: a little less.
+        fs = after(fs, '#include <map_fragment>', 'diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.84, 0.82, 0.8 ), sSkin );');
+      }
       fs = replace(fs, '#include <map_fragment>', FRAG_MAP);
       fs = replace(fs, '#include <roughnessmap_fragment>', THREE.ShaderChunk.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'textureGrad( roughnessMap, sAtlasUv, sDx, sDy )') + '\nroughnessFactor = mix( roughnessFactor, 0.16, vSGloss );');
       fs = replace(fs, '#include <metalnessmap_fragment>', THREE.ShaderChunk.metalnessmap_fragment.replace('texture2D( metalnessMap, vMetalnessMapUv )', 'textureGrad( metalnessMap, sAtlasUv, sDx, sDy )'));
       // (replaceAll: the chunk samples the normal map in both its object and tangent space branches.)
-      fs = replace(fs, '#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replaceAll('texture2D( normalMap, vNormalMapUv )', 'textureGrad( normalMap, sAtlasUv, sDx, sDy )'));
+      fs = replace(
+        fs,
+        '#include <normal_fragment_maps>',
+        THREE.ShaderChunk.normal_fragment_maps
+          .replaceAll('texture2D( normalMap, vNormalMapUv )', 'textureGrad( normalMap, sAtlasUv, sDx, sDy )')
+          .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale;\n\tif ( sCrease > 0.001 ) mapN.xy += ( textureGrad( normalMap, sWrUv, sWDx, sWDy ).xy * 2.0 - 1.0 ) * sCrease;'),
+      );
+      // Cloth is matte: wool and cotton reflect little and have no glossy rim.
+      fs = after(fs, '#include <lights_physical_fragment>', 'material.specularColor *= 1.0 - 0.6 * sCloth;\nmaterial.specularF90 = mix( material.specularF90, 0.3, sCloth );');
       fs = replace(
         fs,
         '#include <lights_physical_pars_fragment>',

@@ -8,7 +8,7 @@
 // Sizes: a 1.78 m man (US Army 1946 survey mean stature 1.74 m; chest girth
 // ~0.95 m, waist ~0.80 m; est.) in a wool uniform.
 import * as THREE from 'three';
-import { B, BIND } from './soldierRig.js';
+import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { torsoWeights, legWeights, armWeights, footWeights, smooth01 } from './soldierGeo.js';
 import { CELL } from './soldierMaterials.js';
 
@@ -212,6 +212,41 @@ export function garmentFolds(g, theta, y) {
 // The torso garment surface (outer side). Returns the point.
 // Below the hips a skirt hangs nearly straight instead of following the seat
 // and the crotch.
+// Spheres standing in for the body in the bind pose, for the baked ambient
+// occlusion (SkinBuilder.bakeSphereAO): torso slices, neck, head, arms and
+// legs, each a little inside the clothes on it. The hands are left out (they
+// are on the gun, not by the thighs). headgear 'helmet' | 'tank' adds a ring
+// along the brim, which shades the brow and eyes.
+export function bodySpheres(headgear = null) {
+  const S = [];
+  for (const y of [0.94, 1.02, 1.1, 1.18, 1.26, 1.34, 1.41]) {
+    const [, a, zf, zb] = interpRows(TORSO_ROWS, y);
+    const cz = (zf + zb) / 2,
+      d = (zb - zf) / 2;
+    const r = Math.min(a, d) * 0.92;
+    const n = Math.max(0, Math.round((a - r) / (r * 0.7)));
+    for (let k = -n; k <= n; k++) S.push([n ? (k / n) * (a - r) : 0, y, cz, r]);
+  }
+  S.push([0, 1.53, 0.005, 0.045], [HEAD_CENTER.x, HEAD_CENTER.y, HEAD_CENTER.z, 0.088]);
+  const chain = (a, b, ts, r0, r1) => {
+    for (const t of ts) S.push([a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, r0 + (r1 - r0) * t]);
+  };
+  for (const s of [-1, 1]) {
+    const L = s < 0;
+    chain(BIND[L ? B.upperArmL : B.upperArmR], BIND[L ? B.forearmL : B.forearmR], [0.15, 0.5, 0.85], 0.044, 0.04);
+    chain(BIND[L ? B.forearmL : B.forearmR], BIND[L ? B.handL : B.handR], [0.2, 0.55, 0.85], 0.038, 0.032);
+    chain(BIND[L ? B.thighL : B.thighR], BIND[L ? B.shinL : B.shinR], [0.15, 0.5, 0.85], 0.074, 0.056);
+    chain(BIND[L ? B.shinL : B.shinR], BIND[L ? B.footL : B.footR], [0.15, 0.5, 0.85], 0.05, 0.04);
+  }
+  if (headgear === 'helmet' || headgear === 'tank') {
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * 2 * PI;
+      S.push([HEAD_CENTER.x + Math.sin(a) * 0.118, HEAD_CENTER.y + 0.05, HEAD_CENTER.z + 0.005 - Math.cos(a) * 0.136, 0.03]);
+    }
+  }
+  return S;
+}
+
 export const SKIRT_Y = 0.91;
 // Below this the cloth of a long garment lies over the thighs (g.legs: the
 // trousers' cut rows, set when the trousers are built first); higher up the
@@ -471,6 +506,21 @@ export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0
   } else {
     // Cuff band with a turned edge; the opening inside.
     b.tube([ringAt(end - 0.06, 0.001, 0.001), ringAt(end - 0.055, 0.003, 0.003), ringAt(end - 0.004, 0.003, 0.003), ringAt(end, 0.0, 0.0), ringAt(end, -0.006, -0.006), ringAt(end - 0.02, -0.008, -0.008)], { seg: [12, 8][lod] });
+    if (lod === 0) {
+      // The cuff button on the outside, toward the back of the wrist (plastic
+      // or painted, ~15 mm; est.).
+      const cell = b.cell;
+      b.material(CELL.paint, 0.25);
+      b.paint(0x26231d);
+      b.part(false);
+      const a = 0.55;
+      const s = end - 0.03;
+      const r = ringAt(s, 0.003, 0.003);
+      const p = r.c.clone().add(V(Math.cos(a) * r.rx * side, 0, Math.sin(a) * r.rz));
+      const n = V(Math.cos(a) * side, 0, Math.sin(a) * (r.rx / r.rz)).normalize();
+      b.cylinder(p.clone().addScaledVector(n, -0.0005), p.clone().addScaledVector(n, 0.0028), 0.0075, 0.0068, { seg: 10 });
+      b.material(cell);
+    }
   }
   b.paint(col);
 }

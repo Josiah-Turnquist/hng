@@ -140,13 +140,14 @@ export const PRESETS = {
   vegLeafHazel: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.22, 0.31, 0.09), b: lin(0.34, 0.42, 0.14), uniforms: { uVegP: [7, 0.12, 0.85, 9], uVegQ: [10, 0.85, 0.4, 0.8] } },
   vegLeafBramble: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.15, 0.22, 0.08), b: lin(0.26, 0.32, 0.12), uniforms: { uVegP: [8, 0.11, 0.62, 10], uVegQ: [10, 1.0, 0.7, 0.8] } },
   vegHedgeCore: { mat: 'vegHedgeCore', world: 2, alpha: true, a: lin(0.14, 0.22, 0.06), b: lin(0.25, 0.33, 0.1) },
-  vegGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.42, 0.48, 0.2), b: lin(0.16, 0.24, 0.07), uniforms: { uVegP: [0, 44, 0, 0] } },
-  vegGrassDry: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.5, 0.48, 0.28), b: lin(0.21, 0.25, 0.1), uniforms: { uVegP: [1, 30, 0, 0] } },
+  // Late summer meadow grass: olive and straw tips, green low down.
+  vegGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.52, 0.53, 0.28), b: lin(0.17, 0.24, 0.08), uniforms: { uVegP: [0, 56, 0, 0] } },
+  vegGrassDry: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.68, 0.61, 0.38), b: lin(0.27, 0.28, 0.13), uniforms: { uVegP: [1, 40, 0, 0] } },
   vegWheat: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.74, 0.6, 0.31), b: lin(0.46, 0.42, 0.2), uniforms: { uVegP: [2, 40, 0, 0] } },
   vegFern: { mat: 'vegGround', world: 0.8, alpha: true, a: lin(0.32, 0.42, 0.12), b: lin(0.18, 0.27, 0.07), uniforms: { uVegP: [3, 0, 0, 0] } },
-  vegFlowers: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.42, 0.48, 0.2), b: lin(0.16, 0.24, 0.07), uniforms: { uVegP: [4, 26, 0, 0] } },
+  vegFlowers: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.5, 0.52, 0.27), b: lin(0.17, 0.24, 0.08), uniforms: { uVegP: [4, 30, 0, 0] } },
   vegPoppies: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.62, 0.54, 0.29), b: lin(0.28, 0.31, 0.12), uniforms: { uVegP: [5, 18, 0, 0] } },
-  vegTallGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.44, 0.46, 0.22), b: lin(0.16, 0.23, 0.07), uniforms: { uVegP: [6, 34, 0, 0] } },
+  vegTallGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.63, 0.58, 0.35), b: lin(0.2, 0.25, 0.09), uniforms: { uVegP: [6, 44, 0, 0] } },
   vegWeeds: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.3, 0.4, 0.13), b: lin(0.16, 0.24, 0.08), uniforms: { uVegP: [7, 10, 0, 0] } },
 };
 

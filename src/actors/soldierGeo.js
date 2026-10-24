@@ -756,6 +756,68 @@ export class SkinBuilder {
     return this;
   }
 
+  // Ambient occlusion from spheres standing in for the body and the larger
+  // kit (bind pose): each sphere of radius r at distance d darkens a vertex
+  // facing it by (r/d)^2 times the cosine (its share of the sky it hides).
+  // Darkens armpits, inner arms and thighs, the crotch, under the chin and the
+  // helmet brim. spheres: [[x, y, z, r], ...]; vertices from..to.
+  bakeSphereAO(spheres, strength = 0.6, from = 0, to = this.count) {
+    const P = this.pos,
+      N = this.nor,
+      C = this.col;
+    for (let i = from; i < to; i++) {
+      const px = P[i * 3],
+        py = P[i * 3 + 1],
+        pz = P[i * 3 + 2];
+      const nx = N[i * 3],
+        ny = N[i * 3 + 1],
+        nz = N[i * 3 + 2];
+      let vis = 1;
+      for (let k = 0; k < spheres.length; k++) {
+        const s = spheres[k];
+        const ex = s[0] - px,
+          ey = s[1] - py,
+          ez = s[2] - pz;
+        const d2 = ex * ex + ey * ey + ez * ez;
+        const r2 = s[3] * s[3];
+        if (d2 <= r2 * 1.02) continue; // inside it: its own surface
+        const d = Math.sqrt(d2);
+        const c = (ex * nx + ey * ny + ez * nz) / d;
+        if (c <= 0) continue;
+        vis *= 1 - Math.min(0.95, (r2 / d2) * c);
+      }
+      const a = 1 - strength * (1 - vis);
+      C[i * 3] *= a;
+      C[i * 3 + 1] *= a;
+      C[i * 3 + 2] *= a;
+    }
+    return this;
+  }
+
+  // Spheres around this builder's larger parts (pouches, bags, packs, cans),
+  // for bakeSphereAO: one per part between minSize and maxSize across.
+  partSpheres(minSize = 0.05, maxSize = 0.4, from = 0) {
+    const box = new Map();
+    for (let i = from; i < this.count; i++) {
+      const p = this.prim[i];
+      let b = box.get(p);
+      if (!b) box.set(p, (b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]));
+      for (let k = 0; k < 3; k++) {
+        const v = this.pos[i * 3 + k];
+        if (v < b[k]) b[k] = v;
+        if (v > b[k + 3]) b[k + 3] = v;
+      }
+    }
+    const out = [];
+    for (const b of box.values()) {
+      const e = [b[3] - b[0], b[4] - b[1], b[5] - b[2]].sort((x, y) => x - y);
+      // The middle extent: a sphere that fits the item's bulk, not its length.
+      if (e[2] < minSize || e[2] > maxSize || e[1] < minSize * 0.6) continue;
+      out.push([(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2, e[1] * 0.45]);
+    }
+    return out;
+  }
+
   // Append another builder's vertices.
   append(o) {
     const base = this.count;

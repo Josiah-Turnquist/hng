@@ -25,6 +25,10 @@ const ARM = {
 };
 const _v = new THREE.Vector3(),
   _v2 = new THREE.Vector3(),
+  _v3 = new THREE.Vector3(),
+  _a = new THREE.Vector3(),
+  _b = new THREE.Vector3(),
+  _c = new THREE.Vector3(),
   _q = new THREE.Quaternion();
 
 // Copy the triangles of a builder that belong to the arms (by their dominant
@@ -116,6 +120,47 @@ export class FirstPersonArms {
 
   setWeapon(gun, kind) {
     this.info = gun ? weaponInfo(gun, kind) : null;
+    this._occ(null);
+  }
+
+  // The gun's occluding capsules for the arms' shading (soldierMaterial, first
+  // person): the fore-end (or launcher tube, or front grip) round the left
+  // hand's hold, the grip in the right hand, and the stock between them.
+  // Sizes from the hold radii (est. stock 4 cm deep).
+  _occ(G) {
+    const u = this.material.userData.gunOcc?.value;
+    if (!u) return;
+    const info = this.info;
+    if (!info || !G) {
+      for (const v of u) v.set(0, 0, 0, 0);
+      return;
+    }
+    const an = info.anchors;
+    // (G: the gun's world transform { q, p }.)
+    const set = (i, a, b, r) => {
+      _v.copy(a).applyQuaternion(G.q).add(G.p);
+      _v2.copy(b).applyQuaternion(G.q).add(G.p);
+      u[i * 2].set(_v.x, _v.y, _v.z, r);
+      u[i * 2 + 1].set(_v2.x, _v2.y, _v2.z, 0);
+    };
+    const rake = info.meta.gripRake ?? (info.kind === 'rifle' ? 0.9 : 0.42);
+    const g = _v3.set(0, -Math.cos(rake), Math.sin(rake));
+    set(1, _a.copy(an.gripR).addScaledVector(g, -0.05), _b.copy(an.gripR).addScaledVector(g, 0.05), info.gripRadius);
+    if (an.gripL) {
+      const L = an.gripL;
+      if (info.leftGrip === 'vertical') {
+        const gl = _v3.set(0, -Math.cos(0.3), Math.sin(0.3));
+        set(0, _a.copy(L).addScaledVector(gl, -0.045), _b.copy(L).addScaledVector(gl, 0.045), 0.017);
+      } else {
+        const c = info.leftGrip === 'tube' ? _c.set(0, 0, L.z) : _c.copy(L);
+        set(0, _a.copy(c).setZ(c.z + 0.11), _b.copy(c).setZ(c.z - 0.11), info.foreRadius);
+      }
+      if (info.leftGrip !== 'tube' && info.kind !== 'pistol') set(2, _a.copy(an.gripR).lerp(L, 0.15), _b.copy(an.gripR).lerp(L, 0.85), 0.02);
+      else u[4].w = 0;
+    } else {
+      u[0].w = 0;
+      u[4].w = 0;
+    }
   }
 
   // Place one arm. side 1 right, -1 left; shoulder: world position of the
@@ -124,6 +169,8 @@ export class FirstPersonArms {
   // elbow bends toward), curl: [fingers, index, thumb] }.
   place(side, shoulder, G, target) {
     const info = this.info;
+    if (side > 0 || !this._occSet) this._occ(info ? G : null);
+    this._occSet = true;
     const hb = side > 0 ? B.handR : B.handL;
     const ua = side > 0 ? B.upperArmR : B.upperArmL;
     const H = (this._h ||= { [1]: new Xf(), [-1]: new Xf() })[side];

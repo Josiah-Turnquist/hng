@@ -147,15 +147,16 @@ export const MATERIALS = {
       }
       float fine = fbm01(uv, vec2(48.0), 3, 5.0);
       float clover = smoothstep(0.62, 0.7, fbm01(uv, vec2(10.0), 3, 9.0));
-      vec3 green = srgb(vec3(0.27, 0.36, 0.12));
-      vec3 yellow = srgb(vec3(0.45, 0.43, 0.2));
-      vec3 dark = srgb(vec3(0.13, 0.19, 0.07));
-      vec3 soil = srgb(vec3(0.27, 0.21, 0.14));
-      albedo = mix(green, yellow, smoothstep(0.3, 0.8, big) * 0.25);
+      // Late summer: olive green going to straw, with bare earth between the tufts.
+      vec3 green = srgb(vec3(0.33, 0.37, 0.15));
+      vec3 yellow = srgb(vec3(0.53, 0.48, 0.26));
+      vec3 dark = srgb(vec3(0.15, 0.16, 0.07));
+      vec3 soil = srgb(vec3(0.25, 0.2, 0.13));
+      albedo = mix(green, yellow, smoothstep(0.25, 0.75, big) * 0.45);
       albedo = mix(albedo, dark, (1.0 - blades) * 0.55);
       albedo *= 0.8 + 0.4 * fine;
-      albedo = mix(albedo, srgb(vec3(0.2, 0.33, 0.1)), clover * 0.5);
-      float bare = smoothstep(0.72, 0.82, patchy) * (1.0 - blades);
+      albedo = mix(albedo, srgb(vec3(0.22, 0.3, 0.1)), clover * 0.35);
+      float bare = smoothstep(0.64, 0.8, patchy) * (1.0 - blades);
       albedo = mix(albedo, soil, bare * 0.7);
       rough = 0.82 + 0.1 * fine;
       height = blades * 0.025 + fine * 0.01 - bare * 0.01;
@@ -167,8 +168,8 @@ export const MATERIALS = {
       float big = fbm01(uv, vec2(3.0), 4, 11.0);
       float blades = vnoise(uv * vec2(220.0, 90.0), vec2(220.0, 90.0), 3.0) * 0.6 + vnoise(uv * vec2(90.0, 220.0), vec2(90.0, 220.0), 4.0) * 0.4;
       float fine = fbm01(uv, vec2(40.0), 3, 12.0);
-      vec3 straw = srgb(vec3(0.55, 0.48, 0.28));
-      vec3 olive = srgb(vec3(0.36, 0.37, 0.17));
+      vec3 straw = srgb(vec3(0.6, 0.51, 0.3));
+      vec3 olive = srgb(vec3(0.38, 0.37, 0.17));
       vec3 dark = srgb(vec3(0.22, 0.2, 0.11));
       albedo = mix(olive, straw, 0.55 + 0.25 * (big - 0.5));
       albedo = mix(dark, albedo, 0.45 + 0.55 * blades);
@@ -1248,8 +1249,8 @@ export const MATERIALS = {
               }
             }
           }
-        } else if (((kind > 0.5 && kind < 1.5) || (kind > 5.5 && kind < 6.5)) && h2.z > 0.55) {
-          // Seed head: a loose spike at the tip.
+        } else if ((kind < 1.5 || (kind > 5.5 && kind < 6.5)) && h2.z > (kind < 0.5 ? 0.75 : 0.55)) {
+          // Seed head: a loose spike at the tip (late summer: some meadow grass too).
           vec2 rel = (uv - top - vec2(lean * 0.06, 0.03)) / vec2(0.016, 0.06);
           if (length(rel) < 1.0 && hash12(floor(uv * uSize * 0.5)) > 0.3) {
             albedo = mix(uPaintA, srgb(vec3(0.55, 0.47, 0.3)), 0.6) * (0.8 + 0.3 * h2.y);

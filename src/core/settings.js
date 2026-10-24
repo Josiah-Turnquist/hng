@@ -130,7 +130,7 @@ export const GRAPHICS_OPTIONS = [
     step: 0.05,
     fmt: pct,
     live: true,
-    note: 'How thick grass, wheat and ferns grow near you.',
+    note: 'How thick grass, wheat and ferns grow near you. Lower it if the game slows down in open fields.',
   },
   {
     key: 'grassDistance',
@@ -202,7 +202,7 @@ export const GRAPHICS_PRESETS = {
     lightShafts: false,
     viewDistance: 1200,
     treeDetail: 'low',
-    grassDensity: 0.35,
+    grassDensity: 0.3, // few but wide tufts (see GroundCover._configure)
     grassDistance: 30,
     textureQuality: 'low',
     effects: 'low',

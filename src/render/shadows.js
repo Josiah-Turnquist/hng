@@ -9,6 +9,9 @@ import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { addPatch } from './materialPatch.js';
 
+const LIGHT_FAR = 1400; // m: depth of a shadow map before it is fitted (updateFrustums)
+const SHADOW_BIAS = -0.00004; // of LIGHT_FAR (about 6 cm)
+
 export class Shadows {
   constructor(renderer, scene, camera, sky, quality) {
     this.renderer = renderer;
@@ -71,9 +74,9 @@ export class Shadows {
       camera: this.camera,
       lightIntensity: this.sky.sun.intensity,
       lightNear: 1,
-      lightFar: 1400,
+      lightFar: LIGHT_FAR,
       lightMargin: 250,
-      shadowBias: -0.00004,
+      shadowBias: SHADOW_BIAS,
     });
     this.csm.fade = true;
     for (const l of this.csm.lights) {
@@ -125,8 +128,15 @@ export class Shadows {
     // of each cascade (so far cascades, with bigger texels, don't speckle).
     for (const l of csm.lights) {
       const c = l.shadow.camera;
-      const texel = (c.right - c.left) / csm.shadowMapSize;
+      const w = c.right - c.left;
+      const texel = w / csm.shadowMapSize;
       l.shadow.normalBias = Math.max(0.02, texel * 1.3);
+      // Each map only needs to reach just past its slice of the view: nothing farther
+      // from the sun can shade anything in it. (With a low sun the full depth took in
+      // rows of houses and trees far beyond, for nothing.) Same bias in meters.
+      c.far = csm.lightMargin + w + 10;
+      c.updateProjectionMatrix();
+      l.shadow.bias = (SHADOW_BIAS * (LIGHT_FAR - c.near)) / (c.far - c.near);
     }
   }
 

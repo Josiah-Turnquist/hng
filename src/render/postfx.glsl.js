@@ -41,7 +41,7 @@ vec4 atmosphereAt(vec3 cam, vec3 p) {
   vec3 hd = normalize(vec3(dir.x, max(dir.y, 0.0) * 0.4 + 0.035, dir.z));
   vec3 col = textureLod(tSkyCube, hd, 2.0).rgb * uSkyScale;
   float mu = max(dot(dir, uSunDir), 0.0);
-  col += uSunColor * (pow(mu, 8.0) * 0.05 + pow(mu, 48.0) * 0.08);
+  col += uSunColor * (pow(mu, 6.0) * 0.09 + pow(mu, 40.0) * 0.16);
   return vec4(trans, col);
 }
 vec3 applyAtmosphere(vec3 c, vec3 cam, vec3 p) {

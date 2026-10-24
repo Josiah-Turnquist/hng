@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { SkinBuilder, torsoWeights, armWeights, legWeights, rigid, smooth01, weightsAt } from './soldierGeo.js';
 import { CELL, CAMO_GREY } from './soldierMaterials.js';
-import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
+import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, bodySpheres, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
 import { buildHead, buildNeck, buildHand, buildForearm } from './soldierHead.js';
 import { Frame, torsoFrame, torsoBand, torsoStrap, rigidAt, pouch, buckle, starDecal } from './soldierGear.js';
 
@@ -70,7 +70,8 @@ export class Outfit {
     const c = new THREE.Color(hex);
     const k = 1 + (this.r() - 0.5) * 2 * amount;
     c.multiplyScalar(k);
-    if (fade) c.lerp(new THREE.Color(0.55, 0.53, 0.47), fade);
+    // Faded cloth: greyer and a little lighter (a mid grey, so it doesn't wash out).
+    if (fade) c.lerp(new THREE.Color(0.3, 0.29, 0.26), fade);
     return c;
   }
 
@@ -506,43 +507,63 @@ export class Outfit {
   // ---- finishing ---------------------------------------------------------
   // Field wear: dust and mud from the ground up, dirty knees and elbows, the
   // seat and front from lying prone, faded shoulders; leather scuffed.
-  weather(level = 0.5, { mud = new THREE.Color(0.2, 0.16, 0.11), dust = new THREE.Color(0.42, 0.38, 0.3) } = {}) {
+  weather(level = 0.5, { mud = new THREE.Color(0.11, 0.085, 0.06), dust = new THREE.Color(0.36, 0.32, 0.25) } = {}) {
     const b = this.b;
     const c2 = new THREE.Color();
+    const grime = new THREE.Color(0.05, 0.045, 0.035);
     const seed = this.variant * 3.7;
     b.recolor((x, y, z, nx, ny, nz, col, cell) => {
       if (cell === CELL.skin || cell === CELL.hair || cell === CELL.metal) return;
-      const n = noise3(x * 40 + seed, y * 40, z * 40);
-      const n2 = noise3(x * 9, y * 9 + seed, z * 9);
-      // Mud and dust from the ground up (boots, leggings, trouser bottoms).
-      const low = 1 - smooth01(0.02, 0.45, y + (n2 - 0.5) * 0.1);
-      let m = low * (0.35 + 0.65 * level);
-      // Knees (from kneeling) and the front of the thighs and jacket (from lying prone).
-      const knee = Math.exp(-(((y - 0.5) / 0.07) ** 2)) * (z < 0.0 ? 1 : 0.3);
-      m += knee * 0.45 * level;
-      if (nz < -0.3 && y < 1.4) m += 0.12 * level * (0.5 + n2);
-      // Elbows.
-      const elbow = Math.exp(-(((y - 1.12) / 0.06) ** 2)) * (Math.abs(x) > 0.16 ? 1 : 0);
-      m += elbow * 0.3 * level;
-      m = Math.min(0.85, m * (0.7 + 0.6 * n));
-      if (m > 0) {
-        // Mud only round the soles; dry dust above (Normandy, June-August).
-        c2.copy(y < 0.06 ? mud : dust);
-        // (A linear-space blend: a little dust already greys black leather.)
-        col.lerp(c2, m * (cell === CELL.leather ? 0.14 : cell === CELL.suede ? 0.28 : 0.55));
-      }
-      // Sun-faded shoulders and back; darker sweat under the arms.
-      if (cell !== CELL.leather && cell !== CELL.paint) {
-        if (y > 1.3 && ny > 0.3) col.multiplyScalar(1 + 0.08 * level);
-        const pit = Math.exp(-(((y - 1.3) / 0.05) ** 2)) * (Math.abs(x) > 0.13 && Math.abs(x) < 0.2 ? 1 : 0);
-        col.multiplyScalar(1 - 0.12 * pit * level);
+      const n = noise3(x * 40 + seed, y * 40, z * 40); // blotches
+      const n2 = noise3(x * 9, y * 9 + seed, z * 9); // patches
+      const n3 = noise3(x * 3 + seed, y * 3, z * 3 - seed); // whole panels
+      const leather = cell === CELL.leather,
+        suede = cell === CELL.suede;
+      const cloth = !leather && !suede && cell !== CELL.paint;
+      // Mud: wet earth splashed round the soles and up the boots, leggings and
+      // trouser bottoms (to ~30 cm).
+      const mudH = 1 - smooth01(0.03, 0.2 + 0.08 * n2, y);
+      const mudAmt = mudH * smooth01(0.42, 0.72, n + (n2 - 0.5) * 0.6) * (0.4 + 0.6 * level);
+      if (mudAmt > 0) col.lerp(mud, Math.min(0.9, mudAmt) * (leather ? 0.5 : 0.6));
+      // Dry dust from the ground to the knees, thinner higher up (Normandy,
+      // June to August); the knees from kneeling, the elbows, the thighs and
+      // the belly from lying prone.
+      let d = (1 - smooth01(0.05, 0.62, y + (n2 - 0.5) * 0.12)) * (0.35 + 0.65 * level) * (0.6 + 0.6 * n);
+      d += Math.exp(-(((y - 0.5) / 0.06) ** 2)) * (nz < -0.2 ? 1 : 0.25) * 0.7 * level * (0.6 + 0.6 * n2);
+      if (nz < -0.3 && y < 1.35 && y > 0.6) d += 0.18 * level * (0.4 + n2);
+      d += Math.exp(-(((y - 1.12) / 0.07) ** 2)) * (Math.abs(x) > 0.16 ? 1 : 0) * 0.45 * level * (0.6 + 0.6 * n2);
+      d = Math.min(0.8, d);
+      // (Linear-space blends: a little dust already greys black leather.)
+      if (d > 0) col.lerp(dust, d * (leather ? 0.12 : suede ? 0.25 : 0.45));
+      if (cloth) {
+        // Sun-faded shoulders and upper back: lighter and greyer.
+        const sun = smooth01(0.2, 0.9, ny) * smooth01(1.15, 1.45, y);
+        if (sun > 0) {
+          const L = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+          col.lerp(c2.setRGB(L, L, L), 0.15 * sun).multiplyScalar(1 + 0.18 * sun * (0.5 + level));
+        }
+        // Sweat and grime: under the arms, the collar, the small of the back.
+        const ax = Math.abs(x);
+        const pit = Math.exp(-(((y - 1.3) / 0.06) ** 2)) * smooth01(0.11, 0.15, ax) * (1 - smooth01(0.2, 0.24, ax));
+        const collar = smooth01(1.42, 1.5, y) * (ax < 0.12 ? 1 : 0);
+        const small = nz > 0.3 ? Math.exp(-(((y - 1.12) / 0.1) ** 2)) : 0;
+        const g = Math.min(0.6, (pit * 0.5 + collar * 0.3 + small * 0.25) * (0.5 + level) * (0.6 + 0.6 * n2));
+        if (g > 0) col.lerp(grime, g * 0.35);
+        // Uneven wear and fading across each garment.
+        col.multiplyScalar(0.88 + 0.24 * n3);
       }
       // Dusty helmet tops.
-      if (cell === CELL.paint && y > 1.7 && ny > 0.4) col.lerp(dust, 0.18 * level * (0.5 + n2));
+      if (cell === CELL.paint && y > 1.7 && ny > 0.4) col.lerp(dust, 0.25 * level * (0.5 + n2));
     });
   }
 
+  // Baked shading: the body and the larger kit occlude the sky (armpits, the
+  // inside of the arms and thighs, the crotch, under the chin and the helmet
+  // brim, round pouches and packs), and close contact darkens creases.
   finish() {
+    const spheres = [...bodySpheres(this.info.headgear), ...this.b.partSpheres()];
+    this.info.spheres = spheres;
+    this.b.bakeSphereAO(spheres, 0.75);
     if (this.lod < 2) this.b.bakeContact(this.lod ? 0.05 : 0.028, this.lod ? 0.4 : 0.55);
     return { b: this.b, info: this.info };
   }
@@ -657,8 +678,13 @@ export function buildPerson(params, lod = 0, info = {}) {
   const helmet = info.headgear === 'helmet' || info.headgear === 'tank';
   buildHead(skin, params, { lod, helmet, cap: info.headgear === 'cap' });
   buildNeck(skin, { lod, skin: params.skin });
+  // The head and neck are shaded by the body, the collar and the headgear
+  // (the hands are on the gun, so not by where they hang in the bind pose).
+  skin.bakeSphereAO(info.spheres || bodySpheres(info.headgear), lod === 2 ? 0.35 : 0.75);
   for (const s of [-1, 1]) buildHand(skin, s, { lod, skin: params.skin, glove: info.gloves, dirt: params.dirt });
   if (info.rolled) for (const s of [-1, 1]) buildForearm(skin, s, { lod, skin: params.skin, from: info.rolled - 0.03 });
+  // Creases where fingers, lids and ears touch.
+  if (lod === 0) skin.bakeContact(0.012, 0.45);
   return skin;
 }
 

@@ -79,6 +79,31 @@ const ALPHA_BOOST = /* glsl */ `
 // Keep the outward (crown) normals on both sides of double-sided cards.
 const NORMAL_BEGIN = THREE.ShaderChunk.normal_fragment_begin.replace(/normal \*= faceDirection;/, '/* vegetation: outward normals on both sides */');
 
+// Light shining through thin leaves and grass blades when the sun is behind them
+// (looking toward it). It is added in the direct lighting, after shadows, so only
+// sunlit leaves glow. amount: a GLSL expression; power: how tightly it follows the sun.
+const TRANSLUCENT = (amount, power) => /* glsl */ `
+void RE_Direct_Veg( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
+  RE_Direct_Physical( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+  float vegBack = pow( saturate( dot( -geometryViewDir, directLight.direction ) ), ${power} );
+  reflectedLight.directDiffuse += directLight.color * material.diffuseColor * vegBack * ( ${amount} );
+}
+#undef RE_Direct
+#define RE_Direct RE_Direct_Veg`;
+
+// Leaves and blades shade one another at grazing angles, so a crown or a meadow
+// never mirrors a low sun (or the bright sky around it) the way a smooth surface
+// would: much weaker reflection at grazing angles. (Without it crowns looked pale
+// and frosted when looking toward the sun.)
+const DULL = /* glsl */ `
+material.specularF90 = 0.2;`;
+
+// Late summer: a few trees (and hedge stretches) have patches of leaves turning
+// yellow and brown. Per plant (from its position) and per branch (from the vertex).
+const WARM_VERT = /* glsl */ `
+vVegWarm = smoothstep( 0.8, 0.97, vegHash( vegBase.xz * 0.61 + 3.7 ) ) * ( 0.3 + 0.7 * vegHash( floor( transformed.xz * 1.3 + transformed.y ) + vegBase.xz ) );`;
+const WARM_TINT = 'mix( vec3( 1.0 ), vec3( 1.5, 1.02, 0.45 ), vVegWarm * 0.55 )';
+
 // A world-space offset added after instancing, in both the projected and the world
 // position (shadow lookups); `vegHide` collapses the vertex (the triangle is dropped).
 const PROJECT = /* glsl */ `
@@ -132,7 +157,8 @@ attribute vec3 vegWind;
 uniform vec4 uVegFade;
 varying float vVegIn;
 varying float vVegOut;
-varying vec3 vVegTint;`);
+varying vec3 vVegTint;
+varying float vVegWarm;`);
     vs = after(vs, '#include <begin_vertex>', `
 vec3 vegBase = vec3( instanceMatrix[3] );
 float vegPhase = vegHash(vegBase.xz);
@@ -141,6 +167,7 @@ float vegD = distance(vegBase + vec3(0.0, 6.0, 0.0), uVegCam) * uVegLod;
 vVegIn = smoothstep(uVegFade.x, uVegFade.y, vegD);
 vVegOut = 1.0 - smoothstep(uVegFade.z, uVegFade.w, vegD);
 vVegTint = vegTintOf(vegBase.xz);
+${WARM_VERT}
 bool vegHide = vVegIn <= 0.0 || vVegOut <= 0.0;`);
     vs = replace(vs, '#include <project_vertex>', PROJECT);
     vs = replace(vs, '#include <worldpos_vertex>', WORLDPOS);
@@ -150,25 +177,22 @@ bool vegHide = vVegIn <= 0.0 || vVegOut <= 0.0;`);
 uniform float uVegTransl;
 varying float vVegIn;
 varying float vVegOut;
-varying vec3 vVegTint;`);
+varying vec3 vVegTint;
+varying float vVegWarm;`);
     fs = after(fs, '#include <map_fragment>', ALPHA_BOOST);
     fs = after(fs, '#include <color_fragment>', `
 diffuseColor.rgb *= vVegTint;
+#ifdef USE_MAP
+// Leaves only (the top row of the atlas is bark).
+if ( vMapUv.y < 0.8 ) diffuseColor.rgb *= ${WARM_TINT};
+#endif
 float vegDi = vegDither();
 if ( 1.0 - vegDi > vVegIn || vegDi > vVegOut ) discard;`);
     fs = replace(fs, '#include <normal_fragment_begin>', NORMAL_BEGIN);
-    // Sunlight shining through leaves when looking toward the sun.
-    fs = after(fs, '#include <lights_fragment_maps>', `
-#if NUM_DIR_LIGHTS > 0
-{
-  vec3 vegView = normalize( vViewPosition );
-  float vegBack = pow( clamp( dot( -vegView, directionalLights[ 0 ].direction ), 0.0, 1.0 ), 4.0 );
-  #ifdef USE_COLOR
-  vegBack *= vColor.g * vColor.g * vColor.g;
-  #endif
-  reflectedLight.directDiffuse += diffuseColor.rgb * directionalLights[ 0 ].color * vegBack * uVegTransl;
-}
-#endif`);
+    // Sunlight shining through leaves when looking toward the sun (bark much less:
+    // its vertex color is darker in green).
+    fs = after(fs, '#include <lights_physical_pars_fragment>', TRANSLUCENT('uVegTransl * vColor.g * vColor.g * vColor.g', '4.0'));
+    fs = after(fs, '#include <lights_physical_fragment>', DULL);
     shader.fragmentShader = fs;
   });
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: atlas.map, alphaTest: 0.5, side: THREE.DoubleSide });
@@ -245,6 +269,7 @@ vec3 vegOff = vec3( 0.0 );`;
 varying float vVegIn;
 varying float vVegOut;
 varying vec3 vVegTint;
+varying float vVegWarm;
 varying vec3 vImpX;
 varying vec3 vImpZ;`);
     vs = after(vs, '#include <uv_vertex>', uvCode);
@@ -267,6 +292,7 @@ vVegOut = 1.0 - smoothstep( vegInfo.w * 0.88, vegInfo.w, vegD );
   vVegOut *= vegCard > 1.5 ? smoothstep( 0.3, 0.55, vegUp ) : 1.0 - smoothstep( 0.8, 0.95, vegUp );
 }
 vVegTint = vegTintOf( iPos.xz );
+vVegWarm = smoothstep( 0.8, 0.97, vegHash( iPos.xz * 0.61 + 3.7 ) ) * 0.6;
 bool vegHide = vVegIn <= 0.0 || vVegOut <= 0.0;`,
     );
     vs = replace(vs, '#include <project_vertex>', PROJECT);
@@ -277,11 +303,14 @@ bool vegHide = vVegIn <= 0.0 || vVegOut <= 0.0;`,
 varying float vVegIn;
 varying float vVegOut;
 varying vec3 vVegTint;
+varying float vVegWarm;
 varying vec3 vImpX;
 varying vec3 vImpZ;`);
     fs = after(fs, '#include <map_fragment>', ALPHA_BOOST);
+    fs = after(fs, '#include <lights_physical_pars_fragment>', TRANSLUCENT('0.035', '4.0'));
+    fs = after(fs, '#include <lights_physical_fragment>', DULL);
     fs = after(fs, '#include <color_fragment>', `
-diffuseColor.rgb *= vVegTint;
+diffuseColor.rgb *= vVegTint * ${WARM_TINT};
 float vegDi = vegDither();
 if ( 1.0 - vegDi > vVegIn || vegDi > vVegOut ) discard;`);
     fs = replace(
@@ -333,21 +362,15 @@ export function makeGroundMaterial(atlas, shared, { lod, cols, rows }) {
     side: THREE.DoubleSide,
   });
   m.name = 'vegetation:ground';
-  addPatch(m, 'veg-ground', (shader) => {
-    Object.assign(shader.uniforms, shared, own);
-    let vs = shader.vertexShader;
-    vs = after(vs, '#include <common>', `${COMMON_VERT}
+  const decl = `${COMMON_VERT}
 attribute vec4 iA;
 attribute vec4 iB;
 uniform vec4 uGrassLod;
 uniform vec2 uGrassCells;
 varying float vGrassV;
 varying float vGrassTint;
-varying float vGrassGust;`);
-    vs = after(
-      vs,
-      '#include <uv_vertex>',
-      `
+varying float vGrassGust;`;
+  const uvCode = `
 {
   float cell = floor( iB.z );
   vec2 cs = 1.0 / uGrassCells;
@@ -355,24 +378,15 @@ varying float vGrassGust;`);
   vMapUv = org + cs * ( vec2( 0.012, 0.004 ) + uv * vec2( 0.976, 0.984 ) );
   vGrassV = uv.y;
   vGrassTint = fract( iB.z );
-}`,
-    );
-    vs = replace(
-      vs,
-      '#include <beginnormal_vertex>',
-      `
+}`;
+  // How much of this clump shows at its distance (farther: fewer, bigger clumps).
+  const lodCode = `
 float gD = distance( iA.xyz, uVegCam ) * max( uVegLod, 0.6 );
 float gK = gD < uGrassLod.x ? 1.0 : pow( uGrassLod.x / gD, uGrassLod.y );
 float gShow = clamp( ( gK - iB.w ) / ( 0.25 * gK ), 0.0, 1.0 ) * ( 1.0 - smoothstep( uGrassLod.z, uGrassLod.w, gD ) );
 float gGrow = gShow * pow( gK, -0.3 );
-float gC = cos( iA.w ), gS = sin( iA.w );
-vec3 cardN = normalize( vec3( gC * normal.x + gS * normal.z, 0.0, -gS * normal.x + gC * normal.z ) );
-vec3 objectNormal = normalize( vec3( 0.0, 1.0, 0.0 ) + cardN * 0.3 );`,
-    );
-    vs = replace(
-      vs,
-      '#include <begin_vertex>',
-      `
+float gC = cos( iA.w ), gS = sin( iA.w );`;
+  const placeCode = `
 vec3 gP = position;
 gP.xz *= iB.x;
 gP.y *= iB.y;
@@ -389,8 +403,20 @@ gP.y -= dot( gBend, gBend ) * 0.5 / max( gP.y, 0.05 );
 vGrassGust = gGust * position.y;
 vec3 transformed = iA.xyz + gP;
 bool vegHide = gShow <= 0.0;
-vec3 vegOff = vec3( 0.0 );`,
+vec3 vegOff = vec3( 0.0 );`;
+  addPatch(m, 'veg-ground', (shader) => {
+    Object.assign(shader.uniforms, shared, own);
+    let vs = shader.vertexShader;
+    vs = after(vs, '#include <common>', decl);
+    vs = after(vs, '#include <uv_vertex>', uvCode);
+    vs = replace(
+      vs,
+      '#include <beginnormal_vertex>',
+      `${lodCode}
+vec3 cardN = normalize( vec3( gC * normal.x + gS * normal.z, 0.0, -gS * normal.x + gC * normal.z ) );
+vec3 objectNormal = normalize( vec3( 0.0, 1.0, 0.0 ) + cardN * 0.45 );`,
     );
+    vs = replace(vs, '#include <begin_vertex>', placeCode);
     vs = replace(vs, '#include <project_vertex>', PROJECT);
     shader.vertexShader = vs;
     let fs = shader.fragmentShader;
@@ -399,18 +425,49 @@ varying float vGrassV;
 varying float vGrassTint;
 varying float vGrassGust;`);
     fs = after(fs, '#include <map_fragment>', ALPHA_BOOST);
+    // Each clump a little greener or more straw-colored; deep shade low in the
+    // tufts; the blade tips glow when the low sun is behind them.
     fs = after(
       fs,
       '#include <color_fragment>',
       `
-diffuseColor.rgb *= mix( vec3( 0.86, 0.92, 0.8 ), vec3( 1.1, 1.06, 0.94 ), vGrassTint );
-diffuseColor.rgb *= mix( 0.5, 1.0, smoothstep( 0.0, 0.7, vGrassV ) );
+diffuseColor.rgb *= mix( vec3( 0.82, 0.94, 0.76 ), vec3( 1.14, 1.04, 0.86 ), vGrassTint );
+diffuseColor.rgb *= mix( 0.32, 1.0, smoothstep( 0.0, 0.8, vGrassV ) );
 diffuseColor.rgb *= 1.0 + 0.16 * vGrassGust;`,
     );
+    fs = after(fs, '#include <lights_physical_pars_fragment>', TRANSLUCENT('0.22 * ( 0.25 + 0.75 * vGrassV )', '3.0'));
+    fs = after(fs, '#include <lights_physical_fragment>', DULL);
     fs = replace(fs, '#include <normal_fragment_begin>', NORMAL_BEGIN);
     shader.fragmentShader = fs;
   });
-  return { material: m, uniforms: own };
+  // Shadows of the grass close by (long ones when the sun is low): the same clumps
+  // drawn into the shadow maps by a second mesh, which draws nothing on screen.
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: atlas.map, alphaTest: 0.5, side: THREE.DoubleSide });
+  depth.name = 'vegetation:ground:depth';
+  addPatch(depth, 'veg-ground-depth', (shader) => {
+    Object.assign(shader.uniforms, shared, own);
+    let vs = shader.vertexShader;
+    vs = after(vs, '#include <common>', decl);
+    vs = after(vs, '#include <uv_vertex>', uvCode);
+    vs = replace(vs, '#include <begin_vertex>', lodCode + placeCode);
+    vs = replace(vs, '#include <project_vertex>', PROJECT);
+    shader.vertexShader = vs;
+    shader.fragmentShader = after(shader.fragmentShader, '#include <map_fragment>', ALPHA_BOOST);
+  });
+  const hidden = new THREE.ShaderMaterial({
+    vertexShader: 'void main() { gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 ); }',
+    fragmentShader: 'void main() { gl_FragColor = vec4( 0.0 ); }',
+    colorWrite: false,
+    depthWrite: false,
+    depthTest: false,
+    side: THREE.DoubleSide,
+  });
+  // The shadow pass copies map, alpha test and side from this material onto the
+  // depth material, so they must match it (this shader itself ignores them).
+  hidden.map = atlas.map;
+  hidden.alphaTest = 0.5;
+  hidden.name = 'vegetation:ground:shadowOnly';
+  return { material: m, depth, hidden, uniforms: own };
 }
 
 export { before };

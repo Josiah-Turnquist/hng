@@ -16,8 +16,10 @@ import { FirstPersonArms } from '../actors/soldierFP.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
+const _q3 = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const Z_NEG = new THREE.Vector3(0, 0, -1);
@@ -43,14 +45,23 @@ class Spring {
   }
 }
 
+// Carry when not aiming, in camera space (m, rad): hip = where the trigger sits,
+// dir = [yaw left, pitch up, roll] of the gun. Low and to the right, pointing
+// forward and a little up, so the barrel crosses the screen at about 30 degrees
+// with the front sight just right of center near the horizon (as in Heroes &
+// Generals). Guns held by a fore-end well ahead of the trigger are placed by
+// the support hand instead (support), the shortest reach of the two arms.
 const POSES = {
-  rifle: { hip: [0.12, -0.17, -0.1], sprint: [0.06, -0.24, -0.2] },
-  smg: { hip: [0.14, -0.19, -0.22], sprint: [0.06, -0.22, -0.22] },
-  lmg: { hip: [0.16, -0.27, -0.08], sprint: [0.08, -0.3, -0.1] },
-  pistol: { hip: [0.13, -0.17, -0.36], sprint: [0.12, -0.26, -0.22] },
-  launcher: { hip: [0.16, -0.12, 0.05], sprint: [0.12, -0.2, 0.0] },
-  grenade: { hip: [0.16, -0.2, -0.3], sprint: [0.12, -0.26, -0.22] },
+  rifle: { hip: [0.17, -0.12, -0.14], support: [0.172, -0.115, -0.501], dir: [0, 0.1, 0.06], sprint: [0.06, -0.24, -0.2] },
+  smg: { hip: [0.14, -0.095, -0.225], dir: [0, 0.075, 0.06], sprint: [0.06, -0.22, -0.22] },
+  lmg: { hip: [0.19, -0.16, -0.17], support: [0.172, -0.115, -0.501], dir: [0, 0.06, 0.06], sprint: [0.08, -0.3, -0.1] },
+  pistol: { hip: [0.16, -0.1, -0.42], dir: [0, 0.05, 0.06], sprint: [0.12, -0.26, -0.22] },
+  launcher: { hip: [0.17, -0.13, 0.04], dir: [0, 0.05, 0.06], sprint: [0.12, -0.2, 0.0] },
+  grenade: { hip: [0.16, -0.2, -0.3], dir: [0.006, 0.008, 0.06], sprint: [0.12, -0.26, -0.22] },
 };
+// From the hip, shots leave the muzzle toward the center of view this far ahead
+// (the shooter points the gun at what he looks at); aimed shots follow the bore.
+const HIP_CONVERGE = 25;
 
 function poseKind(def) {
   switch (def.type) {
@@ -74,7 +85,7 @@ function poseKind(def) {
 export class ViewModel {
   constructor(textures, faction = 'US', envMap = null) {
     this.textures = textures;
-    this.mats = makeGunMaterials(textures);
+    this.mats = makeGunMaterials(textures, { firstPerson: true });
     this.scene = new THREE.Scene();
     this.scene.environment = envMap;
     this.scene.environmentIntensity = 0.4;
@@ -113,6 +124,7 @@ export class ViewModel {
     this.localPose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
     this.muzzleWorld = new THREE.Vector3();
     this.boreWorld = new THREE.Vector3(0, 0, -1);
+    this.hipAim = new THREE.Quaternion(); // hip shots: bore -> point of convergence
     this.ejectWorld = new THREE.Vector3();
     this.eyeOffset = new THREE.Vector3(); // ADS eye point relative to camera (zero when aimed)
     this.visible = true;
@@ -247,10 +259,14 @@ export class ViewModel {
 
     // --- hip pose -----------------------------------------------------------------
     const hip = this.localPose;
-    const hp = poses.hip;
-    const hipPos = _v.set(hp[0], hp[1], hp[2]);
-    const hipQ = _q.setFromUnitVectors(Z_NEG, _v2.set(-hp[0], -hp[1], -25).normalize());
-    hipQ.multiply(_q2.setFromAxisAngle(Z_NEG, -0.06));
+    const hd = poses.dir;
+    const hipQ = _q.setFromEuler(_e.set(hd[1], hd[0], hd[2]));
+    const hipPos = _v.fromArray(poses.hip);
+    const gl = this.gun.anchors.gripL;
+    if (poses.support && gl && gl.z < -0.25) hipPos.fromArray(poses.support).sub(_v2.copy(gl).applyQuaternion(hipQ));
+    // Turn that carries hip shots from the bore to the point of convergence.
+    _v2.copy(this.gun.anchors.muzzle || Z_NEG).applyQuaternion(hipQ).add(hipPos);
+    this.hipAim.setFromUnitVectors(_v3.copy(Z_NEG).applyQuaternion(hipQ), _v2.set(-_v2.x, -_v2.y, -HIP_CONVERGE - _v2.z).normalize());
 
     // --- aimed pose (sights on the eye line) -----------------------------------------
     const s = this.sighting;
@@ -319,7 +335,10 @@ export class ViewModel {
 
     // Muzzle position and bore direction in the world.
     this.muzzleWorld.copy(this.gun.anchors.muzzle || _v.set(0, 0, -0.6)).applyMatrix4(gunRoot.matrixWorld);
-    this.boreWorld.set(0, 0, -1).applyQuaternion(gunRoot.quaternion);
+    // From the hip the shot is turned from the bore toward the point of
+    // convergence (fading out as the gun comes up to the eye).
+    const toAim = _q3.identity().slerp(this.hipAim, 1 - a);
+    this.boreWorld.set(0, 0, -1).applyQuaternion(finalQ).applyQuaternion(toAim).applyQuaternion(cam.quaternion);
     if (this.gun.anchors.ejectionPort) this.ejectWorld.copy(this.gun.anchors.ejectionPort).applyMatrix4(gunRoot.matrixWorld);
 
     // Flash.

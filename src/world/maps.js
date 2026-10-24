@@ -22,7 +22,9 @@ export const MAPS = {
     undulation: 6,
     edgeHills: 70,
     playRadius: 760,
-    sun: { elevation: 31, azimuth: 212 },
+    // Late afternoon in late summer: the sun low in the west-south-west, warm light
+    // and long shadows. (Azimuth: direction = (sin a, cos a) in x, z; 285 is WSW.)
+    sun: { elevation: 19, azimuth: 285 },
     wind: { speed: 3.5, from: 250 },
     village: { x: 0, z: 30, radius: 150, falloff: 130, tilt: 0.4 },
     river: {
@@ -160,7 +162,7 @@ export const MAPS = {
     undulation: 1.2,
     edgeHills: 60,
     playRadius: 820,
-    sun: { elevation: 40, azimuth: 160 },
+    sun: { elevation: 22, azimuth: 290 }, // late afternoon, from the west: side light on the targets
     wind: { speed: 2.5, from: 270 },
     village: { x: 0, z: 0, radius: 120, falloff: 120, tilt: 0 },
     flatZones: [{ x0: -60, z0: -880, x1: 60, z1: 40, falloff: 60 }],

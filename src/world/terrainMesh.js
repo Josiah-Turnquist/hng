@@ -97,6 +97,7 @@ export class TerrainRenderer {
       tLayerNormal: { value: lt.normal },
       uLayerScale: { value: lt.scales.map((s) => 1 / s) },
       uTerrain: { value: new THREE.Vector4(hf.half, hf.cell, hf.res, 0) },
+      uGrassFar: { value: this.quality.grassDistance ?? 60 },
     };
     this.uniforms = uniforms;
     addPatch(mat, 'terrain', (shader) => {
@@ -115,6 +116,7 @@ uniform sampler2DArray tLayerAlbedo;
 uniform sampler2DArray tLayerNormal;
 uniform float uLayerScale[${lt.scales.length}];
 uniform vec4 uTerrain;
+uniform float uGrassFar;
 vec4 tAlb; vec3 tNrmW; float tRough; int tMain;
 float th(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float tvn(vec2 p) {
@@ -190,6 +192,10 @@ void terrainSample(vec3 wp) {
   float macro = tvn(xz * 0.018) * 0.6 + tvn(xz * 0.075) * 0.4;
   tAlb.rgb *= 0.78 + 0.44 * macro;
   if (tMain <= 1 || tMain == 7) tAlb.rgb *= mix(vec3(1.05, 1.03, 0.86), vec3(0.94, 1.0, 1.05), tvn(xz * 0.041 + 31.7));
+  // Close by, the ground between the grass tufts is dark earth and old stems;
+  // farther out, where the tufts thin and stop, it takes the color the grass has
+  // from afar.
+  if (tMain <= 1) tAlb.rgb *= mix(vec3(0.6, 0.55, 0.47), vec3(1.1, 1.05, 0.95), smoothstep(uGrassFar * 0.3, uGrassFar * 0.9, tDist));
   // Bare earth and mud (shell craters, trampled ground) a little greyer: next to
   // green grass the reddish brown looked like paint.
   else if (tMain == 2 || tMain == 3) tAlb.rgb = mix(tAlb.rgb, vec3(dot(tAlb.rgb, vec3(0.3, 0.59, 0.11))), 0.22);
@@ -207,7 +213,10 @@ void terrainSample(vec3 wp) {
 diffuseColor.rgb *= tAlb.rgb;`,
         )
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = tRough;')
-        .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNrmW, 0.0)).xyz);');
+        .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNrmW, 0.0)).xyz);')
+        // Grass and woodland floor (blades and leaves that shade one another) hardly
+        // shine at grazing angles, like the grass drawn on top of them.
+        .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\nif (tMain <= 1 || tMain == 7) material.specularF90 = 0.2;');
     });
     return mat;
   }
@@ -306,6 +315,7 @@ diffuseColor.rgb *= tAlb.rgb;`,
   // Pick a level of detail for each chunk from its distance to the camera.
   update(cameraPos) {
     const k = this.quality.terrainLod;
+    this.uniforms.uGrassFar.value = this.quality.grassDistance ?? 60;
     for (const c of this.chunks) {
       const dx = Math.max(0, Math.abs(cameraPos.x - c.cx) - c.size / 2);
       const dz = Math.max(0, Math.abs(cameraPos.z - c.cz) - c.size / 2);

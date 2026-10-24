@@ -58,11 +58,13 @@ function lodFor(quality) {
 const MOVE = 8; // refill after moving this far (m)
 const TURN = 0.26; // ... or turning this much (rad)
 const ALWAYS = 45; // plants this close are kept whatever the view direction (shadows)
+const GRASS_SHADOW_CLUMPS = 7000; // grass clumps that cast shadows (the nearest)
 
 export function buildVegetation({ terrain, def, collision = null, textures = null, quality = {}, village = null, plan = null, shadows = null, camera = null, renderer = null } = {}) {
   const t0 = performance.now();
   let q = lodFor(quality);
   let taa = !!quality.taa;
+  let grassShadows = quality.shadows !== false;
   const site = new VegSite(terrain, def, { village, plan });
   const rng = new RNG(((def.seed || 1) * 101 + 17) >>> 0);
   const P = new PlantList(site.half);
@@ -258,6 +260,26 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
   const hedgeFarMax = new Float32Array(1);
 
   group.add(ground.mesh);
+  // The nearest clumps of grass again, drawn only into the shadow maps (the material
+  // of this mesh draws nothing on screen), so grass close by casts shadows.
+  const groundShadowGeo = new THREE.InstancedBufferGeometry();
+  groundShadowGeo.index = groundGeo.index;
+  for (const [k, a] of Object.entries(groundGeo.attributes)) groundShadowGeo.setAttribute(k, a);
+  groundShadowGeo.instanceCount = 0;
+  const groundShadow = new THREE.Mesh(groundShadowGeo, groundMat.hidden);
+  groundShadow.name = 'vegetation:groundShadow';
+  groundShadow.castShadow = true;
+  groundShadow.receiveShadow = false;
+  groundShadow.frustumCulled = false;
+  groundShadow.customDepthMaterial = groundMat.depth;
+  groundShadow.visible = false;
+  // Only the sharp shadow maps near the camera get the grass: in the coarse far
+  // ones it would be a blur that costs just as much.
+  let grassShadowCount = 0;
+  groundShadow.onBeforeShadow = (renderer, object, camera, shadowCamera) => {
+    groundShadowGeo.instanceCount = shadowCamera.right - shadowCamera.left < 260 ? grassShadowCount : 0;
+  };
+  group.add(groundShadow);
 
   // --- Distances (changed live by the tree detail, view and shadow settings) ------------
   const setFade = (m, fadeIn, fadeOut, shadow) => {
@@ -326,6 +348,10 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
     }
     const t2 = performance.now();
     ground.update(camera, cam, Math.max(lod, 0.6), heavy ? 0.8 : 2.5);
+    // (The clumps are filled in nearest first: these are the closest ones.)
+    grassShadowCount = grassShadows ? Math.min(ground.count, GRASS_SHADOW_CLUMPS) : 0;
+    groundShadowGeo.instanceCount = grassShadowCount;
+    groundShadow.visible = grassShadowCount > 0;
     timing.near = t1 - t0;
     timing.impostors = t2 - t1;
     timing.ground = performance.now() - t2;
@@ -355,6 +381,7 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
       impostor = q.impostor;
     q = { ...lodFor(quality), atlasCell, impostor };
     taa = !!quality.taa;
+    grassShadows = quality.shadows !== false;
     stats.lod = q;
     applyDistances();
     if (ground.setQuality(quality)) groundMat.uniforms.uGrassLod.value.set(...ground.lodParams());
@@ -385,6 +412,7 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
       for (const m of materials) {
         m.material.dispose();
         m.depth?.dispose();
+        m.hidden?.dispose();
       }
       for (const t of imp.targets) t.dispose();
     },
