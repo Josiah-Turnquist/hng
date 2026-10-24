@@ -1107,15 +1107,20 @@ export const MATERIALS = {
       }
     }`,
   vegHedgeCore: /* glsl */ `
-    // The dense inside of a hedge seen from outside: small leaves over dark, shadowed
-    // twigs. Opaque and tiling (hedge cores, far hedges). One repeat covers 4 m of
-    // hedge, so 40 to 64 cells across make hawthorn and hazel leaves 6 to 10 cm long.
+    // The dense inside of a hedge seen from outside: small leaves and twigs with
+    // gaps between them (alpha), so through the front and back of the hedge you
+    // can still make out a shape or movement behind it. Tiling (hedge cores, far
+    // hedges). One repeat covers 4 m of hedge, so 40 to 64 cells across make
+    // hawthorn and hazel leaves 6 to 10 cm long; together the leaves and twigs
+    // cover about 60% of each face.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float deep = fbm01(uv, vec2(5.0), 4, 421.0);
       albedo = mix(uPaintA * 0.12, uPaintA * 0.3, deep);
       // Twigs in the shadowed gaps between the leaves.
       float tw = abs(fbm(uv * vec2(1.0, 3.0), vec2(24.0, 72.0), 3, 429.0));
-      albedo = mix(albedo, vec3(0.05, 0.04, 0.03), (1.0 - smoothstep(0.0, 0.05, tw)) * 0.8);
+      float twig = 1.0 - smoothstep(0.0, 0.05, tw);
+      albedo = mix(albedo, vec3(0.05, 0.04, 0.03), twig * 0.8);
+      float cover = twig;
       height = 0.0;
       for (int k = 0; k < 4; k++) {
         float fk = float(k);
@@ -1123,18 +1128,19 @@ export const MATERIALS = {
         float ang = v.w * 6.2831;
         vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
         float shape = length(d * vec2(1.0, 1.8));
-        float leaf = 1.0 - smoothstep(0.32, 0.38, shape);
+        float leaf = 1.0 - smoothstep(0.36, 0.42, shape);
         float present = step(0.18 + 0.1 * fk, hash12(vec2(v.w * 17.0, fk)));
         if (leaf * present > 0.5) {
           vec3 lc = mix(uPaintA, uPaintB, hash12(vec2(v.w * 31.0)));
           lc *= (0.5 + 0.17 * fk) * (0.85 + 0.3 * (1.0 - shape * 1.6));
           albedo = lc;
           height = 0.004 + fk * 0.004 * (1.0 - shape);
+          cover = 1.0;
         }
       }
       rough = 0.75;
       metal = 0.0;
-      alpha = 1.0;
+      alpha = cover > 0.5 ? 1.0 : 0.0;
     }`,
   vegGround: /* glsl */ `
     // Ground cover on transparent cards (u across, v up), several plants per card.

@@ -77,7 +77,10 @@ export class TankBrain {
         for (const p of tgtProx) p.box.enabled = true;
         if (!blocked) {
           // Buttoned up, a tank crew is slow to spot men; vehicles are obvious.
-          const rate = c.kind === 'vehicle' ? 1.4 / (1 + d / 400) : (c.obj.body.moving > 1 ? 0.9 : 0.4) / (1 + d / 80) * (c.obj.body.stance === 2 ? 0.3 : 1);
+          // Leaves in the way make anything slower to pick out, never invisible.
+          const leaves = coll.foliageAlong(eye.x, eye.y, eye.z, c.p.x, ty, c.p.z);
+          const cover = leaves > 0 ? Math.max(Math.exp(-leaves / 0.9), 0.08) : 1;
+          const rate = (c.kind === 'vehicle' ? 1.4 / (1 + d / 400) : ((c.obj.body.moving > 1 ? 0.9 : 0.4) / (1 + d / 80)) * (c.obj.body.stance === 2 ? 0.3 : 1)) * cover;
           a = Math.min(1.5, a + rate * dt * 2);
         } else a = Math.max(0, a - dt * 0.3);
       }

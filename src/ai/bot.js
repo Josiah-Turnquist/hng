@@ -100,6 +100,7 @@ export class BotBrain {
       const firing = e.isVehicle ? Math.abs(e.speed) > 0.5 || e.engineOn : this.game.time - (e.lastShotTime ?? -99) < 1.2;
       const heard = firing && d < (e.isVehicle ? 250 : 120);
       let visible = false;
+      let cover = 1;
       if ((inView || heard || a > 0.3) && checks < 5) {
         checks++;
         const ty = ti.y + ti.h * 0.85;
@@ -110,12 +111,19 @@ export class BotBrain {
         // A hit on the target's own vehicle counts as seeing it.
         const veh = e.isVehicle ? e : e.vehicle;
         visible = !coll.raycast(_eye.x, _eye.y, _eye.z, vx / len, vy / len, vz / len, len - 0.4, _hit, FLAG_SIGHT, true) || (veh && _hit.box?.owner === veh);
+        // Leaves in the way are partial cover: the thicker the foliage, the
+        // longer it takes to pick someone out (about 4 times as long behind a
+        // hedge), but nobody vanishes, and a muzzle flash shows through.
+        if (visible) {
+          const leaves = coll.foliageAlong(_eye.x, _eye.y, _eye.z, ti.x, ty, ti.z);
+          if (leaves > 0) cover = Math.max(Math.exp(-leaves / 0.9), firing ? 0.5 : 0.08);
+        }
       }
       if (visible && (inView || heard)) {
         // How fast we notice: close, moving, standing, shooting people stand out; vehicles more so.
         const stance = e.isVehicle ? 2 : e.body.stance === STANCE.PRONE ? 0.3 : e.body.stance === STANCE.CROUCH ? 0.65 : 1;
         const moving = (e.isVehicle ? Math.abs(e.speed) > 1 : e.body.moving > 1) ? 1.6 : 1;
-        const rate = (this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70);
+        const rate = ((this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70)) * cover;
         a = Math.min(1.5, a + rate * dt * (inView ? 1 : 0.5));
         this.lastSeen.set(e, { x: ti.x, y: ti.y, z: ti.z, t: this.game.time, visible: true });
       } else {

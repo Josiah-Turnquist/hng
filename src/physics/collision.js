@@ -10,6 +10,7 @@ export const FLAG_BULLET = 2; // stops or slows bullets
 export const FLAG_SIGHT = 4; // blocks line of sight for AI
 export const FLAG_WALKABLE = 8; // can be stood on
 export const FLAG_VEHICLE_ONLY = 16; // only blocks vehicles (e.g. low walls people can step over handled separately)
+export const FLAG_FOLIAGE = 32; // leaves: partial cover from sight (see foliageAlong), never a wall
 export const FLAG_DEFAULT = FLAG_SOLID | FLAG_BULLET | FLAG_SIGHT | FLAG_WALKABLE;
 
 let nextBoxId = 1;
@@ -106,6 +107,9 @@ export class CollisionWorld {
   }
 
   add(box) {
+    // Leaves never hide what's behind them completely: they are partial cover
+    // that makes someone slower to spot (foliageAlong), not a wall to sight.
+    if (box.material === 'foliage' && box.flags & FLAG_SIGHT) box.flags = (box.flags & ~FLAG_SIGHT) | FLAG_FOLIAGE;
     this.boxes.push(box);
     this._insert(box);
     return box;
@@ -294,6 +298,59 @@ export class CollisionWorld {
       }
     }
     return hit.t < Infinity;
+  }
+
+  // How many meters of leaves (FLAG_FOLIAGE boxes) the straight line from a to b
+  // passes through: hedges, bushes and the crowns of trees in the way.
+  foliageAlong(ax, ay, az, bx, by, bz) {
+    const dx0 = bx - ax,
+      dy0 = by - ay,
+      dz0 = bz - az;
+    const len = Math.hypot(dx0, dy0, dz0);
+    if (len < 1e-6) return 0;
+    const dx = dx0 / len,
+      dy = dy0 / len,
+      dz = dz0 / len;
+    const cs = this.cellSize,
+      h = this.half,
+      n = this.gridN;
+    const stamp = ++this.stamp;
+    let gx = Math.floor((ax + h) / cs);
+    let gz = Math.floor((az + h) / cs);
+    const stepX = dx > 0 ? 1 : -1;
+    const stepZ = dz > 0 ? 1 : -1;
+    const invDx = Math.abs(dx) > 1e-12 ? 1 / Math.abs(dx) : Infinity;
+    const invDz = Math.abs(dz) > 1e-12 ? 1 / Math.abs(dz) : Infinity;
+    let tMaxX = dx > 0 ? (gx * cs - h + cs - ax) * invDx : (ax - (gx * cs - h)) * invDx;
+    let tMaxZ = dz > 0 ? (gz * cs - h + cs - az) * invDz : (az - (gz * cs - h)) * invDz;
+    if (!isFinite(tMaxX)) tMaxX = Infinity;
+    if (!isFinite(tMaxZ)) tMaxZ = Infinity;
+    const tDeltaX = cs * invDx,
+      tDeltaZ = cs * invDz;
+    let tCell = 0,
+      guard = 0,
+      total = 0;
+    while (tCell <= len && guard++ < 4096) {
+      if (gx >= 0 && gz >= 0 && gx < n && gz < n) {
+        const cell = this.cells[gz * n + gx];
+        for (let i = 0; i < cell.length; i++) {
+          const b = cell[i];
+          if (b.stamp === stamp || !b.enabled || !(b.flags & FLAG_FOLIAGE)) continue;
+          b.stamp = stamp;
+          if (CollisionWorld.rayBox(b, ax, ay, az, dx, dy, dz, len, tmpHit)) total += Math.max(0, Math.min(tmpHit.tExit, len) - Math.max(tmpHit.t, 0));
+        }
+      } else if ((gx < 0 && stepX < 0) || (gz < 0 && stepZ < 0) || (gx >= n && stepX > 0) || (gz >= n && stepZ > 0)) break;
+      if (tMaxX < tMaxZ) {
+        tCell = tMaxX;
+        tMaxX += tDeltaX;
+        gx += stepX;
+      } else {
+        tCell = tMaxZ;
+        tMaxZ += tDeltaZ;
+        gz += stepZ;
+      }
+    }
+    return total;
   }
 
   // True when nothing blocks sight between two points.

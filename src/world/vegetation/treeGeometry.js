@@ -762,7 +762,12 @@ export function hedgeGeometry(L, detail, seed = 1) {
       [x, bankH, -0.62],
     ];
     const base = G.n;
-    for (const p of pts) G.v(p, [sx, 0.2, 0], coreCell[0] + (coreCell[2] - coreCell[0]) * (0.5 + p[2] / 3.2), coreCell[1] + (coreCell[3] - coreCell[1]) * clamp(p[1] / 4, 0, 1), coreShade(p), bend(p), 0, 0);
+    // The core's cross-section takes the leafy texture (with its gaps); the
+    // bank's takes the solid earth.
+    pts.forEach((p, i) => {
+      const c = i < 5 ? coreCell : bankCell;
+      G.v(p, [sx, 0.2, 0], c[0] + (c[2] - c[0]) * (0.5 + p[2] / 3.2), c[1] + (c[3] - c[1]) * clamp((p[1] + 0.6) / 4, 0, 1), i < 5 ? coreShade(p) : bankShade(p), bend(p), 0, 0);
+    });
     for (const [a, b, c] of [
       [0, 1, 2],
       [0, 2, 3],

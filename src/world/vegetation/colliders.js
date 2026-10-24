@@ -1,13 +1,16 @@
 // Collision for the vegetation (inside the battlefield only):
 //   trunks       solid, stop bullets ('wood'), block sight (FLAG_DEFAULT)
 //   big crowns   of trees standing in the open (field, hedge, roadside, orchard,
-//                riverbank and forest-edge trees) block sight and slow bullets a
-//                little ('foliage'); crowns inside the woods are skipped (the trunks
-//                and the undergrowth already block sight there, and it keeps the
-//                box count down)
-//   bushes       block sight, bullets pass through slowly ('foliage'), not solid
-//   hedges       an earth bank ('soil': stops bullets, solid) under a dense hedge
-//                ('foliage': solid, blocks sight, bullets get through)
+//                riverbank and forest-edge trees) hide what's behind them partly and
+//                slow bullets a little ('foliage'); crowns inside the woods are
+//                skipped (the trunks and the undergrowth are cover enough there, and
+//                it keeps the box count down)
+//   bushes       partial cover, bullets pass through slowly ('foliage'), not solid
+//   hedges       an earth bank ('soil': stops bullets and sight, solid) under a
+//                dense hedge ('foliage': solid, partial cover, bullets get through)
+// Leaves are never a wall to sight: the collision world turns their FLAG_SIGHT
+// into FLAG_FOLIAGE, and the bots measure how much foliage is in the way
+// (CollisionWorld.foliageAlong) to slow down spotting someone behind it.
 import { Box, FLAG_DEFAULT, FLAG_SOLID, FLAG_BULLET, FLAG_SIGHT } from '../../physics/collision.js';
 import { ROLE, isBush } from './placement.js';
 import { HEDGE } from './treeGeometry.js';

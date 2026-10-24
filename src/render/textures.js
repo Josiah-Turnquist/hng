@@ -139,7 +139,7 @@ export const PRESETS = {
   vegLeafHawthorn: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.16, 0.25, 0.07), b: lin(0.27, 0.36, 0.11), uniforms: { uVegP: [6, 0.08, 0.8, 14], uVegQ: [12, 0.9, 0.6, 0.85] } },
   vegLeafHazel: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.22, 0.31, 0.09), b: lin(0.34, 0.42, 0.14), uniforms: { uVegP: [7, 0.12, 0.85, 9], uVegQ: [10, 0.85, 0.4, 0.8] } },
   vegLeafBramble: { mat: 'vegLeaves', world: 1.6, alpha: true, a: lin(0.15, 0.22, 0.08), b: lin(0.26, 0.32, 0.12), uniforms: { uVegP: [8, 0.11, 0.62, 10], uVegQ: [10, 1.0, 0.7, 0.8] } },
-  vegHedgeCore: { mat: 'vegHedgeCore', world: 2, a: lin(0.14, 0.22, 0.06), b: lin(0.25, 0.33, 0.1) },
+  vegHedgeCore: { mat: 'vegHedgeCore', world: 2, alpha: true, a: lin(0.14, 0.22, 0.06), b: lin(0.25, 0.33, 0.1) },
   vegGrass: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.42, 0.48, 0.2), b: lin(0.16, 0.24, 0.07), uniforms: { uVegP: [0, 44, 0, 0] } },
   vegGrassDry: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.5, 0.48, 0.28), b: lin(0.21, 0.25, 0.1), uniforms: { uVegP: [1, 30, 0, 0] } },
   vegWheat: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.74, 0.6, 0.31), b: lin(0.46, 0.42, 0.2), uniforms: { uVegP: [2, 40, 0, 0] } },
