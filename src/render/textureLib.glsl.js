@@ -315,14 +315,15 @@ export const MATERIALS = {
       float crown = 1.0 - pow(abs(across - 0.5) * 2.0, 2.0);
       float base = fbm01(uv, vec2(4.0, 8.0), 5, 102.0);
       float fine = fbm01(uv, vec2(40.0, 80.0), 3, 103.0);
+      // Packed earth with a light scatter of gravel (not a paved surface).
       vec4 peb = voronoiVec(uv, vec2(30.0, 60.0), 0.9, 104.0);
-      float pebMask = step(0.55, peb.w) * smoothstep(0.0, 0.1, peb.z);
+      float pebMask = step(0.86, peb.w) * smoothstep(0.0, 0.1, peb.z) * (0.4 + 0.6 * ruts);
       float puddle = smoothstep(0.62, 0.7, base) * ruts;
       float grassMid = smoothstep(0.75, 0.95, 1.0 - abs(across - 0.5) * 6.0) * smoothstep(0.35, 0.6, fbm01(uv, vec2(3.0, 12.0), 3, 105.0));
       vec3 c1 = srgb(vec3(0.48, 0.4, 0.3));
       vec3 c2 = srgb(vec3(0.34, 0.27, 0.19));
       albedo = mix(c1, c2, ruts * 0.6 + base * 0.3) * (0.85 + 0.3 * fine);
-      albedo = mix(albedo, srgb(vec3(0.55, 0.52, 0.47)), pebMask * 0.5);
+      albedo = mix(albedo, srgb(vec3(0.46, 0.43, 0.38)), pebMask * 0.4);
       albedo = mix(albedo, srgb(vec3(0.3, 0.33, 0.15)), grassMid * 0.8);
       albedo = mix(albedo, srgb(vec3(0.18, 0.15, 0.12)), puddle * 0.8);
       rough = mix(0.88, 0.1, puddle);
