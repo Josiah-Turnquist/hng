@@ -477,7 +477,7 @@ export class Game {
     else this.audio?.impact?.('armor', info.x, info.y, info.z, big ? 20000 : info.energy);
     if (big && info.kind === 'penetrate') {
       fx.spawn?.('spark', info.x, info.y, info.z, { count: 30, dir: [info.dirX * 4, info.dirY * 4, info.dirZ * 4], spread: 3, speed: 3 });
-      fx.flashLight?.(info.x, info.y, info.z, 30, 10, 0.08);
+      fx.flashLight?.(info.x, info.y, info.z, 12, 8, 0.06);
     }
     if (info.detonate) this.explode(info.x, info.y, info.z, p, v);
     if (p.owner === this.player?.soldier && big) {
@@ -498,7 +498,7 @@ export class Game {
       if (!v.def.pedal) {
         this.effects.spawn('fire', p.x, p.y + 0.3, p.z, { count: 5, spread: 1, speed: 1.5, scale: 0.7 });
         this.effects.spawn('smoke', p.x, p.y + 0.5, p.z, { count: 3, spread: 1, speed: 1, scale: 0.6 });
-        this.effects.flashLight(p.x, p.y + 0.6, p.z, 20, 10, 0.3);
+        this.effects.flashLight(p.x, p.y + 0.6, p.z, 10, 8, 0.25);
         this.audio?.play?.('fuelWhoosh', p, { volume: 0.9 });
         charModel(v);
       }

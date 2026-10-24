@@ -411,7 +411,8 @@ export class Effects {
       case 'sparks':
         this.spawn('spark', x, y, z, { count: 6 + Math.round(e * 10), dir: n.map((v) => v * 2), spread: 2.5, speed: 2.5, ground: gy });
         this.spawn('dust', x, y, z, { count: 1, scale: 0.3, color: [0.33, 0.33, 0.33] });
-        this.flashLight(x + nx * 0.2, y + ny * 0.2, z + nz * 0.2, 2 + e * 4, 3, 0.04);
+        // (A spark lights only the metal right round it, and only for a moment.)
+        this.flashLight(x + nx * 0.2, y + ny * 0.2, z + nz * 0.2, 0.5 + e, 2, 0.03);
         break;
       case 'water':
         this.spawn('water', x, y, z, { count: 10, dir: [0, 3.5, 0], spread: 0.9, speed: 1.2 });
@@ -440,7 +441,10 @@ export class Effects {
       this.spawn('muzzleFlash', x + dx * 0.06, y + dy * 0.06, z + dz * 0.06, { count: 1, dir: [dx * 2, dy * 2, dz * 2], spread: 0, scale: s });
       this.spawn('muzzleFlash', x + dx * 0.18 * s, y + dy * 0.18 * s, z + dz * 0.18 * s, { count: 1, dir: [dx * 3, dy * 3, dz * 3], spread: 0, scale: s * 0.7 });
     }
-    this.flashLight(x, y, z, 6 * big, 7 + 3 * big, 0.05);
+    // A muzzle flash lasts a few thousandths of a second: in daylight it lights
+    // almost nothing round it, in a dark room it lights the walls. (Brighter or
+    // longer, every shot made the soldiers and vehicles near it flash.)
+    this.flashLight(x, y, z, 1.1 * big, 3 + 1.5 * big, 0.03);
   }
 
   explosion(x, y, z, size = 1) {
@@ -459,7 +463,8 @@ export class Effects {
     this.spawn('clods', x, y + 0.3, z, { count: Math.round(14 * size), dir: [0, 10 * k, 0], spread: 4, speed: 1.2, ground: gy, scale: k });
     this.spawn('debris', x, y + 0.2, z, { count: Math.round(30 * size), dir: [0, 6, 0], spread: 5, speed: 1.3, ground: gy });
     this.spawn('spark', x, y + 0.4, z, { count: Math.round(10 * size), dir: [0, 4, 0], spread: 6, speed: 1.5, ground: gy });
-    this.flashLight(x, y + 1, z, 60 * size, 25 * size, 0.18);
+    // The flash of the burst: bright, but over in about a tenth of a second.
+    this.flashLight(x, y + 1, z, 40 * size, 20 * size, 0.12);
   }
 
   flashLight(x, y, z, intensity, distance, time) {

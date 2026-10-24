@@ -1698,7 +1698,10 @@ export class Bike extends Vehicle {
     const dist = cam ? cam.distanceTo(this.body.position) : 0;
     const near = this.pedal ? 22 : 34;
     const cull = this.pedal ? 180 : 320;
-    const lod = dist > cull ? 2 : dist > near ? 1 : 0;
+    // A tenth of the distance as a margin, so a machine right at the edge doesn't
+    // flip between its models from frame to frame (it flashed).
+    const cur = this._lod ?? 0;
+    const lod = dist > cull * (cur < 2 ? 1.1 : 1) ? 2 : dist > near * (cur < 1 ? 1.1 : 1) ? 1 : 0;
     if (lod !== this._lod) {
       this._lod = lod;
       const far = this.model.parts?.far;

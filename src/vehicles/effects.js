@@ -65,7 +65,9 @@ export function updateVehicleEffects(game, v, dt) {
       if (burning) fx.spawn('fire', p.x, p.y, p.z, { count: 1, spread: 0.4, scale: v.alive ? 0.6 : 1.1 });
       fx.spawn('smoke', p.x, p.y + 0.5, p.z, { count: 1, spread: 0.4, scale: burning ? 1.2 : 0.9, color: [0.08, 0.08, 0.08] });
     }
-    if (burning && Math.random() < dt * 3) fx.flashLight(b.position.x, b.position.y + 1.5, b.position.z, 8, 12, 0.3);
+    // Firelight: a faint, flickering glow on what stands close (in daylight flames
+    // light little; brighter pulses made everything near a burning vehicle flash).
+    if (burning && Math.random() < dt * 3) fx.flashLight(b.position.x, b.position.y + 1.5, b.position.z, 1.6, 8, 0.25);
   }
   // A turret thrown off by an ammunition explosion flies, then lies where it lands.
   const tf = v.turretFly;
