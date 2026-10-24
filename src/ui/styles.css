@@ -71,7 +71,7 @@ canvas.game {
 .ld-map { min-height: 0; display: flex; justify-content: center; }
 .ld-map canvas { height: 100%; aspect-ratio: 1; max-width: 100%; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); background: #20231c; }
 .ld-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.ld-tip { width: min(720px, 100%); display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; background: rgba(13, 14, 12, 0.8); border-left: 2px solid var(--amber); font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
+.ld-tip { width: min(720px, 100%); display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; background: rgba(13, 14, 12, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
 .ld-tip b { font-family: var(--cond); font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink); }
 .loading .bar {
   width: min(720px, 100%);
@@ -355,8 +355,8 @@ canvas.game {
 .dp-side { width: 290px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: rgba(13, 14, 12, 0.88); border: 1px solid rgba(255, 255, 255, 0.08); min-height: 0; }
 .dp-side h3 { margin: 0 0 4px; font-family: var(--cond); font-size: 15px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); }
 .dp-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; }
-.dp-opt { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3px solid var(--own); }
-.dp-opt.on { background: rgba(226, 172, 70, 0.18); border-color: rgba(226, 172, 70, 0.6); border-left-color: var(--amber); }
+.dp-opt { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); }
+.dp-opt.on { background: rgba(226, 172, 70, 0.18); border-color: rgba(226, 172, 70, 0.6); }
 .dp-opt b { font-family: var(--cond); font-size: 18px; }
 .dp-opt span { font-size: 12px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dp-opt em { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
@@ -374,7 +374,7 @@ canvas.game {
   width: 230px;
   padding: 10px 12px;
   background: rgba(14, 15, 12, 0.72);
-  border-left: 2px solid var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -526,7 +526,7 @@ canvas.game {
 .pause-tip { margin-top: 4px; text-align: center; font-size: 11px; color: var(--ink-dim); letter-spacing: 0.04em; }
 /* After Esc closes the menu: the battle waits for a click or a key. */
 .pause-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.pause-wait > div { padding: 12px 18px; background: rgba(13, 14, 12, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 2px solid var(--amber); font-family: var(--cond); font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; }
+.pause-wait > div { padding: 12px 18px; background: rgba(13, 14, 12, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); font-family: var(--cond); font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; }
 
 /* Settings pages (main menu and pause menu). */
 .set-view .row { margin: 0 0 14px; }
@@ -548,7 +548,7 @@ canvas.game {
 .set-link .go { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 22px; color: var(--accent); }
 .set-view .set-intro { margin: 0 0 14px; }
 .set-view .set-group { margin: 18px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: var(--ink); }
-.set-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px; border-left: 2px solid var(--accent); background: rgba(201, 162, 74, 0.12); font-size: 13px; }
+.set-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px; background: rgba(201, 162, 74, 0.12); font-size: 13px; }
 .set-notice span { flex: 1; min-width: 0; }
 .set-view .set-notice button { padding: 4px 10px; }
 .keys-table { display: flex; flex-direction: column; }
@@ -675,10 +675,9 @@ canvas.game {
   text-align: left;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-left: 3px solid var(--army, #555);
 }
 .soldier-card:hover { background: rgba(226, 172, 70, 0.1); }
-.soldier-card.on { background: rgba(226, 172, 70, 0.18); border-color: rgba(226, 172, 70, 0.55); border-left-color: var(--amber); }
+.soldier-card.on { background: rgba(226, 172, 70, 0.18); border-color: rgba(226, 172, 70, 0.55); }
 .soldier-card .sc-emb { font-size: 28px; display: grid; place-items: center; color: var(--ink-dim); }
 .sc-text { display: flex; flex-direction: column; min-width: 0; }
 .sc-text b { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -686,7 +685,7 @@ canvas.game {
 .sc-rank { display: flex; align-items: center; gap: 3px; font-size: 20px; color: #d8cfb4; }
 .sc-rank i { font-style: normal; font-family: var(--cond); font-size: 13px; color: var(--ink-dim); }
 .sc-class { font-size: 18px; color: var(--ink-dim); }
-.soldier-card.recruit { border-style: dashed; border-left-style: solid; border-left-color: rgba(255, 255, 255, 0.2); }
+.soldier-card.recruit { border-style: dashed; }
 .soldier-card.recruit:disabled { opacity: 0.4; cursor: default; }
 .roster-foot { margin-top: auto; padding-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
 .roster-foot span { flex: 1 1 100%; }
@@ -774,8 +773,8 @@ canvas.game {
 /* Generals */
 .fe-generals { display: grid; grid-template-columns: 300px minmax(0, 1fr) 360px; gap: 14px; }
 .mission-list { display: flex; flex-direction: column; gap: 6px; }
-.mission-card { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 12px; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3px solid rgba(255, 255, 255, 0.16); }
-.mission-card.on { background: rgba(226, 172, 70, 0.16); border-color: rgba(226, 172, 70, 0.5); border-left-color: var(--amber); }
+.mission-card { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 12px; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); }
+.mission-card.on { background: rgba(226, 172, 70, 0.16); border-color: rgba(226, 172, 70, 0.5); }
 .mc-kind, .det-kind { font-family: var(--cond); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); }
 .mission-card b { font-family: var(--cond); font-size: 19px; font-weight: 600; letter-spacing: 0.03em; }
 .mission-card small { font-size: 12px; color: var(--ink-dim); line-height: 1.4; }

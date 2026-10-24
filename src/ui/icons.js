@@ -26,8 +26,6 @@ export function emblem(faction) {
   return svg(`<circle cx="12" cy="12" r="11" fill="#4b5228"/><circle cx="12" cy="12" r="9.6" fill="none" stroke="#f2f0ea" stroke-width="1.4"/><polygon points="${star(12, 12.6, 8.1)}" fill="#f2f0ea"/>`, '0 0 24 24', 'emblem');
 }
 
-export const ARMY_COLORS = { US: '#6f7a3f', GE: '#6f7d86', SU: '#a8402f' };
-
 export function classIcon(cls) {
   switch (cls) {
     case 'recon':

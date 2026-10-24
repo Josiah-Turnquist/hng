@@ -12,7 +12,7 @@ import { FACTIONS, WEAPONS, weaponsFor } from '../weapons/defs.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
-import { emblem, classIcon, rankBadge, ICONS, ARMY_COLORS } from './icons.js';
+import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
 import { loadRoster, saveRoster, selected, select, recruit, dismiss, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
 import { BattleMap } from './battleMap.js';
@@ -160,7 +160,6 @@ export function showFrontEnd(app) {
       for (const x of roster.soldiers) {
         const r = rankOf(x.xp);
         const card = el('button', `soldier-card${x.id === s.id ? ' on' : ''}`);
-        card.style.setProperty('--army', ARMY_COLORS[x.faction]);
         card.innerHTML = `<span class="sc-emb">${emblem(x.faction)}</span><span class="sc-text"><b></b><small></small></span><span class="sc-rank">${rankBadge(r.rank)}<i>${r.rank}</i></span><span class="sc-class" title="${CLASS_NAMES[x.cls]}">${classIcon(x.cls)}</span>`;
         card.querySelector('b').textContent = x.name;
         card.querySelector('small').textContent = `${rankTitle(x.faction, r.rank)} · ${CLASS_NAMES[x.cls]}`;
