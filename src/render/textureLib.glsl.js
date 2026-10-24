@@ -1108,14 +1108,18 @@ export const MATERIALS = {
     }`,
   vegHedgeCore: /* glsl */ `
     // The dense inside of a hedge seen from outside: small leaves over dark, shadowed
-    // twigs. Opaque and tiling (hedge cores, far hedges).
+    // twigs. Opaque and tiling (hedge cores, far hedges). One repeat covers 4 m of
+    // hedge, so 40 to 64 cells across make hawthorn and hazel leaves 6 to 10 cm long.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float deep = fbm01(uv, vec2(5.0), 4, 421.0);
-      albedo = mix(uPaintA * 0.22, uPaintA * 0.45, deep);
+      albedo = mix(uPaintA * 0.12, uPaintA * 0.3, deep);
+      // Twigs in the shadowed gaps between the leaves.
+      float tw = abs(fbm(uv * vec2(1.0, 3.0), vec2(24.0, 72.0), 3, 429.0));
+      albedo = mix(albedo, vec3(0.05, 0.04, 0.03), (1.0 - smoothstep(0.0, 0.05, tw)) * 0.8);
       height = 0.0;
       for (int k = 0; k < 4; k++) {
         float fk = float(k);
-        vec4 v = voronoiVec(uv + vec2(fk * 0.27, fk * 0.61), vec2(14.0 + fk * 4.0), 1.0, 422.0 + fk);
+        vec4 v = voronoiVec(uv + vec2(fk * 0.27, fk * 0.61), vec2(40.0 + fk * 8.0), 1.0, 422.0 + fk);
         float ang = v.w * 6.2831;
         vec2 d = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * v.xy;
         float shape = length(d * vec2(1.0, 1.8));

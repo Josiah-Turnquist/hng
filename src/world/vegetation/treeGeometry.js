@@ -784,8 +784,8 @@ export function hedgeGeometry(L, detail, seed = 1) {
     card(G, B, U, V, sz, sz, cell, { normal: cardNormal, color: cardColor, bend, flutter, phase: r.next() });
   };
   const leaf = () => (r.chance(0.7) ? CELL.hawthorn : r.chance(0.65) ? CELL.hazel : CELL.bramble);
-  const nTop = detail ? 7 : Math.round(L * 0.4);
-  const nSide = detail ? 7 : Math.round(L * 0.25);
+  const nTop = detail ? 8 : Math.round(L * 0.4);
+  const nSide = detail ? 16 : Math.round(L * 0.25);
   for (let k = 0; k < nTop; k++) {
     const x = x0 + ((k + r.range(0.1, 0.9)) / nTop) * L;
     const side = r.chance(0.5) ? 1 : -1;
@@ -798,7 +798,7 @@ export function hedgeGeometry(L, detail, seed = 1) {
     const side = r.chance(0.5) ? 1 : -1;
     const B = [x, r.range(coreBottom + 0.1, yTop - 0.35), side * (zc - 0.3)];
     const V = norm([r.range(-0.4, 0.4), r.range(0.15, 0.8), side]);
-    spray(B, V, detail ? r.range(1.1, 1.6) : r.range(1.8, 2.4), leaf());
+    spray(B, V, detail ? r.range(0.8, 1.3) : r.range(1.8, 2.4), leaf());
   }
   if (detail) {
     // Tall grass and ferns on the bank, brambles at its foot.
