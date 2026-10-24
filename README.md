@@ -17,7 +17,7 @@ To make a single HTML file you can open without a server: `npm run build` (write
 
 ### Battlefields
 
-- **Saint-Aubin-sur-Lenne (Assault).** A French village in a bend of the river Lenne, modeled on H&G's "Town" map: the police station (O1) and the church (O2), five attack lines (A to E) of four capture points each, three bridges (one blown), farms on every approach. Bots fill both sides, with tanks and anti-tank soldiers.
+- **Saint-Aubin-sur-Lenne (Assault).** A French village in a bend of the river Lenne, modeled on H&G's "Town" map: the police station (O1) and the church (O2), five attack lines (A to E) of four capture points each, three bridges (one blown), farms on every approach, and Normandy countryside of woods, orchards and bocage hedgerows. Bots fill both sides, with tanks and anti-tank soldiers.
 - **Proving Ground.** A firing range with paper targets and steel plates from 25 to 800 m, a penetration lane (planks, brick, sandbags, concrete, steel), target tanks at 200, 300 and 500 m, and a motor pool with every vehicle. A range card shows where each shot landed, its flight time, speed and energy.
 
 ### Controls
