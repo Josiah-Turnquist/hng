@@ -9,37 +9,289 @@
 <body>
 <div id="info"></div>
 <script type="module">
-// Atlas inspection (temporary first version).
+// The real game world (terrain, roads, river, village, vegetation, sky, cascaded
+// shadows, atmosphere and grading) seen from preset views.
+// URL parameters:
+//   map=town|range            quality=low|medium|high|ultra (default high)
+//   view=aerial|forest|edge|hedge|lane|wheat|orchard|poplars|horizon|top|range|inside
+//   cam=x,y,z,yawDeg,pitchDeg (free camera; yaw 0 looks north / -z)   look=x,y,z
+//   time=seconds (wind phase)  colliders=1 (vegetation collision boxes near the view)
+//   noveg=1 (hide the vegetation)  fov=55
+//   atlas=trees|ground (show a baked texture atlas instead; kind=map|normalMap|ormMap)
+//   show=impostors|atlas (the textures baked by the running world; kind=map|normalMap)
+//   bench=1&frames=600 (time veg.update() along a walk, printed as VEG_BENCH)
+// The vegetation draw calls / triangles / build times are printed as VEG_STATS.
 import * as THREE from 'three';
 import { TextureLibrary } from '../src/render/textures.js';
+import { World } from '../src/game/world.js';
+import { Pipeline } from '../src/render/pipeline.js';
+import { QUALITY_PRESETS } from '../src/core/settings.js';
+import { MAPS } from '../src/world/maps.js';
+import { SURF } from '../src/world/heightfield.js';
+import { ATLAS_CELLS, GROUND_CELLS } from '../src/world/vegetation/species.js';
 
 const params = new URLSearchParams(location.search);
 const info = document.getElementById('info');
 const W = innerWidth, H = innerHeight;
-const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
-renderer.setSize(W, H);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-document.body.appendChild(renderer.domElement);
-const textures = new TextureLibrary(renderer, { size: 512 });
-const t0 = performance.now();
-const cells = ['vegBarkOak', 'vegBarkBeech', 'vegBarkPine', 'vegBarkGrey', 'vegLeafOak', 'vegLeafBeech', 'vegLeafAsh', 'vegLeafPoplar', 'vegLeafApple', 'vegNeedleSpruce', 'vegNeedlePine', 'vegLeafHawthorn', 'vegLeafHazel', 'vegLeafBramble', 'vegHedgeCore', 'grass'];
-const ground = ['vegGrass', 'vegGrassDry', 'vegWheat', 'vegFern', 'vegFlowers', 'vegPoppies', 'vegTallGrass', 'vegWeeds'];
-const which = params.get('atlas') || 'trees';
-const cs = Number(params.get('cell') || 256);
-const at = which === 'ground' ? textures.atlas('vegGround', ground, { cols: 4, cellSize: cs, normals: false }) : textures.atlas('vegTrees', cells, { cols: 4, cellSize: cs });
-const t1 = performance.now();
-const kind = params.get('kind') || 'map';
-const scene = new THREE.Scene();
-const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, -1, 1);
-const aspect = at.cols / at.rows;
-const size = Math.min(W, H * aspect);
-const mat = new THREE.MeshBasicMaterial({ map: at[kind], transparent: kind === 'map' });
-const quad = new THREE.Mesh(new THREE.PlaneGeometry(size, size / aspect), mat);
-scene.add(quad);
-renderer.setClearColor(params.get('bg') || 0x6a7a8a);
-renderer.render(scene, cam);
-info.textContent = `atlas ${which} ${at.cols}x${at.rows} cells ${cs}px, baked in ${(t1 - t0).toFixed(0)} ms`;
-window.__done = true;
+
+if (params.get('atlas')) {
+  const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+  renderer.setSize(W, H);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+  const textures = new TextureLibrary(renderer, { size: 512 });
+  const t0 = performance.now();
+  const which = params.get('atlas');
+  const cs = Number(params.get('cell') || 256);
+  const at = which === 'ground' ? textures.atlas('vegetationGround', GROUND_CELLS, { cols: 4, cellSize: cs, normals: false }) : textures.atlas('vegetation', ATLAS_CELLS, { cols: 4, cellSize: cs });
+  const t1 = performance.now();
+  const kind = params.get('kind') || 'map';
+  const scene = new THREE.Scene();
+  const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, -1, 1);
+  const aspect = at.cols / at.rows;
+  const size = Math.min(W, H * aspect);
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(size, size / aspect), new THREE.MeshBasicMaterial({ map: at[kind], transparent: kind === 'map' })));
+  renderer.setClearColor(params.get('bg') || 0x6a7a8a);
+  renderer.render(scene, cam);
+  info.textContent = `atlas ${which} ${at.cols}x${at.rows} cells ${cs}px, baked in ${(t1 - t0).toFixed(0)} ms`;
+  window.__done = true;
+} else {
+  await run();
+}
+
+async function run() {
+  const qname = params.get('quality') || 'high';
+  const quality = { ...QUALITY_PRESETS[qname] };
+  const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance', stencil: false });
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  document.body.appendChild(renderer.domElement);
+  const camera = new THREE.PerspectiveCamera(Number(params.get('fov') || 55), W / H, 0.1, quality.viewDistance);
+  camera.rotation.order = 'YXZ';
+  const def = MAPS[params.get('map') || 'town'];
+  const world = new World(renderer, camera, { quality }, def);
+  const t0 = performance.now();
+  await world.build((p, msg) => (info.textContent = `${Math.round(p * 100)}% ${msg}`));
+  const tBuild = performance.now() - t0;
+  const veg = world.vegetation;
+  const pipeline = new Pipeline(renderer, quality);
+  pipeline.setSky(world.sky.skyCube);
+  pipeline.setSize(W, H, 1);
+  if (params.has('noveg')) veg.group.visible = false;
+
+  // ---- Views ------------------------------------------------------------------------
+  const hf = world.hf;
+  const gy = (x, z) => hf.getHeight(x, z);
+  const site = veg.site;
+  const target = new THREE.Vector3();
+  const lm = veg.landmarks;
+  const pos = (x, z, h) => new THREE.Vector3(x, gy(x, z) + h, z);
+  const look = (from, to) => {
+    camera.position.copy(from);
+    target.copy(to);
+  };
+  // Forest edge: walk from a point toward a forest region until the woods start.
+  const forestEdge = () => {
+    const f = def.forests[0];
+    const from = def.village ? [def.village.x, def.village.z] : [0, 0];
+    const dx = f.x - from[0], dz = f.z - from[1];
+    const L = Math.hypot(dx, dz);
+    for (let s = 0; s < L; s += 2) {
+      const x = from[0] + (dx * s) / L, z = from[1] + (dz * s) / L;
+      if (site.forest(x, z) > 0.02) return { x, z, ux: dx / L, uz: dz / L };
+    }
+    return { x: f.x, z: f.z, ux: dx / L, uz: dz / L };
+  };
+  const nearCenter = (runs, pred) => runs.filter(pred).sort((a, b) => Math.hypot(...a.pts[0]) - Math.hypot(...b.pts[0]))[0];
+  const views = {
+    aerial: () => (def.village && def.objectives ? look(pos(95, 165, 85), pos(-12, 8, 0)) : look(pos(0, 200, 120), pos(0, -150, 0))),
+    top: () => look(new THREE.Vector3(0, 700, 1), new THREE.Vector3(0, 0, 0)),
+    forest: () => {
+      const e = forestEdge();
+      look(pos(e.x - e.ux * 26, e.z - e.uz * 26, 1.7), pos(e.x + e.ux * 20, e.z + e.uz * 20, 4));
+    },
+    inside: () => {
+      const e = forestEdge();
+      look(pos(e.x + e.ux * 40, e.z + e.uz * 40, 1.7), pos(e.x + e.ux * 80 - e.uz * 20, e.z + e.uz * 80 + e.ux * 20, 3));
+    },
+    edge: () => {
+      const e = forestEdge();
+      look(pos(e.x - e.ux * 70 + e.uz * 40, e.z - e.uz * 70 - e.ux * 40, 12), pos(e.x + e.ux * 10, e.z + e.uz * 10, 6));
+    },
+    hedge: () => {
+      const r = nearCenter(veg.hedges, (h) => !h.road && h.len > 40 && Math.hypot(...h.pts[0]) < 500) || veg.hedges[0];
+      const [a, b] = [r.pts[0], r.pts[r.pts.length - 1]];
+      const ux = (b[0] - a[0]) / r.len, uz = (b[1] - a[1]) / r.len;
+      const m = [a[0] + ux * r.len * 0.15, a[1] + uz * r.len * 0.15];
+      look(pos(m[0] - uz * 7 - ux * 6, m[1] + ux * 7 - uz * 6, 1.7), pos(m[0] + ux * 30 - uz * 1.5, m[1] + uz * 30 + ux * 1.5, 1.6));
+    },
+    lane: () => {
+      // On a road with a hedge beside it: stand on the road's center line nearby.
+      const r = nearCenter(veg.hedges, (h) => h.road && h.len > 60 && Math.hypot(...h.pts[0]) > 250 && Math.hypot(...h.pts[0]) < 700) || veg.hedges[0];
+      const p = r.pts[Math.min(3, r.pts.length - 1)];
+      let best = null;
+      for (const road of world.terrain.roads) road.samples.forEach((q, i) => {
+        const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (!best || d < best.d) best = { d, road, i };
+      });
+      const sm = best.road.samples;
+      const q0 = sm[best.i], q1 = sm[Math.min(sm.length - 1, best.i + 10)];
+      const e = r.pts[r.pts.length - 1];
+      const dir = Math.sign((q1[0] - q0[0]) * (e[0] - p[0]) + (q1[1] - q0[1]) * (e[1] - p[1])) || 1;
+      const q2 = sm[Math.max(0, Math.min(sm.length - 1, best.i + dir * 20))];
+      look(pos(q0[0], q0[1], 1.75), pos(q2[0], q2[1], 1.6));
+    },
+    wheat: () => {
+      let best = null;
+      for (let k = 0; k < 4000 && !best; k++) {
+        const x = Math.cos(k * 2.4) * (40 + k * 0.15), z = Math.sin(k * 2.4) * (40 + k * 0.15);
+        if (hf.getSurface(x, z) !== SURF.WHEAT) continue;
+        let ok = true;
+        for (let a = 0; a < 8 && ok; a++) for (const r of [10, 22]) if (hf.getSurface(x + Math.cos(a) * r, z + Math.sin(a) * r) !== SURF.WHEAT) ok = false;
+        if (ok) best = [x, z];
+      }
+      best ??= [0, 0];
+      look(pos(best[0], best[1], 1.65), pos(best[0] + 30, best[1] - 25, 0.8));
+    },
+    orchard: () => {
+      const o = lm.orchards[0];
+      if (!o) return views.aerial();
+      const c = Math.cos(o.yaw), s = Math.sin(o.yaw);
+      const L = (lx, lz) => [o.x + c * lx + s * lz, o.z - s * lx + c * lz];
+      const a = L(o.w / 2 + 10, o.d / 2 + 6), b = L(-o.w / 4, -o.d / 4);
+      look(pos(a[0], a[1], 2.2), pos(b[0], b[1], 2.5));
+    },
+    poplars: () => {
+      const p = lm.poplars[0];
+      if (!p) return views.aerial();
+      const [a, b] = [p.from, p.to];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+      look(pos(a[0] - ux * 30 + uz * 6, a[1] - uz * 30 - ux * 6, 1.8), pos(b[0], b[1], 10));
+    },
+    horizon: () => (def.id === 'range' ? look(pos(300, 300, 30), pos(-400, -300, 0)) : look(pos(600, 150, 6), pos(-300, -100, 10))),
+    range: () => look(pos(0, 10, 1.8), pos(0, -200, 1.2)),
+  };
+  const viewName = params.get('view') || (def.id === 'range' ? 'range' : 'aerial');
+  const cam = params.get('cam');
+  if (cam) {
+    const [x, y, z, yaw, pitch] = cam.split(',').map(Number);
+    camera.position.set(x, y, z);
+    const lk = params.get('look');
+    if (lk) target.set(...lk.split(',').map(Number));
+    else {
+      const yr = ((yaw || 0) * Math.PI) / 180, pr = ((pitch || 0) * Math.PI) / 180;
+      target.set(x - Math.sin(yr) * Math.cos(pr) * 10, y + Math.sin(pr) * 10, z - Math.cos(yr) * Math.cos(pr) * 10);
+    }
+  } else (views[viewName] || views.aerial)();
+  camera.lookAt(target);
+  camera.updateMatrixWorld();
+  world.shadows.updateFrustums();
+
+  if (params.get('colliders')) {
+    const pts = [], colors = [];
+    const E = [[-1,-1,-1, 1,-1,-1],[-1,1,-1, 1,1,-1],[-1,-1,1, 1,-1,1],[-1,1,1, 1,1,1],[-1,-1,-1, -1,1,-1],[1,-1,-1, 1,1,-1],[-1,-1,1, -1,1,1],[1,-1,1, 1,1,1],[-1,-1,-1, -1,-1,1],[1,-1,-1, 1,-1,1],[-1,1,-1, -1,1,1],[1,1,-1, 1,1,1]];
+    const corner = (b, sx, sy, sz) => [0, 1, 2].map((k) => [b.cx, b.cy, b.cz][k] + b.ax[k] * b.hx * sx + b.ay[k] * b.hy * sy + b.az[k] * b.hz * sz);
+    const col = { wood: [0.3, 1, 0.3], foliage: [0.1, 0.6, 1], soil: [1, 0.6, 0.2] };
+    const ref = target.clone().lerp(camera.position, 0.5);
+    for (const b of world.collision.boxes) {
+      if (!col[b.material] || Math.hypot(b.cx - ref.x, b.cz - ref.z) > 70) continue;
+      for (const e of E) {
+        pts.push(...corner(b, e[0], e[1], e[2]), ...corner(b, e[3], e[4], e[5]));
+        colors.push(...col[b.material], ...col[b.material]);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    world.scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true })));
+  }
+
+  // ?show=impostors|atlas: draw a baked texture of the running world instead.
+  if (params.get('show')) {
+    const tex = params.get('show') === 'atlas' ? veg.atlas[params.get('kind') || 'map'] : veg.impostors[params.get('kind') || 'map'];
+    const sc = new THREE.Scene();
+    const oc = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, -1, 1);
+    sc.add(new THREE.Mesh(new THREE.PlaneGeometry(Math.min(W, H), Math.min(W, H)), new THREE.MeshBasicMaterial({ map: tex, transparent: true })));
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(0x6a7a8a);
+    renderer.render(sc, oc);
+    info.textContent = params.get('show');
+    const gl = renderer.getContext();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    window.__done = true;
+    return;
+  }
+
+  // ?bench=1: time veg.update() along a path (walking 6 m/s, turning), no rendering.
+  if (params.get('bench')) {
+    const frames = Number(params.get('frames') || 600);
+    const ts = [];
+    const worst = {};
+    const p0 = camera.position.clone();
+    for (let f = 0; f < frames; f++) {
+      const t = f / 60;
+      camera.position.set(p0.x + t * 6, 0, p0.z - t * 2);
+      camera.position.y = world.hf.getHeight(camera.position.x, camera.position.z) + 1.7;
+      camera.rotation.set(-0.05, t * 0.9 + Math.sin(t * 3) * 0.6, 0, 'YXZ');
+      camera.updateMatrixWorld();
+      const a = performance.now();
+      veg.update(camera.position, t);
+      ts.push(performance.now() - a);
+      if (f > 0) for (const k in veg.timing) worst[k] = Math.max(worst[k] || 0, veg.timing[k]);
+    }
+    ts.sort((x, y) => x - y);
+    const avg = ts.reduce((x, y) => x + y, 0) / ts.length;
+    const res = { frames, avgMs: +avg.toFixed(3), p50: +ts[Math.floor(ts.length * 0.5)].toFixed(3), p95: +ts[Math.floor(ts.length * 0.95)].toFixed(3), p99: +ts[Math.floor(ts.length * 0.99)].toFixed(2), top: ts.slice(-6).map((v) => +v.toFixed(1)), worstAfterFirst: Object.fromEntries(Object.entries(worst).map(([k, v]) => [k, +v.toFixed(1)])) };
+    console.log('VEG_BENCH ' + JSON.stringify(res));
+    info.textContent = 'bench ' + JSON.stringify(res);
+    window.__done = true;
+    return;
+  }
+
+  // ---- Render ------------------------------------------------------------------------
+  const time = Number(params.get('time') || 12);
+  renderer.info.autoReset = false;
+  let frameInfo = null;
+  for (let f = 0; f < 2; f++) {
+    world.update(time + f / 60, camera.position);
+    world.shadows.update();
+    renderer.info.reset();
+    pipeline.render(world.scene, camera, null, null, time);
+    frameInfo = { calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+  }
+  const d = veg.debug();
+  const s = veg.stats;
+  const top = Object.entries(d.meshes).sort((a, b) => b[1].triangles - a[1].triangles).slice(0, 6).map(([k, v]) => `${k.replace('vegetation:', '')} ${v.instances}/${(v.triangles / 1000).toFixed(0)}k`).join(', ');
+  const lines = [
+    `${def.id} ${qname} view ${cam ? 'cam' : viewName}  cam ${camera.position.toArray().map((v) => v.toFixed(1)).join(',')}`,
+    `vegetation: ${d.drawCalls} draw calls, ${(d.triangles / 1000).toFixed(0)}k tris (main pass)  | ${top}`,
+    `plants ${s.plants} (trees ${s.trees}, bushes ${s.bushes}), hedges ${s.hedgeKm} km in ${s.hedgeRuns} runs, ground cover ${veg.ground.count} clumps`,
+    `colliders ${s.colliders.total}: trunks ${s.colliders.trunks}, crowns ${s.colliders.crowns}, bushes ${s.colliders.bushes}, hedge banks ${s.colliders.hedgeBanks} + tops ${s.colliders.hedgeTops}`,
+    `vegetation build ${s.buildMs} ms (placement ${s.placeMs}, collision ${s.collisionMs}, textures ${s.textureMs}); world build ${tBuild.toFixed(0)} ms`,
+    `whole frame incl. shadows and post: ${frameInfo.calls} calls, ${(frameInfo.tris / 1000).toFixed(0)}k tris`,
+  ];
+  info.textContent = lines.join('\n');
+  console.log('VEG_STATS ' + JSON.stringify({ view: cam ? 'cam' : viewName, quality: qname, map: def.id, drawCalls: d.drawCalls, triangles: d.triangles, meshes: d.meshes, frame: frameInfo, stats: { ...s, variants: undefined, lod: undefined }, ground: veg.ground.count, worldMs: Math.round(tBuild) }));
+  // The same per kind of mesh (draw calls, instances, triangles), short enough for a log line.
+  const groups = {};
+  for (const [k, v] of Object.entries(d.meshes)) {
+    const n = k.replace('vegetation:', '');
+    const g = ['impostors', 'hedgeNear', 'hedgeFar', 'ground'].includes(n) ? n : /^(hazel|hawthorn|bramble)/.test(n) ? 'bushes' : 'trees';
+    const e = (groups[g] ??= [0, 0, 0]);
+    e[0]++;
+    e[1] += v.instances;
+    e[2] += v.triangles;
+  }
+  console.log('VEG_SUMMARY ' + JSON.stringify({ view: cam ? 'cam' : viewName, quality: qname, map: def.id, calls: d.drawCalls, tris: d.triangles, groups, frame: frameInfo, build: [s.buildMs, s.placeMs, s.collisionMs, s.textureMs], colliders: s.colliders, worldMs: Math.round(tBuild) }));
+  // Wait for the GPU to finish (software rendering is slow) before saying we're done.
+  const gl = renderer.getContext();
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  window.__veg = { world, veg, camera, pipeline, renderer };
+  window.__done = true;
+}
 </script>
 </body>
 </html>

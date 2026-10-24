@@ -10,6 +10,7 @@ import { Shadows } from '../render/shadows.js';
 import { TextureLibrary } from '../render/textures.js';
 import { Atmosphere } from '../ballistics/atmosphere.js';
 import { planVillage, buildVillage } from '../world/village/index.js';
+import { buildVegetation } from '../world/vegetation.js';
 import { RNG } from '../core/math.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -88,6 +89,13 @@ export class World {
       this.scene.add(this.village.group);
       console.log(`village built in ${Math.round(performance.now() - t0)} ms`, this.village.stats);
     }
+
+    progress(0.85, 'Planting trees and hedges');
+    await nextFrame();
+    this.vegetation = buildVegetation({ terrain: this.terrain, def: this.def, collision: this.collision, textures: this.textures, quality: q, village: this.village, plan: this.villagePlan, shadows: this.shadows, camera: this.camera });
+    this.scene.add(this.vegetation.group);
+    this.updaters.push((t, cam) => this.vegetation.update(cam, t));
+    console.log(`vegetation built in ${this.vegetation.stats.buildMs} ms`, this.vegetation.stats.colliders);
 
     progress(0.95, 'Final touches');
     await nextFrame();

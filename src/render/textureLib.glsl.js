@@ -921,7 +921,7 @@ export const MATERIALS = {
       } else if (style < 1.5) {
         float marks = smoothstep(0.8, 0.95, vnoise(uv * vec2(5.0, 48.0), vec2(5.0, 48.0), 408.0));
         float blot = smoothstep(0.5, 0.8, fbm01(uv, vec2(4.0), 4, 409.0));
-        col = mix(uPaintB, uPaintA, blot * 0.55 + big * 0.2) * (0.94 + 0.1 * fine);
+        col = mix(uPaintB, uPaintA, blot * 0.28 + big * 0.3) * (0.94 + 0.1 * fine);
         col *= 1.0 - marks * 0.2;
         h = fine * 0.0015 + big * 0.002 - marks * 0.001;
         rough = 0.74;

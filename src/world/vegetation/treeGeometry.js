@@ -219,6 +219,18 @@ function ellipsoidExit(o, d, c, r) {
   return Math.max(0, (-Bq + Math.sqrt(disc)) / (2 * A));
 }
 
+// A point on the outer shell of an ellipsoid crown (rn: radial fraction range),
+// avoiding the flat underside.
+function shellPoint(C, R, r, rn = [0.65, 1.0], minY = -0.7) {
+  for (let k = 0; k < 20; k++) {
+    const u = randUnit(r);
+    if (u[1] < minY) continue;
+    const t = r.range(rn[0], rn[1]);
+    return [C[0] + u[0] * R[0] * t, C[1] + u[1] * R[1] * t, C[2] + u[2] * R[2] * t];
+  }
+  return [C[0], C[1] + R[1] * 0.8, C[2]];
+}
+
 function bezier(a, b, c, n) {
   const out = [];
   for (let i = 0; i <= n; i++) {
@@ -249,8 +261,9 @@ function crownStyle(C, R, H, r, flutter) {
 }
 
 // A cluster of foliage cards around point p, spraying outward from the crown.
-function cluster(G, p, cell, size, style, r, { cards = 3, up = 0.35, out = 0.75, spread = 0.55, shade = 1, tint = [1, 1, 1] } = {}) {
-  const C = style.center;
+function cluster(G, p, cell, size, style, r, { cards = 3, face = 0.6, shade = 1, tint = [1, 1, 1], spin = 1.1 } = {}) {
+  // Cards face out of the crown (tilted at random), so a crown seen from any side
+  // shows the faces of the sprays on that side; the sprays point roughly upward.
   const o = norm(style.normal(p));
   const phase = r.next();
   const s = shade * r.range(0.88, 1.1);
@@ -260,15 +273,18 @@ function cluster(G, p, cell, size, style, r, { cards = 3, up = 0.35, out = 0.75,
     return [ao * tint[0] * (1 + warm), ao * tint[1] * (1 + warm * 0.5), ao * tint[2] * (1 - warm)];
   };
   for (let k = 0; k < cards; k++) {
-    const V = norm(add(add(scl(o, out), scl(randUnit(r), spread)), [0, up, 0]));
-    let U = cross(V, randUnit(r));
-    if (length(U) < 0.1) U = cross(V, [1, 0, 0]);
-    U = norm(U);
+    const n = norm(add(scl(o, face), scl(randUnit(r), 1 - face * 0.6)));
+    let V = sub(UP, scl(n, dot(UP, n)));
+    if (length(V) < 0.15) V = cross(n, [1, 0, 0]);
+    V = norm(V);
+    const U0 = norm(cross(V, n));
+    const a = r.range(-spin, spin);
+    const V2 = norm(add(scl(V, Math.cos(a)), scl(U0, Math.sin(a))));
+    const U2 = norm(cross(V2, n));
     const sz = size * r.range(0.85, 1.15);
-    const B = madd(p, V, -sz * 0.38);
-    card(G, B, U, V, sz, sz, cell, { normal: style.normal, color: col, bend: style.bend, flutter: style.flutter, phase });
+    const B = madd(madd(p, V2, -sz * 0.45), n, r.range(-0.25, 0.25));
+    card(G, B, U2, V2, sz, sz, cell, { normal: style.normal, color: col, bend: style.bend, flutter: style.flutter, phase });
   }
-  void C;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -346,6 +362,10 @@ function broadleaf(G, sp, r) {
   const cl = tips.slice();
   let guard = 0;
   while (cl.length < sp.clusters && guard++ < 500) {
+    if (r.chance(0.5)) {
+      cl.push(shellPoint(C, R, r, [0.62, 1.0], -0.65));
+      continue;
+    }
     const t = tips[r.int(0, tips.length - 1)];
     const p = madd(t, randUnit(r), r.range(0.6, 2.6));
     const q = [(p[0] - C[0]) / R[0], (p[1] - C[1]) / R[1], (p[2] - C[2]) / R[2]];
@@ -420,13 +440,13 @@ function spruce(G, sp, r) {
       const L = Rr * r.range(0.9, 1.12);
       const P = madd(at(y), d, 0.1);
       const lat = norm(cross(d, UP));
-      const roll = r.range(-0.4, 0.4);
+      const roll = (r.chance(0.5) ? 1 : -1) * r.range(0.35, 0.8);
       const U = norm(add(scl(lat, Math.cos(roll)), scl(cross(d, lat), Math.sin(roll))));
-      const w = Math.max(1.0, L * 0.8);
+      const w = Math.max(1.2, L * 0.95);
       const o = { normal, color, bend, flutter: sp.flutter, phase: r.next() };
       card(G, P, U, d, w, L * 1.06, CELL.spruce, o);
       if (t < 0.8 && r.chance(0.8)) {
-        const U2 = norm(add(scl(lat, Math.cos(roll + 1.25)), scl(cross(d, lat), Math.sin(roll + 1.25))));
+        const U2 = norm(add(scl(lat, Math.cos(roll + 1.45)), scl(cross(d, lat), Math.sin(roll + 1.45))));
         card(G, P, U2, d, w * 0.85, L, CELL.spruce, o);
       }
       if (t < 0.35 && r.chance(0.5)) tube(G, [P, madd(P, d, L * 0.6)], [0.05, 0.015], { ...barkStyle, sides: 3, stretch: 'fit' });
@@ -510,8 +530,8 @@ function pine(G, sp, r) {
   tips.push(at(topY));
   const cl = tips.slice();
   let guard = 0;
-  while (cl.length < sp.clusters && guard++ < 300) cl.push(madd(tips[r.int(0, tips.length - 1)], randUnit(r), r.range(0.5, 1.6)));
-  for (const p of cl) cluster(G, p, CELL.pine, r.range(sp.card[0], sp.card[1]), style, r, { cards: 3, up: 0.8, out: 0.45, spread: 0.45 });
+  while (cl.length < sp.clusters && guard++ < 300) cl.push(r.chance(0.45) ? shellPoint(C, R, r, [0.55, 1.0], -0.5) : madd(tips[r.int(0, tips.length - 1)], randUnit(r), r.range(0.5, 1.6)));
+  for (const p of cl) cluster(G, p, CELL.pine, r.range(sp.card[0], sp.card[1]), { ...style, normal: (q) => norm(add(style.normal(q), [0, 0.8, 0])) }, r, { cards: 3, face: 0.7 });
   return { H, C, R, trunkR: r0, crownBase: clear };
 }
 
@@ -554,6 +574,10 @@ function poplar(G, sp, r) {
   const cl = tips.slice();
   let guard = 0;
   while (cl.length < sp.clusters && guard++ < 400) {
+    if (r.chance(0.6)) {
+      cl.push(shellPoint(C, R, r, [0.5, 1.0], -0.95));
+      continue;
+    }
     const t = tips[r.int(0, tips.length - 1)];
     const p = madd(t, randUnit(r), r.range(0.4, 1.8));
     const q = [(p[0] - C[0]) / R[0], (p[1] - C[1]) / R[1], (p[2] - C[2]) / R[2]];
@@ -561,7 +585,7 @@ function poplar(G, sp, r) {
     const rt = clamp(rn, 0.55, 0.98) / rn;
     cl.push([C[0] + q[0] * rt * R[0], C[1] + q[1] * rt * R[1], C[2] + q[2] * rt * R[2]]);
   }
-  for (const p of cl) cluster(G, p, CELL.poplar, r.range(sp.card[0], sp.card[1]), style, r, { cards: 3, up: 0.9, out: 0.55, spread: 0.4 });
+  for (const p of cl) cluster(G, p, CELL.poplar, r.range(sp.card[0], sp.card[1]), style, r, { cards: 3, face: 0.78, spin: 0.5 });
   return { H, C, R, trunkR: r0, crownBase: H * 0.07 };
 }
 
@@ -610,7 +634,7 @@ function bush(G, sp, r) {
     cl.push([C[0] + q[0] * rt * R[0], Math.max(0.35, C[1] + q[1] * rt * R[1]), C[2] + q[2] * rt * R[2]]);
   }
   const size = sp.shape === 'hazel' ? [1.25, 1.55] : sp.shape === 'hawthorn' ? [1.1, 1.35] : [1.05, 1.3];
-  const opts = sp.shape === 'bramble' ? { cards: 2, up: 0.15, out: 0.85, spread: 0.5 } : { cards: 2, up: 0.4 };
+  const opts = sp.shape === 'bramble' ? { cards: 2, face: 0.7 } : { cards: 2, face: 0.6 };
   for (const p of cl) cluster(G, p, CELL[sp.leaf], r.range(size[0], size[1]), style, r, opts);
   return { H, C, R, trunkR: 0.05, crownBase: 0.3 };
 }
@@ -646,34 +670,45 @@ export function buildVariant(variantId) {
 
 export const HEDGE = { bankH: 1.0, coreBottom: 0.85, coreH: 1.55, coreW: 0.62 };
 
+// L: section length (4 m near, 16 m far). The top of the dense core rises and falls
+// along the section (back to the same height at both ends, so sections join), and
+// leaf sprays stand out of the top and sides to break up the outline. Near sections
+// also get end caps, tall grass and ferns on the bank and brambles at its foot.
 export function hedgeGeometry(L, detail, seed = 1) {
   const r = new RNG(seed);
   const G = new GeoBuilder();
   const { bankH, coreBottom, coreH, coreW } = HEDGE;
   const x0 = -L / 2;
-  const segs = detail ? Math.max(1, Math.round(L / 4)) : 1;
+  const segs = detail ? 2 : Math.max(1, Math.round(L / 4));
+  const seg = L / segs;
+  const ridge = [0];
+  for (let i = 1; i < segs; i++) ridge.push(r.range(-0.25, 0.4));
+  ridge.push(0);
+  const ridgeAt = (x) => {
+    const f = clamp((x - x0) / seg, 0, segs - 1e-6);
+    const i = Math.floor(f);
+    return lerp(ridge[i], ridge[i + 1], f - i);
+  };
   const bend = (p) => clamp((p[1] - coreBottom) / 2.2, 0, 1) * 0.25;
-  // Bank: two slopes and a flat top, as profile points (z, y) across.
-  const prof = [
-    [-1.55, -0.6],
-    [-0.62, bankH],
-    [0.62, bankH],
-    [1.55, -0.6],
-  ];
   const bankCell = cellRect(CELL.bank, 0.02);
   const coreCell = cellRect(CELL.hedgeCore, 0.02);
-  // A strip of quads along the hedge: fn(s, t) -> { p, nrm } with s along (0..1) and
-  // t across the face (0..1). Each of the n segments maps to one atlas cell width;
-  // vr: the face size in cell repeats (across).
-  const quadStrip = (fn, cellR, n, shade, vr) => {
+  // A face across the hedge (profile from (za, ya) to (zb, yb), each end raised by
+  // the ridge where asked), split along the hedge into n segments, one texture
+  // repeat (4 m) each, or stretched over the whole length when n is 1 and L > 4.
+  const face = (za, ya, zb, yb, cellR, n, vr, shade, nrm, ra = 0, rb = 0) => {
+    const sl = L / n;
     for (let i = 0; i < n; i++) {
       const base = G.n;
-      for (const [s, uu] of [
-        [i / n, 0],
-        [(i + 1) / n, 1],
+      for (const [xx, uu] of [
+        [x0 + i * sl, 0],
+        [x0 + (i + 1) * sl, Math.min(1, sl / 4)],
       ]) {
-        for (const t of [0, 1]) {
-          const { p, nrm } = fn(s, t);
+        const rr = ridgeAt(xx);
+        for (const [t, z, y] of [
+          [0, za, ya + rr * ra],
+          [1, zb, yb + rr * rb],
+        ]) {
+          const p = [xx, y, z];
           G.v(p, nrm, cellR[0] + (cellR[2] - cellR[0]) * uu, cellR[1] + (cellR[3] - cellR[1]) * t * vr, shade(p), bend(p), 0, 0);
         }
       }
@@ -682,39 +717,38 @@ export function hedgeGeometry(L, detail, seed = 1) {
     }
   };
   const bankShade = (p) => {
-    const k = 0.78 + 0.2 * clamp(p[1] / bankH, 0, 1);
+    const k = 0.58 + 0.27 * clamp(p[1] / bankH, 0, 1);
     return [k, k, k];
   };
+  const coreShade = (p) => {
+    const k = 0.6 + 0.4 * clamp((p[1] - coreBottom) / coreH, 0, 1);
+    return [k, k, k];
+  };
+  // Bank: two slopes and a flat top (partly buried, so it sits on uneven ground).
+  const prof = [
+    [-1.55, -0.6],
+    [-0.62, bankH],
+    [0.62, bankH],
+    [1.55, -0.6],
+  ];
   for (let f = 0; f < 3; f++) {
     const [za, ya] = prof[f],
       [zb, yb] = prof[f + 1];
     const nz = yb - ya,
       ny = -(zb - za);
-    const nl = Math.hypot(nz, ny);
-    const nrm = [0, ny / nl, nz / nl];
-    // Make the outward direction point away from the bank center (positive y always).
-    const out = nrm[1] < 0 ? scl(nrm, -1) : nrm;
-    quadStrip((s, t) => ({ p: [x0 + s * L, lerp(ya, yb, t), lerp(za, zb, t)], nrm: out }), bankCell, segs, bankShade, Math.min(1, Math.hypot(zb - za, yb - ya) / 3));
+    let nrm = norm([0, ny, nz]);
+    if (nrm[1] < 0) nrm = scl(nrm, -1);
+    face(za, ya, zb, yb, bankCell, 1, Math.min(1, Math.hypot(zb - za, yb - ya) / 3), bankShade, nrm);
   }
-  // Core: two sides and a ridged top, opaque leafy texture.
-  const zc = coreW,
-    yTop = coreBottom + coreH;
-  const coreShade = (p) => {
-    const k = 0.62 + 0.38 * clamp((p[1] - coreBottom) / coreH, 0, 1);
-    return [k, k, k];
-  };
-  const faces = [
-    [[-zc, coreBottom], [-zc * 0.85, yTop], [-0.45, 0.25]],
-    [[-zc * 0.85, yTop], [0, yTop + 0.3], [-0.3, 1]],
-    [[0, yTop + 0.3], [zc * 0.85, yTop], [0.3, 1]],
-    [[zc * 0.85, yTop], [zc, coreBottom], [0.45, 0.25]],
-  ];
-  for (const [[za, ya], [zb, yb], [nzz, nyy]] of faces) {
-    const nrm = norm([0, nyy, nzz]);
-    quadStrip((s, t) => ({ p: [x0 + s * L, lerp(ya, yb, t), lerp(za, zb, t)], nrm }), coreCell, segs, coreShade, Math.min(1, Math.hypot(zb - za, yb - ya) / 4));
-  }
+  // Core: two sides and a ridged top.
+  const yTop = coreBottom + coreH;
+  const zc = coreW;
+  face(-zc, coreBottom, -zc * 0.85, yTop, coreCell, segs, 0.4, coreShade, norm([0, 0.25, -0.45]), 0, 1);
+  face(-zc * 0.85, yTop, 0, yTop + 0.3, coreCell, segs, 0.2, coreShade, norm([0, 1, -0.3]), 1, 1);
+  face(0, yTop + 0.3, zc * 0.85, yTop, coreCell, segs, 0.2, coreShade, norm([0, 1, 0.3]), 1, 1);
+  face(zc * 0.85, yTop, zc, coreBottom, coreCell, segs, 0.4, coreShade, norm([0, 0.25, 0.45]), 1, 0);
   // End caps (hidden inside the next section, visible where a hedge ends).
-  for (const sx of [-1, 1]) {
+  for (const sx of detail ? [-1, 1] : []) {
     const x = (sx * L) / 2;
     const pts = [
       [x, coreBottom, -zc],
@@ -728,49 +762,63 @@ export function hedgeGeometry(L, detail, seed = 1) {
       [x, bankH, -0.62],
     ];
     const base = G.n;
-    for (const p of pts) G.v(p, [sx, 0.2, 0], coreCell[0] + (coreCell[2] - coreCell[0]) * (0.5 + p[2] / 3.2), coreCell[1] + (coreCell[3] - coreCell[1]) * clamp(p[1] / 3, 0, 1), coreShade(p), bend(p), 0, 0);
-    const tris = [
+    for (const p of pts) G.v(p, [sx, 0.2, 0], coreCell[0] + (coreCell[2] - coreCell[0]) * (0.5 + p[2] / 3.2), coreCell[1] + (coreCell[3] - coreCell[1]) * clamp(p[1] / 4, 0, 1), coreShade(p), bend(p), 0, 0);
+    for (const [a, b, c] of [
       [0, 1, 2],
       [0, 2, 3],
       [0, 3, 4],
       [8, 5, 6],
       [8, 6, 7],
-    ];
-    for (const [a, b, c] of tris) sx > 0 ? G.tri(base + a, base + b, base + c) : G.tri(base + a, base + c, base + b);
+    ])
+      sx > 0 ? G.tri(base + a, base + b, base + c) : G.tri(base + a, base + c, base + b);
   }
-  // Leaf sprays on the top and the sides.
-  const nCards = detail ? Math.round(L * 3.6) : Math.round(L * 0.5);
+  // Leaf sprays standing out of the top and the sides.
   const cardNormal = (p) => norm([0, 0.55 + (p[1] - yTop) * 0.4, p[2] * 1.1]);
   const cardColor = (p) => {
-    const k = 0.6 + 0.4 * clamp((p[1] - coreBottom) / (coreH + 0.5), 0, 1);
+    const k = 0.58 + 0.42 * clamp((p[1] - coreBottom) / (coreH + 0.8), 0, 1);
     return [k, k, k];
   };
-  for (let k = 0; k < nCards; k++) {
-    const x = x0 + ((k + r.range(0.1, 0.9)) / nCards) * L;
-    const side = r.chance(0.5) ? 1 : -1;
-    const onTop = r.chance(detail ? 0.42 : 0.6);
-    const cell = r.chance(0.72) ? CELL.hawthorn : r.chance(0.6) ? CELL.hazel : CELL.bramble;
-    let B, V;
-    if (onTop) {
-      B = [x, yTop - 0.35 + r.range(-0.1, 0.15), side * r.range(0, 0.3)];
-      V = norm([r.range(-0.3, 0.3), 1, side * r.range(0.2, 0.9)]);
-    } else {
-      B = [x, r.range(coreBottom + 0.15, yTop - 0.3), side * (zc - 0.25)];
-      V = norm([r.range(-0.4, 0.4), r.range(0.15, 0.85), side]);
-    }
+  const spray = (B, V, sz, cell, flutter = 0.7) => {
     let U = norm(cross(V, randUnit(r)));
     if (!Number.isFinite(U[0])) U = [1, 0, 0];
-    const sz = (detail ? r.range(1.15, 1.7) : r.range(1.8, 2.4)) * (cell === CELL.bramble ? 0.85 : 1);
-    card(G, B, U, V, sz, sz, cell, { normal: cardNormal, color: cardColor, bend, flutter: 0.7, phase: r.next() });
+    card(G, B, U, V, sz, sz, cell, { normal: cardNormal, color: cardColor, bend, flutter, phase: r.next() });
+  };
+  const leaf = () => (r.chance(0.7) ? CELL.hawthorn : r.chance(0.65) ? CELL.hazel : CELL.bramble);
+  const nTop = detail ? 7 : Math.round(L * 0.4);
+  const nSide = detail ? 7 : Math.round(L * 0.25);
+  for (let k = 0; k < nTop; k++) {
+    const x = x0 + ((k + r.range(0.1, 0.9)) / nTop) * L;
+    const side = r.chance(0.5) ? 1 : -1;
+    const B = [x, yTop + ridgeAt(x) - 0.25, side * r.range(0, 0.35)];
+    const V = norm([r.range(-0.4, 0.4), 1, side * r.range(0.1, 0.7)]);
+    spray(B, V, detail ? r.range(1.3, 1.9) : r.range(2.2, 2.9), leaf());
   }
-  // Brambles and nettles at the foot of the bank.
+  for (let k = 0; k < nSide; k++) {
+    const x = x0 + ((k + r.range(0.1, 0.9)) / nSide) * L;
+    const side = r.chance(0.5) ? 1 : -1;
+    const B = [x, r.range(coreBottom + 0.1, yTop - 0.35), side * (zc - 0.3)];
+    const V = norm([r.range(-0.4, 0.4), r.range(0.15, 0.8), side]);
+    spray(B, V, detail ? r.range(1.1, 1.6) : r.range(1.8, 2.4), leaf());
+  }
   if (detail) {
-    for (let k = 0; k < Math.round(L * 0.6); k++) {
+    // Tall grass and ferns on the bank, brambles at its foot.
+    const gcard = (B, V, w, h, cell) => {
+      let U = norm(cross(V, [0, 0, 1]));
+      if (!Number.isFinite(U[0])) U = [1, 0, 0];
+      card(G, B, U, V, w, h, cell, { normal: (p) => norm([0, 1, p[2] * 0.4]), color: (p) => [0.72 + 0.1 * clamp(p[1], 0, 1), 0.72 + 0.1 * clamp(p[1], 0, 1), 0.72], bend: () => 0.05, flutter: 0.6, phase: r.next() });
+    };
+    for (let k = 0; k < 8; k++) {
       const side = r.chance(0.5) ? 1 : -1;
-      const B = [x0 + r.range(0, L), -0.05, side * r.range(1.0, 1.25)];
+      const t = r.range(0.15, 0.9);
+      const z = side * lerp(1.2, 0.65, t),
+        y = lerp(0.0, bankH, t) - 0.08;
+      const V = norm([r.range(-0.3, 0.3), 1, side * r.range(0.1, 0.5)]);
+      gcard([x0 + r.range(0.2, L - 0.2), y, z], V, r.range(0.7, 1.0), r.range(0.6, 0.9), r.chance(0.65) ? CELL.grassTall : CELL.fern);
+    }
+    for (let k = 0; k < 2; k++) {
+      const side = r.chance(0.5) ? 1 : -1;
       const V = norm([r.range(-0.4, 0.4), r.range(0.6, 1), side * r.range(0.3, 0.8)]);
-      const U = norm(cross(V, [0, 0, 1]));
-      card(G, B, Number.isFinite(U[0]) ? U : [1, 0, 0], V, r.range(0.9, 1.2), r.range(0.8, 1.1), CELL.bramble, { normal: cardNormal, color: () => [0.75, 0.75, 0.75], bend: () => 0.05, flutter: 0.6, phase: r.next() });
+      gcard([x0 + r.range(0, L), -0.05, side * r.range(1.0, 1.25)], V, r.range(0.9, 1.2), r.range(0.8, 1.1), CELL.bramble);
     }
   }
   return G.build();
