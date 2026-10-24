@@ -144,15 +144,29 @@ export function generateTerrain(def) {
     const half = def.river.width / 2;
     const valley = def.river.valley;
     const df = distanceField(hf, samples, half + valley + 4);
-    // Water level along the river: follows the ground but never flows uphill.
+    // Water level along the river: a little below its banks all the way (a
+    // lowland river in a gentle valley, not a gorge cut down to the lowest
+    // point on its course). It never stands above the lowest ground across the
+    // valley a little way out, and where the ground climbs steeply it rises no
+    // faster than a gentle slope, cutting a deeper valley instead.
     const ground = samples.map(([x, z]) => hf.getHeight(x, z));
     const smooth = smoothProfile(ground, 40);
-    const level = new Float32Array(samples.length);
-    let cur = Infinity;
-    for (let i = 0; i < samples.length; i++) {
-      cur = Math.min(cur, smooth[i] - def.river.sink);
-      level[i] = cur;
-    }
+    const hi = samples.map(([x, z], i) => {
+      const [ax, az] = samples[Math.max(0, i - 1)],
+        [bx, bz] = samples[Math.min(samples.length - 1, i + 1)];
+      const l = Math.hypot(bx - ax, bz - az) || 1;
+      const px = -(bz - az) / l,
+        pz = (bx - ax) / l;
+      let m = Infinity;
+      for (const o of [half + 2, half + 6, half + 12]) for (const sd of [-1, 1]) m = Math.min(m, hf.getHeight(x + px * o * sd, z + pz * o * sd));
+      return Math.min(smooth[i] - def.river.sink, m - 0.6);
+    });
+    const maxRise = 0.035 * 2; // per 2 m sample (3.5%)
+    const rise = (v) => {
+      for (let i = 1; i < v.length; i++) v[i] = Math.min(v[i], v[i - 1] + maxRise);
+      return v;
+    };
+    const level = rise(smoothProfile(rise(Float32Array.from(hi)), 12).map((v, i) => Math.min(v, hi[i])));
     for (let i = 0; i < r * r; i++) {
       const d = df.dist[i];
       if (d === Infinity) continue;
@@ -303,7 +317,7 @@ export function generateTerrain(def) {
       else if (fval > 0) s = SURF.FOREST;
       else if (dv < vil.radius + 10) {
         // Village: grass with some trampled, bare patches.
-        s = noise2.fbm2(x / 14, z / 14, 2) > 0.4 ? SURF.DIRT : SURF.GRASS;
+        s = noise2.fbm2(x / 14, z / 14, 2) > 0.5 ? SURF.DIRT : SURF.GRASS;
       } else {
         const k = c.cell.kind;
         if (c.edgeDist < 2.5) s = SURF.GRASS; // grassy field margins
