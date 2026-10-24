@@ -128,7 +128,7 @@ export function buildBridges(B, plan, ctx) {
     // Gentle approach ramps where the road meets the deck.
     const hf = ctx.hf;
     for (const [zEnd, dir] of [[z0, -1], [z1, 1]]) {
-      const zFar = zEnd + dir * 4;
+      const zFar = zEnd + dir * 8;
       const pFar = f.toWorld(0, 0, zFar);
       const gFar = hf.getHeight(pFar[0], pFar[2]);
       if (deck - gFar > 0.05) {

@@ -298,7 +298,8 @@ export const MATERIALS = {
       float ripple = sin((uv.y + fbm(uv, vec2(3.0), 3, 91.0) * 0.1) * 6.2831853 * 18.0) * 0.5 + 0.5;
       float fine = fbm01(uv, vec2(80.0), 3, 92.0);
       float base = fbm01(uv, vec2(4.0), 4, 93.0);
-      albedo = mix(srgb(vec3(0.5, 0.45, 0.35)), srgb(vec3(0.62, 0.56, 0.44)), 0.5 + 0.3 * (base - 0.5)) * (0.9 + 0.2 * fine);
+      // Riverbank sand and silt: grey-brown, darker where damp.
+      albedo = mix(srgb(vec3(0.36, 0.33, 0.27)), srgb(vec3(0.46, 0.42, 0.34)), 0.5 + 0.3 * (base - 0.5)) * (0.9 + 0.2 * fine);
       rough = 0.9;
       height = ripple * 0.006 + fine * 0.002 + base * 0.02;
       metal = 0.0;

@@ -431,7 +431,18 @@ export function planVillage(terrain, def, rng) {
         }
       });
     }
-    const deckY = wl + 2.6;
+    // The deck sits a little above the lower bank (and well clear of the
+    // water), so the bridge spans the river and its banks, not the meadows.
+    const bankAt = (dir) => {
+      let k = best.i,
+        dist = 0;
+      while (k + dir >= 0 && k + dir < s.length && dist < terrain.river.half + 6) {
+        dist += Math.hypot(s[k + dir][0] - s[k][0], s[k + dir][1] - s[k][1]);
+        k += dir;
+      }
+      return Math.max(road.heights[k], hf.getHeight(s[k][0], s[k][1]));
+    };
+    const deckY = Math.min(wl + 2.6, Math.max(wl + 1.5, Math.min(bankAt(-1), bankAt(1)) + 0.4));
     // Walk along the road both ways until the road surface reaches the deck height.
     const reach = (dir) => {
       let k = best.i;
@@ -441,7 +452,8 @@ export function planVillage(terrain, def, rng) {
         dist += Math.hypot(s[n][0] - s[k][0], s[n][1] - s[k][1]);
         k = n;
         const rh = Math.max(road.heights[k], hf.getHeight(s[k][0], s[k][1]));
-        if (dist > terrain.river.half + 4 && rh >= deckY - 0.25) break;
+        // (The last half meter is taken up by the approach ramp.)
+        if (dist > terrain.river.half + 4 && rh >= deckY - 0.55) break;
         if (dist > 60) break;
       }
       return dist;

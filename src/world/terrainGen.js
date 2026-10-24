@@ -159,7 +159,7 @@ export function generateTerrain(def) {
         pz = (bx - ax) / l;
       let m = Infinity;
       for (const o of [half + 2, half + 6, half + 12]) for (const sd of [-1, 1]) m = Math.min(m, hf.getHeight(x + px * o * sd, z + pz * o * sd));
-      return Math.min(smooth[i] - def.river.sink, m - 0.6);
+      return Math.min(smooth[i] - def.river.sink, m - 1.1);
     });
     const maxRise = 0.035 * 2; // per 2 m sample (3.5%)
     const rise = (v) => {
@@ -176,9 +176,10 @@ export function generateTerrain(def) {
         const k = d / half;
         target = wl - def.river.depth * (1 - k * k);
       } else {
-        // Banks: from just above the water out to the natural ground.
+        // Banks: a short rise from the water's edge (about 1.3 m over 6 m),
+        // then out to the natural ground.
         const k = smoothstep(half, half + valley, d);
-        target = lerp(wl + 0.35, H[i], k * k * (3 - 2 * k));
+        target = lerp(wl + 0.35 + 1.3 * smoothstep(half, half + 6, d), H[i], k * k * (3 - 2 * k));
       }
       if (d < half + valley) H[i] = Math.min(H[i], target);
     }
@@ -190,6 +191,25 @@ export function generateTerrain(def) {
   for (const rd of def.roads) {
     const samples = sampleSpline2(rd.points, 2);
     const ground = samples.map(([x, z]) => hf.getHeight(x, z));
+    // Where the road crosses the river it goes over a bridge: take the line
+    // between the two banks, not the river bed (which would pull the smoothed
+    // road down into a dip on both sides).
+    if (river) {
+      const wet = samples.map(([x, z]) => {
+        const ix = Math.round((x + hf.half) / hf.cell),
+          iz = Math.round((z + hf.half) / hf.cell);
+        return ix >= 0 && iz >= 0 && ix < r && iz < r && river.distField.dist[iz * r + ix] < river.half + 5;
+      });
+      for (let i = 0; i < samples.length; i++) {
+        if (!wet[i]) continue;
+        let j = i;
+        while (j < samples.length && wet[j]) j++;
+        const a = i > 0 ? ground[i - 1] : j < samples.length ? ground[j] : ground[i];
+        const b = j < samples.length ? ground[j] : a;
+        for (let k = i; k < j; k++) ground[k] = a + ((b - a) * (k - i + 1)) / (j - i + 1);
+        i = j;
+      }
+    }
     let prof = smoothProfile(ground, 10);
     // Bridges keep their deck height above the river.
     const half = rd.width / 2;
@@ -311,7 +331,7 @@ export function generateTerrain(def) {
       const slope = Math.acos(Math.min(1, nrm.y));
       let s;
       if (river && river.distField.dist[i] < river.half - 0.3) s = SURF.WATER;
-      else if (river && river.distField.dist[i] < river.half + 2.5) s = noise2.noise2(x / 6, z / 6) > 0 ? SURF.MUD : SURF.SAND;
+      else if (river && river.distField.dist[i] < river.half + 2.5) s = noise2.noise2(x / 9, z / 9) > 0.3 ? SURF.SAND : SURF.MUD; // muddy banks, the odd sand bar
       else if (slope > 0.62) s = SURF.ROCK;
       else if (slope > 0.42) s = SURF.DIRT;
       else if (fval > 0) s = SURF.FOREST;
