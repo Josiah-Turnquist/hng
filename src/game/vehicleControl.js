@@ -1,12 +1,13 @@
 // The player inside a vehicle: driving, the tank gunner's sight and gun, the bow
 // machine gun, passenger seats, and the cameras for each.
 //
-// Controls (like the original game): W/S throttle and brake/reverse, A/D steer,
-// Space handbrake (wheeled) or coaxial MG (tanks), LMB fire, hold RMB for the
-// gunner's sight, mouse wheel sets the sight range, 1/2 choose the shell, V
-// switches camera, F1-F4 change seat, F gets out. On bicycles and motorcycles:
-// Shift pedals hard (bicycle), Space is the rear brake, and the sidecar gunner
-// lays his machine gun with the mouse.
+// Controls (like the original game; the default keys, all of which can be
+// changed in Settings > Controls > Keys): W/S throttle and brake/reverse, A/D
+// steer, Space handbrake (wheeled) or coaxial MG (tanks), left mouse fire, hold
+// right mouse (or `) for the gunner's sight, mouse wheel sets the sight range, 1/2
+// choose the shell, V switches camera, F1-F4 change seat, F gets out. On bicycles
+// and motorcycles: Shift pedals hard (bicycle), Space is the rear brake, and the
+// sidecar gunner lays his machine gun with the mouse.
 import * as THREE from 'three';
 import { clamp, damp, DEG, wrapAngle } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
@@ -72,6 +73,7 @@ export class VehicleController {
     if (v.isBike) this.look.pitch = -0.3;
     this.view = 'third';
     this.sight = false;
+    this.aimToggled = false;
     if (v.aim) {
       v.aim.yaw = this.orbit.yaw + v.turretYaw;
       v.aim.pitch = 0;
@@ -93,8 +95,12 @@ export class VehicleController {
     const zoom = this.player.baseFov / Math.max(1, this.camera.fov);
     const sens = (BASE_SENS * s.get('mouseSensitivity')) / Math.max(1, zoom);
 
+    // The aim key: held, or (Settings > Controls) from one press to the next.
+    if (s.get('aimToggle')) {
+      if (input.hit('aim')) this.aimToggled = !this.aimToggled;
+    } else this.aimToggled = input.is('aim');
     if (role === 'gunner') {
-      this.sight = input.mouseDown[2] || this.view === 'first';
+      this.sight = this.aimToggled || this.view === 'first';
       if (this.sight) {
         // In the sight the mouse lays the gun directly.
         v.aim.yaw -= mx * sens * 0.6;
@@ -106,8 +112,8 @@ export class VehicleController {
       if (wheel && this.sight) v.setSightRange(v.sightRange - Math.sign(wheel) * v.def.gun.sight.ranges[2]);
       if (input.hit('zeroUp')) v.setSightRange(v.sightRange + v.def.gun.sight.ranges[2]);
       if (input.hit('zeroDown')) v.setSightRange(v.sightRange - v.def.gun.sight.ranges[2]);
-      if (input.mousePressed[0]) this.wantFire = true;
-      v.coax.trigger = input.is('jump');
+      if (input.hit('fire')) this.wantFire = true;
+      v.coax.trigger = input.is('handbrake');
       if (input.hit('ammo1')) this._ammo(v, 0);
       if (input.hit('ammo2')) this._ammo(v, 1);
       if (input.hit('ammo3')) this._ammo(v, 2);
@@ -120,7 +126,7 @@ export class VehicleController {
         this.orbit.yaw -= mx * sens;
         this.orbit.pitch = clamp(this.orbit.pitch - my * sens * inv, -1.2, 0.6);
       }
-      v.bowMg.trigger = input.mouseDown[0];
+      v.bowMg.trigger = input.is('fire');
     } else if (role === 'sidecarMg') {
       // The sidecar gun: in first person the mouse swings it; in third person it
       // follows where the camera looks.
@@ -132,7 +138,7 @@ export class VehicleController {
         this.orbit.yaw -= mx * sens;
         this.orbit.pitch = clamp(this.orbit.pitch - my * sens * inv, -1.2, 0.6);
       }
-      v.mg.trigger = input.mouseDown[0] && v.alive;
+      v.mg.trigger = input.is('fire') && v.alive;
     } else {
       // Driver or passenger: look around.
       if (this.view === 'first') {
@@ -146,7 +152,7 @@ export class VehicleController {
     if (this.soldier.seat === 0) {
       this.drive = (input.is('forward') ? 1 : 0) - (input.is('back') ? 1 : 0);
       this.steer = (input.is('right') ? 1 : 0) - (input.is('left') ? 1 : 0);
-      this.handbrake = (v.def.kind === 'wheeled' || v.isBike) && input.is('jump');
+      this.handbrake = (v.def.kind === 'wheeled' || v.isBike) && input.is('handbrake');
       this.sprint = input.is('sprint');
     }
     // Bikes: the chase camera swings in behind when the mouse is left alone.

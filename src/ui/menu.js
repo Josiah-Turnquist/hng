@@ -1,7 +1,7 @@
 // Main menu (battle setup, settings, controls) and the in-battle pause menu.
 import { MAPS } from '../world/maps.js';
 import { FACTIONS, WEAPONS, weaponsFor, DEFAULT_LOADOUT } from '../weapons/defs.js';
-import { GRAPHICS_OPTIONS, GRAPHICS_PRESETS } from '../core/settings.js';
+import { SettingsView } from './settingsView.js';
 import { AMMO } from '../weapons/ammo.js';
 
 const SETUP_KEY = 'hng.setup.v1';
@@ -16,26 +16,6 @@ const TANKS = {
   GE: [['panzer4_h', 'Panzer IV Ausf. H'], ['tiger1', 'Tiger I']],
   SU: [['t34_76', 'T-34/76'], ['t34_85', 'T-34-85']],
 };
-const CONTROLS = [
-  ['Move', 'W A S D'],
-  ['Sprint / hold breath while aiming', 'Shift'],
-  ['Crouch / prone', 'C / Z'],
-  ['Jump / stand up', 'Space'],
-  ['Lean', 'Q / E'],
-  ['Aim down the sights', 'Right mouse'],
-  ['Fire', 'Left mouse'],
-  ['Sight range up / down', 'Mouse wheel while aiming, or Page Up / Page Down'],
-  ['Reload / work the bolt', 'R'],
-  ['Fire mode', 'B or middle mouse'],
-  ['Weapons', '1 2 3, G for grenade'],
-  ['Bandage', 'X'],
-  ['Get in / out of a vehicle', 'F'],
-  ['Vehicle: throttle, brake, steer', 'W S A D (Space: handbrake on jeeps, coaxial MG on tanks)'],
-  ['Tank: gunner sight, shell type', 'Hold right mouse or V; 1 / 2'],
-  ['Change seat', 'F1 - F4'],
-  ['Release the mouse (pause)', 'Esc'],
-];
-
 export function loadSetup() {
   const d = { map: 'town', side: 'attack', faction: 'US', cls: 'infantry', weapon: null, bots: 10, minutes: 20 };
   try {
@@ -72,19 +52,35 @@ export function showMainMenu(app) {
       <div class="menu-body"></div>`;
     app.root.appendChild(root);
     const body = root.querySelector('.menu-body');
+    // The settings pages open in the Settings tab (all of them) and the Controls tab.
+    let view = null;
+    const pages = (rootPage) => {
+      body.innerHTML = '';
+      view = new SettingsView(body, app, { root: rootPage });
+    };
     const tabs = {
       battle: () => battleTab(body, setup, () => {
         saveSetup(setup);
+        view?.close();
+        window.removeEventListener('keydown', onEsc);
         root.remove();
         resolve({ ...setup });
       }),
-      settings: () => settingsTab(body, app),
-      controls: () => controlsTab(body),
+      settings: () => pages('home'),
+      controls: () => pages('controls'),
       about: () => aboutTab(body),
     };
+    // Esc goes back a page.
+    const onEsc = (e) => {
+      if (e.code === 'Escape' && !e.repeat && view?.body.isConnected) view.back();
+    };
+    window.addEventListener('keydown', onEsc);
     root.querySelectorAll('.menu-tabs button[data-tab]').forEach((b) =>
       b.addEventListener('click', () => {
         root.querySelectorAll('.menu-tabs button[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+        view?.close();
+        view = null;
+        body.classList.remove('set-view');
         tabs[b.dataset.tab]();
       }),
     );
@@ -211,174 +207,6 @@ function weaponNote(w) {
   return parts.join(' · ');
 }
 
-// A short name for the graphics card from the browser's description of it.
-function gpuName(s) {
-  s = String(s || '');
-  const m = /^ANGLE \((.*)\)$/.exec(s);
-  if (m) {
-    const parts = m[1].split(', ');
-    s = parts[1] || parts[0];
-  }
-  return s
-    .replace(/\s*\(0x[0-9a-f]+\)/gi, '')
-    .replace(/\s*(Direct3D|vs_\d|OpenGL ES|D3D1).*$/i, '')
-    .replace(/^ANGLE Metal Renderer:\s*/i, '')
-    .replace(/,? or similar$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 60);
-}
-
-// Settings: graphics (a preset and every option, applied at once where possible),
-// controls and sound. Used by the main menu and the pause menu.
-function settingsTab(body, app) {
-  const st = app.settings;
-  const inBattle = !!app.game?.pipeline;
-  // Redraw in place, keeping the scroll position of whatever scrolls the settings.
-  const redraw = () => {
-    const sc = body.closest('.menu, .pause .box') || body;
-    const y = sc.scrollTop;
-    settingsTab(body, app);
-    sc.scrollTop = y;
-  };
-  body.innerHTML = '';
-  body.appendChild(el('h3', 'set-head', 'Graphics'));
-
-  // Presets.
-  const preset = st.preset;
-  const q = el('div', 'row');
-  q.appendChild(el('label', '', 'Graphics quality'));
-  const box = el('div', 'choices');
-  for (const [k, p] of Object.entries(GRAPHICS_PRESETS)) {
-    const b = el('button', preset === k ? 'on' : '', p.label);
-    b.addEventListener('click', () => {
-      st.setPreset(k);
-      redraw();
-    });
-    box.appendChild(b);
-  }
-  if (preset === 'custom') box.appendChild(el('span', 'custom-tag', 'Custom'));
-  q.appendChild(box);
-  const qn = el('div', 'note');
-  const gpu = gpuName(st.get('gpu'));
-  qn.textContent =
-    (st.get('autoQuality') ? `Picked automatically for this computer${gpu ? ` (${gpu})` : ''}. ` : '') +
-    'Low suits laptops and older computers, Medium most computers, High a gaming graphics card, Ultra a fast one. ' +
-    (inBattle ? 'Changes apply at once (the game may pause for a moment while it adjusts).' : 'You can change every option below.');
-  q.appendChild(qn);
-  body.appendChild(q);
-  if (inBattle) {
-    // The battle keeps drawing behind this menu: show how fast.
-    const now = el('div', 'note fps-now');
-    q.appendChild(now);
-    const tick = () => {
-      if (!now.isConnected) return clearInterval(timer);
-      const fps = app.game?.loop?.fps || 0;
-      now.textContent = fps > 0 ? `Running now at ${Math.round(fps)} frames per second.` : '';
-    };
-    const timer = setInterval(tick, 500);
-    tick();
-  }
-
-  // Every option.
-  const g = st.graphics;
-  for (const o of GRAPHICS_OPTIONS) {
-    if (o.group) body.appendChild(el('h4', 'set-group', o.group));
-    const r = el('div', 'row opt');
-    const label = el('label');
-    const name = document.createTextNode(`${o.label}: `);
-    const val = el('b');
-    label.append(name, val);
-    r.appendChild(label);
-    const show = (v) => (val.textContent = o.type === 'range' ? o.fmt(v) : (o.choices.find((c) => c[0] === v)?.[1] ?? String(v)));
-    show(g[o.key]);
-    if (o.type === 'range') {
-      const i = el('input');
-      i.id = label.htmlFor = `setting-${o.key}`;
-      i.type = 'range';
-      i.min = o.min;
-      i.max = o.max;
-      i.step = o.step;
-      i.value = g[o.key];
-      i.addEventListener('input', () => show(Number(i.value)));
-      // Applied when the slider is let go (some changes rebuild things).
-      i.addEventListener('change', () => {
-        st.setGraphics(o.key, Number(i.value));
-        redraw();
-      });
-      r.appendChild(i);
-    } else {
-      const c = el('div', 'choices');
-      for (const [v, text] of o.choices) {
-        const b = el('button', g[o.key] === v ? 'on' : '', text);
-        b.addEventListener('click', () => {
-          st.setGraphics(o.key, v);
-          redraw();
-        });
-        c.appendChild(b);
-      }
-      r.appendChild(c);
-    }
-    const n = el('div', 'note');
-    n.textContent = o.note + (o.live ? '' : ' Takes effect when the next battle loads.');
-    r.appendChild(n);
-    body.appendChild(r);
-  }
-  body.appendChild(el('h4', 'set-group', 'Display'));
-  body.appendChild(toggleRow('Show frame rate', st.get('showFps'), () => {
-    st.set('showFps', !st.get('showFps'));
-    redraw();
-  }, 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));
-  body.appendChild(toggleRow('Crosshair', st.get('crosshair'), () => {
-    st.set('crosshair', !st.get('crosshair'));
-    redraw();
-  }, 'A mark where the gun points when you shoot from the hip. Its gap shows how widely the shots spread (wider on the move, narrower crouched or prone). It fades out when you aim through the sights.'));
-
-  body.appendChild(el('h3', 'set-head', 'Controls and sound'));
-  const slider = (key, label, min, max, step, fmt = (v) => v) => {
-    const r = el('div', 'row');
-    const l = r.appendChild(el('label', '', `${label}: <b>${fmt(st.get(key))}</b>`));
-    const i = el('input');
-    i.id = l.htmlFor = `setting-${key}`;
-    i.type = 'range';
-    i.min = min;
-    i.max = max;
-    i.step = step;
-    i.value = st.get(key);
-    i.addEventListener('input', () => {
-      st.set(key, Number(i.value));
-      r.querySelector('b').textContent = fmt(Number(i.value));
-      if (key === 'masterVolume') app.audio?.setVolume?.('master', Number(i.value));
-    });
-    r.appendChild(i);
-    body.appendChild(r);
-  };
-  slider('fov', 'Field of view', 60, 100, 1, (v) => `${v}°`);
-  slider('mouseSensitivity', 'Mouse sensitivity', 0.2, 3, 0.05, (v) => Number(v).toFixed(2));
-  slider('adsSensitivity', 'Aiming sensitivity', 0.2, 1.5, 0.05, (v) => Number(v).toFixed(2));
-  slider('masterVolume', 'Volume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`);
-  body.appendChild(toggleRow('Invert mouse', st.get('invertY'), () => {
-    st.set('invertY', !st.get('invertY'));
-    redraw();
-  }));
-}
-
-function toggleRow(label, on, flip, note = '') {
-  const r = el('div', 'row');
-  r.appendChild(el('label', '', label));
-  const c = el('div', 'choices');
-  const b = el('button', on ? 'on' : '', on ? 'On' : 'Off');
-  b.addEventListener('click', flip);
-  c.appendChild(b);
-  r.appendChild(c);
-  if (note) r.appendChild(el('div', 'note', note));
-  return r;
-}
-
-function controlsTab(body) {
-  body.innerHTML = `<table class="keys">${CONTROLS.map(([a, k]) => `<tr><td>${a}</td><td>${k}</td></tr>`).join('')}</table>`;
-}
-
 function aboutTab(body) {
   body.innerHTML = `
     <p>An unofficial fan tribute to <b>Heroes &amp; Generals</b>, the WWII game by Reto-Moto (2016 to 2023; its servers closed in May 2023): large battles of infantry, tanks and vehicles fought over a French village. It is not connected with Reto-Moto or the game's later owners and uses none of their assets.</p>
@@ -387,31 +215,120 @@ function aboutTab(body) {
     <p>Play it on a computer with a keyboard and mouse.</p>`;
 }
 
-// Pause overlay while the mouse is released during a battle.
+// Pause overlay while the mouse is released during a battle. Esc goes back a
+// page in the settings and, on the first page, closes the menu. Browsers only
+// give the mouse back to the game on a click or a key press (never on Esc), so
+// after Esc the battle waits for one.
 export class PauseMenu {
   constructor(app, game) {
     this.app = app;
     this.game = game;
+    this.visible = false;
+    this.view = null;
     const root = el('div', 'pause');
-    root.innerHTML = `<div class="box"><h2>Paused</h2><button class="resume">Resume (click)</button><button class="settings">Settings</button><button class="leave">Leave battle</button><div class="extra"></div></div>`;
+    root.innerHTML = `
+      <div class="box">
+        <div class="pause-home">
+          <h2>Paused</h2>
+          <button class="resume">Back to the battle</button>
+          <button class="settings">Settings</button>
+          <button class="controls">Controls</button>
+          <button class="leave">Leave battle</button>
+          <div class="pause-tip">Esc closes this menu</div>
+        </div>
+        <div class="pause-pages" hidden></div>
+      </div>
+      <div class="pause-wait" hidden><div>Click or press a key to go back to the battle</div></div>`;
     app.root.appendChild(root);
     this.root = root;
+    this.box = root.querySelector('.box');
+    this.home = root.querySelector('.pause-home');
+    this.pages = root.querySelector('.pause-pages');
+    this.waitEl = root.querySelector('.pause-wait');
     root.querySelector('.resume').addEventListener('click', () => this.resume());
     root.querySelector('.leave').addEventListener('click', () => location.reload());
-    root.querySelector('.settings').addEventListener('click', () => {
-      const ex = root.querySelector('.extra');
-      if (ex.childElementCount) ex.innerHTML = '';
-      else settingsTab(ex, app);
-      root.querySelector('.box').classList.toggle('wide', ex.childElementCount > 0);
+    root.querySelector('.settings').addEventListener('click', () => this._pages());
+    root.querySelector('.controls').addEventListener('click', () => this._pages('controls'));
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape' || e.repeat || e.hngPaused) return;
+      if (this.waiting) {
+        // Esc again while waiting: the menu comes back.
+        this._stopWaiting();
+        this.show();
+        return;
+      }
+      // (Not the press that opened the menu.)
+      if (!this.visible || performance.now() - this.shownAt < 250) return;
+      e.preventDefault();
+      if (this.view) this.view.back();
+      else this.close();
     });
   }
 
+  // The settings pages in place of the buttons (Back from the first one returns).
+  _pages(open) {
+    this.home.hidden = true;
+    this.pages.hidden = false;
+    this.box.classList.add('wide');
+    this.view = new SettingsView(this.pages, this.app, { root: 'home', onExit: () => this._home() });
+    if (open) this.view.open(open);
+  }
+
+  _home() {
+    this.view?.close();
+    this.view = null;
+    this.pages.innerHTML = '';
+    this.pages.hidden = true;
+    this.home.hidden = false;
+    this.box.classList.remove('wide');
+  }
+
   show() {
+    this._home();
+    this.box.hidden = false;
     this.root.style.display = 'flex';
+    this.visible = true;
+    this.shownAt = performance.now();
   }
 
   hide() {
+    this._stopWaiting();
+    this._home();
     this.root.style.display = 'none';
+    this.visible = false;
+  }
+
+  // Esc on the first page: close the menu. Where the game plays with the free
+  // mouse (no capture), go straight back; otherwise wait for a click or a key.
+  close() {
+    if (this.game.input.freeMouse) return this.resume();
+    this._home();
+    this.box.hidden = true;
+    this.waitEl.hidden = false;
+    this.waiting = true;
+    const go = (e) => {
+      if (e.type === 'keydown') {
+        if (e.code === 'Escape' || /^(Shift|Control|Alt|Meta)/.test(e.code)) return;
+        // (The key that brings you back does nothing else.)
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      this.resume();
+    };
+    window.addEventListener('pointerdown', go, true);
+    window.addEventListener('keydown', go, true);
+    this._waitOff = () => {
+      window.removeEventListener('pointerdown', go, true);
+      window.removeEventListener('keydown', go, true);
+    };
+  }
+
+  _stopWaiting() {
+    this._waitOff?.();
+    this._waitOff = null;
+    this.waiting = false;
+    this.waitEl.hidden = true;
+    this.box.hidden = false;
   }
 
   resume() {

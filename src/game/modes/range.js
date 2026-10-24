@@ -142,7 +142,8 @@ export class RangeMode {
     card.innerHTML = '<h3>Range card</h3><div class="body">Shoot a target. Targets stand at 25 to 800 m to the north; the penetration test lane is 30 m to the north-east.</div>';
     g.hud.root.appendChild(card);
     this.card = card.querySelector('.body');
-    g.hud.hint('Firing range. RMB aims through the real sights; mouse wheel while aiming raises the sight for longer range. Targets: 25 to 800 m north; tanks at 200, 300 and 500 m. Vehicles are parked behind you: F gets in.', 14);
+    const k = (a) => g.input.keys(a);
+    g.hud.hint(`Firing range. ${k('aim')} aims through the real sights; the mouse wheel while aiming (or ${k('zeroUp')}) raises the sight for longer range. Targets: 25 to 800 m north; tanks at 200, 300 and 500 m. Vehicles are parked behind you: walk up to one and press ${g.input.key('use')} to get in.`, 14);
   }
 
   onImpact(p, info) {

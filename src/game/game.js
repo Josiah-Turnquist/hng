@@ -270,7 +270,7 @@ export class Game {
     if (ev.type === 'sound') this.audio?.play?.(ev.id, { x: s.body.x, y: s.body.y + 1.2, z: s.body.z }, { volume: 0.8 });
   }
 
-  // Dead player: choose where to go back in (SPACE deploys, Q/E change the point).
+  // Dead player: choose where to go back in (jump deploys, the lean keys change the point).
   _playerDeploy(dt) {
     const s = this.player.soldier;
     if (s.alive) {
@@ -286,7 +286,7 @@ export class Game {
       if (input.hit('leanRight')) d.index = (d.index + 1) % opts.length;
       const o = opts[Math.min(d.index, opts.length - 1)];
       const wait = Math.max(0, o.delay - d.t);
-      this.hud.setDeploy(`Deploy at ${o.id}${o.name !== o.id ? ` ${o.name}` : ''} ${wait > 0 ? `in ${wait.toFixed(0)} s` : '- press SPACE'}   (Q/E: ${opts.length} points)`);
+      this.hud.setDeploy(`Deploy at ${o.id}${o.name !== o.id ? ` ${o.name}` : ''} ${wait > 0 ? `in ${wait.toFixed(0)} s` : `: press ${input.key('jump')}`}   (${input.key('leanLeft')} / ${input.key('leanRight')}: ${opts.length} points)`);
       if (wait <= 0 && input.hit('jump')) {
         this.mode.spawnSoldier(s, o.point);
         this.player.look.yaw = s.yaw;
@@ -296,7 +296,7 @@ export class Game {
       }
     } else if (!opts) {
       const wait = Math.max(0, 5 - d.t);
-      this.hud.setDeploy(wait > 0 ? `Back in ${wait.toFixed(0)} s` : 'Press SPACE to go back in');
+      this.hud.setDeploy(wait > 0 ? `Back in ${wait.toFixed(0)} s` : `Press ${input.key('jump')} to go back in`);
       if (wait <= 0 && input.hit('jump')) {
         const sp = this.mode.playerSpawn();
         const b = s.body;

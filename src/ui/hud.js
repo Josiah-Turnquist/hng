@@ -49,7 +49,8 @@ export class Hud {
       <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
       <canvas class="hud-scope"></canvas>
       <div class="hud-scores"></div>
-      <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint">Press SPACE to redeploy</div></div>`;
+      <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint"></div></div>
+      <div class="hud-use"><span class="k"></span><span class="t"></span></div>`;
     document.getElementById('app').appendChild(root);
     this.root = root;
     this.el = (sel) => root.querySelector(sel);
@@ -94,7 +95,13 @@ export class Hud {
     this.hitT = 0;
     this._buildCompass();
     this.lastScope = null;
-    this.hint('Click to play. WASD move, Shift sprint, C crouch, Z prone, Space jump, Q/E lean, RMB aim, mouse wheel while aiming = sight range, R reload, B fire mode, X bandage, 1/2/3 weapons.', 12);
+    const k = (a) => game.input.keys(a);
+    this.hint(
+      `Click to play. ${['forward', 'left', 'back', 'right'].map((a) => game.input.key(a)).join(' ')} move, ${k('sprint')} sprint, ${k('crouch')} crouch, ${k('prone')} lie down, ${k('jump')} jump, ${k('aim')} aim, ${k('fire')} fire, ${k('reload')} reload, ${k('use')} get in a vehicle. Esc: menu (Settings > Controls has every key and lets you change them).`,
+      14,
+    );
+    this.useEl = this.el('.hud-use');
+    this.use = { t: 0, text: '' };
   }
 
   _buildCompass() {
@@ -202,7 +209,32 @@ export class Hud {
     this.deadEl.style.display = s.alive ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;
     this._updateCrosshair(p, dt);
+    this._updateUse(p, dt);
     this._drawScope(p);
+  }
+
+  // On foot next to a vehicle or bike: which key gets you in, and where you'd sit.
+  _updateUse(p, dt) {
+    const u = this.use;
+    const s = p.soldier;
+    u.t -= dt;
+    if (u.t <= 0) {
+      u.t = 0.15;
+      let text = '';
+      if (s.alive && !s.vehicle && this.game.cameraMode === 'first') {
+        const near = p.nearestVehicle();
+        if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
+      }
+      const key = text && !text.endsWith('no free seat') ? this.game.input.key('use') : '';
+      if (text !== u.text || key !== u.key) {
+        u.text = text;
+        u.key = key;
+        this.useEl.querySelector('.k').textContent = key;
+        this.useEl.querySelector('.k').hidden = !key;
+        this.useEl.querySelector('.t').textContent = text;
+        this.useEl.style.display = text ? 'flex' : 'none';
+      }
+    }
   }
 
   // Hip-fire crosshair: four ticks round the point the gun points at (where hip

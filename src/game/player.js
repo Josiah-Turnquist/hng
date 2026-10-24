@@ -8,6 +8,7 @@ import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
+const _nv = new THREE.Vector3();
 
 export class PlayerController {
   constructor(game, soldier) {
@@ -44,13 +45,14 @@ export class PlayerController {
     this._equip(soldier.current);
   }
 
-  // Get into the nearest vehicle within reach (driver's seat first).
-  _tryEnterVehicle() {
+  // The nearest vehicle within reach on foot (1.8 m from its outline) and the
+  // seat you would take (driver's first; -1 when all are taken), or null.
+  nearestVehicle() {
     const s = this.soldier;
     const b = s.body;
     let best = null,
       bestD = 1.8;
-    const p = new THREE.Vector3();
+    const p = _nv;
     for (const v of this.game.vehicles || []) {
       if (!v.alive) continue;
       // Distance from the soldier to the vehicle's outline.
@@ -65,8 +67,15 @@ export class PlayerController {
         best = v;
       }
     }
-    if (!best) return false;
-    const seat = best.freeSeat(0);
+    return best ? { v: best, seat: best.freeSeat(0) } : null;
+  }
+
+  // Get into the nearest vehicle within reach.
+  _tryEnterVehicle() {
+    const s = this.soldier;
+    const near = this.nearestVehicle();
+    if (!near) return false;
+    const { v: best, seat } = near;
     if (seat < 0) {
       this.game.hud?.flash('No free seat');
       return false;
@@ -113,9 +122,11 @@ export class PlayerController {
     if (!s.alive) {
       input.takeMouse();
       input.takeWheel();
+      this.aimToggled = false;
       return;
     }
     if (s.vehicle) {
+      this.aimToggled = false;
       this.vehicleCtl.frameInput(dt);
       return;
     }
@@ -154,13 +165,21 @@ export class PlayerController {
     if (it.sprint && b.targetStance !== STANCE.STAND && it.mz < 0) b.setStance(STANCE.STAND);
 
     // --- Weapon handling ---------------------------------------------------------------------
-    s.aiming = input.mouseDown[2] && !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol');
-    if (w && w.def.type === 'grenade') s.aiming = false;
+    // Aiming: while the aim key is held or (Settings > Controls) from one press to
+    // the next. Sprinting, reloading a long gun or a grenade in hand lowers the gun.
+    const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && w.def.type === 'grenade');
+    if (this.settings.get('aimToggle')) {
+      if (input.hit('aim')) this.aimToggled = !this.aimToggled;
+      if (!canAim) this.aimToggled = false;
+      s.aiming = this.aimToggled;
+    } else {
+      s.aiming = input.is('aim') && canAim;
+    }
     this.holdingBreath = s.aiming && input.is('sprint') && this.breathDebt <= 0;
 
     if (input.hit('slot1')) this._requestSwitch(0);
     if (input.hit('slot2')) this._requestSwitch(1);
-    if (input.hit('slot3') || input.hit('grenade')) this._requestSwitch(2);
+    if (input.hit('slot3')) this._requestSwitch(2);
     const wheel = input.takeWheel();
     if (wheel && w) {
       if (s.aiming && w.def.sight.ranges.length > 1) {
@@ -171,7 +190,7 @@ export class PlayerController {
     }
     if (w && input.hit('zeroUp') && w.changeZero(1)) this.viewmodel.setZero(w.zeroIndex);
     if (w && input.hit('zeroDown') && w.changeZero(-1)) this.viewmodel.setZero(w.zeroIndex);
-    if (w && (input.hit('fireMode') || input.mousePressed[1])) w.cycleMode();
+    if (w && input.hit('fireMode')) w.cycleMode();
     if (w && input.hit('reload') && s.alive && !b.sprinting) {
       if (w.state === 'reloading') w.cancelReload();
       else if (w.needsCycle && w.state === 'ready') w.startBoltCycle();
@@ -181,17 +200,17 @@ export class PlayerController {
 
     // Trigger.
     if (w && w.def.type === 'grenade') {
-      if (input.mousePressed[0] && this._hasGrenade()) {
+      if (input.hit('fire') && this._hasGrenade()) {
         this.cooking = true;
         this.grenadeCook = 0;
       }
-      if (this.cooking && input.mouseReleased[0]) {
+      if (this.cooking && input.up('fire')) {
         this.cooking = false;
         this.pendingThrow = true;
       }
       w.setTrigger(false);
     } else if (w) {
-      w.setTrigger(input.mouseDown[0] && s.canShoot && this.viewmodel.swap > 0.9);
+      w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
   }
 

@@ -41,6 +41,9 @@ export class App {
     renderer.toneMappingExposure = 1.0;
     this.renderer = renderer;
     this.input = new Input(canvas);
+    // The player's keys (Settings > Controls > Keys), changed from any menu.
+    this.input.setBindings(this.settings.get('bindings'));
+    this.settings.listen((key) => key === 'bindings' && this.input.setBindings(this.settings.get('bindings')));
     // Sound: generated in code while the game loads; it starts playing on the
     // first click (browsers only allow audio after a user gesture).
     this.audio = this.params.get('audio') === '0' ? null : new AudioSystem({ masterVolume: this.settings.get('masterVolume') ?? 0.8 });

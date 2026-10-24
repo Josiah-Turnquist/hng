@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root {
   color-scheme: dark;
   --ink: #e9e4d6;
@@ -222,6 +223,22 @@ canvas.game {
   -webkit-mask-image: radial-gradient(circle, transparent 30%, #000 31%);
 }
 .hud-center .hitmark.kill { filter: sepia(1) saturate(6) hue-rotate(-30deg); }
+/* Next to a vehicle on foot: the key that gets you in. */
+.hud-use {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 70px);
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.hud-use .k { min-width: 18px; padding: 1px 6px; border: 1px solid var(--accent); color: var(--accent); font-family: var(--mono); font-weight: 700; text-align: center; }
 /* Hip-fire crosshair: --gap is set each frame from the spread of the shots. */
 .hud-cross {
   --gap: 12px;
@@ -512,12 +529,52 @@ canvas.game {
   border: 1px solid var(--panel-edge);
 }
 .pause h2 { margin: 0 0 6px; letter-spacing: 0.2em; text-transform: uppercase; font-size: 18px; text-align: center; }
-.pause .extra .row { margin: 10px 0; }
-.pause .extra label { display: block; font-size: 11px; color: var(--ink-dim); margin-bottom: 4px; }
-.pause .extra .choices { display: flex; flex-wrap: wrap; gap: 4px; }
-.pause .extra input[type='range'] { width: 100%; accent-color: var(--accent); }
-.pause .extra .note { font-size: 11px; color: var(--ink-dim); margin-top: 4px; }
-.pause .box.wide { width: min(640px, calc(100% - 32px)); }
+.pause .box.wide { width: min(680px, calc(100% - 32px)); }
+.pause-home { display: flex; flex-direction: column; gap: 8px; }
+.pause-tip { margin-top: 4px; text-align: center; font-size: 11px; color: var(--ink-dim); letter-spacing: 0.04em; }
+/* After Esc closes the menu: the battle waits for a click or a key. */
+.pause-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.pause-wait > div { padding: 10px 16px; background: var(--panel); border: 1px solid var(--panel-edge); font-size: 14px; letter-spacing: 0.04em; }
+
+/* Settings pages (main menu and pause menu). */
+.set-view .row { margin: 0 0 14px; }
+.set-view .row > label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-dim); margin-bottom: 6px; }
+.set-view .choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.set-view .note { margin-top: 5px; font-size: 12px; color: var(--ink-dim); line-height: 1.45; }
+.set-view input[type='range'] { width: 100%; accent-color: var(--accent); }
+.set-view button.on { background: rgba(201, 162, 74, 0.3); border-color: var(--accent); }
+.set-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--panel-edge); }
+.set-view .set-back { padding: 5px 10px; flex: none; }
+.set-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+.set-trail .sep { color: var(--ink-dim); }
+.set-trail .here { color: var(--accent); }
+.set-view .set-trail .crumb { padding: 0; border: 0; background: none; color: var(--ink-dim); text-transform: inherit; letter-spacing: inherit; font-size: inherit; }
+.set-view .set-trail .crumb:hover { color: var(--ink); background: none; text-decoration: underline; }
+.set-view .set-link { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 12px; width: 100%; margin: 0 0 8px; padding: 10px 12px; text-align: left; }
+.set-link .t { grid-column: 1; font-size: 15px; letter-spacing: 0.06em; }
+.set-link .s { grid-column: 1; min-width: 0; margin-top: 3px; font-size: 12px; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0; }
+.set-link .go { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 22px; color: var(--accent); }
+.set-view .set-intro { margin: 0 0 14px; }
+.set-view .set-group { margin: 18px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: var(--ink); }
+.set-notice { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px; border-left: 2px solid var(--accent); background: rgba(201, 162, 74, 0.12); font-size: 13px; }
+.set-notice span { flex: 1; min-width: 0; }
+.set-view .set-notice button { padding: 4px 10px; }
+.keys-table { display: flex; flex-direction: column; }
+.key-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px 132px; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.key-row .key-fixed { grid-column: 2 / span 2; font-family: var(--mono); font-size: 13px; color: var(--ink-dim); padding-left: 2px; }
+.key-name { font-size: 13px; min-width: 0; }
+.key-note { font-size: 11px; color: var(--ink-dim); margin-top: 1px; }
+.set-view .key-box { width: 100%; padding: 6px 8px; font-family: var(--mono); font-size: 13px; letter-spacing: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-view .key-box.empty { color: var(--ink-dim); border-style: dashed; }
+.set-view .key-box:disabled { opacity: 0.35; cursor: default; }
+.set-view .key-box.wait { border-color: var(--accent); background: rgba(201, 162, 74, 0.25); color: var(--ink); animation: key-wait 1s ease-in-out infinite alternate; }
+@keyframes key-wait { from { background: rgba(201, 162, 74, 0.12); } to { background: rgba(201, 162, 74, 0.32); } }
+.set-view .set-reset { margin-top: 16px; }
+@media (max-width: 520px) {
+  .key-row { grid-template-columns: 1fr 1fr; }
+  .key-name { grid-column: 1 / span 2; }
+  .key-row .key-fixed { grid-column: 1 / span 2; }
+}
 .menu .set-head, .pause .set-head { margin: 18px 0 10px; padding-bottom: 4px; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); border-bottom: 1px solid var(--panel-edge); }
 .menu .set-head:first-child, .pause .set-head:first-child { margin-top: 0; }
 .menu .custom-tag, .pause .custom-tag { align-self: center; margin-left: 6px; font-size: 12px; color: var(--accent); }
