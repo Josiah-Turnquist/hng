@@ -19,7 +19,7 @@ Plain ES modules and three.js, no build step during development (`npm start` ser
 | Collision | `src/physics/collision.js` | Oriented boxes in a 2D grid plus the heightfield. Ray casts for bullets and sight, sphere pushes for bodies and vehicles. Box flags say what a box stops (movement, bullets, sight) and its material. |
 | Ballistics | `src/ballistics/` | Drag tables (G1, G2, G7), atmosphere, projectile flight with Heun integration in steps of at most 1/400 s, material penetration and ricochet, armor penetration, and a zeroing solver used for sights. |
 | Weapons | `src/weapons/` | Weapon data (`defs.js`), ammunition (`ammo.js`), the mechanism state machine (`weapon.js`: loading, cycling, fire modes, heat), sight alignment (`sighting.js`), the first-person gun (`viewmodel.js`) and procedural gun models (`models/`). |
-| Soldiers | `src/actors/body.js`, `src/game/soldier.js` | Body movement (speeds, stances, stamina, steps, falls) and the soldier's health, wounds and weapons. `src/actors/soldierModel.js` is the skinned, procedurally animated model, which also supplies the hit zones. |
+| Soldiers | `src/actors/body.js`, `src/game/soldier.js` | Body movement (speeds, stances, stamina, steps, falls) and the soldier's health, wounds and weapons. `src/actors/soldierModel.js` is the skinned, procedurally animated model, which also supplies the hit zones. Uniforms and kit are built at real size per army and class (`soldierKit*.js`; garments in `soldierBody.js`, heads and hands in `soldierHead.js`, equipment in `soldierGear.js`) and textured from one atlas of fabrics, leather, steel and skin (`soldierMaterials.js`), in three levels of detail. `soldierFP.js` gives the player's first-person view his own sleeves and hands; `src/game/soldierView.js` drives the model from the game, including the riding pose bikes report through `riderPose`. |
 | Vehicles | `src/vehicles/` | `vehicle.js` (rigid hull on raycast suspension, hull contacts, seats, armor plates and damage), `wheeled.js` (engine, gearbox, tires), `tracked.js` (tracks as gripping belts, steering systems, turret and gun), `trackMesh.js` (animated links), `models/` (procedural vehicle models). |
 | AI | `src/ai/` | `navgrid.js` (walkability grid, its connected areas, and A*; one grid for soldiers and a wider-clearance one for vehicles), `bot.js` (infantry), `tankBot.js` (tank crews). |
 | Game | `src/game/` | `game.js` (the match: update order, hits, explosions, vehicles, bots), `player.js` and `vehicleControl.js` (the player), `modes/` (Assault, firing range). |
@@ -64,7 +64,7 @@ Open these through the dev server:
 
 - `debug/guns.html?gun=kar98k` (or `gun=all`; `sight=1&range=300` shows the sight picture)
 - `debug/vehicles.html?id=tiger1&armor=1`
-- `debug/soldiers.html?pose=walk`
+- `debug/soldiers.html?pose=walk&cls=all` (`close=face|hands|kit|back|feet` for close-ups, `pose=bicycle` for a rider, `fp=kar98k` for the first-person arms)
 - `debug/village.html?view=aerial`
 - `debug/vegetation.html?view=lane` (or `aerial`, `forest`, `hedge`, `wheat`, `orchard`; `cam=x,y,z,yaw,pitch` for any view)
 - `debug/audio.html`
