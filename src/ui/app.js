@@ -5,7 +5,12 @@ import { Settings } from '../core/settings.js';
 import { Input } from '../core/input.js';
 import { Game } from '../game/game.js';
 import { AudioSystem } from '../audio/audio.js';
-import { showMainMenu, PauseMenu } from './menu.js';
+import { PauseMenu } from './menu.js';
+import { showFrontEnd } from './frontend.js';
+import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
+import { emblem, rankBadge } from './icons.js';
+import { MAPS } from '../world/maps.js';
+import { FACTIONS } from '../weapons/defs.js';
 
 export class App {
   // resume: state handed over from a previous version of the page (see main.js).
@@ -23,6 +28,15 @@ export class App {
 
   async start() {
     const q = this.settings.quality;
+    // The interface's typefaces (system fonts stand in where they can't load).
+    try {
+      const f = document.createElement('link');
+      f.rel = 'stylesheet';
+      f.href = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap';
+      document.head.appendChild(f);
+    } catch {
+      /* no fonts: the fallbacks look fine */
+    }
     const canvas = document.createElement('canvas');
     canvas.className = 'game';
     this.root.appendChild(canvas);
@@ -69,15 +83,14 @@ export class App {
         minutes: Number(p.get('minutes') || 20),
       };
     } else {
-      const s = await showMainMenu(this);
-      opts = { map: s.map, mode: 'auto', faction: s.faction, side: s.side, cls: s.cls, tank: s.tank, loadout: s.weapon ? [s.weapon, null, null] : null, bots: s.bots, minutes: s.minutes };
+      opts = await showFrontEnd(this);
       // The quality may have changed in the menu.
       renderer.setPixelRatio(this._pixelRatio(this.settings.quality));
       this.audio?.resume();
     }
 
     this.opts = opts;
-    this.loading = this._makeLoading();
+    this.loading = this._makeLoading(opts);
     const game = new Game(this, opts);
     this.game = game;
     const soundReady = this.audio
@@ -95,12 +108,15 @@ export class App {
     setTimeout(() => this.loading.el.remove(), 800);
     // Releasing the mouse (Esc) pauses, once the player has started playing.
     this.pause = new PauseMenu(this, game);
+    // Experience for the soldier when the battle ends, or when he leaves it.
+    game.onBattleOver = (r) => this._battleOver(r);
+    window.addEventListener('pagehide', () => this._recordBattle(false));
     this.input.onLockChange = (locked) => {
       if (locked) {
         game.everLocked = true;
         game.paused = false;
         this.pause.hide();
-      } else if (game.everLocked && !game.mode?.over) {
+      } else if (game.everLocked && !game.mode?.over && !game.deployOpen) {
         game.paused = true;
         this.pause.show();
       }
@@ -169,16 +185,121 @@ export class App {
     this.game?.resize(w, h, this.renderer.getPixelRatio());
   }
 
-  _makeLoading() {
+  // The loading screen, as in the original game: the kind of battle, the
+  // battlefield, the two armies, a tip, and the progress.
+  _makeLoading(opts = {}) {
+    const def = MAPS[opts.map] || MAPS.town;
+    const assault = !!def.objectives && opts.mode !== 'range';
+    const me = FACTIONS[opts.faction] ? opts.faction : 'US';
+    const foe = FACTIONS[opts.enemy] && opts.enemy !== me ? opts.enemy : me === 'GE' ? 'US' : 'GE';
+    const attack = (opts.side || 'attack') === 'attack';
+    const army = (f, what) => `<span class="ld-army">${emblem(f)}<span>${FACTIONS[f].army}<small>${what}</small></span></span>`;
+    const k = (a) => this.input.keys(a);
+    const tips = [
+      `Lean around a corner with ${k('leanLeft')} and ${k('leanRight')}: you show much less of yourself than stepping out.`,
+      'Bullets slow down through wood and brick but keep going. Earth banks, stone walls and steel stop them.',
+      `While aiming, hold ${k('sprint')} to hold your breath and steady the gun for a few seconds.`,
+      `Bleeding takes your health away over time: bandage with ${k('bandage')} as soon as you are in cover.`,
+      'For a long shot, raise the rear sight with the mouse wheel while aiming: the bullet drops more than you think.',
+      'Leaves hide you, but only partly: enemies spot you more slowly through a hedge or a bush, not never.',
+      `Walk up to a bicycle, a motorcycle or a jeep and press ${k('use')} to get in. Bikes are the quickest way to the front.`,
+      'Capture points are taken in order along each line. Stand in a point with your side to take it; more men take it faster.',
+    ];
+    const tip = tips[Math.floor(Math.random() * tips.length)];
     const el = document.createElement('div');
     el.className = 'loading';
     el.innerHTML = `
-      <h1>HNG</h1>
-      <div class="sub">WWII combined arms</div>
-      <div class="bar"><div></div></div>
-      <div class="status">Starting</div>`;
+      <div class="ld-head">
+        <div class="ld-kind">${assault ? 'Assault' : 'Practice'}</div>
+        <h1></h1>
+        <div class="ld-sides">${assault ? `${army(me, attack ? 'attacking' : 'defending')}<b>vs</b>${army(foe, attack ? 'defending' : 'attacking')}` : army(me, 'no enemies')}</div>
+      </div>
+      <div class="ld-map"><canvas></canvas></div>
+      <div class="ld-foot">
+        <div class="ld-tip"><b>Tip</b><span></span></div>
+        <div class="bar"><div></div></div>
+        <div class="status">Starting</div>
+      </div>`;
+    el.querySelector('h1').textContent = def.name;
+    el.querySelector('.ld-tip span').textContent = tip;
     this.root.appendChild(el);
+    // The battlefield's map, where the map module is there.
+    const canvas = el.querySelector('.ld-map canvas');
+    import('./battleMap.js')
+      .then((M) => {
+        if (!el.isConnected || !M?.BattleMap) return;
+        const map = new M.BattleMap(canvas, def, {});
+        map.draw({ team: attack ? 1 : 0 });
+        this.loading.map = map;
+      })
+      .catch(() => (el.querySelector('.ld-map').hidden = true));
     return { el, bar: el.querySelector('.bar > div'), status: el.querySelector('.status') };
+  }
+
+  // Experience for the battle just fought (an Assault): for taking part, for
+  // every enemy put out of the fight, for every point taken, and more for a win.
+  // Once per battle; nothing for practice or for leaving straight away.
+  _recordBattle(won) {
+    const g = this.game;
+    const id = this.opts?.soldier?.id;
+    if (this.recorded || !g?.mode?.points || !id) return this.recorded || null;
+    const s = g.player.soldier;
+    if (g.time < 60 && !s.kills) return null;
+    const captures = s.captures || 0;
+    const xp = 100 + s.kills * 100 + captures * 150 + (won ? 400 : 0);
+    const roster = loadRoster();
+    const res = awardBattle(roster, id, { xp, won, kills: s.kills, deaths: s.deaths, captures });
+    if (!res) return null;
+    saveRoster(roster);
+    const soldier = roster.soldiers.find((x) => x.id === id);
+    this.recorded = { xp, captures, kills: s.kills, deaths: s.deaths, ...res, soldier };
+    return this.recorded;
+  }
+
+  // Leave the battle (pause menu): keep the experience, back to the Heroes screen.
+  leaveBattle() {
+    this._recordBattle(false);
+    location.reload();
+  }
+
+  // The battle is decided: the results, with the experience and any promotion.
+  _battleOver({ won, why }) {
+    const g = this.game;
+    const r = this._recordBattle(won);
+    const s = g.player.soldier;
+    const el = document.createElement('div');
+    el.className = `battle-result ${won ? 'won' : 'lost'}`;
+    const f = r?.soldier?.faction || s.faction;
+    const rk = r ? rankOf(r.soldier.xp) : null;
+    el.innerHTML = `<div class="br-box">
+        <div class="br-kind">Assault · ${g.mapDef.name}</div>
+        <h1>${won ? 'Victory' : 'Defeat'}</h1>
+        <div class="br-why"></div>
+        <div class="br-stats">
+          <div><b>${s.kills}</b><span>Enemies down</span></div>
+          <div><b>${s.deaths}</b><span>Times fallen</span></div>
+          <div><b>${s.captures || 0}</b><span>Points taken</span></div>
+          <div class="xp"><b>${r ? `+${r.xp.toLocaleString('en-US')}` : '0'}</b><span>Experience</span></div>
+        </div>
+        ${
+          r
+            ? `<div class="br-rank">${rankBadge(rk.rank)}<div><b></b><small></small><div class="br-xp"><i style="width:${(rk.progress * 100).toFixed(1)}%"></i></div></div></div>`
+            : ''
+        }
+        <button class="cta">Back to headquarters</button>
+      </div>`;
+    el.querySelector('.br-why').textContent = why;
+    if (r) {
+      const promoted = r.after > r.before;
+      el.querySelector('.br-rank b').textContent = `${promoted ? 'Promoted: ' : ''}Rank ${rk.rank} ${rankTitle(f, rk.rank)}`;
+      el.querySelector('.br-rank small').textContent = `${r.soldier.name} · ${r.soldier.xp.toLocaleString('en-US')} XP${rk.next ? ` · ${(rk.next - r.soldier.xp).toLocaleString('en-US')} to ${rankTitle(f, rk.rank + 1)}` : ''}`;
+      el.querySelector('.br-rank').prepend(Object.assign(document.createElement('span'), { className: 'br-emb', innerHTML: emblem(f) }));
+    }
+    el.querySelector('.cta').addEventListener('click', () => location.reload());
+    g.hud.root.appendChild(el);
+    // The mouse is needed for the button.
+    setTimeout(() => this.input.unlock(), 1200);
+    return true;
   }
 
   _progress(p, msg) {

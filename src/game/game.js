@@ -273,26 +273,44 @@ export class Game {
   // Dead player: choose where to go back in (jump deploys, the lean keys change the point).
   _playerDeploy(dt) {
     const s = this.player.soldier;
+    const d = this.deploy;
     if (s.alive) {
-      this.deploy.t = 0;
+      d.t = 0;
+      d.go = false;
+      d.freed = false;
+      if (this.deployOpen) this.hud.deployScreen?.(null);
+      this.deployOpen = false;
       return;
     }
-    const d = this.deploy;
     d.t += dt;
     const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;
     const input = this.input;
     if (opts && opts.length) {
       if (input.hit('leanLeft')) d.index = (d.index + opts.length - 1) % opts.length;
       if (input.hit('leanRight')) d.index = (d.index + 1) % opts.length;
-      const o = opts[Math.min(d.index, opts.length - 1)];
+      d.index = Math.min(d.index, opts.length - 1);
+      const o = opts[d.index];
       const wait = Math.max(0, o.delay - d.t);
       this.hud.setDeploy(`Deploy at ${o.id}${o.name !== o.id ? ` ${o.name}` : ''} ${wait > 0 ? `in ${wait.toFixed(0)} s` : `: press ${input.key('jump')}`}   (${input.key('leanLeft')} / ${input.key('leanRight')}: ${opts.length} points)`);
-      if (wait <= 0 && input.hit('jump')) {
+      // After a moment of the death camera, the deploy map, and the mouse to use it.
+      if (d.t > 1.5 && !this.mode.over) {
+        this.deployOpen = true;
+        this.hud.deployScreen?.({ opts, index: d.index, t: d.t });
+        if (!d.freed) {
+          d.freed = true;
+          input.unlock();
+        }
+      }
+      if (wait <= 0 && (input.hit('jump') || d.go)) {
+        d.go = false;
         this.mode.spawnSoldier(s, o.point);
         this.player.look.yaw = s.yaw;
         this.player.look.pitch = 0;
         this.player._equip(0);
         if (s.cls === 'tanker') this._deployInTank(s);
+        this.hud.deployScreen?.(null);
+        this.deployOpen = false;
+        input.lock();
       }
     } else if (!opts) {
       const wait = Math.max(0, 5 - d.t);

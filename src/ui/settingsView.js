@@ -86,7 +86,7 @@ export class SettingsView {
 
   // Draw the current page, keeping the scroll position unless it is a new page.
   render(newPage = false) {
-    const sc = this.body.closest('.menu, .pause .box') || this.body;
+    const sc = this.body.closest('.fe-main, .pause .box') || this.body;
     const y = sc.scrollTop;
     this.body.innerHTML = '';
     const nav = el('div', 'set-nav');

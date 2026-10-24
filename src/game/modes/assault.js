@@ -406,7 +406,11 @@ export class AssaultMode {
   _captured(p, team) {
     const g = this.game;
     // Everyone of the capturing side on the point shares the credit.
-    for (const s of g.soldiers) if (s.alive && s.team === team && Math.hypot(s.body.x - p.x, s.body.z - p.z) < p.radius) s.score += p.kind === 'objective' ? 20 : 10;
+    for (const s of g.soldiers)
+      if (s.alive && s.team === team && Math.hypot(s.body.x - p.x, s.body.z - p.z) < p.radius) {
+        s.score += p.kind === 'objective' ? 20 : 10;
+        s.captures = (s.captures || 0) + 1;
+      }
     p.owner = team;
     p.c = team === DEF ? 1 : -1;
     if (team === ATT && p.kind !== 'access' && !this.capturedOnce.has(p.id)) {
@@ -427,8 +431,11 @@ export class AssaultMode {
     this.over = { team, why };
     const g = this.game;
     const won = team === g.player.soldier.team;
-    this.resultEl.innerHTML = `<div class="title">${won ? 'Victory' : 'Defeat'}</div><div class="why">${why}</div><div class="hint">Reload the page to play again</div>`;
-    this.resultEl.style.display = 'flex';
+    // The app shows the results (experience, rank) when it can; otherwise a plain line.
+    if (!g.onBattleOver?.({ won, why })) {
+      this.resultEl.innerHTML = `<div class="title">${won ? 'Victory' : 'Defeat'}</div><div class="why">${why}</div><div class="hint">Reload the page to play again</div>`;
+      this.resultEl.style.display = 'flex';
+    }
     g.audio?.play?.(won ? 'objectiveCaptured' : 'objectiveLost', null, { volume: 1 });
   }
 

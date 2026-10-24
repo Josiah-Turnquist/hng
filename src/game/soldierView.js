@@ -32,7 +32,9 @@ export function attachSoldierModel(game, s) {
   let model;
   try {
     const primary = s.weapons?.[0]?.def;
-    model = new SoldierModel(s.faction, tex, { seed: s.id * 7919 + 13, lod: 0, cls: s.cls, role: ROLE[primary?.type] || 'rifle' });
+    // The player looks like his soldier on the Heroes screen (face and uniform).
+    const look = s.isPlayer ? game.opts?.soldier : null;
+    model = new SoldierModel(s.faction, tex, { seed: look?.seed ?? s.id * 7919 + 13, variant: look?.variant, lod: 0, cls: s.cls, role: ROLE[primary?.type] || 'rifle' });
     // Build every level of detail now so none is first built mid-battle.
     model.prepareLods();
   } catch (e) {

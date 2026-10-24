@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Battle map viewer</title>
+<style>body{margin:0;background:#16170f;color:#ddd;font:12px monospace;overflow:hidden}#map{display:block}#info{position:absolute;right:8px;bottom:8px;white-space:pre;background:rgba(0,0,0,0.5);padding:4px 6px;pointer-events:none}#info:empty{display:none}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="info"></div>
+<script type="module">
+// The battle map (src/ui/battleMap.js) as the menu, the loading screen and the
+// deploy screen show it. Click a spawn to choose it.
+// URL parameters:
+//   map=town|range     w=, h= (CSS size of the map; default the whole window)
+//   world=1            generate the real terrain and village plan first, as World.build does
+//   village=1          also build the village (for world.village.footprints); plan=0 drops
+//                      the plan so the map has only the footprints
+//   veg=1              also plant the vegetation (hedgerows and single trees)
+//   live=1             made-up battle state: points held by both sides, one being taken
+//                      with a fight on it, one neutral, three spawns (one chosen), the
+//                      player and a few friends (on the range: the targets)
+//   team=att|def       the viewer's side     view=x,z,radius     preview=0 (the sketch only)
+//   info=0             no timings box (they are also printed as BATTLEMAP_STATS)
+import { MAPS } from '../src/world/maps.js';
+import { generateTerrain } from '../src/world/terrainGen.js';
+import { planVillage } from '../src/world/village/plan.js';
+import { RNG } from '../src/core/math.js';
+import { BattleMap, mapPoints } from '../src/ui/battleMap.js';
+
+const params = new URLSearchParams(location.search);
+const def = MAPS[params.get('map') || 'town'] || MAPS.town;
+const canvas = document.getElementById('map');
+const W = Number(params.get('w') || innerWidth), H = Number(params.get('h') || innerHeight);
+canvas.style.width = `${W}px`;
+canvas.style.height = `${H}px`;
+const team = params.get('team') === 'def' ? 0 : 1;
+const stats = { map: def.id, w: W, h: H, dpr: devicePixelRatio };
+
+// The world, built the way World.build does (without the graphics).
+let world = null;
+if (params.get('world') === '1') {
+  const t0 = performance.now();
+  const terrain = generateTerrain(def);
+  world = { def, hf: terrain.hf, terrain };
+  stats.terrainMs = Math.round(performance.now() - t0);
+  if (def.objectives && def.village) {
+    const t1 = performance.now();
+    world.villagePlan = planVillage(terrain, def, new RNG(def.seed * 7 + 3));
+    terrain.hf.computeRange();
+    stats.planMs = Math.round(performance.now() - t1);
+  }
+  if (params.get('village') === '1' && world.villagePlan) {
+    const THREE = await import('three');
+    const { buildVillage } = await import('../src/world/village/index.js');
+    const { PRESETS } = await import('../src/render/textures.js');
+    // Plain materials instead of the texture library, as the headless battle does.
+    const textures = { standard(name) { const m = new THREE.MeshStandardMaterial(); m.userData.texWorld = PRESETS[name]?.world ?? 1; return m; }, get: () => ({}) };
+    const t2 = performance.now();
+    world.village = buildVillage(world.villagePlan, { terrain, def, textures });
+    stats.villageMs = Math.round(performance.now() - t2);
+    if (params.get('plan') === '0') delete world.villagePlan;
+  }
+  if (params.get('veg') === '1') {
+    const { buildVegetation } = await import('../src/world/vegetation.js');
+    const t3 = performance.now();
+    world.vegetation = buildVegetation({ terrain, def, village: world.village, plan: world.villagePlan });
+    stats.vegetationMs = Math.round(performance.now() - t3);
+  }
+}
+
+const tm = performance.now();
+const map = new BattleMap(canvas, def, { world, preview: params.get('preview') !== '0', view: params.get('view') ? Object.fromEntries(['x', 'z', 'radius'].map((k, i) => [k, Number(params.get('view').split(',')[i])])) : null });
+stats.createMs = Math.round(performance.now() - tm);
+
+// Made-up live state.
+const state = { team };
+if (params.get('live') === '1') {
+  if (def.lines) {
+    const pts = mapPoints(def);
+    const by = Object.fromEntries(pts.map((p) => [p.id, p]));
+    const hold = (id, owner) => {
+      by[id].owner = owner;
+      by[id].c = owner === 0 ? 1 : owner === 1 ? -1 : 0;
+    };
+    // The attackers have taken the first points of most lines and lost E1.
+    for (const id of ['A2', 'B2', 'C2', 'C3']) hold(id, 1);
+    hold('E1', 0);
+    // A3: the attackers are taking it and the defenders are fighting back.
+    by.A3.c = 0.38;
+    by.A3.count = [2, 3];
+    // B3: neutral now, two fifths of the way to the attackers.
+    by.B3.owner = null;
+    by.B3.c = -0.4;
+    state.points = pts;
+    const mine = (p) => p.owner === team && Math.abs(p.c) >= 0.999;
+    const depth = { access: 0, point: 1, objective: 1 };
+    state.spawns = pts.filter(mine).slice(0, 12).map((p) => ({ id: p.id, name: p.name, delay: 10 + 0.5 * (depth[p.kind] + Number(p.id[1] || 1) - 1), point: p }));
+    // Three spawns, the middle one chosen.
+    const front = team === 1 ? ['A2', 'C3', 'D1'] : ['O2', 'O1', 'B4'];
+    state.spawns = state.spawns.filter((s) => front.includes(s.id));
+    state.selected = front[1];
+    const at = by[front[1]];
+    state.player = { x: at.x + 40, z: at.z - 25, yaw: team === 1 ? Math.PI * 0.35 : -Math.PI * 0.6 };
+    const rng = new RNG(5);
+    state.friends = [];
+    for (const id of front) for (let i = 0; i < 3; i++) state.friends.push({ x: by[id].x + (rng.next() - 0.5) * 70, z: by[id].z + (rng.next() - 0.5) * 70 });
+    state.enemies = [{ x: by.A3.x + 12, z: by.A3.z + 8 }, { x: by.A3.x - 6, z: by.A3.z + 14 }];
+  } else {
+    // The firing range: targets from 25 to 800 m north of the firing line (as range.js).
+    const D = [25, 50, 100, 150, 200, 300, 400, 500, 600, 800];
+    state.marks = D.map((d, i) => ({ x: (i % 2 === 0 ? -1 : 1) * (6 + (i % 5) * 3.5), z: -d, label: `${d} m` }));
+    state.player = { x: 0, z: 6, yaw: 0 };
+  }
+}
+
+canvas.addEventListener('click', (e) => {
+  const id = map.spawnAt(e.offsetX, e.offsetY);
+  if (id) {
+    state.selected = id;
+    map.draw(state);
+  }
+});
+canvas.addEventListener('mousemove', (e) => {
+  const id = map.spawnAt(e.offsetX, e.offsetY);
+  canvas.style.cursor = id ? 'pointer' : 'default';
+  if (id !== state.hover) {
+    state.hover = id;
+    map.draw(state);
+  }
+});
+addEventListener('resize', () => map.resize());
+
+// Without a world, wait for the background preview (unless it is turned off).
+if (!world && params.get('preview') !== '0') {
+  const t0 = performance.now();
+  while (!map.preview && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 30));
+  stats.previewMs = Math.round(performance.now() - t0);
+}
+// The live layer alone, timed over many frames.
+map.draw(state);
+const n = 200;
+const t1 = performance.now();
+for (let i = 0; i < n; i++) map.draw(state);
+stats.liveMs = +((performance.now() - t1) / n).toFixed(3);
+stats.baseMs = Math.round(map.stats.baseMs);
+stats.groundMs = Math.round(map.stats.groundMs);
+stats.paintMs = Math.round(map.stats.paintMs);
+stats.groundPx = map.stats.groundPx;
+// The base layer once more, warm.
+const t2 = performance.now();
+map.setWorld(world);
+stats.rebuildMs = Math.round(performance.now() - t2);
+stats.rebuildPaintMs = Math.round(map.stats.paintMs);
+map.draw(state);
+if (params.get('info') !== '0') document.getElementById('info').textContent = Object.entries(stats).map(([k, v]) => `${k} ${v}`).join('\n');
+console.log('BATTLEMAP_STATS ' + JSON.stringify(stats));
+window.__map = map;
+window.__state = state;
+window.__done = true;
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { damp, clamp, clamp01, DEG } from '../core/math.js';
 import { HIP_CONVERGE } from '../weapons/viewmodel.js';
+import { BattleMap } from './battleMap.js';
 
 const _cv = new THREE.Vector3();
 
@@ -50,7 +51,14 @@ export class Hud {
       <canvas class="hud-scope"></canvas>
       <div class="hud-scores"></div>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint"></div></div>
-      <div class="hud-use"><span class="k"></span><span class="t"></span></div>`;
+      <div class="hud-use"><span class="k"></span><span class="t"></span></div>
+      <div class="hud-deploy" hidden>
+        <div class="dp-head"><div class="dp-title">You were killed</div><div class="dp-by"></div></div>
+        <div class="dp-body">
+          <div class="dp-mapbox"><canvas class="dp-map"></canvas></div>
+          <div class="dp-side"><h3>Deploy</h3><div class="dp-list"></div><div class="dp-keys"></div><button class="cta dp-go">Deploy</button></div>
+        </div>
+      </div>`;
     document.getElementById('app').appendChild(root);
     this.root = root;
     this.el = (sel) => root.querySelector(sel);
@@ -130,6 +138,84 @@ export class Hud {
     this.el('.hud-dead .hint').textContent = text;
   }
 
+  // After falling in an Assault, as in the original game: the battlefield's map
+  // with the points you can deploy at (click one, or the lean keys), their
+  // waits, and Deploy (or the jump key). state: { opts, index, t } from
+  // Game._playerDeploy, or null to close it.
+  deployScreen(state) {
+    const g = this.game;
+    const root = (this.dpEl ??= this.el('.hud-deploy'));
+    if (!state) {
+      if (!root.hidden) root.hidden = true;
+      this.deployState = null;
+      return;
+    }
+    this.deployState = state;
+    if (root.hidden) {
+      root.hidden = false;
+      this.dpKey = '';
+      if (!this.dpMap) {
+        this.dpMap = new BattleMap(this.el('.dp-map'), g.mapDef, { world: g.world });
+        this.el('.dp-map').addEventListener('click', (e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const id = this.dpMap.spawnAt(e.clientX - r.left, e.clientY - r.top);
+          const i = this.deployState?.opts.findIndex((o) => o.id === id);
+          if (i >= 0) g.deploy.index = i;
+        });
+        this.el('.dp-go').addEventListener('click', () => {
+          g.deploy.go = true;
+          // (A click may take the mouse back; the game also asks when it deploys.)
+          g.input.lock();
+        });
+      }
+      this.dpMap.resize();
+      const s = g.player.soldier;
+      this.el('.dp-by').textContent = s.killer ? `by ${s.killer.name}` : '';
+      this.el('.dp-keys').textContent = `${g.input.key('leanLeft')} / ${g.input.key('leanRight')}: choose a point · ${g.input.key('jump')}: deploy · or click the map`;
+    }
+    const { opts, index, t } = state;
+    const sel = opts[Math.min(index, opts.length - 1)];
+    const wait = (o) => Math.max(0, o.delay - t);
+    // The list (redrawn when something shown changes).
+    const key = `${opts.map((o) => `${o.id}:${Math.ceil(wait(o))}`).join(',')}|${sel?.id}`;
+    const changed = key !== this.dpKey;
+    if (changed) {
+      this.dpKey = key;
+      const list = this.el('.dp-list');
+      list.innerHTML = '';
+      opts.forEach((o, i) => {
+        const b = document.createElement('button');
+        b.className = `dp-opt${o === sel ? ' on' : ''}`;
+        const w = Math.ceil(wait(o));
+        b.innerHTML = '<b></b><span></span><em></em>';
+        b.querySelector('b').textContent = o.id;
+        b.querySelector('span').textContent = o.name !== o.id ? o.name : o.point?.kind === 'objective' ? 'Objective' : o.point?.kind === 'access' ? 'Access point' : 'Capture point';
+        b.querySelector('em').textContent = w > 0 ? `${w} s` : 'Ready';
+        b.addEventListener('click', () => (g.deploy.index = i));
+        list.appendChild(b);
+      });
+      const go = this.el('.dp-go');
+      const w = sel ? Math.ceil(wait(sel)) : 1;
+      go.disabled = w > 0;
+      go.textContent = w > 0 ? `Deploy at ${sel.id} in ${w} s` : `Deploy at ${sel.id}`;
+    }
+    // The map, a few times a second (and with the list, so their numbers agree).
+    const now = performance.now();
+    if (changed || now - (this.dpT || 0) > 120) {
+      this.dpT = now;
+      const s = g.player.soldier;
+      const team = s.team;
+      this.dpMap.draw({
+        points: g.mode.points,
+        team,
+        spawns: opts.map((o) => ({ id: o.id, name: o.name, x: o.point.x, z: o.point.z, delay: wait(o) })),
+        selected: sel?.id,
+        player: { x: s.body.x, z: s.body.z, yaw: s.yaw ?? 0 },
+        friends: g.soldiers.filter((x) => x !== s && x.alive && x.team === team).map((x) => ({ x: x.body.x, z: x.body.z })),
+      });
+    }
+  }
+
   flash(text, seconds = 1.6) {
     this.msgEl.textContent = text;
     this.msgT = seconds;
@@ -206,7 +292,7 @@ export class Hud {
     this.hitT -= dt;
     this.hitEl.style.opacity = this.hitT > 0 ? 1 : 0;
     this.damageFlash = damp(this.damageFlash, s.health < 30 ? 0.35 : 0, 1.5, dt);
-    this.deadEl.style.display = s.alive ? 'none' : 'flex';
+    this.deadEl.style.display = s.alive || this.deployState ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;
     this._updateCrosshair(p, dt);
     this._updateUse(p, dt);
@@ -275,7 +361,8 @@ export class Hud {
   // Hold Tab: both sides' soldiers with kills, deaths and score.
   _updateScores(g) {
     const el = (this.scoresEl ??= this.el('.hud-scores'));
-    const show = g.input.is('scores') || !!g.mode?.over;
+    // (Not over the battle results, which have their own summary.)
+    const show = (g.input.is('scores') || !!g.mode?.over) && !this.root.querySelector('.battle-result');
     el.style.display = show ? 'flex' : 'none';
     if (!show) return;
     this._scoreT = (this._scoreT || 0) + 1;
