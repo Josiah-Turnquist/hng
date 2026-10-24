@@ -75,6 +75,16 @@ const ANCHOR_PART = {
 
 let nextVehicleId = 1;
 
+// Gameplay tuning the players asked for, on top of the real figures: every
+// vehicle picks up speed twice as fast (the push left over after the hill, the
+// ground and the air is doubled, and gear changes take half the time, so the
+// top speeds stay where they were), and turns a quarter sharper (a turning
+// circle three quarters the size at the same speed; tanks pivot and turn 25 %
+// faster). The bicycle's rider gets three times the push (bike.js).
+export const ACCEL_GAIN = 2;
+export const TURN_CIRCLE = 0.75;
+export const TURN_RATE = 1.25;
+
 export class Vehicle {
   constructor(game, def, model, x, z, yaw) {
     this.id = nextVehicleId++;
@@ -454,6 +464,14 @@ export class Vehicle {
     return (torqueAt(d.engine.torque, rpm) * Math.abs(this.gearRatio(gear)) * d.efficiency) / r;
   }
 
+  // The drive force F (N, along the way it is going) with the gameplay gain:
+  // what is left over after the resistance to motion is multiplied by k.
+  _gain(F, k = ACCEL_GAIN) {
+    if (!(F > 0) || k === 1) return F;
+    const R = Math.max(0, this._resistance());
+    return F > R ? R + k * (F - R) : F;
+  }
+
   // Force needed to keep going: the hill, rolling resistance and air.
   _resistance() {
     const d = this.def;
@@ -474,7 +492,7 @@ export class Vehicle {
   _startShift(g, time = this.def.shiftTime) {
     this.nextGear = g;
     this.gear = 0;
-    this.shiftTimer = time;
+    this.shiftTimer = time / ACCEL_GAIN; // (gameplay: quicker changes, see ACCEL_GAIN)
     if (time > 0.25) this.game.audio?.play?.('gearShift', this.body.position, { volume: 0.35 });
   }
 

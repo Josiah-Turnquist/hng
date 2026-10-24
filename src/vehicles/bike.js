@@ -26,7 +26,8 @@
 // The heading, position and speeds follow a single-track (bicycle) model with
 // tire slip; pitch and heave come from the wheel springs. Units: SI.
 import * as THREE from 'three';
-import { Vehicle, sphereBox } from './vehicle.js';
+import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE } from './vehicle.js';
+import { STAMINA_POOL, STAMINA_REGEN } from '../actors/body.js';
 import { MountedGun } from './tracked.js';
 import { magic } from './wheeled.js';
 import { FLAG_SOLID, FLAG_WALKABLE, RayHit, Box, CollisionWorld } from '../physics/collision.js';
@@ -81,13 +82,18 @@ export function magicInv(f) {
   return Math.min(y, TIRE_YPEAK) / TIRE_B;
 }
 
+// The share of full lock a rider turns with when slow (the rest he keeps in
+// hand to balance with): 0.6 of it, and for gameplay a quarter tighter turns
+// than that gives (TURN_CIRCLE in vehicle.js).
+export const LOCK_USE = 0.6 / TURN_CIRCLE;
+
+// Gameplay: the bicycle's rider picks up speed three times as fast as his legs
+// alone would push him (the motorcycles get ACCEL_GAIN, vehicle.js).
+const PEDAL_GAIN = 3;
+
 // How far a rider overrates the grip of each ground (index = SURF id): roads,
 // dirt and cobbles look what they are; grass, fields and leaf litter are
 // slipperier than they look, so riders lean too far on them (est.).
-// The share of full lock a rider turns with when slow (the rest he keeps in
-// hand to balance with).
-export const LOCK_USE = 0.6;
-
 const MISJUDGE = [0.12, 0.08, 0.03, 0.1, 0.03, 0.1, 0.03, 0.1, 0.03, 0.1, 0.1, 0.1];
 
 // Mass and kit of a soldier on board (kg), and where his own center of mass sits
@@ -141,7 +147,7 @@ export class Bike extends Vehicle {
     this.vy = 0;
     this.pitch = 0;
     this.pitchRate = 0;
-    this.lean = this.rig ? 0 : def.lean.stand ?? -0.14;
+    this.lean = this.rig ? 0 : def.lean.stand ?? 0;
     this.leanRate = 0;
     this.leanTarget = 0;
     this.leanTargetRate = 0;
@@ -160,7 +166,10 @@ export class Bike extends Vehicle {
     this.crank = 0;
     this.cadence = 0;
     this.effort = 'idle';
-    this.wBal = def.pedal ? def.pedal.wPrime : 0;
+    this.standing = false; // out of the saddle on the pedals
+    this.walking = false; // pushing it up a hill too steep to ride
+    this.wMax = def.pedal ? def.pedal.wPrime * STAMINA_POOL : 0; // the rider's sprint reserve (J)
+    this.wBal = this.wMax;
     this.noise = 0;
     this.noiseT = 0;
     this.kickT = 0;
@@ -327,20 +336,46 @@ export class Bike extends Vehicle {
 
   // Sit the machine at rest on the ground where it was spawned.
   _placeStatic(x, z) {
-    const hf = this.game.world.hf;
     const cyw = Math.cos(this.yaw),
       syw = Math.sin(this.yaw);
     // x, z given = the model origin. P = O + the CG offset.
     this.px = x + (this.cx * cyw + this.cz * syw);
     this.pz = z + (-this.cx * syw + this.cz * cyw);
-    const L = this.def.wheelbase;
-    const fx = -syw,
-      fz = -cyw;
-    const hF = hf.getHeight(x + (fx * L) / 2, z + (fz * L) / 2);
-    const hR = hf.getHeight(x - (fx * L) / 2, z - (fz * L) / 2);
-    this.pitch = Math.atan2(hF - hR, L);
-    this.oy = (hF + hR) / 2;
+    this._settle(x, z);
+  }
+
+  // Each wheel on whatever is under it (the ground, or a kerb, step or bridge
+  // deck), the springs at their static load: pitch from the two wheels, and a
+  // sidecar outfit tilted with the ground under its third wheel. (x, z) is the
+  // model origin.
+  _settle(x, z) {
+    const w0 = this.game.world;
+    const hf = w0.hf;
+    const cyw = Math.cos(this.yaw),
+      syw = Math.sin(this.yaw);
+    const ground = (w) => {
+      const wx = x + (w.x * cyw + w.z * syw),
+        wz = z + (-w.x * syw + w.z * cyw);
+      const h = hf.getHeight(wx, wz);
+      // (Looking down from a little above the ground: a kerb under the tire, not a bench or a roof.)
+      if (w0.collision?.raycast(wx, h + 0.6, wz, 0, -1, 0, 0.9, _hit, FLAG_WALKABLE, true)) return h + 0.6 - _hit.t;
+      return h;
+    };
+    const zF = this.wF.z,
+      zR = this.wR.z;
+    const hF = ground(this.wF),
+      hR = ground(this.wR);
+    this.pitch = Math.asin(clamp((hF - hR) / (zR - zF), -0.6, 0.6));
+    this.oy = hF + zF * Math.sin(this.pitch);
+    if (this.wS) {
+      const s = this.wS;
+      const yS = this.oy - s.z * Math.sin(this.pitch);
+      this.lean = Math.asin(clamp((yS - ground(s)) / (s.x * Math.cos(this.pitch)), -0.35, 0.35));
+    }
+    this.vy = 0;
+    this.pitchRate = 0;
     for (const w of this.wheels) w.comp = 0;
+    this._settled = true; // (no spring damping kick on the first step)
   }
 
   _collisionSpheres() {
@@ -389,7 +424,7 @@ export class Bike extends Vehicle {
   _startShift(g, time = this.def.shiftTime) {
     this.nextGear = g;
     this.gear = 0;
-    this.shiftTimer = time;
+    this.shiftTimer = time / ACCEL_GAIN; // (gameplay: quicker changes)
   }
 
   // Force needed to keep going (for the gear choice): hill, tires and air.
@@ -403,7 +438,22 @@ export class Bike extends Vehicle {
       }
     crr = n ? crr / n : 0.03;
     const v = Math.abs(this.speed);
-    return this.m * G * (Math.max(0, Math.sin(this.pitch)) + crr) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+    return this.m * G * (Math.max(0, Math.sin(Math.atan(this._grade()))) + crr) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+  }
+
+  // The ground's rise per meter along the heading, under the wheels (not the
+  // machine's own pitch, which squats and dives on its springs).
+  _grade() {
+    let s = 0,
+      n = 0;
+    const fx = -Math.sin(this.yaw),
+      fz = -Math.cos(this.yaw);
+    for (const w of this.wheels)
+      if (w.hit && w !== this.wS) {
+        s -= (w.nx * fx + w.nz * fz) / w.ny;
+        n++;
+      }
+    return n ? s / n : Math.tan(this.pitch);
   }
 
   // R 75: the off-road range is selected at a standstill (a lever by the tank),
@@ -612,7 +662,7 @@ export class Bike extends Vehicle {
           const t = (comp + w.droop) / 0.015;
           if (t < 1) N *= t;
           if (comp > w.bump) N += 12 * w.k * (comp - w.bump);
-          N += (w.c * (comp - w.comp)) / h;
+          if (!this._settled) N += (w.c * (comp - w.comp)) / h;
           if (N < 0) N = 0;
           w.contactNow.set(wx, gy, wz);
         }
@@ -631,6 +681,7 @@ export class Bike extends Vehicle {
         if (w === this.wS) Msc -= N * w.x * cosL;
       }
     }
+    this._settled = false;
     this.contacts = nGround;
 
     // 3. Tires: drive, brakes, rolling resistance and cornering, each limited by
@@ -809,7 +860,7 @@ export class Bike extends Vehicle {
     if (this.rightingT > 0) return 0;
     const rider = this.occupants[0];
     if (!rider) {
-      if (this.onStand) return spring(this.def.lean.stand ?? -0.14, 14, 1);
+      if (this.onStand) return spring(this.def.lean.stand ?? 0, 14, 1);
       return 0;
     }
     // Foot down: leaning on it when stopped, the machine upright as he pushes off.
@@ -851,8 +902,13 @@ export class Bike extends Vehicle {
       // Sidecar outfit: steered like a car. The turn asked for is limited by the
       // lock at low speed and by what the rider would dare at speed; he eases off
       // when the chair lifts.
-      const aLim = (d.rider?.latG ?? 0.55) * G;
-      let kappa = steerIn * Math.min(kLock, aLim / Math.max(u * u, 0.5));
+      // (For gameplay a quarter tighter than the real lock and a careful rider
+      // give, TURN_CIRCLE in vehicle.js; toward the chair its wheel lifting
+      // sets the limit, as before.)
+      const towardChair = steerIn * Math.sign(this.def.sidecar.track) > 0;
+      const lockR = Math.atan(Math.tan(lockG) / TURN_CIRCLE);
+      const aLim = ((d.rider?.latG ?? 0.55) * G) / (towardChair ? 1 : TURN_CIRCLE);
+      let kappa = steerIn * Math.min(Math.tan(lockR) / L, aLim / Math.max(u * u, 0.5));
       // Bars left alone, he holds his line (outfits are rigged to run straight,
       // but the pull under power and braking still swings them off it first).
       if (Math.abs(steerIn) < 0.05 && Math.abs(u) > 1.5 && rider) {
@@ -870,8 +926,17 @@ export class Bike extends Vehicle {
         if (lift > 0.02) ease = Math.min(ease, clamp(1 - (lift - 0.02) / 0.1, 0, 1));
         kappa *= Math.min(1, ease);
       }
+      // Turning hard away from it, the rear wheel goes light (the outfit would
+      // tip over the front wheel and the chair): he eases off the same way.
+      if (kappa * side < 0) {
+        const light = this.wR.N / Math.max(1, this.wR.L);
+        const tip = this.lean * side;
+        let ease = light < 0.35 ? 0.5 + 1.4 * light : 1;
+        if (tip > 0.04) ease = Math.min(ease, clamp(1 - (tip - 0.04) / 0.1, 0, 1));
+        kappa *= Math.min(1, ease);
+      }
       const want = u < -0.2 ? -Math.atan(L * kappa) : Math.atan(L * kappa);
-      this.steerG = approach(this.steerG, clamp(want, -lockG, lockG), (d.rider?.barRate ?? 2) * h);
+      this.steerG = approach(this.steerG, clamp(want, -lockR, lockR), (d.rider?.barRate ?? 2) * h);
       this.footDown = 0;
       return;
     }
@@ -892,7 +957,14 @@ export class Bike extends Vehicle {
     // (Slow, he keeps some lock in hand to balance with.)
     const tanLim = Math.tan(this._leanLimit());
     const kLean = (G * tanLim) / Math.max(u * u, 0.25);
-    const kappaD = steerIn * Math.min(kLock * LOCK_USE, kLean);
+    let kappaD = steerIn * Math.min(kLock * LOCK_USE, kLean);
+    // Bars left alone under way, he holds the line he was on (pulling away
+    // from a foot down swings the machine a little off it): a slow trim.
+    if (steerIn === 0 && au > 4) {
+      if (this.holdYaw === null) this.holdYaw = this.yaw;
+      const e = wrapAngle(this.yaw - this.holdYaw);
+      kappaD = clamp((0.3 * e) / u, -0.05 * kLean, 0.05 * kLean);
+    } else this.holdYaw = null;
     // The rider rolls in at a human rate: a smooth reference lean, limited in
     // rate and in how fast that rate changes.
     const phiWant = Math.atan((u * u * kappaD) / G);
@@ -907,7 +979,7 @@ export class Bike extends Vehicle {
     // further than full lock could bring back, he dabs a foot down to save it.
     this.dabT = Math.max(0, (this.dabT || 0) - h);
     if (this.footDown === 0) {
-      if ((au < 0.7 && (inp.throttle < 0.1 || au < 0.3)) || backing || this.paddle) this.footDown = this._footSide();
+      if ((au < 0.7 && (inp.throttle < 0.1 || au < 0.3)) || backing || this.paddle || this.walking) this.footDown = this._footSide();
       else if (au < 3.5 && this.lean * this.leanRate > 0) {
         const tanHold = (0.8 * au * au * Math.tan(lockG)) / (L * G);
         if (Math.abs(Math.tan(this.lean)) > tanHold + 0.04) {
@@ -915,7 +987,7 @@ export class Bike extends Vehicle {
           this.dabT = 0.8;
         }
       }
-    } else if (au > (this.pedal ? 1.5 : 1.8) && !backing && !(this.paddle && inp.throttle > 0) && this.dabT <= 0) this.footDown = 0;
+    } else if (au > (this.pedal ? 1.5 : 1.8) && !backing && !this.walking && !(this.paddle && inp.throttle > 0) && this.dabT <= 0 && (Math.abs(this.lean) < 0.02 || au > 3)) this.footDown = 0; // (once he has pushed it upright)
     if (this.footDown) {
       this.leanTarget = this.lean;
       this.leanTargetRate = 0;
@@ -995,13 +1067,24 @@ export class Bike extends Vehicle {
     const mu = this._gripNow;
     const trust = Math.min(0.72, mu + (this._misjudge ?? 0.05) * smoothstep(6, 14, Math.abs(this.u)));
     const cap = this.latCapAvg ?? 0.6 * this.m * G;
-    // Below about 35 km/h he keeps more in hand.
-    const keep = 0.55 + 0.2 * smoothstep(4, 10, Math.abs(this.u));
+    // Below about 35 km/h he keeps more in hand. (For gameplay he dares a
+    // quarter tighter turns than a careful rider would: TURN_CIRCLE.)
+    const keep = Math.min(0.85, (0.55 + 0.2 * smoothstep(4, 10, Math.abs(this.u))) / TURN_CIRCLE);
     const tanGrip = (keep * cap * (trust / Math.max(mu, 0.1))) / (this.m * G);
     let clear = d.lean.clear - 0.04;
     // Pedaling, the inside pedal comes down: less clearance on a bicycle.
     if (this.pedal && this.effort !== 'coast' && this.effort !== 'idle') clear = Math.min(clear, 0.45);
     return Math.min(clear, Math.atan(tanGrip));
+  }
+
+  // The tightest path curvature (1/m) the rider asks for at speed u with the
+  // bars full over (see _rider; the bots steer by it).
+  maxCurvature(u) {
+    const d = this.def;
+    const lockG = d.steering.lock * Math.cos(this.rake);
+    const u2 = Math.max(u * u, 0.25);
+    if (this.rig) return Math.min(Math.tan(lockG) / TURN_CIRCLE / d.wheelbase, ((d.rider?.latG ?? 0.55) * G) / TURN_CIRCLE / u2);
+    return Math.min((Math.tan(lockG) / d.wheelbase) * LOCK_USE, (G * Math.tan(this._leanLimit())) / u2);
   }
 
   _footSide() {
@@ -1029,8 +1112,12 @@ export class Bike extends Vehicle {
     let bf = Math.min(b * d.brakes.front, 0.92 * trust(this.wF));
     let br = Math.min(b * d.brakes.rear, 0.95 * trust(this.wR));
     if (inp.handbrake) br = d.brakes.rear;
-    // Stopped with nothing pressed: the rider (or the stand) holds it.
-    if (throttle < 0.05 && Math.abs(u) < 0.5 && !this.paddle) br = Math.max(br, d.brakes.rear * 0.5);
+    // Stopped with nothing pressed: the rider (or the stand) holds it, on both
+    // brakes so that it stays put on a hill.
+    if (throttle < 0.05 && Math.abs(u) < 0.5 && !this.paddle) {
+      br = Math.max(br, d.brakes.rear * 0.6);
+      bf = Math.max(bf, d.brakes.front * 0.6);
+    }
     this.wF.brake = bf;
     this.wR.brake = br;
     if (this.wS) this.wS.brake = Math.min(b * (d.brakes.side || 0), 0.95 * trust(this.wS));
@@ -1053,7 +1140,8 @@ export class Bike extends Vehicle {
     const wheelT = (torque + engineBrake) * ratio * d.efficiency;
     const rotMass = (d.engine.inertia * ratio * ratio + this.wheelInertia) / (R * R);
     const share = this.m / (this.m + rotMass);
-    let F = (wheelT / R) * share;
+    // (With the gameplay gain on the push: see ACCEL_GAIN in vehicle.js.)
+    let F = this._gain((wheelT / R) * share);
     // Leaned over, the rider feeds the throttle in only as far as the rear
     // tire has grip left over from the turn (as anyone who rides does).
     if (F > 0 && !this.rig && this.occupants[0]) {
@@ -1067,34 +1155,62 @@ export class Bike extends Vehicle {
   }
 
   // Pedaling: the force the legs can put on the pedals falls with cadence
-  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W, sprinting he gives
-  // all he has, which spends W' (his stamina) above his critical power.
+  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W (more up a hill),
+  // sprinting he gives all he has, which spends W' (his stamina) above his
+  // critical power. Climbing, he stands on the pedals when sitting won't turn
+  // the cranks, and where even that won't do he walks it up.
   _legs(h, u, throttle) {
     const pd = this.def.pedal;
     const R = this.def.wheelRadius;
     const dev = (2 * Math.PI * R * pd.chainring) / pd.sprocket; // m per crank turn
     const cad = (Math.max(0, u) / dev) * 60;
-    const fPedal = pd.F0 * Math.max(0, 1 - cad / pd.c0);
-    const vPedal = (2 * Math.PI * pd.crank * cad) / 60;
-    const pMax = fPedal * vPedal; // the most power at this cadence
-    const fWheelMax = (fPedal * pd.crank * pd.sprocket) / pd.chainring / R; // that force at the tire
+    const toWheel = (pd.crank * pd.sprocket) / pd.chainring / R;
+    const fall = Math.max(0, 1 - cad / pd.c0);
     const rider = this.occupants[0];
-    const spent = rider?.body?.staminaLock || this.wBal < pd.wPrime * 0.02;
+    const spent = rider?.body?.staminaLock || this.wBal < this.wMax * 0.02;
+    // Up a hill he works harder than on the flat, up to his critical power, and
+    // out of the saddle he pushes harder on the pedals.
+    const grade = Math.max(0, this._grade());
+    const steady = pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1);
+    const fSeat = pd.F0 * fall * toWheel; // the most force at the tire at this cadence
+    const fMax = grade > 0.02 ? (pd.F0stand ?? pd.F0) * fall * toWheel : fSeat;
     let F = 0;
     let effort = 'coast';
+    this.standing = false;
     if (throttle > 0.05 && !this.fallen && this.rightingT <= 0) {
       if (this.input.sprint && !spent) {
         // All he has: what the legs push at this cadence, and above critical
         // power only as much as his remaining W' allows.
-        F = fWheelMax;
-        if (pMax > pd.cp && u > 0.5) F = Math.min(F, (pd.cp + (pMax - pd.cp) * Math.sqrt(clamp(this.wBal / pd.wPrime, 0, 1))) / u);
+        F = fMax;
+        const pMax = F * Math.max(u, 0);
+        if (pMax > pd.cp && u > 0.5) F = Math.min(F, (pd.cp + (pMax - pd.cp) * Math.sqrt(clamp(this.wBal / this.wMax, 0, 1))) / u);
         effort = 'sprint';
+        this.standing = true;
       } else {
-        F = Math.min(fWheelMax, (pd.cruise * throttle) / Math.max(u, 0.8));
+        const want = (steady * throttle) / Math.max(u, 0.8);
+        F = Math.min(want, fMax);
+        this.standing = want > fSeat;
         effort = spent ? 'spent' : 'cruise';
       }
     }
     F *= pd.efficiency;
+    // Too steep to ride: slowed to a walk and still unable to turn the cranks
+    // over, he gets a foot down and walks it up (and rides on where it eases).
+    const hill = this.m * G * (Math.sin(Math.atan(grade)) + 0.02);
+    const going = throttle > 0.05 && rider && !this.fallen && this.rightingT <= 0 && grade > 0.03;
+    if (!going || F > hill * 1.08) this.walking = false;
+    else if (u < 0.8) this.walking = true;
+    if (this.walking) {
+      const vWalk = clamp(220 / hill, 0.5, 1.3);
+      this.paddle = clamp(hill + (vWalk - u) * this.m * 3, 0, this.m * G * 0.45) * throttle;
+      F = 0;
+      effort = 'walk';
+      this.standing = false;
+    }
+    // (Gameplay: three times the push he has left over after the hill, the
+    // ground and the air, so he picks up speed three times as fast; the speeds
+    // he settles at stay the same. See PEDAL_GAIN.)
+    F = this._gain(F, PEDAL_GAIN);
     this.wR.drive = Math.max(0, F);
     const P = (F * Math.max(u, 0)) / pd.efficiency;
     this.power = P;
@@ -1105,20 +1221,22 @@ export class Bike extends Vehicle {
     this.gear = 1;
   }
 
-  // W' balance: work above critical power drains it; below, it comes back.
+  // W' balance: work above critical power drains it; below, it comes back. (As
+  // on foot, the reserve is STAMINA_POOL times the plain figure and comes back
+  // STAMINA_REGEN times as fast: see the soldier's body.)
   _stamina(dt) {
     const pd = this.def.pedal;
     const rider = this.occupants[0];
     const P = this.power || 0;
     if (P > pd.cp) this.wBal -= (P - pd.cp) * dt;
     else {
-      const tau = 24 + 40 * (P / pd.cp);
-      this.wBal += (pd.wPrime - this.wBal) * (1 - Math.exp(-dt / tau));
+      const tau = (24 + 40 * (P / pd.cp)) / STAMINA_REGEN;
+      this.wBal += (this.wMax - this.wBal) * (1 - Math.exp(-dt / tau));
     }
-    this.wBal = clamp(this.wBal, 0, pd.wPrime);
+    this.wBal = clamp(this.wBal, 0, this.wMax);
     if (!rider?.body) return;
     const b = rider.body;
-    b.stamina = (100 * this.wBal) / pd.wPrime;
+    b.stamina = (100 * this.wBal) / this.wMax;
     if (b.stamina <= 1) b.staminaLock = true;
     if (b.staminaLock && b.stamina > 30) b.staminaLock = false;
     const exertion = clamp(Math.max(1 - b.stamina / 100, (P - pd.cruise) / (pd.cp * 2)), 0, 1);
@@ -1186,7 +1304,7 @@ export class Bike extends Vehicle {
 
   _righting(dt) {
     this.rightingT -= dt;
-    const target = this.rig ? 0 : this.occupants[0] ? this._footSide() * 0.1 : this.def.lean.stand ?? -0.14;
+    const target = this.rig ? 0 : this.occupants[0] ? this._footSide() * 0.1 : this.def.lean.stand ?? 0;
     this.fallen = 0;
     this.lean = damp(this.lean, target, 5, dt);
     this.leanRate = 0;
@@ -1199,9 +1317,9 @@ export class Bike extends Vehicle {
       this.footDown = this.occupants[0] ? this._footSide() : 0;
       this.onStand = !this.occupants[0] && !this.rig;
       // Settle on the ground.
-      const hf = this.world.hf;
-      this.oy = hf.getHeight(this.px, this.pz);
-      this.vy = 0;
+      const cyw = Math.cos(this.yaw),
+        syw = Math.sin(this.yaw);
+      this._settle(this.px - (this.cx * cyw + this.cz * syw), this.pz - (-this.cx * syw + this.cz * cyw));
     }
   }
 
@@ -1456,7 +1574,7 @@ export class Bike extends Vehicle {
       this.onStand = false;
       this.footDown = this._footSide();
       this.lastDriver = soldier;
-      if (this.pedal) this.wBal = this.def.pedal.wPrime * clamp((soldier.body?.stamina ?? 100) / 100, 0, 1);
+      if (this.pedal) this.wBal = this.wMax * clamp((soldier.body?.stamina ?? 100) / 100, 0, 1);
       if (!this.pedal && this.alive && this.modules.engine > 0) this.game.audio?.play?.('motoStart', this.body.position, { volume: 0.8 });
     }
     this._seatOccupant(soldier);
@@ -1586,6 +1704,7 @@ export class Bike extends Vehicle {
       const far = this.model.parts?.far;
       if (far) for (const [k, g] of Object.entries(this.model.parts)) g.visible = lod === 1 ? k === 'far' : k !== 'far';
       root.visible = lod < 2;
+      this._synced = false; // (bring the moving parts up to date once)
     }
     // Parked: nothing moves (one last update after it settled).
     if (this.asleep && this._synced) return;
@@ -1629,6 +1748,15 @@ export class Bike extends Vehicle {
         }
       }
       if (this.mg && parts.mg) parts.mg.quaternion.setFromEuler(_e.set(this.mgPitch, this.mgYaw, 0, 'YXZ'));
+      // The rear stand: down while it is parked on it, folded up behind the
+      // mudguard while it is ridden (or lying on its side).
+      if (parts.stand) {
+        const want = this.onStand && !this.fallen ? 0 : (this.model.meta?.standFold ?? -1.4);
+        this.standAngle = this.asleep || this.standAngle === undefined ? want : approach(this.standAngle, want, dt * 6);
+        const piv = this.partPivots.stand;
+        parts.stand.position.set(piv.x, piv.y + this._travel(this.wR), piv.z);
+        parts.stand.rotation.x = this.standAngle;
+      }
       // The sprung saddle (and the rest) stays put; fork springs show their travel.
       root.updateMatrixWorld(true);
     }

@@ -3,7 +3,7 @@
 // and tires with a Pacejka-style grip curve that depends on the ground (dry road,
 // grass, mud, sand...).
 import * as THREE from 'three';
-import { Vehicle } from './vehicle.js';
+import { Vehicle, TURN_CIRCLE } from './vehicle.js';
 import { clamp, approach } from '../core/math.js';
 
 const _v = new THREE.Vector3();
@@ -92,10 +92,39 @@ export class WheeledVehicle extends Vehicle {
     const rotMass = (d.engine.inertia * ratio * ratio + this.wheelInertia) / (d.wheelRadius * d.wheelRadius);
     const share = d.mass / (d.mass + rotMass);
     const driven = this.wheels.filter((w) => w.driven).length;
-    const perWheel = driven ? (wheelTorque * share) / driven : 0;
+    // (With the gameplay gain on the push: see ACCEL_GAIN in vehicle.js.)
+    const push = this._gain((wheelTorque * share) / d.wheelRadius) * d.wheelRadius;
+    // Four-wheel drive with no center differential (the transfer case locks the
+    // axles together): the axle with the weight on it, and so the grip, takes
+    // the torque. Each axle shares its part equally between its wheels.
+    let fzF = 0,
+      fzR = 0,
+      nF = 0,
+      nR = 0;
+    for (const w of this.wheels)
+      if (w.driven) {
+        if (w.front) (fzF += Math.max(0, w.fz)), nF++;
+        else (fzR += Math.max(0, w.fz)), nR++;
+      }
+    const axle = (w) => (!nF || !nR ? 1 : fzF + fzR > 0 ? (w.front ? fzF : fzR) / (fzF + fzR) : 0.5);
+    const torqueOf = (w) => (w.driven && driven ? (push * axle(w)) / (w.front ? nF : nR) : 0);
     this.load = clamp(Math.abs(engineTorque) / torqueMax(d), 0, 1);
 
     _fwd.set(0, 0, -1).applyQuaternion(b.quaternion);
+    // Front wheel angle: a quarter tighter than the real lock gives (gameplay, see
+    // TURN_CIRCLE), as far as the tires can follow: at speed, past about 0.8 of
+    // their grip, more lock would only scrub them (never less than the real one).
+    const real = this.steer * d.steerMax;
+    let mu = 0,
+      nMu = 0;
+    for (const w of this.wheels)
+      if (w.onGround) {
+        mu += this.surfaceAt(w).mu;
+        nMu++;
+      }
+    mu = nMu ? mu / nMu : 0.7;
+    const sat = Math.atan((d.wheelbase * 0.8 * mu * 9.81) / Math.max(this.speed * this.speed, 0.1)) + 0.12;
+    const a = -Math.sign(real) * Math.min(Math.atan(Math.tan(Math.abs(real)) / TURN_CIRCLE), Math.max(Math.abs(real), sat));
     let slipSum = 0;
     let spinSum = 0;
     let n = 0;
@@ -103,7 +132,6 @@ export class WheeledVehicle extends Vehicle {
       // Ackermann steering: the inner front wheel turns more.
       let steerAngle = 0;
       if (w.steer) {
-        const a = -this.steer * d.steerMax;
         if (Math.abs(a) > 1e-4) {
           const R = d.wheelbase / Math.tan(Math.abs(a));
           const inner = (a > 0 && w.side < 0) || (a < 0 && w.side > 0);
@@ -113,7 +141,7 @@ export class WheeledVehicle extends Vehicle {
       w.steerAngle = steerAngle;
       if (!w.onGround || w.fz <= 0) {
         w.slip = 0;
-        w.spin = approach(w.spin, w.driven ? (perWheel / w.radius) * 0.02 : w.spin * 0.98, dt * 40);
+        w.spin = approach(w.spin, w.driven ? (torqueOf(w) / w.radius) * 0.02 : w.spin * 0.98, dt * 40);
         continue;
       }
       // Wheel heading on the ground plane.
@@ -131,6 +159,7 @@ export class WheeledVehicle extends Vehicle {
       const maxF = mu * Fz;
 
       // Along the wheel: drive torque, brakes and rolling resistance.
+      const perWheel = torqueOf(w);
       let fx = w.driven ? perWheel / w.radius : 0;
       let brake = inp.brake * d.brakeForce * (w.front ? 0.3 : 0.2);
       if (inp.handbrake && !w.front) brake = Math.max(brake, d.brakeForce * 0.35);

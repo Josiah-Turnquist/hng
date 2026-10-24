@@ -50,10 +50,14 @@ const BICYCLE = {
     pedalX: 0.15,
     // The rider's legs (est., a fit young soldier): force at the pedal falls
     // linearly with cadence, F = F0 (1 - c / c0): best about 600 W at 95 rpm.
+    // Out of the saddle he puts his weight (and a pull on the bars) on each
+    // pedal: about 1000 N, which is what gets a single speed up a steep hill.
     F0: 700,
+    F0stand: 1000,
     c0: 190,
-    cruise: 160, // W: a steady effort he can keep up for hours
-    cp: 230, // W: critical power (sustainable without tiring)
+    cruise: 160, // W: a steady effort on the flat that he can keep up for hours
+    cp: 230, // W: critical power (sustainable without tiring); he climbs at it
+    climb: 0.06, // grade at which his steady effort has risen to critical power
     wPrime: 14000, // J: work above critical power before he is spent
     efficiency: 0.95, // chain and bearings
   },
@@ -72,7 +76,7 @@ const BICYCLE = {
     front: { k: 90000, c: 700, droop: 0.01, bump: 0.025 },
     rear: { k: 100000, c: 800, droop: 0.012, bump: 0.025 },
   },
-  lean: { clear: 0.6, crash: 0.85, stand: -0.14 },
+  lean: { clear: 0.6, crash: 0.85, stand: 0 }, // stand: parked upright on its rear stand
   rider: { rollRate: 1.6, barRate: 4, wn: 4, foot: -1, latG: 0.6 },
   brakes: { front: 270, rear: 190 }, // N: stirrup rim brakes
   cda: 0.75, // m2 with an upright rider in uniform, helmet, rifle and pack (est.)
@@ -153,7 +157,7 @@ const WLA = {
     front: { k: 17000, c: 1500, droop: 0.04, bump: 0.05 },
     rear: { k: 170000, c: 3000, droop: 0.02, bump: 0.025 }, // rigid frame: the tire (and the sprung saddle)
   },
-  lean: { clear: 0.55, crash: 0.78, stand: -0.15 }, // footboards scrape at about 31 degrees
+  lean: { clear: 0.55, crash: 0.78, stand: 0 }, // footboards scrape at about 31 degrees
   rider: { rollRate: 1.0, barRate: 2.5, wn: 3.2, foot: 1, latG: 0.6 }, // left foot works the clutch
   brakes: { front: 900, rear: 1150 },
   cda: 0.72,
@@ -269,7 +273,7 @@ const R75 = {
     front: { k: 19000, c: 1700, droop: 0.05, bump: 0.06 },
     rear: { k: 180000, c: 3200, droop: 0.02, bump: 0.025 },
   },
-  lean: { clear: 0.66, crash: 0.88, stand: -0.15 }, // the cylinder heads scrape at about 38 degrees
+  lean: { clear: 0.66, crash: 0.88, stand: 0 }, // the cylinder heads scrape at about 38 degrees
   rider: { rollRate: 1.0, barRate: 2.5, wn: 3.2, foot: -1, latG: 0.6 },
   brakes: { front: 1050, rear: 1050 },
   cda: 0.75,
@@ -329,7 +333,7 @@ const M72 = {
     front: { k: 17000, c: 1500, droop: 0.05, bump: 0.06 },
     rear: { k: 32000, c: 2200, droop: 0.03, bump: 0.035 }, // plunger rear suspension
   },
-  lean: { clear: 0.66, crash: 0.88, stand: -0.15 },
+  lean: { clear: 0.66, crash: 0.88, stand: 0 },
   rider: { rollRate: 1.0, barRate: 2.5, wn: 3.2, foot: -1, latG: 0.6 },
   brakes: { front: 950, rear: 1050 },
   cda: 0.72,

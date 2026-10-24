@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeWorld, spawn, run, rider } from './helpers/vehicleWorld.js';
-import { staticLoads } from '../src/vehicles/vehicle.js';
+import { staticLoads, TURN_CIRCLE } from '../src/vehicles/vehicle.js';
+import { Box } from '../src/physics/collision.js';
 import { SHELLS } from '../src/vehicles/defs.js';
 import { armorPenetrationMM, effectiveArmorMM } from '../src/ballistics/materials.js';
 import { SURF } from '../src/world/heightfield.js';
@@ -54,10 +55,10 @@ test('vehicles settle at their modeled ride height', () => {
   }
 });
 
-test('Willys MB: about 105 km/h flat out, 0-50 km/h in well under 10 s', () => {
+test('Willys MB: about 105 km/h flat out, 0-50 km/h in about 4 s (twice its real pick-up, for gameplay)', () => {
   const { v, marks } = accelerate('willys_mb', 60);
   assert.ok(kmh(v) > 95 && kmh(v) < 112, `top speed ${kmh(v)}`);
-  assert.ok(marks[50] > 4 && marks[50] < 10, `0-50 ${marks[50]}`);
+  assert.ok(marks[50] > 2.5 && marks[50] < 5.5, `0-50 ${marks[50]}`);
 });
 
 test('Willys MB: brakes from 60 km/h in a plausible distance', () => {
@@ -120,14 +121,85 @@ test('Opel Blitz: a slow, heavy truck (about 80-90 km/h flat out)', () => {
   assert.ok(kmh(v) > 70 && kmh(v) < 95, `top speed ${kmh(v)}`);
 });
 
-test('Sherman turning circle at speed is about 31 ft (controlled differential)', () => {
+test('Sherman turns at speed on a fixed circle (the real 31 ft, a quarter tighter for gameplay)', () => {
   const { game } = makeWorld();
   const v = spawn(game, 'm4a1_sherman', 0, 300, 0);
   run(v, 2);
-  run(v, 12, () => v.driverInput(1, 0));
+  // (Six seconds now get it to the speed twelve did with the real pick-up.)
+  run(v, 6, () => v.driverInput(1, 0));
   run(v, 6, () => v.driverInput(1, 1));
   const r = Math.abs(v.speed / v.body.angular.y);
-  assert.ok(r > 7 && r < 14, `radius ${r}`);
+  assert.ok(r > 6.3 && r < 9, `radius ${r}`);
+});
+
+test('gameplay: twice the pick-up and a quarter sharper turns than the real figures, the same top speeds', () => {
+  // 0-20 km/h (the real machines: Willys 2.1 s, T-34/76 7.9 s, WLA 2.5 s).
+  const t20 = (id) => {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, id, 0, 900, 0);
+    run(v, 2);
+    let t = 0;
+    for (; t < 30 && kmh(v) < 20; t += 1 / 120) {
+      v.driverInput(1, 0);
+      v.step(1 / 120);
+    }
+    return t;
+  };
+  for (const [id, lo, hi] of [
+    ['willys_mb', 0.8, 1.5],
+    ['t34_76', 3, 4.8],
+    ['wla', 1, 1.7],
+  ]) {
+    const t = t20(id);
+    assert.ok(t > lo && t < hi, `${id} 0-20 km/h in ${t.toFixed(2)} s, want ${lo}-${hi}`);
+  }
+  // Turning circle at 10 km/h with the wheel or bars full over (real: Willys 4.0 m, WLA 3.4 m radius).
+  const circle = (id) => {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, id, 0, 900, 0);
+    run(v, 2);
+    const drive = () => (kmh(v) < 10 ? Math.min(1, (10 - kmh(v)) / 4 + 0.3) : 0);
+    run(v, 20, () => v.driverInput(drive(), 0));
+    let w = 0,
+      u = 0,
+      n = 0;
+    run(v, 10, (t) => {
+      v.driverInput(drive(), 1);
+      if (t > 5) {
+        w += Math.abs(v.yawRate ?? v.body.angular.y);
+        u += v.speed;
+        n++;
+      }
+    });
+    return u / w;
+  };
+  for (const [id, lo, hi] of [
+    ['willys_mb', 2.7, 3.3],
+    ['wla', 2.3, 2.9],
+  ]) {
+    const r = circle(id);
+    assert.ok(r > lo && r < hi, `${id} turning radius at 10 km/h ${r.toFixed(2)} m, want ${lo}-${hi}`);
+  }
+  // Swinging round on the spot (real: T-34/76 7.6, Tiger 26 degrees a second).
+  for (const [id, lo, hi] of [
+    ['t34_76', 8.5, 11.5],
+    ['tiger1', 30, 37],
+  ]) {
+    const { game } = makeWorld();
+    const v = spawn(game, id, 0, 0, 0);
+    run(v, 2);
+    let s = 0,
+      n = 0;
+    run(v, 8, (t) => {
+      v.driverInput(0, 1);
+      if (t > 4) {
+        s += Math.abs(v.body.angular.y);
+        n++;
+      }
+    });
+    const rate = ((s / n) * 180) / Math.PI;
+    assert.ok(rate > lo && rate < hi, `${id} pivots at ${rate.toFixed(1)} deg/s, want ${lo}-${hi}`);
+  }
 });
 
 test('parked tanks and jeeps hold on a 15 degree slope', () => {
@@ -240,10 +312,11 @@ test('bicycle: about 18 km/h at a steady effort, a sprint near 30 km/h that fade
   const cruise = ride(0, false, 40);
   assert.ok(cruise.end > 15 && cruise.end < 22, `cruise ${cruise.end.toFixed(1)} km/h`);
   assert.ok(Math.abs(cruise.v.power - 160) < 25, `cruise power ${cruise.v.power.toFixed(0)} W`);
-  const sprint = ride(0, true, 75);
-  assert.ok(sprint.top > 27 && sprint.top < 35, `sprint peak ${sprint.top.toFixed(1)} km/h`);
+  // (With the soldiers' bigger stamina, STAMINA_POOL, a sprint lasts a couple of minutes.)
+  const sprint = ride(0, true, 150);
+  assert.ok(sprint.top > 27 && sprint.top < 36, `sprint peak ${sprint.top.toFixed(1)} km/h`);
   assert.ok(sprint.end < sprint.top - 2, `the sprint fades as he tires (${sprint.end.toFixed(1)} km/h at the end)`);
-  assert.ok(sprint.v.occupants[0].body.stamina < 60, 'sprinting uses stamina');
+  assert.ok(sprint.v.occupants[0].body.stamina < 60, `sprinting uses stamina (${sprint.v.occupants[0].body.stamina.toFixed(0)} left)`);
   // A 3 degree (5 %) climb: walking pace and a little more at a steady effort.
   const hill = ride(3, false, 30);
   assert.ok(hill.end > 4 && hill.end < 10, `uphill ${hill.end.toFixed(1)} km/h`);
@@ -254,6 +327,84 @@ test('bicycle: about 18 km/h at a steady effort, a sprint near 30 km/h that fade
   run(v, 40, () => v.driverInput(0, 0));
   assert.ok(kmh(v) > 30, `downhill coasting ${kmh(v).toFixed(1)} km/h`);
   assert.equal(v.effort, 'coast');
+});
+
+test('bicycle: climbs real hills at a walk to a jog, standing on the pedals when it gets steep', () => {
+  // A fit soldier with his kit on a loaded single-speed: about 2-3 m/s up a 6-8 %
+  // road, slower on steeper ones, faster for a while standing hard on the pedals.
+  const climb = (grade, sprint, seconds = 8) => {
+    const { game } = makeWorld({ size: 2048, slopeDeg: (Math.atan(grade) * 180) / Math.PI });
+    const v = spawn(game, 'bicycle', 0, 600, 0);
+    run(v, 1);
+    run(v, seconds, () => v.driverInput(1, 0, false, sprint));
+    return v;
+  };
+  for (const [grade, lo, hi] of [
+    [0.06, 2.2, 3.2],
+    [0.08, 1.8, 2.8],
+    [0.1, 1.3, 2.4],
+    [0.15, 0.7, 1.8],
+  ]) {
+    const v = climb(grade, false);
+    assert.ok(v.speed > lo && v.speed < hi, `${grade * 100} % at a steady effort: ${v.speed.toFixed(2)} m/s, want ${lo}-${hi}`);
+    assert.ok(!v.fallen, `fell on the ${grade * 100} % climb`);
+  }
+  const hard = climb(0.08, true, 6);
+  assert.ok(hard.speed > 3, `8 % standing on the pedals: ${hard.speed.toFixed(2)} m/s`);
+  // Down a 10 % hill: coasting runs it up past 30 km/h, and the brakes stop it.
+  const { game } = makeWorld({ size: 2048, slopeDeg: (Math.atan(0.1) * 180) / Math.PI });
+  const v = spawn(game, 'bicycle', 0, -600, Math.PI);
+  run(v, 2, () => v.driverInput(1, 0));
+  run(v, 30, () => v.driverInput(0, 0));
+  assert.ok(kmh(v) > 30, `coasting down 10 %: ${kmh(v).toFixed(1)} km/h`);
+  const z0 = v.body.position.z;
+  let t = 0;
+  for (; t < 15 && v.speed > 0.2; t += 1 / 120) {
+    v.driverInput(-1, 0, true);
+    v.step(1 / 120);
+  }
+  assert.ok(v.speed < 0.3 && v.body.position.z - z0 < 40, `stopped in ${(v.body.position.z - z0).toFixed(1)} m (${t.toFixed(1)} s)`);
+  run(v, 3, () => v.driverInput(0, 0));
+  assert.ok(Math.abs(v.speed) < 0.3, `held still on the hill (${v.speed.toFixed(2)} m/s)`);
+});
+
+test('bicycle: three times the pick-up of the plain figures (gameplay), the same cruising and sprint speeds', () => {
+  // Without the gain: 0-15 km/h in 12.8 s at a steady effort, 0-20 km/h in 7.3 s sprinting.
+  const pick = (sprint, to) => {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, 'bicycle', 0, 900, 0);
+    run(v, 1);
+    let t = 0;
+    for (; t < 40 && kmh(v) < to; t += 1 / 120) {
+      v.driverInput(1, 0, false, sprint);
+      v.step(1 / 120);
+    }
+    return t;
+  };
+  const cruise = pick(false, 15),
+    sprint = pick(true, 20);
+  assert.ok(cruise > 3.2 && cruise < 5.5, `0-15 km/h at a steady effort in ${cruise.toFixed(2)} s`);
+  assert.ok(sprint > 1.8 && sprint < 3.2, `0-20 km/h sprinting in ${sprint.toFixed(2)} s`);
+});
+
+test('parked machines stand upright on their stands, also with a wheel up on a kerb; outfits sit with the ground', () => {
+  // A stone kerb 10 cm high under the rear wheel (it used to throw the machine in the air).
+  for (const id of ['bicycle', 'wla']) {
+    const { game, collision } = makeWorld();
+    collision.add(new Box(0, 49.95, 0.9, 0.6, 0.15, 0.45, 0, 'stone'));
+    const v = spawn(game, id, 0, 0, 0, { empty: true });
+    const p0 = v.body.position.clone();
+    run(v, 4);
+    assert.ok(!v.fallen && Math.abs(v.lean) < 0.03, `${id} stands upright (lean ${((v.lean * 180) / Math.PI).toFixed(1)} deg)`);
+    assert.ok(v.body.position.distanceTo(p0) < 0.15 && v.asleep, `${id} stays put on the kerb (moved ${v.body.position.distanceTo(p0).toFixed(2)} m)`);
+    assert.ok(v.pitch < -0.03, `${id} sits nose down off the kerb (${((v.pitch * 180) / Math.PI).toFixed(1)} deg)`);
+  }
+  // A sidecar outfit parked across a 10 degree slope sits tilted with it and stays on its wheels.
+  const { game } = makeWorld({ slopeDeg: 10 });
+  const v = spawn(game, 'r75_sidecar', 0, 0, Math.PI / 2, { empty: true });
+  run(v, 4);
+  assert.ok(!v.fallen, 'the outfit stays on its wheels');
+  assert.ok(Math.abs(Math.abs(v.lean) - 10 * (Math.PI / 180)) < 2 * (Math.PI / 180), `tilted with the ground (${((v.lean * 180) / Math.PI).toFixed(1)} deg)`);
 });
 
 test('a straight ride stays upright; a steady turn leans by tan(lean) = v^2 / (g R)', () => {
@@ -353,7 +504,8 @@ test('braking: front brake does most of the work, sensible stopping distances', 
 });
 
 test('sidecar outfits stay on three wheels in gentle turns either way', () => {
-  for (const steer of [0.3, -0.3]) {
+  // (A gentle turn: 0.3 of the real bars, which now turn a quarter sharper.)
+  for (const steer of [0.3 * TURN_CIRCLE, -0.3 * TURN_CIRCLE]) {
     const { game } = makeWorld({ size: 2048 });
     const v = spawn(game, 'r75_sidecar', 0, 0, 0);
     run(v, 1);
@@ -389,7 +541,8 @@ test('parked machines go to sleep on their stands; riders sit where riderPose sa
   const v = spawn(game, 'r75', 0, 0, 0, { empty: true });
   run(v, 4);
   assert.ok(v.asleep, 'a parked motorcycle stops simulating');
-  assert.ok(v.lean < -0.05 && v.lean > -0.25, `leans on its side stand (${((v.lean * 180) / Math.PI).toFixed(1)} deg)`);
+  assert.ok(Math.abs(v.lean) < 0.03, `stands upright on its rear stand (${((v.lean * 180) / Math.PI).toFixed(1)} deg)`);
+  assert.ok(v.onStand, 'on its stand');
   // Rider poses: the interface the soldier models read.
   const bike = spawn(game, 'bicycle', 10, 0, 0);
   run(bike, 3, () => bike.driverInput(1, 0));

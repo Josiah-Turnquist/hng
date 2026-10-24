@@ -9,6 +9,7 @@
 //   wheelF, wheelR, wheelS (sidecar)   spin about their axles
 //   crank, pedalL, pedalR (bicycle)    crank turns about the bottom bracket
 //   mg      the sidecar gun: traverses and elevates about its pivot
+//   stand   rear stand (solo machines): down as modeled, folded by meta.standFold
 //   far     the whole machine in a few shapes, shown at a distance instead
 // Anchors: riderHip, gripL/gripR (steer), footL/footR, pillionHip, pillionGripL/R,
 // pillionFootL/R, sideHip, sideFootL/R, mgGripL/mgGripR/mgMuzzle (mg),
@@ -202,6 +203,23 @@ function farWheel(b, { x = 0, y, z, R, w }) {
   b.cylAxis({ axis: 'x', x, y, z, len: w, r: R, mat: 'rubber', seg: 14 });
 }
 
+// Rear stand (bicycles and solo motorcycles of the period): a U of round bar
+// hinged at the rear axle, its feet behind the wheel. Modeled down, as parked
+// with the machine upright on it; bike.js folds it up behind the mudguard by
+// meta.standFold (about X) while it is ridden.
+function rearStand(b, { R, zR, hinge, foot, back, r, mat, foldTo }) {
+  const y = r + 0.002;
+  b.part('stand', [0, R, zR]);
+  for (const s of [-1, 1]) {
+    b.rod({ from: [s * hinge, R, zR], to: [s * foot, y, zR + back], r, mat, seg: 8 });
+    b.cylAxis({ axis: 'x', x: s * hinge, y: R, z: zR, len: 0.012, r: r * 1.8, mat, seg: 10 }); // pivot boss on the axle
+    b.box({ x: s * foot, y: 0.004, z: zR + back + r, w: r * 4, h: 0.008, d: r * 6, r: 0.002, mat }); // foot
+  }
+  b.rod({ from: [-foot, y, zR + back], to: [foot, y, zR + back], r, mat, seg: 8 });
+  b.body();
+  b.meta.standFold = -(foldTo - Math.atan2(back, R - y));
+}
+
 // Sprung solo saddle: leather top on a steel frame, two coil springs at the back.
 function saddle(b, { at, len = 0.27, w = 0.2, mat = 'leather', springs = true, springH = 0.06, frame = 'black', nose = 0.06 }) {
   const [x, y, z] = at;
@@ -362,9 +380,8 @@ export function bicycle(b) {
   }
   // Lugs at the joints.
   for (const p of [[0, 0.8, 0.3], [0, htTop[1] - 0.02, htTop[2]], [0, htBot[1] + 0.02, htBot[2]]]) b.sphere({ x: p[0], y: p[1], z: p[2], r: 0.019, mat: P, seg: 10 });
-  // Kickstand on the left chain stay (its foot on the ground when parked leaning).
-  b.rod({ from: [-0.03, 0.255, 0.2], to: [-0.12, 0.02, 0.26], r: 0.006, mat: P });
-  b.box({ x: -0.12, y: 0.012, z: 0.26, w: 0.03, h: 0.006, d: 0.02, r: 0.002, mat: P });
+  // Rear stand at the axle: parked, it holds the bicycle upright.
+  rearStand(b, { R, zR, hinge: 0.066, foot: 0.1, back: 0.2, r: 0.006, mat: P, foldTo: 120 * DEG });
   // Chain guard over the top run (right): a thin strip with a lip over the chain.
   const cgA = [bb[1] + 0.093 + 0.022, bb[2] + 0.02],
     cgB = [R + 0.042 + 0.022, zR - 0.07];
@@ -599,6 +616,8 @@ function motorcycle(b, id) {
   fender(b, { cz: zR, cy: R, r: R + 0.035, a0: -0.35, a1: 2.0, w: S.tire + 0.075, mat: P, skirt: base === 'wla' ? 0.05 : 0.035 });
   for (const s of [-1, 1]) b.rod({ from: [s * 0.07, R + 0.24, zR + 0.12], to: [s * 0.075, R, zR], r: 0.008, mat: P }); // fender stays
   lamp(b, { at: [0, R + 0.25, zR + R + 0.03], dir: [0, -0.2, 1], r: 0.03, depth: 0.03, mat: P, lens: 'redLamp' });
+  // Rear stand at the axle (solo machines; an outfit stands on its three wheels).
+  if (!D.sidecar) rearStand(b, { R, zR, hinge: 0.095, foot: 0.15, back: 0.22, r: 0.009, mat: 'black', foldTo: 128 * DEG });
   if (S.rack) {
     const ry = 0.74;
     for (const s of [-1, 1]) {

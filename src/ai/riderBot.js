@@ -97,6 +97,7 @@ function usable(v, s, g) {
 // The tightest path curvature he'll ask for at speed u: the steering input is
 // a share of this (see Bike._rider).
 function maxCurvature(v, u) {
+  if (v.maxCurvature) return v.maxCurvature(u);
   const d = v.def;
   const lockG = d.steering.lock * Math.cos(v.rake);
   const kLock = Math.tan(lockG) / d.wheelbase;

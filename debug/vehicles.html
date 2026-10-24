@@ -24,7 +24,8 @@
 //   Bicycles and motorcycles: ?id=bicycle | wla | wla_sidecar | r75 | r75_sidecar | m72 |
 //   m72_sidecar (or ?id=bikes for all of them); &steer=20 turns the bars, &lod=1 shows the
 //   distant version, &crank=90 turns the pedals (deg), &mg=30,10 lays the sidecar gun
-//   (traverse, elevation in deg), &lean=20 leans the machine (deg, + right)
+//   (traverse, elevation in deg), &lean=20 leans the machine (deg, + right), &stand=up
+//   folds the rear stand (as ridden; it is shown down, as parked)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
@@ -190,6 +191,8 @@ function poseBike(v, d, deg) {
     v.parts.mg.rotation.set((el || 0) * deg, (yaw || 0) * deg, 0, 'YXZ');
   }
   if (params.get('lean')) v.root.rotation.z = -Number(params.get('lean')) * deg;
+  // The rear stand is modeled down (parked); &stand=up folds it as when ridden.
+  if (v.parts.stand && params.get('stand') === 'up') v.parts.stand.rotation.x = v.meta?.standFold ?? -1.4;
 }
 
 function drawLabels(cam, vp, anchorObjs) {
