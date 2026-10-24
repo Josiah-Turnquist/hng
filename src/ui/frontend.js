@@ -15,6 +15,7 @@ import { SettingsView } from './settingsView.js';
 import { emblem, classIcon, rankBadge, ICONS, ARMY_COLORS } from './icons.js';
 import { loadRoster, saveRoster, selected, select, recruit, dismiss, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
+import { BattleMap } from './battleMap.js';
 
 const TANKS = {
   US: [
@@ -463,13 +464,12 @@ export function showFrontEnd(app) {
       d.appendChild(b);
     }
 
-    // The battlefield's map (the full map module draws it when it is there).
+    // The battlefield's map, drawn from the map's plan (no terrain yet).
     function drawMap(canvas, def, team) {
-      battleMap.then((M) => {
-        if (!canvas.isConnected || !M) return;
-        const map = new M.BattleMap(canvas, def, {});
+      requestAnimationFrame(() => {
+        if (!canvas.isConnected) return;
+        const map = new BattleMap(canvas, def, {});
         map.draw({ team });
-        canvas._map = map;
       });
     }
 
@@ -549,5 +549,3 @@ export function showFrontEnd(app) {
   });
 }
 
-// The battle map module, when present.
-const battleMap = import('./battleMap.js').catch(() => null);

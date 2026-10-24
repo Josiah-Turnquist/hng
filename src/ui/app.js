@@ -9,6 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
+import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
 import { FACTIONS } from '../weapons/defs.js';
 
@@ -225,14 +226,15 @@ export class App {
     this.root.appendChild(el);
     // The battlefield's map, where the map module is there.
     const canvas = el.querySelector('.ld-map canvas');
-    import('./battleMap.js')
-      .then((M) => {
-        if (!el.isConnected || !M?.BattleMap) return;
-        const map = new M.BattleMap(canvas, def, {});
-        map.draw({ team: attack ? 1 : 0 });
-        this.loading.map = map;
-      })
-      .catch(() => (el.querySelector('.ld-map').hidden = true));
+    requestAnimationFrame(() => {
+      if (!el.isConnected) return;
+      try {
+        new BattleMap(canvas, def, {}).draw({ team: attack ? 1 : 0 });
+      } catch (e) {
+        console.warn('No battle map', e);
+        el.querySelector('.ld-map').hidden = true;
+      }
+    });
     return { el, bar: el.querySelector('.bar > div'), status: el.querySelector('.status') };
   }
 
