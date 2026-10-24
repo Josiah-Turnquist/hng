@@ -30,6 +30,7 @@ export class TankBrain {
     this.reverseT = 0;
     this.fireDelay = 1;
     this.mgBurst = 0;
+    this.noRoute = new Map(); // point id -> time until which it's left out
   }
 
   update(dt) {
@@ -104,17 +105,21 @@ export class TankBrain {
   _decide() {
     const g = this.game;
     const v = this.v;
-    const goal = g.mode.botGoal?.(this) || null;
+    for (const [id, t] of this.noRoute) if (g.time > t) this.noRoute.delete(id);
+    const goal = g.mode.botGoal?.(this, { vehicle: true, exclude: this.noRoute }) || null;
     if (goal && (!this.goal || goal.id !== this.goal.id)) {
       this.goal = goal;
       this.path = null;
+      this.pathT = 0;
     }
     if (!this.goal) return;
     // Hold back from the point to support the infantry (and stay out of the streets).
     const b = v.body.position;
     const dGoal = Math.hypot(this.goal.x - b.x, this.goal.z - b.z);
     this.holding = dGoal < 90 && this._seesPoint();
-    if (!this.holding && (!this.path || g.time > this.pathT)) this._plan(this.goal.x, this.goal.z);
+    // (After a route search fails, wait for pathT before trying again; meanwhile
+    // the tank holds where it is and fights.)
+    if (!this.holding && g.time > this.pathT) this._plan(this.goal.x, this.goal.z);
   }
 
   _seesPoint() {
@@ -137,8 +142,9 @@ export class TankBrain {
     g.navBudget--;
     let p = nav.findPath(b.x, b.z, x, z, 120000);
     // Can't get right there (e.g. the point is inside the village): get as
-    // close as the tank can, on the side it's coming from.
-    if (!p) {
+    // close as the tank can, on the side it's coming from. (Not when the
+    // route is simply too long: points a little nearer won't be any shorter.)
+    if (!p && nav.lastFail !== 'limit') {
       const d = Math.hypot(x - b.x, z - b.z) || 1;
       for (const back of [50, 90, 140]) {
         if (back >= d) break;
@@ -156,6 +162,13 @@ export class TankBrain {
     }
     this.path = p;
     this.pathI = 0;
+    // No route (or too long a drive): leave that point to others for a few
+    // minutes and take the next one, or hold here and fight.
+    if (!p) {
+      if (this.goal) this.noRoute.set(this.goal.id, g.time + 150 + Math.random() * 60);
+      this.goal = null;
+      this.pathT = 0;
+    }
   }
 
   _drive(dt) {

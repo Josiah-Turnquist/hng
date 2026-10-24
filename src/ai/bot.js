@@ -220,9 +220,11 @@ export class BotBrain {
       return;
     }
     this.game.navBudget--;
-    const p = nav.findPath(b.x, b.z, x, z);
+    const p = nav.findPath(b.x, b.z, x, z, 80000, { partial: true });
     this.path = p || [{ x, z }];
     this.pathI = 0;
+    // Part of the way only (a long route): plan on again soon.
+    if (p?.partial) this.pathT = this.game.time + 6 + Math.random() * 3;
   }
 
   // --- moving ------------------------------------------------------------------
@@ -277,6 +279,13 @@ export class BotBrain {
       wz += -f.x * side * 2.5;
       this.strafe = 0;
     }
+    // Stuck on something small (a trunk, a post, the end of a parapet): step
+    // sideways for a moment.
+    if (this.unstickT > 0) {
+      this.unstickT -= dt;
+      wx = this.unstickX;
+      wz = this.unstickZ;
+    }
     // While shooting: stop (rifles) or creep, sidestepping now and then.
     let speed = 1;
     if (engaging) {
@@ -314,12 +323,17 @@ export class BotBrain {
     this.lastPos.x = b.x;
     this.lastPos.z = b.z;
     if (this.stuckT > 0.8 && this.stuckT < 0.9) it.jump = true;
-    if (this.stuckT > 2.5) {
+    if (this.stuckT > 1.6 && !(this.unstickT > 0) && len > 0.5) {
+      // Sideways (and a little back) from where we were trying to go.
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      this.unstickX = -wz * dir - wx * 0.35;
+      this.unstickZ = wx * dir - wz * 0.35;
+      this.unstickT = 0.9;
+    }
+    if (this.stuckT > 3.2) {
       this.stuckT = 0;
       this.path = null;
       this.pathT = 0;
-      this.strafe = Math.random() < 0.5 ? -1 : 1;
-      this.strafeT = 1;
     }
     // Look where we're going when there's nothing to shoot.
     if (!this.target) {

@@ -39,6 +39,9 @@ async function buildTown() {
     get: () => ({}),
   };
   const village = buildVillage(plan, { terrain, def, collision, textures });
+  // Trees, hedges and bushes are solid, as in the game (no graphics here).
+  const { buildVegetation } = await import('../../src/world/vegetation.js');
+  buildVegetation({ terrain, def, collision, village, plan });
   const riverData = terrain.river;
   const hf = terrain.hf;
   const waterLevelAt = (x, z) => {
@@ -69,12 +72,17 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1 } = {}) {
   };
   const nav = new NavGrid(world, { radius: town.def.playRadius + 60 });
   nav.build({ doors: town.village.doors });
+  // Vehicles plan on their own grid, as in Game.load: more clearance, no
+  // doorways, gentler slopes.
+  const vnav = new NavGrid(world, { radius: town.def.playRadius + 60 });
+  vnav.build({ doors: [], agentRadius: 1.6, maxSlopeDeg: 28 });
   const g = Object.create(Game.prototype);
   Object.assign(g, {
     headless: true,
     world,
     mapDef: town.def,
     nav,
+    vnav,
     time: 0,
     soldiers: [],
     vehicles: [],

@@ -93,12 +93,18 @@ export class NavGrid {
         }
       });
     }
-    // 3. Solid things at body height (grown by the agent's radius).
+    // 3. Solid things at body height (grown by the agent's radius). Body height
+    // is measured from each cell's own floor, so a bridge's piers and the
+    // masonry under its deck don't cut the deck, and overhangs don't block.
     const list = blockers || this._blockersFromWorld();
     for (const b of list) {
       const ax = [Math.cos(b.yaw), 0, -Math.sin(b.yaw)];
       const az = [Math.sin(b.yaw), 0, Math.cos(b.yaw)];
+      const lo = b.minY ?? -Infinity,
+        hi = b.maxY ?? Infinity;
       this._raster(b.cx, b.cz, b.hx, b.hz, ax, az, agentRadius, (i) => {
+        const f = this.floorY[i];
+        if (lo > f + 0.6 || hi < f + 0.9) return;
         this.cost[i] = 0;
       });
     }
@@ -122,17 +128,56 @@ export class NavGrid {
         if (!this.cost[i - 1] || !this.cost[i + 1] || !this.cost[i - n] || !this.cost[i + n]) next[i] = Math.min(250, this.cost[i] + 6);
       }
     this.cost = next;
+    this._label();
+  }
+
+  // Connected areas (cells joined by open neighbors, as paths move). A search
+  // between areas that don't connect gives up at once instead of flooding the
+  // map, and inMainArea() tells big open areas from pockets boxed in by walls.
+  _label() {
+    const { n, cost } = this;
+    const N = n * n;
+    const comp = new Int32Array(N).fill(-1);
+    const sizes = [];
+    const q = new Int32Array(N);
+    for (let s = 0; s < N; s++) {
+      if (!cost[s] || comp[s] >= 0) continue;
+      const id = sizes.length;
+      let head = 0,
+        tail = 0;
+      q[tail++] = s;
+      comp[s] = id;
+      while (head < tail) {
+        const c = q[head++];
+        const cx = c % n;
+        if (cx > 0 && cost[c - 1] && comp[c - 1] < 0) (comp[c - 1] = id), (q[tail++] = c - 1);
+        if (cx < n - 1 && cost[c + 1] && comp[c + 1] < 0) (comp[c + 1] = id), (q[tail++] = c + 1);
+        if (c >= n && cost[c - n] && comp[c - n] < 0) (comp[c - n] = id), (q[tail++] = c - n);
+        if (c < N - n && cost[c + n] && comp[c + n] < 0) (comp[c + n] = id), (q[tail++] = c + n);
+      }
+      sizes.push(tail);
+    }
+    this.comp = comp;
+    this.compSize = sizes;
+    this.mainSize = sizes.reduce((a, b) => Math.max(a, b), 0);
+  }
+
+  inMainArea(x, z) {
+    const i = this.index(x, z);
+    return i >= 0 && this.cost[i] > 0 && this.compSize[this.comp[i]] >= this.mainSize * 0.2;
   }
 
   _blockersFromWorld() {
-    const hf = this.world.hf;
     const out = [];
     for (const b of this.world.collision.boxes) {
       if (!(b.flags & FLAG_SOLID) || !b.enabled || b.owner?.isVehicle) continue;
-      if (Math.abs(b.pitch) > 0.05 || Math.abs(b.roll) > 0.05) continue;
-      const g = hf.getHeight(b.cx, b.cz);
-      if (b.minY > g + 0.6 || b.maxY < g + 0.9) continue;
-      out.push({ cx: b.cx, cz: b.cz, hx: b.hx, hz: b.hz, yaw: b.yaw });
+      // Parts the village builder marks as never in the way (floors, steps,
+      // roofs, a bridge's deck and the masonry under it).
+      if (b.village?.nav === false) continue;
+      // Ramps and slabs are tilted surfaces to walk on; tilted solid volumes
+      // (a hedge bank following a slope) still block.
+      if ((Math.abs(b.pitch) > 0.05 || Math.abs(b.roll) > 0.05) && b.flags & FLAG_WALKABLE) continue;
+      out.push({ cx: b.cx, cz: b.cz, hx: b.hx, hz: b.hz, yaw: b.yaw, minY: b.minY, maxY: b.maxY });
     }
     return out;
   }
@@ -188,13 +233,25 @@ export class NavGrid {
     return -1;
   }
 
-  // A* from (sx, sz) to (gx, gz). Returns [{x, z}, ...] or null.
-  findPath(sx, sz, gx, gz, maxExpand = 80000) {
+  // A* from (sx, sz) to (gx, gz). Returns [{x, z}, ...] or null. With partial,
+  // a search that runs out of steps returns the route to the point it got
+  // closest to the goal (flagged .partial), to walk while planning on from there.
+  findPath(sx, sz, gx, gz, maxExpand = 80000, { partial = false } = {}) {
     const n = this.n;
     const start = this.nearestWalkable(sx, sz);
     const goal = this.nearestWalkable(gx, gz);
-    if (start < 0 || goal < 0) return null;
+    // Why the last search failed: 'blocked' (no open cell nearby), 'apart' (the
+    // two ends are in areas that don't connect) or 'limit' (too long a route).
+    this.lastFail = null;
+    if (start < 0 || goal < 0) {
+      this.lastFail = 'blocked';
+      return null;
+    }
     if (start === goal) return [{ x: gx, z: gz }];
+    if (this.comp && this.comp[start] !== this.comp[goal]) {
+      this.lastFail = 'apart';
+      return null;
+    }
     const gen = ++this.gen;
     const { g, parent, stamp, closed, cost, heap, heapF } = this;
     const gxI = goal % n,
@@ -241,6 +298,8 @@ export class NavGrid {
     push(start, h(start));
     let expanded = 0;
     let found = false;
+    let best = start,
+      bestH = h(start);
     while (size > 0) {
       const cur = pop();
       if (closed[cur] === gen) continue;
@@ -248,6 +307,11 @@ export class NavGrid {
       if (cur === goal) {
         found = true;
         break;
+      }
+      const hc = h(cur);
+      if (hc < bestH) {
+        bestH = hc;
+        best = cur;
       }
       if (++expanded > maxExpand) break;
       const cx = cur % n,
@@ -273,11 +337,21 @@ export class NavGrid {
         }
       }
     }
-    if (!found) return null;
+    let end = goal;
+    if (!found) {
+      this.lastFail = 'limit';
+      if (!partial || best === start) return null;
+      end = best;
+    }
     const cells = [];
-    for (let c = goal; c !== -1; c = parent[c]) cells.push(c);
+    for (let c = end; c !== -1; c = parent[c]) cells.push(c);
     cells.reverse();
-    return this._smooth(cells, gx, gz);
+    const path = found ? this._smooth(cells, gx, gz) : this._smooth(cells, this.cellX(end), this.cellZ(end));
+    // Standing in a blocked cell (pressed against a wall or hedge): step to
+    // the open cell the route starts from first.
+    if (this.index(sx, sz) !== start) path.unshift({ x: this.cellX(start), z: this.cellZ(start) });
+    if (!found) path.partial = true;
+    return path;
   }
 
   // Keep only the turning points: skip ahead while a straight line stays on

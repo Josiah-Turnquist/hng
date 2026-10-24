@@ -145,7 +145,7 @@ export class Game {
         const a = (k / n) * Math.PI * 2 + r * 0.37;
         const px = x + Math.cos(a) * r,
           pz = z + Math.sin(a) * r;
-        if (nav && !nav.walkable(px, pz)) continue;
+        if (nav && !(nav.inMainArea ? nav.inMainArea(px, pz) : nav.walkable(px, pz))) continue;
         if (this.world.waterLevelAt?.(px, pz) != null) continue;
         const h = hf.getHeight(px, pz);
         if (Math.abs(hf.getHeight(px + half, pz) - hf.getHeight(px - half, pz)) > half * 0.25) continue;

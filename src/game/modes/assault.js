@@ -269,7 +269,10 @@ export class AssaultMode {
   }
 
   // --- the bots' plan ----------------------------------------------------------
-  botGoal(brain) {
+  // vehicle: a tank crew, which goes for the nearest point (a long drive round
+  // the river is minutes wasted).
+  // exclude: point ids to leave out (ones a tank found no route to).
+  botGoal(brain, { vehicle = false, exclude = null } = {}) {
     const team = brain.s.team;
     const enemy = 1 - team;
     // Points we can capture now, and our points the enemy can capture now.
@@ -282,11 +285,17 @@ export class AssaultMode {
       options = threatened.concat(attack.filter((p) => p.kind !== 'access' || Math.random() < 0.2));
       if (!options.length || brain.s.id % 4 === 0) options = options.concat(this.points.filter((p) => p.kind === 'objective' && p.owner === team));
     }
+    if (exclude) options = options.filter((p) => !exclude.has(p.id));
     if (!options.length) return null;
-    // Spread the team out, preferring nearby points.
-    const b = brain.s.body;
+    // Spread the team out, preferring nearby points (but not ones far beyond
+    // the nearest: across the river that can mean a long way round; defenders
+    // still fall back to hold the objectives).
+    const b = brain.s.vehicle ? brain.s.vehicle.body.position : brain.s.body;
+    const dmin = Math.min(...options.map((p) => Math.hypot(p.x - b.x, p.z - b.z)));
+    options = options.filter((p) => Math.hypot(p.x - b.x, p.z - b.z) < dmin + 300 || (team === DEF && !vehicle && p.kind === 'objective'));
+    const spread = vehicle ? 0 : 0.6;
     const pick = options
-      .map((p) => ({ p, w: 1 / (1 + Math.hypot(p.x - b.x, p.z - b.z) / 150) + (((brain.s.id * 13 + p.id.charCodeAt(0)) % 7) / 7) * 0.6 + (p.kind === 'objective' ? 0.3 : 0) }))
+      .map((p) => ({ p, w: 1 / (1 + Math.hypot(p.x - b.x, p.z - b.z) / 150) + (((brain.s.id * 13 + p.id.charCodeAt(0)) % 7) / 7) * spread + (p.kind === 'objective' && !vehicle ? 0.3 : 0) }))
       .sort((a, c) => c.w - a.w)[0].p;
     return { id: pick.id, x: pick.x, z: pick.z, radius: pick.radius };
   }
