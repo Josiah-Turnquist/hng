@@ -1,9 +1,11 @@
 // Vehicle physics against real-world figures: ride height, acceleration, top
-// speed, braking, steering mechanisms, slopes, turret traverse and armor.
+// speed, braking, steering mechanisms, slopes, turret traverse and armor; and
+// the bicycles and motorcycles: speeds, pedal power, lean in turns, braking,
+// sidecar stability, crashes, rider poses, engine sounds and the bots riding them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeWorld, spawn, run } from './helpers/vehicleWorld.js';
+import { makeWorld, spawn, run, rider } from './helpers/vehicleWorld.js';
 import { staticLoads } from '../src/vehicles/vehicle.js';
 import { SHELLS } from '../src/vehicles/defs.js';
 import { armorPenetrationMM, effectiveArmorMM } from '../src/ballistics/materials.js';
@@ -457,4 +459,29 @@ test('a bot rides a motorcycle toward a far goal and gets off short of it', asyn
     assert.ok(!man.vehicle, `${id}: still aboard after ${t.toFixed(0)} s`);
     assert.ok(d > 25 && d < 95, `${id}: got off ${d.toFixed(0)} m from the goal`);
   }
+});
+
+test('a bot in the sidecar lays the machine gun on an enemy and fires bursts', async () => {
+  const { GunnerRide } = await import('../src/ai/riderBot.js');
+  const { game } = makeWorld({ size: 2048 });
+  const v = spawn(game, 'r75_sidecar', 0, 0, 0);
+  const seat = v.seats.findIndex((s) => s.role === 'sidecarMg');
+  const gunner = { ...rider(), team: 1, game, alive: true };
+  game.soldiers.push(gunner);
+  assert.ok(v.enter(gunner, seat));
+  const enemy = { alive: true, team: 0, game, body: { x: 60, y: 50, z: -150, vx: 0, vz: 0 } };
+  game.soldiers.push(enemy);
+  const shots = [];
+  game.vehicleMgShot = (veh, mg, anchor, dir) => shots.push(dir.clone());
+  const brain = { s: gunner, game, goal: null, thinkT: 1, target: enemy, skill: { aim: 1.4 }, path: null, _perceive() {}, lookYaw: 0 };
+  const ride = new GunnerRide(brain, v, seat);
+  ride.phase = 'sit';
+  run(v, 4, () => ride.update(1 / 120));
+  assert.ok(shots.length >= 10 && shots.length < 57, `${shots.length} rounds in 4 s (bursts, not one long one)`);
+  // The gunner aims with a human error he keeps correcting, so judge the
+  // spread: nine shots in ten within 4 degrees, none wild.
+  const want = Math.atan2(-60, 150);
+  const off = shots.map((d) => Math.abs(Math.atan2(-d.x, -d.z) - want) / (Math.PI / 180)).sort((a, b) => a - b);
+  assert.ok(off[Math.floor(off.length * 0.9)] < 4, `90% of rounds within ${off[Math.floor(off.length * 0.9)].toFixed(1)} degrees`);
+  assert.ok(off[off.length - 1] < 8, `a round ${off[off.length - 1].toFixed(1)} degrees off`);
 });

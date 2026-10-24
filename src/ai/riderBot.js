@@ -113,6 +113,20 @@ function look(brain, dt) {
   brain._perceive(0.3);
 }
 
+// A comrade within a couple of meters of the line of fire (out to dist).
+function friendInLine(s, from, dir, dist) {
+  for (const o of s.game.soldiers) {
+    if (o === s || !o.alive || o.team !== s.team || o.vehicle === s.vehicle) continue;
+    const dx = o.body.x - from.x,
+      dy = o.body.y + 1 - from.y,
+      dz = o.body.z - from.z;
+    const t = dx * dir.x + dy * dir.y + dz * dir.z;
+    if (t < 0 || t > dist) continue;
+    if (dx * dx + dy * dy + dz * dz - t * t < 4) return true;
+  }
+  return false;
+}
+
 function targetDist(brain) {
   const t = brain.target;
   if (!t) return Infinity;
@@ -505,8 +519,8 @@ export class GunnerRide {
         _d.x += this.err?.x ?? 0;
         _d.y += this.err?.y ?? 0;
         v.aimMgAt(_d.normalize());
-        // Bursts once the gun is laid near enough.
-        const laid = v.mgDir(new THREE.Vector3()).dot(_d) > Math.cos(4 * DEG);
+        // Bursts once the gun is laid near enough (and no friend in the way).
+        const laid = v.mgDir(new THREE.Vector3()).dot(_d) > Math.cos(4 * DEG) && !friendInLine(this.s, m, _d, dist);
         if (this.pause > 0) this.pause -= dt;
         else if (laid) {
           if (this.burst <= 0) this.burst = 0.35 + Math.random() * 0.5;

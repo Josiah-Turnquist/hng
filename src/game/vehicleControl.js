@@ -125,8 +125,9 @@ export class VehicleController {
       // The sidecar gun: in first person the mouse swings it; in third person it
       // follows where the camera looks.
       if (this.view === 'first') {
-        v.mgAim.yaw -= mx * sens * 0.8;
-        v.mgAim.pitch = clamp(v.mgAim.pitch - my * sens * 0.8 * inv, -0.4, 0.8);
+        const d = v.def.sidecarMg;
+        v.mgAim.yaw = clamp(v.mgAim.yaw - mx * sens * 0.8, -d.traverse * DEG, d.traverse * DEG);
+        v.mgAim.pitch = clamp(v.mgAim.pitch - my * sens * 0.8 * inv, d.elev[0] * DEG, d.elev[1] * DEG);
       } else {
         this.orbit.yaw -= mx * sens;
         this.orbit.pitch = clamp(this.orbit.pitch - my * sens * inv, -1.2, 0.6);

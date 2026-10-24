@@ -384,11 +384,12 @@ export class Bike extends Vehicle {
     return d.gears[gear - 1] * d.finalDrive;
   }
 
+  // (As the base class, without the truck's gearbox clunk: sound.js plays the
+  // motorcycle's own.)
   _startShift(g, time = this.def.shiftTime) {
     this.nextGear = g;
     this.gear = 0;
     this.shiftTimer = time;
-    if (time > 0.2) this.game.audio?.play?.('motoShift', this.body.position, { volume: 0.5 });
   }
 
   // Force needed to keep going (for the gear choice): hill, tires and air.
@@ -1152,7 +1153,6 @@ export class Bike extends Vehicle {
     this.footDown = 0;
     this.engineOn = false;
     this.lastCrash = this.game.time ?? 0;
-    this.game.audio?.play?.('bikeCrash', this.body.position, { volume: clamp(0.4 + sp / 10, 0.4, 1.4) });
     for (let i = 0; i < this.occupants.length; i++) {
       const o = this.occupants[i];
       if (o) this._throw(o, sp, cause);
