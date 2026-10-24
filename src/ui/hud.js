@@ -399,7 +399,7 @@ export class Hud {
     if (d.pedal) {
       // Bicycle: what the legs are doing instead of a gear, and how hard (600 W
       // is a strong sprint).
-      const effort = { sprint: 'pedaling hard', cruise: 'pedaling', spent: 'out of breath', coast: 'coasting' };
+      const effort = { sprint: 'pedaling hard', cruise: 'pedaling', spent: 'out of breath', coast: 'coasting', walk: 'walking it up' };
       E.gear.textContent = v.fallen ? 'on its side' : effort[v.effort] || '';
       E.rpm.style.width = `${Math.min(100, ((v.power || 0) / 600) * 100)}%`;
       E.rpm.style.background = v.effort === 'sprint' ? '#d29a4a' : '#8a9b6a';
