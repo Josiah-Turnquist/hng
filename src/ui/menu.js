@@ -329,6 +329,10 @@ function settingsTab(body, app) {
     st.set('showFps', !st.get('showFps'));
     redraw();
   }, 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));
+  body.appendChild(toggleRow('Crosshair', st.get('crosshair'), () => {
+    st.set('crosshair', !st.get('crosshair'));
+    redraw();
+  }, 'A mark where the gun points when you shoot from the hip. Its gap shows how widely the shots spread (wider on the move, narrower crouched or prone). It fades out when you aim through the sights.'));
 
   body.appendChild(el('h3', 'set-head', 'Controls and sound'));
   const slider = (key, label, min, max, step, fmt = (v) => v) => {

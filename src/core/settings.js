@@ -390,6 +390,7 @@ const DEFAULTS = {
   masterVolume: 0.8,
   effectsVolume: 1.0,
   showFps: false,
+  crosshair: true, // hip-fire crosshair (hidden when aiming through the sights)
   units: 'metric',
   holdToCrouch: false,
   autoGearbox: true,

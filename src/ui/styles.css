@@ -222,6 +222,42 @@ canvas.game {
   -webkit-mask-image: radial-gradient(circle, transparent 30%, #000 31%);
 }
 .hud-center .hitmark.kill { filter: sepia(1) saturate(6) hue-rotate(-30deg); }
+/* Hip-fire crosshair: --gap is set each frame from the spread of the shots. */
+.hud-cross {
+  --gap: 12px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  opacity: 0;
+}
+.hud-cross i {
+  position: absolute;
+  background: rgba(240, 235, 218, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.hud-cross .t,
+.hud-cross .b {
+  left: -1px;
+  width: 2px;
+  height: 8px;
+}
+.hud-cross .l,
+.hud-cross .r {
+  top: -1px;
+  width: 8px;
+  height: 2px;
+}
+.hud-cross .t { top: calc(-1 * var(--gap) - 8px); }
+.hud-cross .b { top: var(--gap); }
+.hud-cross .l { left: calc(-1 * var(--gap) - 8px); }
+.hud-cross .r { left: var(--gap); }
+.hud-cross .c {
+  left: -1px;
+  top: -1px;
+  width: 2px;
+  height: 2px;
+}
 .hud-left {
   position: absolute;
   left: 18px;

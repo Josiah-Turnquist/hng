@@ -276,14 +276,7 @@ export class PlayerController {
     const ammo = w.ammo;
     // Direction: the real bore direction of the gun as it's held right now.
     const dir = vm.boreWorld.clone();
-    // Hip fire: the gun isn't aligned with the eye, so shots scatter.
-    const aimed = vm.aim > 0.85;
-    let err = aimed ? 0 : (d.hipError * DEG) * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.8 : 1) * (1 + s.body.moving * 0.25);
-    // Mechanical accuracy of gun and ammunition (MOA -> radians, as a spread).
-    err = Math.hypot(err, d.accuracy * 0.000291 * 0.42);
-    // A hot barrel throws shots wider.
-    if (w.heat > 120) err *= 1 + (w.heat - 120) / 150;
-    this._scatter(dir, err);
+    this._scatter(dir, this.spread(w, vm.aim > 0.85));
 
     // Start at the muzzle, unless the muzzle is through a wall (then from the eye).
     const muzzle = vm.muzzleWorld.clone();
@@ -330,6 +323,19 @@ export class PlayerController {
     g.audio?.gunshot(d.sound, muzzle.x, muzzle.y, muzzle.z, { isLocal: true });
     g.onShot?.(s, w, start, dir);
     s.lastShotTime = g.time;
+  }
+
+  // How widely shots scatter right now (one standard deviation, radians). From
+  // the hip the gun isn't aligned with the eye: a pointing error, less crouched
+  // or prone, more on the move. Always: the mechanical accuracy of gun and
+  // ammunition (MOA -> radians, as a spread), wider with a hot barrel.
+  spread(w, aimed) {
+    const s = this.soldier;
+    const d = w.def;
+    let err = aimed ? 0 : d.hipError * DEG * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.8 : 1) * (1 + s.body.moving * 0.25);
+    err = Math.hypot(err, (d.accuracy || 0) * 0.000291 * 0.42);
+    if (w.heat > 120) err *= 1 + (w.heat - 120) / 150;
+    return err;
   }
 
   _scatter(dir, sigma) {

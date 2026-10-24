@@ -1,8 +1,13 @@
 // Heads-up display. Kept sparse and period-appropriate like the original game:
-// no crosshair (you aim with the real sights), ammo and sight setting at the
-// bottom right, health and stamina at the bottom left, a compass at the top.
+// a small hip-fire crosshair (gone when you aim with the real sights; it can be
+// turned off), ammo and sight setting at the bottom right, health and stamina at
+// the bottom left, a compass at the top.
+import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
-import { damp, clamp01 } from '../core/math.js';
+import { damp, clamp, clamp01, DEG } from '../core/math.js';
+import { HIP_CONVERGE } from '../weapons/viewmodel.js';
+
+const _cv = new THREE.Vector3();
 
 const FACTION_ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
 
@@ -18,7 +23,7 @@ export class Hud {
       <div class="hud-objectives"></div>
       <div class="hud-killfeed"></div>
       <div class="hud-msg"></div>
-      <div class="hud-center"><div class="hitmark"></div><div class="dot"></div></div>
+      <div class="hud-center"><div class="hud-cross"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="c"></i></div><div class="hitmark"></div></div>
       <div class="hud-left">
         <div class="hud-health"><div class="bar"><div class="fill"></div></div><span class="label">Health</span><span class="bleed">Bleeding (X to bandage)</span></div>
         <div class="hud-stamina"><div class="bar"><div class="fill"></div></div><span class="label">Stamina</span></div>
@@ -60,6 +65,8 @@ export class Hud {
     this.killfeedEl = this.el('.hud-killfeed');
     this.compassStrip = this.el('.hud-compass .strip');
     this.hitEl = this.el('.hitmark');
+    this.crossEl = this.el('.hud-cross');
+    this.cross = { a: 0, r: 12, shown: -1 };
     this.hintEl = this.el('.hud-hint');
     this.deadEl = this.el('.hud-dead');
     this.objectivesEl = this.el('.hud-objectives');
@@ -194,7 +201,43 @@ export class Hud {
     this.damageFlash = damp(this.damageFlash, s.health < 30 ? 0.35 : 0, 1.5, dt);
     this.deadEl.style.display = s.alive ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;
+    this._updateCrosshair(p, dt);
     this._drawScope(p);
+  }
+
+  // Hip-fire crosshair: four ticks round the point the gun points at (where hip
+  // shots go, HIP_CONVERGE ahead, so it follows the kick and the gun's lag when
+  // turning), as far apart as the shots spread right now: most shots (about 6 in
+  // 7, two standard deviations) land inside the ticks. It fades out as the sights
+  // come up to the eye, and while sprinting, switching weapons, or in a vehicle.
+  _updateCrosshair(p, dt) {
+    const c = this.cross;
+    const s = p.soldier;
+    const w = s.weapon;
+    const vm = p.viewmodel;
+    const cam = p.camera;
+    let want = 0;
+    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && vm.gun && vm.visible) {
+      want = clamp01(1 - vm.aim * 2) * (1 - vm.sprint) * vm.swap * (1 - vm.blocked) * (vm.action ? 0.5 : 1);
+    }
+    c.a = damp(c.a, want, 16, dt);
+    const shown = c.a > 0.02;
+    if (shown !== (c.shown === 1)) {
+      this.crossEl.style.display = shown ? 'block' : 'none';
+      c.shown = shown ? 1 : 0;
+    }
+    if (!shown) return;
+    const halfH = window.innerHeight / 2;
+    const tanHalf = Math.tan((cam.fov * DEG) / 2);
+    const r = (Math.tan(2 * p.spread(w, false)) / tanHalf) * halfH;
+    c.r = damp(c.r, Math.max(4, r), 12, dt);
+    _cv.copy(vm.muzzleWorld).addScaledVector(vm.boreWorld, HIP_CONVERGE).project(cam);
+    const ok = _cv.z < 1;
+    const x = ok ? clamp(_cv.x, -0.4, 0.4) * (window.innerWidth / 2) : 0;
+    const y = ok ? clamp(-_cv.y, -0.4, 0.4) * halfH : 0;
+    this.crossEl.style.opacity = c.a.toFixed(3);
+    this.crossEl.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    this.crossEl.style.setProperty('--gap', `${c.r.toFixed(1)}px`);
   }
 
   // Hold Tab: both sides' soldiers with kills, deaths and score.

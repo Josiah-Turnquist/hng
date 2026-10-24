@@ -61,7 +61,7 @@ const POSES = {
 };
 // From the hip, shots leave the muzzle toward the center of view this far ahead
 // (the shooter points the gun at what he looks at); aimed shots follow the bore.
-const HIP_CONVERGE = 25;
+export const HIP_CONVERGE = 25;
 
 function poseKind(def) {
   switch (def.type) {
