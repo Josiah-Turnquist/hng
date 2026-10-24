@@ -302,8 +302,8 @@ export function generateTerrain(def) {
       else if (slope > 0.42) s = SURF.DIRT;
       else if (fval > 0) s = SURF.FOREST;
       else if (dv < vil.radius + 10) {
-        // Village: trampled grass and dirt patches.
-        s = noise2.fbm2(x / 14, z / 14, 2) > 0.18 ? SURF.DIRT : SURF.GRASS;
+        // Village: grass with some trampled, bare patches.
+        s = noise2.fbm2(x / 14, z / 14, 2) > 0.4 ? SURF.DIRT : SURF.GRASS;
       } else {
         const k = c.cell.kind;
         if (c.edgeDist < 2.5) s = SURF.GRASS; // grassy field margins
@@ -311,8 +311,8 @@ export function generateTerrain(def) {
         else if (k === 'wheat') s = SURF.WHEAT;
         else if (k === 'pasture') s = noise2.fbm2(x / 30, z / 30, 2) > 0.1 ? SURF.DRY_GRASS : SURF.GRASS;
         else s = noise2.fbm2(x / 45, z / 45, 3) > 0.25 ? SURF.DRY_GRASS : SURF.GRASS;
-        // Muddy low spots.
-        if (noise.fbm2(x / 35 + 100, z / 35, 3) > 0.5) s = SURF.MUD;
+        // A few muddy spots (summer: most of the countryside is dry).
+        if (noise.fbm2(x / 35 + 100, z / 35, 3) > 0.66) s = SURF.MUD;
       }
       hf.surface[i] = s;
     }
