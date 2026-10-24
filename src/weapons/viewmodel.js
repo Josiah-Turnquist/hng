@@ -12,6 +12,7 @@ import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
 import { Sighting } from './sighting.js';
 import { damp, clamp } from '../core/math.js';
+import { FirstPersonArms } from '../actors/soldierFP.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -42,30 +43,6 @@ class Spring {
   }
 }
 
-// Two-bone inverse kinematics: find the elbow for a shoulder and hand position.
-function solveElbow(S, T, L1, L2, pole, out) {
-  const d = _v.copy(T).sub(S);
-  let dist = d.length();
-  dist = clamp(dist, Math.abs(L1 - L2) + 1e-4, L1 + L2 - 1e-4);
-  d.normalize();
-  const a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist);
-  const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-  // Direction toward the pole, perpendicular to the shoulder-hand line.
-  const p = _v2.copy(pole).sub(S);
-  p.addScaledVector(d, -p.dot(d)).normalize();
-  out.copy(S).addScaledVector(d, a).addScaledVector(p, h);
-  return out;
-}
-
-// A limb segment stretched between two points (unit cylinder along Y).
-function placeSegment(mesh, a, b, radius) {
-  const len = a.distanceTo(b);
-  mesh.position.copy(a).add(b).multiplyScalar(0.5);
-  _v.copy(b).sub(a).normalize();
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _v);
-  mesh.scale.set(radius, len, radius);
-}
-
 const POSES = {
   rifle: { hip: [0.12, -0.17, -0.1], sprint: [0.06, -0.24, -0.2] },
   smg: { hip: [0.14, -0.19, -0.22], sprint: [0.06, -0.22, -0.22] },
@@ -93,8 +70,6 @@ function poseKind(def) {
       return 'rifle';
   }
 }
-
-const SLEEVES = { US: 'woolOD', GE: 'woolFeldgrau', SU: 'cottonKhaki' };
 
 export class ViewModel {
   constructor(textures, faction = 'US', envMap = null) {
@@ -143,19 +118,16 @@ export class ViewModel {
     this.visible = true;
   }
 
+  // The arms: the player's own sleeves and hands (soldierFP.js), skinned and
+  // posed from the gun's grips. setOutfit matches them to his soldier.
   _makeArms(faction) {
-    const sleeve = this.textures.standard(SLEEVES[faction] || 'woolOD');
-    const skin = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.5, 0.38, 0.31, THREE.SRGBColorSpace), roughness: 0.62, metalness: 0 });
-    // Sleeve: tapered tube, unit length along +Y (scaled to the bone length).
-    const sleeveGeo = new THREE.CylinderGeometry(1, 0.82, 1, 16, 4);
-    this.arms = { R: {}, L: {} };
-    for (const side of ['R', 'L']) {
-      const upper = new THREE.Mesh(sleeveGeo, sleeve);
-      const fore = new THREE.Mesh(sleeveGeo, sleeve);
-      const hand = makeHand(skin, side === 'R' ? 1 : -1);
-      this.root.add(upper, fore, hand);
-      this.arms[side] = { upper, fore, hand, elbow: new THREE.Vector3() };
-    }
+    this.fpArms = new FirstPersonArms(this.textures, { faction });
+    this.root.add(this.fpArms.root);
+    this.fpArmsGun = null;
+  }
+
+  setOutfit({ faction = this.faction, cls = 'infantry', seed = 1, role = 'rifle', variant } = {}) {
+    this.fpArms.setOutfit({ faction, cls, seed, role, variant });
   }
 
   _makeFlash() {
@@ -467,10 +439,15 @@ export class ViewModel {
         .addScaledVector(camRight, side * (side > 0 ? 0.16 : 0.2))
         .addScaledVector(camUp, -0.34)
         .addScaledVector(camFwd, side > 0 ? -0.02 : 0.02);
-    const grip = anchors.gripR || new THREE.Vector3(0, -0.05, 0.05);
-    let left = anchors.gripL || new THREE.Vector3(0, -0.04, -0.3);
-    let right = grip;
-    // During reloads the hands go to the magazine, clip guide or bolt.
+    const arms = this.fpArms;
+    if (this.fpArmsGun !== this.gun) {
+      arms.setWeapon(this.gun, this.kind);
+      this.fpArmsGun = this.gun;
+    }
+    // By default both hands hold their grips (as the third-person soldier
+    // does); during reloads they go to the magazine, clip guide or bolt.
+    let right = null,
+      left = null;
     const act = this.action;
     if (act) {
       const n = act.name;
@@ -493,21 +470,20 @@ export class ViewModel {
         left = anchors.coverHinge.clone().add(new THREE.Vector3(0, 0.02, -0.06));
       }
     }
-    const sides = this.kind === 'pistol' ? [['R', right, 1], ['L', anchors.gripL || right, -1]] : [['R', right, 1], ['L', left, -1]];
-    for (const [side, target, sgn] of sides) {
-      const arm = this.arms[side];
+    // Without a support grip the left hand cups the right (a point below it).
+    if (!left && !anchors.gripL) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
+    const G = (this._gunXf ||= { q: new THREE.Quaternion(), p: new THREE.Vector3() });
+    G.q.copy(gunRoot.quaternion);
+    G.p.copy(gunRoot.position);
+    const pinch = [0.62, 0.45, 0.65];
+    for (const [target, sgn] of [
+      [right, 1],
+      [left, -1],
+    ]) {
       const S = shoulder(sgn);
-      const T = toWorld(target);
-      const pole = S.clone().addScaledVector(camRight, sgn * 0.3).addScaledVector(camUp, -0.5);
-      // The hand sits on the outside of the grip; the wrist is a few cm behind it.
-      arm.hand.quaternion.copy(gunRoot.quaternion);
-      const out = side === 'R' ? new THREE.Vector3(0.024, -0.012, 0.012) : new THREE.Vector3(-0.004, -0.026, 0.0);
-      arm.hand.position.copy(T).add(out.applyQuaternion(gunRoot.quaternion));
-      const wrist = side === 'R' ? new THREE.Vector3(0.03, -0.045, 0.07) : new THREE.Vector3(-0.025, -0.05, 0.06);
-      const W = T.clone().add(wrist.applyQuaternion(gunRoot.quaternion));
-      solveElbow(S, W, 0.3, 0.27, pole, arm.elbow);
-      placeSegment(arm.upper, S, arm.elbow, 0.052);
-      placeSegment(arm.fore, arm.elbow, W, 0.04);
+      const pole = new THREE.Vector3().addScaledVector(camRight, sgn * 0.3).addScaledVector(camUp, -0.5);
+      if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
+      else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? [1, 0.55, 0.82] : [0.95, 0.9, 0.45] });
     }
   }
 }
@@ -550,27 +526,4 @@ function makeFlashTexture() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
-}
-
-// A simple hand gripping something: palm, curled fingers and a thumb.
-// side = 1 for the right hand (grip on its left), -1 for the left hand.
-function makeHand(skin, side) {
-  const g = new THREE.Group();
-  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.07, 0.08), skin);
-  palm.position.set(0, 0, 0.01);
-  g.add(palm);
-  // Fingers curl under and around the grip (toward -x for the right hand).
-  for (let i = 0; i < 4; i++) {
-    const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.032, 3, 6), skin);
-    f.rotation.z = Math.PI / 2;
-    f.position.set(-side * 0.02, -0.03 + i * 0.0, 0.035 - i * 0.019);
-    f.position.y = -0.028;
-    g.add(f);
-  }
-  const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.035, 3, 6), skin);
-  thumb.rotation.set(0.3, 0, side * 1.2);
-  thumb.position.set(-side * 0.015, 0.03, 0.0);
-  g.add(thumb);
-  g.traverse((o) => (o.frustumCulled = false));
-  return g;
 }

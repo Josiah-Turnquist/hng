@@ -35,7 +35,7 @@ export class App {
       depth: true,
       preserveDrawingBuffer: this.params.has('capture'),
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxPixelRatio));
+    renderer.setPixelRatio(this._pixelRatio(q));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -69,7 +69,7 @@ export class App {
       const s = await showMainMenu(this);
       opts = { map: s.map, mode: 'auto', faction: s.faction, side: s.side, cls: s.cls, tank: s.tank, loadout: s.weapon ? [s.weapon, null, null] : null, bots: s.bots, minutes: s.minutes };
       // The quality may have changed in the menu.
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.settings.quality.maxPixelRatio));
+      renderer.setPixelRatio(this._pixelRatio(this.settings.quality));
       this.audio?.resume();
     }
 
@@ -102,7 +102,61 @@ export class App {
         this.pause.show();
       }
     };
+    // Graphics settings changed in the menus apply at once.
+    this.settings.listen((key) => {
+      if (key === 'graphics') this.applyGraphics();
+      if (key === 'showFps') this._fpsCounter();
+    });
+    this._fpsCounter();
     game.start();
+  }
+
+  // Sharpest pixel ratio the quality allows on this screen.
+  _pixelRatio(q) {
+    return Math.min(window.devicePixelRatio || 1, q.maxPixelRatio || 1);
+  }
+
+  // Apply the current graphics settings to the running battle. Texture detail waits
+  // for the next battle; everything else changes now (some changes recompile
+  // shaders, which can pause the game for a moment).
+  applyGraphics() {
+    const g = this.game;
+    if (!g?.pipeline) return;
+    const q = this.settings.quality;
+    g.quality = q;
+    this.renderer.setPixelRatio(this._pixelRatio(q));
+    if (g.camera.far !== q.viewDistance) {
+      g.camera.far = q.viewDistance;
+      g.camera.updateProjectionMatrix();
+    }
+    g.world.applyQuality(q);
+    g.pipeline.apply(q);
+    g.effects?.setQuality(q);
+    this._resize();
+  }
+
+  // Frames per second in the top left corner (Settings: show frame rate).
+  _fpsCounter() {
+    const on = !!this.settings.get('showFps');
+    if (!on) {
+      clearInterval(this.fpsTimer);
+      this.fpsTimer = null;
+      this.fpsEl?.remove();
+      this.fpsEl = null;
+      return;
+    }
+    if (this.fpsEl) return;
+    const el = document.createElement('div');
+    el.className = 'fps-counter';
+    el.style.cssText = 'position:absolute;top:6px;left:8px;z-index:25;font:12px var(--mono, monospace);color:#e9e4d6;background:rgba(10,10,8,0.5);padding:2px 6px;pointer-events:none;';
+    this.root.appendChild(el);
+    this.fpsEl = el;
+    const tick = () => {
+      const fps = this.game?.loop?.fps || 0;
+      el.textContent = fps > 0 ? `${Math.round(fps)} fps · ${(1000 / fps).toFixed(1)} ms` : '';
+    };
+    tick();
+    this.fpsTimer = setInterval(tick, 500);
   }
 
   _resize() {

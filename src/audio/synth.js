@@ -32,8 +32,9 @@ import {
 import { IMPACTS, MECHANICAL } from './recipes/foley.js';
 import { PEOPLE, STEP_DUR, SURFACES, footstep } from './recipes/people.js';
 import { AMBIENCE, ENGINE_SPECS, EXPLOSIONS, IR_DUR, TRACK_SPEC, UI, VEHICLES, reverbIR } from './recipes/world.js';
+import { BIKE_ENGINE_SPECS, BIKE_SOUNDS } from './recipes/bikes.js';
 
-export { GUN_TYPES, FAR_OF, ECHO_OF, CRACK_MISS, SURFACES, ENGINE_SPECS, TRACK_SPEC };
+export { GUN_TYPES, FAR_OF, ECHO_OF, CRACK_MISS, SURFACES, ENGINE_SPECS, TRACK_SPEC, BIKE_ENGINE_SPECS };
 
 export const DEFAULT_SAMPLE_RATE = 48000;
 
@@ -152,7 +153,8 @@ for (const [id, d] of Object.entries(EXPLOSIONS)) {
   def(id, { group: 'explosions', dur: d.dur, variants: id === 'tankExplosion' ? 1 : 2, rate: 0.5, cls: 'heavy', pitchVar: 0.06, make: d.make });
 }
 
-for (const [id, d] of Object.entries(VEHICLES)) {
+// Vehicles, then motorcycles and bicycles (recipes/bikes.js).
+for (const [id, d] of Object.entries({ ...VEHICLES, ...BIKE_SOUNDS })) {
   def(id, {
     group: 'vehicles',
     dur: d.dur,

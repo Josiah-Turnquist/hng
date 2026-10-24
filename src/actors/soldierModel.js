@@ -11,12 +11,20 @@
 //   m.muzzleWorld, m.aimDir                 // where the bore points
 //   m.getHitboxes(list); raycastHitboxes(list, ox, oy, oz, dx, dy, dz, maxDist)
 //
-// Draw calls: 3 skinned meshes at full detail (cloth, kit, skin), 1 at LOD 1.
-// Outfit geometry is shared between soldiers of the same faction/variant.
+// Draw calls: 2 skinned meshes at full detail (the outfit, shared by every
+// soldier with the same kit, and the person: face, neck, hands), 1 in the middle
+// distance and 1 far away (outfit and person merged per soldier). Everything
+// uses one material (soldierMaterials.js).
+//
+// Levels of detail (triangles, about): 0 = 16-20k, 1 = 3-4k, 2 = 0.7-1k.
 import * as THREE from 'three';
 import { B, BONE_NAMES, PARENT, BIND, OFFSET, EYE_R } from './soldierRig.js';
-import { buildOutfit, buildPerson, personParams } from './soldierKit.js';
+import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';
+import './soldierKitUS.js';
+import './soldierKitGE.js';
+import './soldierKitSU.js';
 import { SkinBuilder } from './soldierGeo.js';
+import { soldierMaterial } from './soldierMaterials.js';
 import { SoldierAnimator, clamp } from './soldierAnim.js';
 import { SoldierArms, weaponInfo, Xf } from './soldierArms.js';
 import { Ragdoll } from './soldierRagdoll.js';
@@ -24,72 +32,49 @@ import { fillHitboxes, raycastHitboxes, rayCapsule, HITBOX_DEFS } from './soldie
 
 export { raycastHitboxes, rayCapsule, HITBOX_DEFS };
 export const HITBOX_PARTS = HITBOX_DEFS.map((d) => d[0]);
+export const LODS = 3;
 
-const MAT_CACHE = new WeakMap();
-const NO_TEX = {};
-function materialsFor(textures) {
-  const key = textures || NO_TEX;
-  let m = MAT_CACHE.get(key);
-  if (m) return m;
-  const mk = (preset) => {
-    let mat;
-    if (textures && textures.standard) mat = textures.standard(preset, { size: 512 });
-    else mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
-    mat.vertexColors = true;
-    // The neutral textures average ~0.5, so vertex colors carry the real colors.
-    if (mat.map) mat.color.setScalar(2);
-    return mat;
-  };
-  const cloth = mk('soldierCloth');
-  const gear = mk('soldierGear');
-  const skin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0 });
-  cloth.name = 'soldierCloth';
-  gear.name = 'soldierGear';
-  skin.name = 'soldierSkin';
-  m = { cloth, gear, skin };
-  MAT_CACHE.set(key, m);
-  return m;
-}
-
-// Outfit geometry is shared by every soldier of the same faction/variant/LOD.
+// Outfit builders are shared by every soldier with the same army, class,
+// variant, weapon role and level of detail (the geometry for LOD 0, the builder
+// for merging with each soldier's own person at LOD 1 and 2).
 const OUTFIT_CACHE = new Map();
-function outfitGeometry(faction, variant, lod) {
-  const key = `${faction}|${variant}|${lod}`;
+function outfitFor(faction, cls, variant, role, lod) {
+  const key = `${faction}|${cls}|${variant}|${role}|${lod}`;
   let g = OUTFIT_CACHE.get(key);
   if (!g) {
-    const { cloth, gear } = buildOutfit(faction, variant, lod);
-    g = lod ? { merged: cloth.append(gear) } : { cloth: cloth.toGeometry(), gear: gear.toGeometry() };
+    const { b, info } = buildOutfit(faction, cls, variant, lod, role);
+    g = { b, info, geo: lod === 0 ? b.toGeometry() : null };
     OUTFIT_CACHE.set(key, g);
   }
   return g;
 }
-
-function mulberry(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+export function clearOutfitCache() {
+  for (const g of OUTFIT_CACHE.values()) g.geo?.dispose();
+  OUTFIT_CACHE.clear();
 }
 
-const VARIANTS = { US: 2, GE: 2, SU: 4 };
+const FACTIONS = new Set(['US', 'GE', 'SU']);
+const CLASSES = new Set(['infantry', 'recon', 'paratrooper', 'tanker']);
+const ROLES = new Set(['rifle', 'smg', 'mg', 'at']);
 const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'none']);
 const _v = new THREE.Vector3(),
   _v2 = new THREE.Vector3(),
-  _q = new THREE.Quaternion(),
-  _m3 = new THREE.Matrix3();
+  _inv = new THREE.Matrix4();
 
 export class SoldierModel {
-  constructor(faction = 'US', textures = null, { seed = 1, lod = 0, variant } = {}) {
-    this.faction = faction in VARIANTS ? faction : 'US';
+  // opts: seed (face, variant), lod (0 near, 1 middle, 2 far), cls (infantry |
+  // recon | paratrooper | tanker), role (primary weapon: rifle | smg | mg | at,
+  // picks the ammunition pouches), variant (outfit variant, else from the seed).
+  constructor(faction = 'US', textures = null, { seed = 1, lod = 0, variant, cls = 'infantry', role = 'rifle' } = {}) {
+    this.faction = FACTIONS.has(faction) ? faction : 'US';
+    this.cls = CLASSES.has(cls) ? cls : 'infantry';
+    this.role = ROLES.has(role) ? role : 'rifle';
     this.seed = seed;
     const rng = mulberry(seed * 9973 + 17);
-    this.variant = variant ?? Math.floor(rng() * VARIANTS[this.faction]);
+    this.variant = (variant ?? Math.floor(rng() * 1000)) % variantCount(this.faction, this.cls);
     this.person = personParams(this.faction, rng);
-    this.mats = materialsFor(textures);
+    this.material = soldierMaterial(textures);
+    this.mats = { cloth: this.material, gear: this.material, skin: this.material };
 
     this.root = new THREE.Object3D();
     this.root.name = `soldier-${this.faction}`;
@@ -103,7 +88,8 @@ export class SoldierModel {
     this.root.add(this.bones[0]);
     const inverses = BIND.map((p) => new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
     this.skeleton = new THREE.Skeleton(this.bones, inverses);
-    this.meshes = [[], []];
+    this.meshes = [[], [], []];
+    this._geos = [];
     this.lod = -1;
 
     this.anim = new SoldierAnimator();
@@ -142,23 +128,40 @@ export class SoldierModel {
     return m;
   }
 
-  // 0 = full detail (cloth, kit and skin meshes), 1 = distant (one mesh).
+  // 0 = full detail (outfit and person meshes), 1 = middle distance, 2 = far
+  // (one merged mesh each).
   setLod(lod) {
-    lod = lod ? 1 : 0;
+    lod = Math.max(0, Math.min(LODS - 1, lod | 0));
     if (lod === this.lod) return;
     this.lod = lod;
     if (!this.meshes[lod].length) {
-      const og = outfitGeometry(this.faction, this.variant, lod);
+      const og = outfitFor(this.faction, this.cls, this.variant, this.role, lod);
+      this.outfitInfo = og.info;
       if (lod === 0) {
-        this._skinGeo = buildPerson(this.person, 0).toGeometry();
-        this.meshes[0].push(this._mesh(og.cloth, this.mats.cloth), this._mesh(og.gear, this.mats.gear), this._mesh(this._skinGeo, this.mats.skin));
+        const pg = buildPerson(this.person, 0, og.info).toGeometry();
+        this._geos.push(pg);
+        this.meshes[0].push(this._mesh(og.geo, this.material), this._mesh(pg, this.material));
       } else {
-        const b = new SkinBuilder(0.5).append(og.merged).append(buildPerson(this.person, 1));
-        this._lodGeo = b.toGeometry();
-        this.meshes[1].push(this._mesh(this._lodGeo, this.mats.cloth));
+        const b = new SkinBuilder(1).append(og.b).append(buildPerson(this.person, lod, og.info));
+        const geo = b.toGeometry();
+        this._geos.push(geo);
+        this.meshes[lod].push(this._mesh(geo, this.material));
       }
     }
-    for (let l = 0; l < 2; l++) for (const m of this.meshes[l]) m.visible = l === lod;
+    for (let l = 0; l < LODS; l++) for (const m of this.meshes[l]) m.visible = l === lod;
+  }
+
+  // Build every level of detail now (avoids a hitch when one is first needed).
+  prepareLods() {
+    const cur = this.lod;
+    for (let l = 0; l < LODS; l++) this.setLod(l);
+    this.setLod(cur);
+  }
+
+  // Triangles and draw calls of a level of detail (for budgets and the viewer).
+  stats(lod = this.lod) {
+    const ms = this.meshes[lod] || [];
+    return { meshes: ms.length, triangles: ms.reduce((n, m) => n + m.geometry.index.count / 3, 0) };
   }
 
   // Terrain height function groundAt(x, z) -> y (world). Used for foot placement
@@ -193,7 +196,9 @@ export class SoldierModel {
   //   action null | 'reload' | 'bolt' | 'throw' | 'bandage' | 'use', actionT (0..1),
   //   alive, deathT (s since death), hitDir {x, z} (world direction the killing shot
   //   travelled; the body is pushed along it), seated (the root is then the seat point
-  //   under the buttocks; feet rest 0.42 m below it).
+  //   under the buttocks; feet rest 0.42 m below it), ride (a rider pose from a
+  //   bicycle's or motorcycle's riderPose(seat, out): the root is then at ride.hip and
+  //   the yaw is ride.yaw; hands and feet reach the grips, pedals or footboards).
   update(dt, s = {}) {
     const root = this.root;
     const alive = s.alive !== false;
@@ -209,6 +214,10 @@ export class SoldierModel {
       if (steps > 0) for (let i = 0; i < steps; i++) this.ragdoll.update(1 / 60, this._groundModel, 1);
       this.ragdoll.update(dt, this._groundModel);
       this.ragdoll.toPose(this.pose, this.mp);
+      // Dead hands fall half open.
+      this.arms.grip(1, 0.45, 0.35, 0.3);
+      this.arms.grip(-1, 0.45, 0.35, 0.3);
+      this.arms.applyFingers(this.pose, dt);
       holder = 'drop';
       this.grenadeReleased = false;
       // Keep the culling spheres around the body.
@@ -221,7 +230,12 @@ export class SoldierModel {
         for (const l of this.meshes) for (const m of l) m.boundingSphere.center.set(0, 0.8, 0);
       }
       this.anim.groundOffset = this._groundFn && !s.seated ? this._groundModel : null;
-      const pose = this.anim.body(dt, s);
+      let pose;
+      if (s.ride) {
+        // On a bicycle or motorcycle: world targets into model space.
+        _inv.copy(root.matrixWorld).invert();
+        pose = this.anim.ride(dt, s, s.ride, (v) => v.applyMatrix4(_inv), this._groundFn ? this._groundModel : null);
+      } else pose = this.anim.body(dt, s);
       this.arms.update(dt, s, pose);
       this.anim.head(pose, this.arms.weld > 0 ? this.arms.sight : null, this.arms.weld);
       holder = this.arms.holderOut || 'right';
@@ -331,8 +345,8 @@ export class SoldierModel {
   }
 
   dispose() {
-    this._skinGeo?.dispose();
-    this._lodGeo?.dispose();
+    for (const g of this._geos) g.dispose();
+    this._geos.length = 0;
     this.root.removeFromParent();
   }
 }

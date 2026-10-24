@@ -4,9 +4,11 @@
 // Controls (like the original game): W/S throttle and brake/reverse, A/D steer,
 // Space handbrake (wheeled) or coaxial MG (tanks), LMB fire, hold RMB for the
 // gunner's sight, mouse wheel sets the sight range, 1/2 choose the shell, V
-// switches camera, F1-F4 change seat, F gets out.
+// switches camera, F1-F4 change seat, F gets out. On bicycles and motorcycles:
+// Shift pedals hard (bicycle), Space is the rear brake, and the sidecar gunner
+// lays his machine gun with the mouse.
 import * as THREE from 'three';
-import { clamp, damp, DEG } from '../core/math.js';
+import { clamp, damp, DEG, wrapAngle } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 
 const BASE_SENS = 0.0022;
@@ -15,6 +17,9 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler(0, 0, 0, 'YXZ');
+const _v3 = new THREE.Vector3();
+const _qh = new THREE.Quaternion();
+const _e2 = new THREE.Euler(0, 0, 0, 'YXZ');
 const _hit = new RayHit();
 
 export class VehicleController {
@@ -57,9 +62,14 @@ export class VehicleController {
     const f = v.forward;
     this.orbit.yaw = Math.atan2(-f.x, -f.z);
     this.orbit.pitch = -0.12;
-    this.orbit.dist = v.def.kind === 'tracked' ? 9 : 6;
+    this.orbit.dist = v.def.kind === 'tracked' ? 9 : v.isBike ? (v.pedal ? 4 : 4.8) : 6;
     this.camDist = this.orbit.dist;
+    this.idleLook = 0;
+    this._eyeLocal = null;
+    this._bikeT = null;
     this.look.yaw = this.look.pitch = 0;
+    // On a bike he looks down the road over the lamp and front fender.
+    if (v.isBike) this.look.pitch = -0.3;
     this.view = 'third';
     this.sight = false;
     if (v.aim) {
@@ -111,6 +121,17 @@ export class VehicleController {
         this.orbit.pitch = clamp(this.orbit.pitch - my * sens * inv, -1.2, 0.6);
       }
       v.bowMg.trigger = input.mouseDown[0];
+    } else if (role === 'sidecarMg') {
+      // The sidecar gun: in first person the mouse swings it; in third person it
+      // follows where the camera looks.
+      if (this.view === 'first') {
+        v.mgAim.yaw -= mx * sens * 0.8;
+        v.mgAim.pitch = clamp(v.mgAim.pitch - my * sens * 0.8 * inv, -0.4, 0.8);
+      } else {
+        this.orbit.yaw -= mx * sens;
+        this.orbit.pitch = clamp(this.orbit.pitch - my * sens * inv, -1.2, 0.6);
+      }
+      v.mg.trigger = input.mouseDown[0] && v.alive;
     } else {
       // Driver or passenger: look around.
       if (this.view === 'first') {
@@ -124,8 +145,11 @@ export class VehicleController {
     if (this.soldier.seat === 0) {
       this.drive = (input.is('forward') ? 1 : 0) - (input.is('back') ? 1 : 0);
       this.steer = (input.is('right') ? 1 : 0) - (input.is('left') ? 1 : 0);
-      this.handbrake = v.def.kind === 'wheeled' && input.is('jump');
+      this.handbrake = (v.def.kind === 'wheeled' || v.isBike) && input.is('jump');
+      this.sprint = input.is('sprint');
     }
+    // Bikes: the chase camera swings in behind when the mouse is left alone.
+    this.idleLook = mx || my ? 0 : (this.idleLook || 0) + dt;
   }
 
   _ammo(v, i) {
@@ -155,7 +179,7 @@ export class VehicleController {
         }
       }
     }
-    if (s.seat === 0) v.driverInput(this.drive, this.steer, this.handbrake);
+    if (s.seat === 0) v.driverInput(this.drive, this.steer, this.handbrake, this.sprint);
     if (this.role === 'gunner' && this.wantFire) {
       this.wantFire = false;
       const p = v.fireMain(s);
@@ -175,6 +199,10 @@ export class VehicleController {
         const dir = _v2.set(0, 0, -1).applyQuaternion(_q);
         for (let i = 0; i < n; i++) this._mgShot(v, v.bowMg, 'bowMgMuzzle', dir);
       }
+    }
+    if (v.mg && this.role === 'sidecarMg') {
+      const n = v.mg.takeShots();
+      for (let i = 0; i < n; i++) this._mgShot(v, v.mg, 'mgMuzzle', v.mgDir(_v2));
     }
   }
 
@@ -209,15 +237,36 @@ export class VehicleController {
       lookAlong(cam, dir, up);
       const sd = v.def.bowMg.sight;
       if (sd) fov = sightFov(sd);
+    } else if (role === 'sidecarMg' && this.view === 'first' && v.mg) {
+      // Behind the sidecar gun, head down over the receiver, looking along the bore.
+      const dir = v.mgDir(new THREE.Vector3());
+      const g = v.model.anchors?.mgGripR;
+      if (g) v.mgPointWorld(_v.copy(g).add(_v3.set(0, 0.2, 0.12)), cam.position);
+      else cam.position.copy(v.anchorWorld('mgMuzzle', _v)).addScaledVector(dir, -0.95).addScaledVector(up, 0.14);
+      lookAlong(cam, dir, up);
     } else if (this.view === 'first') {
-      // Seat view: turn your head inside the vehicle.
-      v.seatPos(this.soldier.seat, cam.position, 'eye');
-      _q.setFromEuler(_e.set(this.look.pitch, this.look.yaw, 0, 'YXZ')).premultiply(v.body.quaternion);
+      // Seat view: turn your head inside the vehicle. On a bike the head follows
+      // the heading and the slope but stays nearer level than the leaning machine.
+      if (v.isBike) this._bikeEye(v, cam.position);
+      else v.seatPos(this.soldier.seat, cam.position, 'eye');
+      const head = v.isBike ? _qh.setFromEuler(_e2.set(v.pitch, v.yaw, -v.lean * (v.rig ? 1 : 0.7), 'YXZ')) : v.body.quaternion;
+      _q.setFromEuler(_e.set(this.look.pitch, this.look.yaw, 0, 'YXZ')).premultiply(head);
       cam.quaternion.copy(_q);
+      // A rider sees the lamp, bars and tank at the edge of his vision: a little
+      // more of it on the screen than the usual field of view gives.
+      if (v.isBike) fov += 10;
     } else {
       // Third person: orbit around the vehicle; walls and the ground pull the camera in.
-      const target = _v.copy(v.body.position).addScaledVector(up, v.def.kind === 'tracked' ? 1.9 : 1.2);
+      // Bikes: the camera doesn't roll with the lean, and swings in behind the
+      // machine when the mouse is left alone.
+      const target = v.isBike
+        ? _v.copy(v.body.position).add(_v3.set(0, 0.95, 0))
+        : _v.copy(v.body.position).addScaledVector(up, v.def.kind === 'tracked' ? 1.9 : 1.2);
       const o = this.orbit;
+      if (v.isBike && this.idleLook > 1.2 && Math.abs(v.speed) > 3) {
+        o.yaw += wrapAngle(v.yaw - o.yaw) * (1 - Math.exp(-1.6 * dt));
+        o.pitch = damp(o.pitch, -0.14, 1.2, dt);
+      }
       const back = new THREE.Vector3(Math.sin(o.yaw) * Math.cos(o.pitch), -Math.sin(o.pitch), Math.cos(o.yaw) * Math.cos(o.pitch));
       let dist = o.dist;
       const proxies = v.proxies || [];
@@ -231,6 +280,7 @@ export class VehicleController {
       cam.rotation.set(o.pitch, o.yaw, 0, 'YXZ');
       cam.updateMatrixWorld();
       if (role === 'gunner') this._aimFromCamera(v);
+      else if (role === 'sidecarMg' && v.mg) this._aimMgFromCamera(v);
     }
     if (this.shake > 0.01) {
       cam.rotation.x += (Math.random() - 0.5) * this.shake * 0.02;
@@ -262,6 +312,40 @@ export class VehicleController {
     v.aim.pitch = Math.asin(clamp(to.y, -1, 1));
     // Where the gun points right now, at the same distance (for the HUD marker).
     this.gunPoint.copy(from).addScaledVector(v.sightDir(_v2), from.distanceTo(this.aimPoint));
+  }
+
+  // On a bike the eyes are in the rider's head, wherever leaning to the bars
+  // put it: last frame's head (the rider is posed after the camera), carried
+  // along with the machine; the seat's eye point until there is one.
+  _bikeEye(v, out) {
+    const head = this.soldier.model?.bones?.[4];
+    const T = (this._bikeT ??= { p: new THREE.Vector3(), q: new THREE.Quaternion(), ok: false });
+    if (head && T.ok) {
+      head.getWorldPosition(_v3);
+      this._eyeLocal = (this._eyeLocal || new THREE.Vector3()).copy(_v3).sub(T.p).applyQuaternion(_qh.copy(T.q).invert());
+    }
+    T.p.copy(v.body.position);
+    T.q.copy(v.body.quaternion);
+    T.ok = !!head;
+    if (!this._eyeLocal) return v.seatPos(this.soldier.seat, out, 'eye');
+    // (The eyes: a little above and in front of the top of the neck.)
+    return out.set(0, 0.07, -0.09).add(this._eyeLocal).applyQuaternion(v.body.quaternion).add(v.body.position);
+  }
+
+  // The same for the sidecar gun: the gunner swings it toward the point under
+  // the screen center.
+  _aimMgFromCamera(v) {
+    const cam = this.camera;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const proxies = v.proxies || [];
+    for (const p of proxies) p.box.enabled = false;
+    const c = this.game.world.collision;
+    const hit = c.raycast(cam.position.x, cam.position.y, cam.position.z, dir.x, dir.y, dir.z, 1500, _hit, 2 | 4, true);
+    for (const p of proxies) p.box.enabled = true;
+    this.aimPoint.copy(cam.position).addScaledVector(dir, hit ? _hit.t : 1200);
+    const from = v.anchorWorld('mgMuzzle', _v);
+    v.aimMgAt(_v2.copy(this.aimPoint).sub(from).normalize());
+    this.gunPoint.copy(from).addScaledVector(v.mgDir(_v2), from.distanceTo(this.aimPoint));
   }
 }
 

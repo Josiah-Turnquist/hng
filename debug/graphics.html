@@ -1,0 +1,299 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Graphics viewer</title>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre;background:rgba(0,0,0,0.45);padding:4px 6px;pointer-events:none}</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// The game world (terrain, village, river, vegetation, sky) drawn by the real render
+// pipeline, for checking graphics settings and effects without starting a battle.
+// URL parameters:
+//   map=town|range  quality=low|medium|high|ultra (default high), then any graphics
+//   option on top: aa=off|fxaa|msaa|taa  shadows=off|low|medium|high|ultra
+//   shadowDistance=300  ao=off|normal|high  bloom=0|1  shafts=0|1  scale=0.75
+//   motion=0|1  dof=0|1 (with a stand-in rifle held aimed)  effects=low|medium|high
+//   view=lane|street|square|church|river|bridge|field|forest|sun|sunfield|aerial
+//   cam=x,y,z,yawDeg,pitchDeg (free camera; yaw 0 looks north / -z)
+//   frames=N (frames drawn before the picture: TAA and eye adaptation settle)
+//   turn=deg (turn the camera by this much per frame: motion blur, TAA in motion)
+//   fx=smoke|explosion|muzzle|dust|fire|impacts (effects 15-40 m in front), fxt=seconds
+//   after they start
+//   then=low|medium|high|ultra (switch to this preset after the first frame, the way
+//   the settings menu changes graphics during a battle), set=shadows:off,bloom:false
+//   (change single options after the first frame)
+// Prints GFX_STATS (draw calls, triangles, programs, textures) to the console.
+import * as THREE from 'three';
+import { World } from '../src/game/world.js';
+import { Pipeline } from '../src/render/pipeline.js';
+import { Effects } from '../src/render/effects.js';
+import { GRAPHICS_PRESETS, resolveQuality } from '../src/core/settings.js';
+import { MAPS } from '../src/world/maps.js';
+import { SURF } from '../src/world/heightfield.js';
+
+const params = new URLSearchParams(location.search);
+const info = document.getElementById('info');
+const W = innerWidth, H = innerHeight;
+
+const qname = params.get('quality') || 'high';
+const opts = { ...GRAPHICS_PRESETS[qname] };
+const num = (k) => (params.has(k) ? Number(params.get(k)) : undefined);
+const flag = (k) => (params.has(k) ? params.get(k) === '1' : undefined);
+const over = {
+  antiAliasing: params.get('aa') ?? undefined,
+  shadows: params.get('shadows') ?? undefined,
+  shadowDistance: num('shadowDistance'),
+  ambientOcclusion: params.get('ao') ?? undefined,
+  bloom: flag('bloom'),
+  lightShafts: flag('shafts'),
+  renderScale: num('scale'),
+  motionBlur: flag('motion'),
+  depthOfField: flag('dof'),
+  effects: params.get('effects') ?? undefined,
+  viewDistance: num('viewDistance'),
+};
+for (const [k, v] of Object.entries(over)) if (v !== undefined) opts[k] = v;
+const quality = resolveQuality(opts, qname);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance', stencil: false });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+document.body.appendChild(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(Number(params.get('fov') || 55), W / H, 0.1, quality.viewDistance);
+camera.rotation.order = 'YXZ';
+const def = MAPS[params.get('map') || 'town'];
+const world = new World(renderer, camera, { quality }, def);
+const t0 = performance.now();
+await world.build((p, msg) => (info.textContent = `${Math.round(p * 100)}% ${msg}`));
+const tBuild = performance.now() - t0;
+const pipeline = new Pipeline(renderer, quality);
+pipeline.setSky(world.sky.skyCube);
+pipeline.setSize(W, H, 1);
+const effects = new Effects(world, quality);
+
+// ---- Views ----------------------------------------------------------------------------
+const hf = world.hf;
+const gy = (x, z) => hf.getHeight(x, z);
+const plan = world.villagePlan;
+const veg = world.vegetation;
+const pos = (x, z, h) => new THREE.Vector3(x, gy(x, z) + h, z);
+const target = new THREE.Vector3();
+const look = (from, to) => {
+  camera.position.copy(from);
+  target.copy(to);
+};
+const loc = (b, lx, ly, lz) => {
+  const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+  return new THREE.Vector3(b.x + c * lx + s * lz, (b.floorY ?? gy(b.x, b.z)) + ly, b.z - s * lx + c * lz);
+};
+const views = {
+  aerial: () => look(pos(95, 165, 85), pos(-12, 8, 0)),
+  street: () => look(new THREE.Vector3(-75, gy(-75, 46) + 1.8, 46.5), new THREE.Vector3(20, gy(20, 15) + 2, 15)),
+  church: () => plan && look(loc(plan.church, 9, 1.7, 36), loc(plan.church, 2, 9, -4)),
+  square: () => plan && look(loc(plan.church, -5, 2.0, 40), loc(plan.church, 12, 2, 4)),
+  // On the bank, looking along the river (at=0..1 picks the spot along its course).
+  river: () => {
+    const rv = world.terrain.river;
+    if (!rv) return views.aerial();
+    const n = rv.samples.length;
+    const i = Math.floor(n * Number(params.get('at') || 0.35));
+    const [x0, z0] = rv.samples[i], [x1, z1] = rv.samples[Math.min(n - 1, i + 30)];
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const px = -(z1 - z0) / L, pz = (x1 - x0) / L;
+    const o = rv.half + 4;
+    look(pos(x0 + px * o, z0 + pz * o, 1.7), new THREE.Vector3(x1 - px * 3, rv.level[Math.min(n - 1, i + 30)] - 0.5, z1 - pz * 3));
+  },
+  bridge: () => {
+    const br = plan?.bridges?.[0];
+    if (!br) return views.aerial();
+    const nx = -br.tz, nz = br.tx;
+    look(new THREE.Vector3(br.x + nx * 32 + br.tx * 18, br.deckY + 7, br.z + nz * 32 + br.tz * 18), new THREE.Vector3(br.x, br.waterY + 1, br.z));
+  },
+  lane: () => {
+    const r = veg.hedges.filter((h) => h.road && h.len > 60 && Math.hypot(...h.pts[0]) > 250 && Math.hypot(...h.pts[0]) < 700).sort((a, b) => Math.hypot(...a.pts[0]) - Math.hypot(...b.pts[0]))[0] || veg.hedges[0];
+    const p = r.pts[Math.min(3, r.pts.length - 1)];
+    let best = null;
+    for (const road of world.terrain.roads) road.samples.forEach((q, i) => {
+      const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (!best || d < best.d) best = { d, road, i };
+    });
+    const sm = best.road.samples;
+    const q0 = sm[best.i], q1 = sm[Math.min(sm.length - 1, best.i + 10)];
+    const e = r.pts[r.pts.length - 1];
+    const dir = Math.sign((q1[0] - q0[0]) * (e[0] - p[0]) + (q1[1] - q0[1]) * (e[1] - p[1])) || 1;
+    const q2 = sm[Math.max(0, Math.min(sm.length - 1, best.i + dir * 20))];
+    look(pos(q0[0], q0[1], 1.75), pos(q2[0], q2[1], 1.6));
+  },
+  field: () => {
+    let best = null;
+    for (let k = 0; k < 4000 && !best; k++) {
+      const x = Math.cos(k * 2.4) * (40 + k * 0.15), z = Math.sin(k * 2.4) * (40 + k * 0.15);
+      if (hf.getSurface(x, z) !== SURF.WHEAT) continue;
+      let ok = true;
+      for (let a = 0; a < 8 && ok; a++) for (const r of [10, 22]) if (hf.getSurface(x + Math.cos(a) * r, z + Math.sin(a) * r) !== SURF.WHEAT) ok = false;
+      if (ok) best = [x, z];
+    }
+    best ??= [0, 0];
+    look(pos(best[0], best[1], 1.65), pos(best[0] + 30, best[1] - 25, 0.8));
+  },
+  forest: () => {
+    const f = def.forests[0];
+    const from = def.village ? [def.village.x, def.village.z] : [0, 0];
+    const dx = f.x - from[0], dz = f.z - from[1];
+    const L = Math.hypot(dx, dz);
+    let e = { x: f.x, z: f.z };
+    for (let s = 0; s < L; s += 2) {
+      const x = from[0] + (dx * s) / L, z = from[1] + (dz * s) / L;
+      if (veg.site.forest(x, z) > 0.02) { e = { x, z }; break; }
+    }
+    look(pos(e.x + (dx / L) * 30, e.z + (dz / L) * 30, 1.7), pos(e.x + (dx / L) * 70 - (dz / L) * 20, e.z + (dz / L) * 70 + (dx / L) * 20, 3));
+  },
+  // Straight at the sun from the open field (sun disc, glare, rays).
+  sunfield: () => {
+    views.field();
+    target.copy(camera.position).addScaledVector(world.sky.sunDir, 30);
+  },
+  // Toward the sun through the trees (sun rays, glare).
+  sun: () => {
+    views.forest();
+    const s = world.sky.sunDir;
+    target.copy(camera.position).add(new THREE.Vector3(s.x, s.y * 0.6, s.z).normalize().multiplyScalar(30));
+  },
+};
+const viewName = params.get('view') || 'lane';
+const cam = params.get('cam');
+if (cam) {
+  const [x, y, z, yaw, pitch] = cam.split(',').map(Number);
+  camera.position.set(x, y, z);
+  const yr = ((yaw || 0) * Math.PI) / 180, pr = ((pitch || 0) * Math.PI) / 180;
+  target.set(x - Math.sin(yr) * Math.cos(pr) * 10, y + Math.sin(pr) * 10, z - Math.cos(yr) * Math.cos(pr) * 10);
+} else (views[viewName] || views.lane)();
+camera.lookAt(target);
+camera.updateMatrixWorld();
+world.shadows.updateFrustums();
+
+// A stand-in rifle held aimed (stock near the eye, front sight 0.75 m out), for the
+// focus-when-aiming blur.
+let vm = null;
+if (quality.depthOfField && params.get('dof') === '1') {
+  const scene = new THREE.Scene();
+  scene.environment = world.scene.environment;
+  scene.environmentIntensity = world.scene.environmentIntensity;
+  const sun = new THREE.DirectionalLight(0xffffff, 3);
+  sun.position.copy(world.sky.sunDir);
+  scene.add(sun, new THREE.HemisphereLight(0xbfd2e6, 0x4a4030, 0.5));
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.6 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.4, metalness: 0.8 });
+  const gun = new THREE.Group();
+  const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); gun.add(b); };
+  box(0.05, 0.07, 0.6, wood, 0, -0.06, -0.35);
+  box(0.022, 0.022, 0.55, steel, 0, -0.025, -0.7);
+  box(0.03, 0.03, 0.12, steel, 0, -0.03, -0.2);
+  box(0.004, 0.014, 0.004, steel, 0, -0.007, -0.75);
+  box(0.02, 0.01, 0.01, steel, 0, -0.008, -0.16);
+  scene.add(gun);
+  const vcam = new THREE.PerspectiveCamera(52, W / H, 0.01, 30);
+  vm = { scene, camera: vcam, gun };
+}
+
+// Effects in front of the camera, simulated for a moment before the picture.
+const fwd = new THREE.Vector3();
+camera.getWorldDirection(fwd);
+const fxAt = (d, h = 0) => {
+  const x = camera.position.x + fwd.x * d, z = camera.position.z + fwd.z * d;
+  return [x, gy(x, z) + h, z];
+};
+const fx = params.get('fx');
+let fxTime = 0;
+const startFx = () => {
+  if (fx === 'explosion') effects.explosion(...fxAt(35, 0.3), 2.5);
+  if (fx === 'smoke') for (let i = 0; i < 8; i++) effects.spawn('smoke', ...fxAt(25 + i, 0.5), { count: 2, spread: 1, scale: 1.2, color: [0.2, 0.2, 0.2] });
+  if (fx === 'fire') effects.spawn('fire', ...fxAt(20, 0.5), { count: 6, spread: 0.5 });
+  if (fx === 'dust') effects.spawn('dust', ...fxAt(15, 0.3), { count: 12, spread: 1.2, scale: 2 });
+  if (fx === 'impacts') {
+    for (const [k, e] of [[10, 'dirt'], [14, 'stone'], [18, 'sparks'], [22, 'brick'], [26, 'wood']]) {
+      const [x, y, z] = fxAt(k, 0.05);
+      effects.impact({ x, y, z, nx: -fwd.x, ny: 0.3, nz: -fwd.z, energy: 3000, effect: e });
+    }
+  }
+};
+const repeatFx = () => {
+  if (fx === 'muzzle') {
+    for (let i = 0; i < 4; i++) {
+      const [x, y, z] = fxAt(30 + i * 25, 1.4);
+      effects.muzzle(x + (i - 1.5) * 4, y, z, -fwd.x, 0, -fwd.z, 0.8);
+    }
+  }
+  if (fx === 'fire') effects.spawn('fire', ...fxAt(20, 0.5), { count: 2, spread: 0.5 });
+};
+if (fx) {
+  startFx();
+  const settle = params.has('fxt') ? Number(params.get('fxt')) : fx === 'explosion' ? 0.45 : fx === 'smoke' ? 3 : fx === 'muzzle' ? 0 : 0.3;
+  for (let t = 0; t < settle; t += 1 / 30) {
+    effects.update(1 / 30, camera.position);
+    fxTime += 1 / 30;
+  }
+}
+
+// ---- Render -------------------------------------------------------------------------------
+const time = Number(params.get('time') || 12);
+const frames = Math.max(1, Number(params.get('frames') || (quality.taa ? 8 : 2)));
+const turn = Number(params.get('turn') || 0) * Math.PI / 180;
+renderer.info.autoReset = false;
+let frameInfo = null;
+for (let f = 0; f < frames; f++) {
+  if (f === 1 && (GRAPHICS_PRESETS[params.get('then')] || params.get('set'))) {
+    const o2 = { ...(GRAPHICS_PRESETS[params.get('then')] || opts) };
+    for (const kv of (params.get('set') || '').split(',').filter(Boolean)) {
+      const [k, v] = kv.split(':');
+      o2[k] = v === 'true' ? true : v === 'false' ? false : isNaN(Number(v)) ? v : Number(v);
+    }
+    const q2 = resolveQuality(o2, params.get('then') || 'custom');
+    camera.far = q2.viewDistance;
+    camera.updateProjectionMatrix();
+    world.applyQuality(q2);
+    pipeline.apply(q2);
+    effects.setQuality(q2);
+    pipeline.setSize(W, H, 1);
+    window.__switched = q2.label;
+  }
+  if (turn) {
+    camera.rotation.y += turn;
+    camera.updateMatrixWorld();
+  }
+  world.update(time + f / 60, camera.position);
+  world.shadows.update();
+  if (fx === 'muzzle' && f === frames - 1) repeatFx();
+  effects.update(1 / 60, camera.position);
+  if (vm) {
+    vm.camera.position.copy(camera.position);
+    vm.camera.quaternion.copy(camera.quaternion);
+    vm.camera.updateMatrixWorld();
+    vm.gun.position.copy(camera.position).add(new THREE.Vector3(0, -0.012, -0.02).applyQuaternion(camera.quaternion));
+    vm.gun.quaternion.copy(camera.quaternion);
+  }
+  renderer.info.reset();
+  pipeline.render(world.scene, camera, vm?.scene, vm?.camera, time + f / 60, { dt: 1 / 60, aim: vm ? 1 : 0 });
+  frameInfo = { calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+}
+const mem = renderer.info.memory;
+const lines = [
+  `${def.id} ${quality.label}${window.__switched ? ' then ' + window.__switched : ''} view ${cam ? 'cam' : viewName}  cam ${camera.position.toArray().map((v) => v.toFixed(1)).join(',')}`,
+  `aa ${quality.aa}  shadows ${quality.shadowLevel} ${quality.shadowDistance} m (${quality.shadows ? quality.cascades : 0} maps ${quality.shadowMapSize})  ao ${quality.aoQuality}  bloom ${quality.bloom}  rays ${quality.lightShafts}  scale ${quality.renderScale}`,
+  `frame (with shadows and post): ${frameInfo.calls} draw calls, ${(frameInfo.tris / 1000).toFixed(0)}k triangles; ${renderer.info.programs.length} programs, ${mem.textures} textures`,
+  `world build ${tBuild.toFixed(0)} ms`,
+];
+info.textContent = lines.join('\n');
+console.log('GFX_STATS ' + JSON.stringify({ view: cam ? 'cam' : viewName, quality: quality.label, aa: quality.aa, calls: frameInfo.calls, tris: frameInfo.tris, programs: renderer.info.programs.length, textures: mem.textures, geometries: mem.geometries, buildMs: Math.round(tBuild), passes: pipeline.passes, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: target.toArray().map((v) => +v.toFixed(2)) }));
+const gl = renderer.getContext();
+gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+window.__gfx = { world, pipeline, effects, camera, renderer, quality };
+window.__done = true;
+</script>
+</body>
+</html>

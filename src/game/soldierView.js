@@ -1,7 +1,8 @@
 // The visible soldier: a skinned, procedurally animated model that follows the
 // soldier's body and actions (walking, stances, aiming, reloading, bolt work,
-// seated in a jeep, ragdoll on death). Its posed skeleton also provides the
-// bullet hit zones.
+// seated in a jeep, riding a bicycle or motorcycle, ragdoll on death). Its posed
+// skeleton also provides the bullet hit zones. The uniform and kit follow the
+// soldier's army, class and primary weapon; three levels of detail by distance.
 import { SoldierModel } from '../actors/soldierModel.js';
 import { buildGun, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
@@ -21,13 +22,19 @@ const KIND = {
   grenade: 'grenade',
 };
 
+// The primary weapon decides the ammunition pouches on the belt.
+const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
+
 const gunMats = new WeakMap();
 
 export function attachSoldierModel(game, s) {
   const tex = game.world.textures;
   let model;
   try {
-    model = new SoldierModel(s.faction, tex, { seed: s.id * 7919 + 13, lod: 0 });
+    const primary = s.weapons?.[0]?.def;
+    model = new SoldierModel(s.faction, tex, { seed: s.id * 7919 + 13, lod: 0, cls: s.cls, role: ROLE[primary?.type] || 'rifle' });
+    // Build every level of detail now so none is first built mid-battle.
+    model.prepareLods();
   } catch (e) {
     console.warn('Soldier model failed', e);
     return null;
@@ -36,9 +43,21 @@ export function attachSoldierModel(game, s) {
   model.setGround((x, z) => hf.getHeight(x, z));
   game.world.add(model.root);
   s.model = model;
-  s.view = { gunId: null, guns: new Map(), recoil: 0, lod: 0, deathSeen: false };
+  s.view = { gunId: null, guns: new Map(), recoil: 0, lod: 0, deathSeen: false, ride: {} };
   setSoldierWeapon(game, s);
+  // The player's first-person arms wear the same sleeves, cuffs and hands.
+  if (s.isPlayer) game.player?.viewmodel?.setOutfit?.({ faction: model.faction, cls: model.cls, seed: model.seed, role: model.role, variant: model.variant });
   return model;
+}
+
+// Level of detail switching distances (m): full detail up close, a lighter model
+// in the middle distance, a very cheap one far away. The quality settings scale
+// them (soldierLod if a preset defines it, else the general detail level).
+function lodDistances(game) {
+  const q = game.world.quality || {};
+  if (Array.isArray(q.soldierLodDistance)) return q.soldierLodDistance;
+  const k = q.soldierLod ?? Math.min(1.3, Math.max(0.6, q.terrainLod ?? 1));
+  return [16 * k, 50 * k];
 }
 
 // Put the soldier's current weapon in its hands (guns are built once per soldier).
@@ -122,6 +141,9 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   st.deathT = s.alive ? 0 : s.deathTime;
   st.hitDir = s.lastHitDir ? { x: -s.lastHitDir.x, z: -s.lastHitDir.z } : null;
   st.seated = !!v;
+  // Bicycles and motorcycles pose their riders (saddle, grips, pedals, lean).
+  st.ride = v?.riderPose && s.alive ? v.riderPose(s.seat, s.view.ride) : null;
+  if (st.ride) st.seated = false;
   // Actions.
   const w = s.weapon;
   st.action = null;
@@ -129,7 +151,7 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   if (s.action === 'bandage' || s.action === 'firstaid') {
     st.action = 'bandage';
     st.actionT = Math.min(1, s.actionT / (s.action === 'bandage' ? 3.2 : 4.5));
-  } else if (v && s.seat === 0) {
+  } else if (v && s.seat === 0 && !st.ride) {
     st.action = 'use';
   } else if (s.throwT > 0) {
     st.action = 'throw';
@@ -145,17 +167,25 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
     });
     st.actionT = total > 0 ? Math.min(1, (done + w.stepT) / total) : 0;
   }
-  // Placement: at the feet, or on the seat.
-  if (v) {
+  // Placement: at the feet, on the saddle (the root is then the hip point), or
+  // on the seat.
+  if (st.ride) {
+    m.root.position.copy(st.ride.hip);
+    st.yaw = st.ride.yaw;
+  } else if (v) {
     const p = v.seatPos(s.seat, m.root.position, 'hip');
     m.root.position.copy(p);
     const f = v.forward;
     st.yaw = Math.atan2(-f.x, -f.z);
   } else m.root.position.set(b.x, b.y, b.z);
-  // Detail by distance.
+  // Detail by distance, with a little hysteresis so it doesn't flicker.
   const d = m.root.position.distanceTo(camPos);
-  const lod = d > 45 ? 1 : 0;
-  if (lod !== s.view.lod) {
+  const [d0, d1] = lodDistances(game);
+  const cur = s.view.lod;
+  const h = cur === 0 ? 1.1 : 1.0;
+  const h1 = cur <= 1 ? 1.1 : 1.0;
+  const lod = d > d1 * h1 ? 2 : d > d0 * h ? 1 : 0;
+  if (lod !== cur) {
     s.view.lod = lod;
     m.setLod(lod);
   }

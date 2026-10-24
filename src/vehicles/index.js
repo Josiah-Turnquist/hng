@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { VEHICLES } from './defs.js';
 import { WheeledVehicle } from './wheeled.js';
 import { TrackedVehicle } from './tracked.js';
+import { Bike } from './bike.js';
 import { buildPlaceholder } from './placeholder.js';
 import { TrackRenderer } from './trackMesh.js';
 import * as models from './models/index.js';
@@ -17,12 +18,15 @@ export function spawnVehicle(game, id, x, z, yaw = 0) {
   if (!VEHICLES[id]) throw new Error(`Unknown vehicle ${id}`);
   let model = null;
   try {
-    model = models.buildVehicle ? models.buildVehicle(id, game.world.textures) : null;
+    // Bicycles and motorcycles come in numbers: they share one built model's
+    // geometry and materials per type.
+    const build = def.kind === 'bike' && models.instanceVehicle ? models.instanceVehicle : models.buildVehicle;
+    model = build ? build(id, game.world.textures) : null;
   } catch (e) {
     console.warn(`Vehicle model ${id} failed, using a stand-in`, e);
   }
   if (!model) model = buildPlaceholder(def, STANDIN_COLOR[def.faction]);
-  const V = def.kind === 'tracked' ? TrackedVehicle : WheeledVehicle;
+  const V = def.kind === 'tracked' ? TrackedVehicle : def.kind === 'bike' ? Bike : WheeledVehicle;
   const v = new V(game, def, model, x, z, yaw);
   if (def.kind === 'tracked') {
     let mat = null;

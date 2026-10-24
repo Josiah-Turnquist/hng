@@ -481,6 +481,12 @@ canvas.game {
 .pause .extra .choices { display: flex; flex-wrap: wrap; gap: 4px; }
 .pause .extra input[type='range'] { width: 100%; accent-color: var(--accent); }
 .pause .extra .note { font-size: 11px; color: var(--ink-dim); margin-top: 4px; }
+.pause .box.wide { width: min(640px, calc(100% - 32px)); }
+.menu .set-head, .pause .set-head { margin: 18px 0 10px; padding-bottom: 4px; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); border-bottom: 1px solid var(--panel-edge); }
+.menu .set-head:first-child, .pause .set-head:first-child { margin-top: 0; }
+.menu .custom-tag, .pause .custom-tag { align-self: center; margin-left: 6px; font-size: 12px; color: var(--accent); }
+.menu .set-group, .pause .set-group { margin: 16px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: var(--ink); }
+.menu .fps-now, .pause .fps-now { color: var(--ink); }
 
 /* Scoreboard (Tab) */
 .hud-scores {

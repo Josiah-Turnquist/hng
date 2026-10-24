@@ -7,6 +7,7 @@ import { Atmosphere } from '../../src/ballistics/atmosphere.js';
 import { VEHICLES } from '../../src/vehicles/defs.js';
 import { WheeledVehicle } from '../../src/vehicles/wheeled.js';
 import { TrackedVehicle } from '../../src/vehicles/tracked.js';
+import { Bike } from '../../src/vehicles/bike.js';
 
 // slope: rise per meter along -Z (uphill going "north"), in radians of grade.
 export function makeWorld({ size = 1024, slopeDeg = 0, surface = SURF.ROAD } = {}) {
@@ -23,16 +24,22 @@ export function makeWorld({ size = 1024, slopeDeg = 0, surface = SURF.ROAD } = {
   const collision = new CollisionWorld(hf);
   const atmosphere = new Atmosphere(0, 15, 0.5);
   const world = { hf, collision, atmosphere, waterLevelAt: () => null, scene: new THREE.Scene() };
-  const game = { world, time: 0, audio: null, effects: null };
+  const game = { world, time: 0, audio: null, effects: null, vehicles: [], soldiers: [] };
   return { game, world, hf, collision };
 }
 
-export function spawn(game, id, x = 0, z = 0, yaw = 0) {
+// A stand-in for a soldier aboard (a rider carries about 22 kg of kit).
+export function rider() {
+  return { body: { x: 0, y: 0, z: 0, load: 22, stamina: 100 }, alive: true, damage(n) { this.hurt = (this.hurt || 0) + n; } };
+}
+
+export function spawn(game, id, x = 0, z = 0, yaw = 0, { empty = false } = {}) {
   const def = { ...VEHICLES[id], id };
   const model = { root: new THREE.Group(), parts: {}, anchors: {}, meta: {} };
-  const V = def.kind === 'tracked' ? TrackedVehicle : WheeledVehicle;
+  const V = def.kind === 'tracked' ? TrackedVehicle : def.kind === 'bike' ? Bike : WheeledVehicle;
   const v = new V(game, def, model, x, z, yaw);
-  v.enter({ body: { x: 0, y: 0, z: 0 }, alive: true, damage() {} }, 0);
+  game.vehicles.push(v);
+  if (!empty) v.enter(rider(), 0);
   return v;
 }
 

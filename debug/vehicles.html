@@ -21,10 +21,15 @@
 //   &turret=30&elev=10&steer=20   pose turret (deg), gun elevation (deg), front wheel steer (deg)
 //   &zoom=2&focus=x,y,z  zoom the 3/4 views on a point
 //   &hide=skirtL,skirtR  hide parts;  &open=1  apply meta.hinges (doors, windshields)
+//   Bicycles and motorcycles: ?id=bicycle | wla | wla_sidecar | r75 | r75_sidecar | m72 |
+//   m72_sidecar (or ?id=bikes for all of them); &steer=20 turns the bars, &lod=1 shows the
+//   distant version, &crank=90 turns the pedals (deg), &mg=30,10 lays the sidecar gun
+//   (traverse, elevation in deg), &lean=20 leans the machine (deg, + right)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
 import { VEHICLE_MODELS, buildVehicle, attachParts } from '../src/vehicles/models/index.js';
+import { VEHICLES } from '../src/vehicles/defs.js';
 
 const params = new URLSearchParams(location.search);
 const W = innerWidth, H = innerHeight;
@@ -104,6 +109,8 @@ function setup(id) {
   if (v.parts.turret && params.get('turret')) v.parts.turret.rotation.y = -Number(params.get('turret')) * deg;
   if (v.parts.gun && params.get('elev')) v.parts.gun.rotation.x = Number(params.get('elev')) * deg;
   if (params.get('steer')) for (const w of ['wheelFL', 'wheelFR']) if (v.parts[w]) v.parts[w].rotation.y = -Number(params.get('steer')) * deg;
+  const bikeDef = VEHICLES[id]?.kind === 'bike' ? VEHICLES[id] : null;
+  if (bikeDef) poseBike(v, bikeDef, deg);
   for (const name of (params.get('hide') || '').split(',')) if (v.parts[name]) v.parts[name].visible = false;
   if (on('open')) for (const [name, h] of Object.entries(v.meta.hinges || {})) if (v.parts[name]) v.parts[name].quaternion.setFromAxisAngle(new THREE.Vector3(...h.axis), h.open);
   const piv = v.meta.pivots;
@@ -156,6 +163,33 @@ function setup(id) {
     }
   }
   return { scene, v, links, anchorObjs };
+}
+
+// Bicycles and motorcycles: the distant version, bars, wheel, pedals, gun and lean.
+function poseBike(v, d, deg) {
+  const lod = on('lod');
+  for (const [k, g] of Object.entries(v.parts)) g.visible = lod ? k === 'far' : k !== 'far';
+  const head = new THREE.Vector3(...d.steering.head);
+  const axis = new THREE.Vector3(0, Math.cos(d.steering.rake), Math.sin(d.steering.rake));
+  const q = new THREE.Quaternion().setFromAxisAngle(axis, -Number(params.get('steer') || 0) * deg);
+  if (v.parts.steer) v.parts.steer.quaternion.copy(q);
+  const wf = v.parts.wheelF;
+  if (wf) {
+    wf.position.sub(head).applyQuaternion(q).add(head);
+    wf.quaternion.copy(q);
+  }
+  const c = Number(params.get('crank') || 0) * deg;
+  if (v.parts.crank && d.pedal) {
+    const pd = d.pedal;
+    v.parts.crank.rotation.x = -c;
+    v.parts.pedalR.position.set(pd.pedalX, pd.bb[1] - pd.crank * Math.cos(c), pd.bb[2] + pd.crank * Math.sin(c));
+    v.parts.pedalL.position.set(-pd.pedalX, pd.bb[1] + pd.crank * Math.cos(c), pd.bb[2] - pd.crank * Math.sin(c));
+  }
+  if (v.parts.mg && params.get('mg')) {
+    const [yaw, el] = params.get('mg').split(',').map(Number);
+    v.parts.mg.rotation.set((el || 0) * deg, (yaw || 0) * deg, 0, 'YXZ');
+  }
+  if (params.get('lean')) v.root.rotation.z = -Number(params.get('lean')) * deg;
 }
 
 function drawLabels(cam, vp, anchorObjs) {
@@ -212,8 +246,8 @@ if (params.get('eye')) {
   holder.updateMatrixWorld(true);
   render(scene, cam, [0, 0, W, H]);
   info.push(`${idParam} from ${name} (${part || 'body'})  ${a.toArray().map(r2).join(', ')}`);
-} else if (idParam === 'all' || idParam.includes(',')) {
-  const ids = idParam === 'all' ? Object.keys(VEHICLE_MODELS) : idParam.split(',');
+} else if (idParam === 'all' || idParam === 'bikes' || idParam.includes(',')) {
+  const ids = idParam === 'all' ? Object.keys(VEHICLE_MODELS) : idParam === 'bikes' ? Object.keys(VEHICLE_MODELS).filter((k) => VEHICLES[k]?.kind === 'bike') : idParam.split(',');
   const cols = Math.min(3, ids.length), rows = Math.ceil(ids.length / cols);
   const cw = W / cols, ch = H / rows;
   ids.forEach((id, i) => {
@@ -300,7 +334,10 @@ if (params.get('eye')) {
     if (m.specs) info.push(`specs ${JSON.stringify(m.specs)}`);
     info.push(`parts ${Object.keys(v.parts).join(' ')}`);
     info.push(`anchors ${Object.keys(v.anchors).join(' ')}`);
-    if (m.type === 'wheeled') {
+    if (m.type === 'bike' || m.type === 'sidecar') {
+      const d = VEHICLES[id];
+      info.push(`wheel radius ${d.wheelRadius} wheelbase ${d.wheelbase}${d.sidecar ? ` sidecar track ${d.sidecar.track}` : ''}  steering rake ${(d.steering.rake / Math.PI * 180).toFixed(1)} deg  mass ${d.mass} kg  seats ${d.seats.map((x) => x.name).join(', ')}`);
+    } else if (m.type === 'wheeled') {
       const lows = ['wheelFL', 'wheelFR', 'wheelRL', 'wheelRR'].map((w) => { const bb = new THREE.Box3().setFromObject(v.parts[w]); return `${w} y0 ${bb.min.y.toFixed(3)} r ${((bb.max.y - bb.min.y) / 2).toFixed(3)}`; });
       info.push(`wheelRadius ${m.wheelRadius} wheelbase ${m.wheelbase} trackWidth ${m.trackWidth}  ${lows.join('  ')}`);
     } else if (m.track) {

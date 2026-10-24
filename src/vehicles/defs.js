@@ -3,6 +3,7 @@
 // (final drive separate). Sources: US TM manuals (TM 9-803 Willys MB, TM 9-731
 // M4A1), German and Soviet technical data as summarized in standard references;
 // see docs/RESEARCH.md. Values marked "est." are estimates.
+import { BIKES } from './bikeDefs.js';
 
 export const VEHICLES = {
   willys_mb: {
@@ -564,6 +565,8 @@ export const VEHICLES = {
     hp: 700,
     info: 'The German army\'s standard three-ton truck. Carries a squad, and it is slow off-road.',
   },
+  // Bicycles and motorcycles (bikeDefs.js).
+  ...BIKES,
 };
 
 // Tank gun ammunition. penRefMM = armor penetration at 0 degrees at penRefVel

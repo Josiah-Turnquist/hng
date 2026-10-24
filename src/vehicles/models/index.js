@@ -38,6 +38,7 @@ import { VehicleBuilder, trackPath, pathLength } from './vkit.js';
 import * as us from './us.js';
 import * as german from './german.js';
 import * as soviet from './soviet.js';
+import * as bikes from './bikes.js';
 
 export { trackPath, pathLength };
 
@@ -53,6 +54,13 @@ export const VEHICLE_MODELS = {
   opel_blitz: german.opel_blitz,
   m3_halftrack: us.m3_halftrack,
   gaz67: soviet.gaz67,
+  bicycle: bikes.bicycle,
+  wla: bikes.wla,
+  wla_sidecar: bikes.wla_sidecar,
+  r75: bikes.r75,
+  r75_sidecar: bikes.r75_sidecar,
+  m72: bikes.m72,
+  m72_sidecar: bikes.m72_sidecar,
 };
 
 // Vehicle materials, created lazily (a texture preset is baked the first time a model uses
@@ -104,12 +112,18 @@ export function makeVehicleMaterials(textures) {
     canvasSoviet: std('canvasSoviet'),
     wood: std('woodPlanks'),
     leather: std('leatherBrown'),
+    leatherBlack: std('leatherBlack'),
     // Untextured.
     glass: plain({ color: 0x2c3a44, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, depthWrite: false }),
     lamp: plain({ color: 0xe6e2d2, roughness: 0.15, metalness: 0.85, emissive: 0x000000 }), // headlamp lens (raise emissive to light it)
     redLamp: plain({ color: 0x7a0c08, roughness: 0.25, metalness: 0.2, emissive: 0x000000 }),
     dark: plain({ color: 0x0c0c0c, roughness: 0.85, metalness: 0.1 }), // openings, vision slits, bores
     brass: plain({ color: 0xb08d57, roughness: 0.35, metalness: 1 }),
+    // Motorcycles and bicycles: cast aluminum (crankcases, heads), nickel or
+    // chrome plate (bicycle rims, bars, cranks), stove enamel (bicycle frames).
+    alu: plain({ color: 0x83837d, roughness: 0.62, metalness: 0.75 }),
+    chrome: plain({ color: 0xc8c8c8, roughness: 0.18, metalness: 1 }),
+    enamel: plain({ color: 0x0e0e0f, roughness: 0.3, metalness: 0.2 }),
   };
   mats = {};
   for (const [k, make] of Object.entries(makers)) {

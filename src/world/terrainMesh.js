@@ -115,7 +115,7 @@ uniform sampler2DArray tLayerAlbedo;
 uniform sampler2DArray tLayerNormal;
 uniform float uLayerScale[${lt.scales.length}];
 uniform vec4 uTerrain;
-vec4 tAlb; vec3 tNrmW; float tRough;
+vec4 tAlb; vec3 tNrmW; float tRough; int tMain;
 float th(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float tvn(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -144,6 +144,7 @@ void terrainSample(vec3 wp) {
     tAlb = texture(tLayerAlbedo, vec3(uv, float(i00)));
     vec4 nn = texture(tLayerNormal, vec3(uv, float(i00)));
     tNrmW = nn.xyz * 2.0 - 1.0;
+    tMain = i00;
   } else {
     float w[4];
     w[0] = (1.0 - f.x) * (1.0 - f.y);
@@ -163,7 +164,7 @@ void terrainSample(vec3 wp) {
       hb[k] = nr[k].a * 0.6 + w[k];
       hmax = max(hmax, hb[k]);
     }
-    float sum = 0.0;
+    float sum = 0.0, best = -1.0;
     tAlb = vec4(0.0);
     vec3 nsum = vec3(0.0);
     for (int k = 0; k < 4; k++) {
@@ -171,18 +172,32 @@ void terrainSample(vec3 wp) {
       sum += bw;
       tAlb += al[k] * bw;
       nsum += (nr[k].xyz * 2.0 - 1.0) * bw;
+      if (bw > best) { best = bw; tMain = ids[k]; }
     }
     tAlb /= sum;
     tNrmW = nsum / sum;
   }
-  // Large-scale color variation hides texture repetition.
+  // Farther away, the same ground at a larger, turned scale is mixed in, so the
+  // textures don't visibly repeat across a meadow.
+  float tDist = length(wp - cameraPosition);
+  float tFar = smoothstep(6.0, 45.0, tDist) * 0.45;
+  if (tFar > 0.0) {
+    vec2 uv2 = mat2(0.8, -0.6, 0.6, 0.8) * xz * (uLayerScale[tMain] * 0.31) + vec2(0.37, 0.71);
+    tAlb = mix(tAlb, texture(tLayerAlbedo, vec3(uv2, float(tMain))), tFar);
+  }
+  // Large-scale color variation hides texture repetition; grass also varies a
+  // little in hue (lusher and yellower patches).
   float macro = tvn(xz * 0.018) * 0.6 + tvn(xz * 0.075) * 0.4;
   tAlb.rgb *= 0.78 + 0.44 * macro;
+  if (tMain <= 1 || tMain == 7) tAlb.rgb *= mix(vec3(1.05, 1.03, 0.86), vec3(0.94, 1.0, 1.05), tvn(xz * 0.041 + 31.7));
+  // Bare earth and mud (shell craters, trampled ground) a little greyer: next to
+  // green grass the reddish brown looked like paint.
+  else if (tMain == 2 || tMain == 3) tAlb.rgb = mix(tAlb.rgb, vec3(dot(tAlb.rgb, vec3(0.3, 0.59, 0.11))), 0.22);
   tRough = tAlb.a;
   // Combine the smooth ground normal with the texture detail normal.
   vec2 nuv = (xz + uTerrain.x) / uTerrain.y;
   vec3 N = texture(tTerrainNormal, (nuv + 0.5) / uTerrain.z).xyz * 2.0 - 1.0;
-  float detailFade = 1.0 - smoothstep(60.0, 260.0, length(wp - cameraPosition));
+  float detailFade = 1.0 - smoothstep(60.0, 260.0, tDist);
   tNrmW = normalize(vec3(N.x + tNrmW.x * detailFade, N.y, N.z + tNrmW.y * detailFade));
 }`,
         )

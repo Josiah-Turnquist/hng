@@ -458,6 +458,120 @@ export class SoldierAnimator {
     this._legs(pose, this.mp);
   }
 
+  // -------------------------------------------------------------------------
+  // Riding a bicycle or motorcycle, or in a sidecar or on the pillion. The root
+  // is at the hip point on the saddle, turned by the machine's yaw; r holds the
+  // rider pose (world space, see the vehicles' riderPose) and toModel(v) turns a
+  // world point into model space. The pelvis sits on the saddle rolled and
+  // pitched with the machine, the back leans until the grips are in reach,
+  // the legs reach the pedals, footboards or the ground.
+  ride(dt, s, r, toModel, groundModel) {
+    dt = Math.min(Math.max(dt, 0), 0.1);
+    this.time += dt;
+    const sm = this.sm;
+    const free = !r.handL && !r.handR;
+    sm.aim = damp(sm.aim, s.aiming && free ? 1 : 0, 9, dt);
+    sm.sprint = 0;
+    sm.speed = 0;
+    sm.moving = 0;
+    sm.kneel = 0;
+    sm.crawl = 0;
+    sm.air = 0;
+    sm.seated = free ? 1 : 0;
+    sm.pitch = clamp(s.aimPitch || 0, -1.2, 1.2);
+    sm.yaw = clamp(s.aimYawOffset || 0, -1.2, 1.2);
+    sm.lean = 0;
+    sm.stance = 0;
+    sm.hipYaw = 0;
+    this.prevYaw = s.yaw ?? 0;
+    const info = this.info;
+    info.prone = 0;
+    info.crouch = 0;
+    info.seated = sm.seated;
+    info.kneel = 0;
+    const style = r.style || 'motorcycle';
+    const pose = this.pose,
+      mp = this.mp;
+    pose.reset();
+    // Targets in model space.
+    const T = this._rideT || (this._rideT = { hL: new THREE.Vector3(), hR: new THREE.Vector3(), fL: new THREE.Vector3(), fR: new THREE.Vector3() });
+    if (r.handL) toModel(T.hL.copy(r.handL));
+    if (r.handR) toModel(T.hR.copy(r.handR));
+    if (r.footL) toModel(T.fL.copy(r.footL));
+    if (r.footR) toModel(T.fR.copy(r.footR));
+    // The machine's roll (+ = to the rider's right) and pitch (+ = nose up).
+    const qBody = _q3.setFromAxisAngle(AZ, -(r.lean || 0)).multiply(qAxis(_q2, AX, r.pitch || 0));
+    const tilt = { bicycle: 0.32, motorcycle: 0.18, sidecar: 0.04, pillion: 0.1 }[style] ?? 0.15;
+    const hq = pose.q[B.hips];
+    hq.copy(qBody).multiply(qAxis(_q, AX, -tilt));
+    // The hip joints' midpoint on the saddle point (the root).
+    pose.hips.set(0, 0.025, 0).applyQuaternion(hq);
+    // Back: lean toward the grips until they are within a comfortable reach.
+    const breath = Math.sin(this.time * 1.6) * 0.008;
+    const setLean = (l) => {
+      qAxis(pose.q[B.spine], AX, -0.45 * l);
+      qAxis(pose.q[B.chest], AX, -0.55 * l + breath);
+      mp.fk(pose);
+    };
+    let lean = { bicycle: 0.5, motorcycle: 0.3, sidecar: 0.05, pillion: 0.08 }[style] ?? 0.2;
+    if (!free) {
+      const reach = (LEN.upperArm + LEN.forearm) * 0.86;
+      let lo = -0.3,
+        hi = 1.3;
+      for (let it = 0; it < 10; it++) {
+        setLean(lean);
+        let d = 0,
+          n = 0;
+        if (r.handL) (d += mp.p[B.upperArmL].distanceTo(T.hL)), n++;
+        if (r.handR) (d += mp.p[B.upperArmR].distanceTo(T.hR)), n++;
+        d /= n;
+        // The wrist sits ~7 cm short of the grip's center.
+        if (d - 0.07 > reach) lo = lean;
+        else hi = lean;
+        lean = (lo + hi) / 2;
+      }
+      lean = clamp(lean, -0.2, 1.2);
+    }
+    setLean(lean);
+    // Legs: the ball of the foot on the pedal (ankle behind and above it, the
+    // foot pointing down a little more on the down stroke), the foot flat on a
+    // footboard, or put down on the ground at a stop.
+    const fwd = _v.set(0, 0, -1).applyQuaternion(qBody);
+    const up = _v2.set(0, 1, 0).applyQuaternion(qBody);
+    for (let i = 0; i < 2; i++) {
+      const side = i ? 1 : -1;
+      const tgt = i ? T.fR : T.fL;
+      const has = i ? r.footR : r.footL;
+      const down = (r.footDown || 0) === side;
+      const t = this.ankleT[i];
+      const fq = this.footQ[i];
+      if (down && groundModel) {
+        // Out to the side and a little forward, on the ground.
+        const gx = side * 0.3,
+          gz = -0.05;
+        t.set(gx, groundModel(gx, gz) + ANKLE_H, gz);
+        fq.setFromAxisAngle(AY, -side * 0.15);
+      } else if (has) {
+        const pedal = r.pedal !== null && r.pedal !== undefined && style === 'bicycle';
+        const ank = pedal ? 0.12 + 0.18 * Math.sin((r.pedal || 0) + (i ? Math.PI : 0)) : 0.0;
+        t.copy(tgt).addScaledVector(fwd, pedal ? -0.1 : -0.04).addScaledVector(up, pedal ? 0.075 : 0.08);
+        fq.copy(qBody).multiply(qAxis(_q, AX, -ank));
+      } else {
+        // Hanging free.
+        t.set(side * 0.16, -0.62, -0.12).applyQuaternion(qBody);
+        fq.copy(qBody).multiply(qAxis(_q, AX, -0.5));
+      }
+      this.kneePole[i].set(side * 0.25, 0.35, -1).applyQuaternion(qBody);
+      const th = i ? B.thighR : B.thighL;
+      solveTwoBone(pose, mp, th, th + 1, t, this.kneePole[i]);
+      setModelRotation(pose, mp, th + 2, fq);
+      mp.fk(pose);
+    }
+    if (free) this._aimTorso(pose);
+    this.rideStyle = style;
+    return pose;
+  }
+
   // Sitting: the root is the seat point under the buttocks, feet 0.42 m below.
   _seated(pose) {
     pose.reset();

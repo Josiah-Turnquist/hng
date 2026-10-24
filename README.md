@@ -81,7 +81,7 @@ docs/                 design notes and research
 ## Notes and limits
 
 - Single player against bots; there is no network play.
-- The browser needs WebGL 2. On slower computers choose Low or Medium quality in Settings.
+- The browser needs WebGL 2. The graphics quality is picked for your computer the first time the game starts; Settings (also in the Esc menu during a battle) has the Low, Medium, High and Ultra presets and every option on its own (render resolution, edge smoothing, shadows, contact shadows, glow, sun rays, view distance, trees, grass, textures, effects, focus when aiming, motion blur) and can show the frame rate. On a slow computer try Low, or lower the render resolution and shadows first.
 - Some values are estimates where no published figure was found; they are marked "est." in the data files. See `docs/RESEARCH.md` for sources.
 
 Heroes & Generals was made by Reto-Moto. This project is an unofficial tribute and uses none of its assets.

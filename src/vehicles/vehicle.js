@@ -309,6 +309,9 @@ export class Vehicle {
       for (let i = 0; i < list.length; i++) {
         const box = list[i];
         if (box.owner === this) continue;
+        // Motorcycles work out their own knocks (and push back on us): a 300 kg
+        // machine is no wall to a tank.
+        if (box.owner?.isBike) continue;
         const depth = sphereBox(p, s.r, box, _n);
         if (depth <= 0) continue;
         // Tracks climb low obstacles: the front and back runs slope like a ramp.

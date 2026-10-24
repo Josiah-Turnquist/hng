@@ -226,7 +226,7 @@ export class Hud {
     this.el('.hud-stance').style.display = inV ? 'none' : 'block';
     const vc = p.vehicleCtl;
     const role = inV ? vc.role : null;
-    const showMark = inV && role === 'gunner' && !vc.sight && v.alive;
+    const showMark = inV && ((role === 'gunner' && !vc.sight) || (role === 'sidecarMg' && vc.view !== 'first')) && v.alive;
     this.gunMark.style.display = showMark ? 'block' : 'none';
     this.tankDir.style.display = inV && v.def.kind === 'tracked' ? 'block' : 'none';
     if (!inV) return;
@@ -234,10 +234,19 @@ export class Hud {
     const d = v.def;
     E.name.textContent = v.alive ? d.name : `${d.name} (destroyed)`;
     E.speed.textContent = `${Math.round(Math.abs(v.speed) * 3.6)} km/h`;
-    const gear = v.shiftTimer > 0 ? '-' : v.gear < 0 ? 'R' : v.gear === 0 ? 'N' : String(v.gear);
-    E.gear.textContent = `gear ${gear}`;
-    E.rpm.style.width = `${Math.min(100, (v.rpm / d.engine.redline) * 100)}%`;
-    E.rpm.style.background = v.rpm > d.engine.redline * 0.95 ? '#d29a4a' : '#8a9b6a';
+    if (d.pedal) {
+      // Bicycle: what the legs are doing instead of a gear, and how hard (600 W
+      // is a strong sprint).
+      const effort = { sprint: 'pedaling hard', cruise: 'pedaling', spent: 'out of breath', coast: 'coasting' };
+      E.gear.textContent = v.fallen ? 'on its side' : effort[v.effort] || '';
+      E.rpm.style.width = `${Math.min(100, ((v.power || 0) / 600) * 100)}%`;
+      E.rpm.style.background = v.effort === 'sprint' ? '#d29a4a' : '#8a9b6a';
+    } else {
+      const gear = v.shiftTimer > 0 ? '-' : v.gear < 0 ? 'R' : v.gear === 0 ? 'N' : String(v.gear);
+      E.gear.textContent = `gear ${gear}${v.offroad ? ' (off-road)' : ''}`;
+      E.rpm.style.width = `${Math.min(100, (v.rpm / d.engine.redline) * 100)}%`;
+      E.rpm.style.background = v.rpm > d.engine.redline * 0.95 ? '#d29a4a' : '#8a9b6a';
+    }
     const hp = Math.max(0, v.hp / v.maxHp);
     E.hp.style.width = `${hp * 100}%`;
     E.hp.style.background = hp > 0.5 ? '#c9c2a5' : hp > 0.25 ? '#d29a4a' : '#c4513f';
@@ -250,6 +259,11 @@ export class Hud {
     if (m.trackR <= 0) bad.push('right track broken');
     if (m.turret <= 0) bad.push('turret ring jammed');
     if (m.gun <= 0) bad.push('gun disabled');
+    if (m.fuel <= 0) bad.push('fuel tank holed');
+    if (m.tireF <= 0) bad.push('front tire flat');
+    if (m.tireR <= 0) bad.push('rear tire flat');
+    if (m.tireS <= 0) bad.push('sidecar tire flat');
+    if (v.fallen && !d.pedal) bad.push('on its side');
     if (v.fire > 0 && v.alive) bad.push('ON FIRE');
     E.mods.textContent = bad.join(' · ');
     E.mods.style.display = bad.length ? 'block' : 'none';
@@ -262,6 +276,9 @@ export class Hud {
       E.reload.style.width = `${clamp01(frac) * 100}%`;
     } else if (role === 'bowMg') {
       E.gun.textContent = `${d.bowMg.name} · ${v.bowMg.loaded} / ${v.bowMg.belts} belts${v.bowMg.reloadT > 0 ? ' · reloading' : ''}`;
+      E.reloadBar.style.display = 'none';
+    } else if (role === 'sidecarMg' && v.mg) {
+      E.gun.textContent = `${d.sidecarMg.name} · ${v.mg.loaded} / ${v.mg.belts} belts${v.mg.reloadT > 0 ? ' · reloading' : ''}`;
       E.reloadBar.style.display = 'none';
     } else {
       E.gun.textContent = '';
@@ -284,7 +301,7 @@ export class Hud {
         this.gunMark.style.left = `${((pt.x + 1) / 2) * W}px`;
         this.gunMark.style.top = `${((1 - pt.y) / 2) * H}px`;
       }
-      this.gunMark.classList.toggle('ready', !!v.loaded);
+      this.gunMark.classList.toggle('ready', role === 'sidecarMg' ? v.mg?.reloadT <= 0 : !!v.loaded);
     }
   }
 

@@ -9,23 +9,30 @@
 <body>
 <div id="info"></div>
 <script type="module">
-// The three factions side by side in a pose, simulated for a while and frozen.
+// Soldiers of the three armies side by side in a pose, simulated for a while and frozen.
 // Usage: debug/soldiers.html?pose=walk&t=0.3
 //   pose: idle aim walk run sprint strafe back crouch crouchaim crouchwalk prone
 //         proneaim crawl lean reload bolt throw bandage use dead seated drive
-//         recoil stand2prone (t = blend 0..1). A comma list makes one row per pose;
-//         pose=all shows idle, walk, run, aim, crouchaim, proneaim.
+//         recoil stand2prone (t = blend 0..1), and riding: bicycle motorcycle
+//         sidecar pillion (a mock vehicle with turning pedals and lean; t = time).
+//         A comma list makes one row per pose; pose=all shows idle, walk, run, aim,
+//         crouchaim, proneaim.
+//   cls=infantry|recon|paratrooper|tanker|all (all: one row per class)
+//   f=US,GE,SU  variant=n  seed=n  role=rifle|smg|mg|at  lod=0|1|2
+//   gun=kar98k|none (else a per-faction, per-class default)  kind=rifle
+//   close=face|hands|kit|back|feet|full&i=n: close-up of soldier i (dist= to adjust)
 //   ts=0,0.1,0.2  strip mode: the first faction at several moments, seen from the side
 //   t: action progress 0..1, seconds after death, or extra seconds of a cycle
-//   f=US,GE,SU  gun=kar98k|none (else a per-faction default)  kind=rifle
-//   hitboxes=1  muzzle=1  lod=1  seed=3  cam=three|front|side|left|back|top|low
-//   zoom=1.5  focus=i&dist=2  face=i&dist=0.8  pitch=deg yawoff=deg  live=1  flat=1
+//   hitboxes=1  muzzle=1  cam=three|front|side|left|back|top|low  zoom=1.5
+//   focus=i&dist=2  face=i&dist=0.8  pitch=deg yawoff=deg  live=1  flat=1  atlas=1
+//   shadow=0 (no sun shadows)  sunyaw=deg (sun around the soldiers)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
 import { makeGunMaterials } from '../src/weapons/models/kit.js';
 import { MODELS, buildGun } from '../src/weapons/models/index.js';
 import { SoldierModel } from '../src/actors/soldierModel.js';
+import { soldierMaterial } from '../src/actors/soldierMaterials.js';
 
 const params = new URLSearchParams(location.search);
 const W = innerWidth, H = innerHeight;
@@ -36,7 +43,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
-const lib = new TextureLibrary(renderer, { size: 512 });
+const lib = new TextureLibrary(renderer, { size: Number(params.get('tex') || 1024) });
 const gunMats = makeGunMaterials(lib);
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -44,12 +51,99 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.45;
 scene.background = new THREE.Color(0x8a9aa8);
 const sun = new THREE.DirectionalLight(0xfff2e0, 2.6);
-sun.castShadow = true;
+sun.castShadow = params.get('shadow') !== '0';
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.02;
 scene.add(sun, sun.target);
 scene.add(new THREE.HemisphereLight(0xbcd0e0, 0x5a5040, 0.6));
+
+if (params.has('atlas')) {
+  // The soldier texture atlas (color, normal or orm: atlas=map|normalMap|ormMap).
+  const mat = soldierMaterial(lib);
+  const which = params.get('atlas') === '1' ? 'map' : params.get('atlas');
+  const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: mat[which] || mat.map }));
+  const s2 = new THREE.Scene();
+  s2.add(q);
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.render(s2, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1));
+  window.__done = true;
+  throw new Error('atlas shown');
+}
+
+if (params.has('fp')) {
+  // First-person view of the player's arms and gun (the game's ViewModel):
+  // fp=kar98k&aim=1&f=GE&cls=infantry&seed=3, act=boltBack&u=0.5 for a reload step.
+  const { ViewModel } = await import('../src/weapons/viewmodel.js');
+  const { WEAPONS } = await import('../src/weapons/defs.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const f = (params.get('f') || 'US').split(',')[0];
+  const vm = new ViewModel(lib, f, scene.environment);
+  vm.setOutfit({ faction: f, cls: params.get('cls') || 'infantry', seed: Number(params.get('seed') || 1) });
+  const def = WEAPONS[params.get('fp')] || WEAPONS.kar98k;
+  vm.setWeapon(def, new Atmosphere(0, 15));
+  vm.scene.background = new THREE.Color(0x8a9aa8);
+  const cam = new THREE.PerspectiveCamera(52, W / H, 0.01, 30);
+  cam.position.set(0, 1.6, 0);
+  cam.updateMatrixWorld();
+  const ctx = { aiming: params.get('aim') === '1', sprinting: params.get('sprint') === '1', speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, light: 1, sunDir: new THREE.Vector3(0.4, 0.8, 0.3).normalize(), sunColor: new THREE.Color(1, 0.95, 0.88), sunIntensity: 2.6, ambient: 1 };
+  for (let i = 0; i < 120; i++) vm.update(1 / 60, cam, ctx);
+  if (params.get('act')) {
+    vm.playStep(params.get('act'), 1);
+    const u = Number(params.get('u') || 0.5);
+    for (let i = 0; i < Math.round(u * 60); i++) vm.update(1 / 60, cam, ctx);
+  }
+  // fpcam=side|top|front: look at the arms from outside.
+  let rc = vm.camera;
+  if (params.get('fpcam')) {
+    rc = new THREE.PerspectiveCamera(40, W / H, 0.01, 30);
+    const o = { side: [1.0, 1.55, -0.35], top: [0.15, 2.4, -0.3], front: [0.1, 1.5, -1.3], left: [-1.0, 1.55, -0.35] }[params.get('fpcam')] || [1, 1.5, -0.3];
+    rc.position.set(...o);
+    rc.lookAt(0.05, 1.35, -0.35);
+    if (/hand/.test(params.get('fpcam'))) {
+      // fpcam=handR / handL: close on one hand from its outside.
+      const hb = vm.fpArms.bones[params.get('fpcam') === 'handL' ? 8 : 12];
+      const p = hb.getWorldPosition(new THREE.Vector3());
+      const sgn = params.get('fpcam') === 'handL' ? -1 : 1;
+      const back = new THREE.Vector3(sgn, 0, 0).applyQuaternion(hb.getWorldQuaternion(new THREE.Quaternion()));
+      const t = p.clone().add(new THREE.Vector3(0, -0.05, 0).applyQuaternion(hb.getWorldQuaternion(new THREE.Quaternion())));
+      rc.position.copy(t).addScaledVector(back, 0.28).add(new THREE.Vector3(0, 0.06, 0));
+      rc.lookAt(t);
+    }
+  }
+  renderer.render(vm.scene, rc);
+  const st = vm.fpArms.mesh.geometry.index.count / 3;
+  document.getElementById('info').textContent = `first person: ${def.name}  arms ${st} triangles`;
+  window.__done = true;
+  throw new Error('first person shown');
+}
+
+if (params.has('heads')) {
+  // A lineup of faces: heads=6&f=SU&cls=tanker (caps show the hair), seed=first seed.
+  const n = Number(params.get('heads') || 6);
+  const f = (params.get('f') || 'US').split(',');
+  const row = new THREE.Group();
+  const models = [];
+  for (let i = 0; i < n; i++) {
+    const m = new SoldierModel(f[i % f.length], lib, { seed: Number(params.get('seed') || 1) + i * 13, cls: params.get('cls') || 'infantry' });
+    m.root.position.set((i - (n - 1) / 2) * 0.32, 0, 0);
+    m.update(0, { stance: 0, yaw: (Number(params.get('yaw') || 0) * Math.PI) / 180, aimPitch: 0, alive: true });
+    row.add(m.root);
+    models.push(m);
+  }
+  scene.add(row);
+  const cam = new THREE.PerspectiveCamera(20, W / H, 0.05, 50);
+  const d = (0.34 * n + 0.15) * Number(params.get('dist') || 1);
+  cam.position.set(0.15, 1.68, -d);
+  cam.lookAt(0, 1.63, 0);
+  sun.position.set(1.5, 4, -3);
+  sun.target.position.set(0, 1.6, 0);
+  renderer.render(scene, cam);
+  document.getElementById('info').textContent = `faces: ${f.join(',')} seeds from ${params.get('seed') || 1}`;
+  window.__done = true;
+  throw new Error('faces shown');
+}
+
 // Gently rolling ground so feet and ragdolls have something to settle on.
 const ground = (x, z) => (params.has('flat') ? 0 : 0.06 * Math.sin(x * 0.9) * Math.cos(z * 0.7) + 0.03 * Math.sin(z * 2.1 + 1));
 const gGeo = new THREE.PlaneGeometry(60, 60, 120, 120);
@@ -64,24 +158,173 @@ groundMesh.receiveShadow = true;
 scene.add(groundMesh);
 
 const factions = (params.get('f') || 'US,GE,SU').split(',');
-const poses = (params.get('pose') === 'all' ? 'idle,walk,run,aim,crouchaim,proneaim' : params.get('pose') || 'idle').split(',');
+const classes = params.get('cls') === 'all' ? ['infantry', 'recon', 'paratrooper', 'tanker'] : [params.get('cls') || 'infantry'];
+let poses = (params.get('pose') === 'all' ? 'idle,walk,run,aim,crouchaim,proneaim' : params.get('pose') || 'idle').split(',');
 const lod = Number(params.get('lod') || 0);
 const seed = Number(params.get('seed') || 1);
 const T = params.has('t') ? Number(params.get('t')) : null;
 const DEG = Math.PI / 180;
-const DEFAULT_GUN = { US: 'm1_garand', GE: 'kar98k', SU: 'mosin_9130' };
-const gunFor = (f) => {
-  const want = params.get('gun') || DEFAULT_GUN[f];
-  return MODELS[want] ? want : 'kar98k';
+const DEFAULT_GUN = {
+  US: { infantry: 'm1_garand', recon: 'm1903a4', paratrooper: 'thompson_m1a1', tanker: 'm3_greasegun' },
+  GE: { infantry: 'kar98k', recon: 'kar98k_zf39', paratrooper: 'mp40', tanker: 'mp40' },
+  SU: { infantry: 'mosin_9130', recon: 'mosin_pu', paratrooper: 'ppsh41', tanker: 'pps43' },
+};
+const gunFor = (f, cls) => {
+  const want = params.get('gun') || DEFAULT_GUN[f]?.[cls] || 'kar98k';
+  if (MODELS[want]) return want;
+  const alt = { m1903a4: 'm1903', kar98k_zf39: 'kar98k', mosin_pu: 'mosin_9130', m3_greasegun: 'thompson_m1a1', pps43: 'ppsh41' }[want];
+  return MODELS[alt] ? alt : 'kar98k';
 };
 const kindFor = (id) =>
   params.get('kind') ||
-  (/mp40|mp34|thompson|m3_|ppsh|pps43|ppd|stg/.test(id) ? 'smg'
+  (/mp40|mp34|thompson|m3_|ppsh|pps43|ppd|stg|grease/.test(id) ? 'smg'
     : /mg4|mg3|bar_|m1919|johnson|dp28|fg42/.test(id) ? 'lmg'
     : /p38|luger|c96|m1911|m1917|tt33|nagant/.test(id) ? 'pistol'
     : /schreck|faust|bazooka|ptrd/.test(id) ? 'launcher'
     : /grenade|granate|rgd/.test(id) ? 'grenade'
     : 'rifle');
+const roleFor = (kind) => params.get('role') || (kind === 'smg' ? 'smg' : kind === 'lmg' ? 'mg' : kind === 'launcher' ? 'at' : 'rifle');
+
+// A mock two-wheeler for the riding poses: frame lines and wheels, with the
+// rider's targets (saddle, grips, pedals or footboards) following the interface
+// vehicles provide: riderPose(seat, out).
+const RIDES = ['bicycle', 'motorcycle', 'sidecar', 'pillion'];
+function makeRide(style, x0, z0) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: style === 'bicycle' ? 0x2a2a28 : 0x3e4232, roughness: 0.5, metalness: 0.4 });
+  const line = (a, b, r = 0.012) => {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, A.distanceTo(B), 8), mat);
+    m.position.copy(A).add(B).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    m.castShadow = true;
+    g.add(m);
+  };
+  const bike = style === 'bicycle';
+  const R = bike ? 0.34 : 0.33;
+  const wb = bike ? 1.08 : 1.4;
+  const wheel = (z) => {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(R, bike ? 0.018 : 0.05, 8, 32), new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.8 }));
+    m.rotation.y = Math.PI / 2;
+    m.position.set(0, R, z);
+    m.castShadow = true;
+    g.add(m);
+  };
+  wheel(-wb / 2);
+  wheel(wb / 2);
+  const saddle = bike ? [0, 0.98, 0.18] : style === 'pillion' ? [0, 0.88, 0.42] : [0, 0.84, 0.12];
+  const bars = bike ? [0, 1.02, -0.42] : [0, 1.0, -0.38];
+  line([0, R, wb / 2], saddle, 0.016);
+  line(saddle, [0, R + 0.02, 0.02], 0.016);
+  line([0, R + 0.02, 0.02], [0, R, -wb / 2], 0.016);
+  line([0, R, -wb / 2], bars, 0.016);
+  line([-0.28, bars[1], bars[2]], [0.28, bars[1], bars[2]], 0.012);
+  if (!bike) {
+    const tank = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.45), mat);
+    tank.position.set(0, 0.85, -0.12);
+    g.add(tank);
+  }
+  if (style === 'sidecar' || style === 'pillion') {
+    // The driver's machine is shown; the sidecar boat or the pillion seat is added.
+    if (style === 'sidecar') {
+      const boat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 1.6), mat);
+      boat.position.set(0.75, 0.48, 0.05);
+      g.add(boat);
+    }
+  }
+  g.position.set(x0, ground(x0, z0), z0);
+  return {
+    group: g,
+    style,
+    saddle: new THREE.Vector3(...saddle),
+    riderPose(seat, out, t) {
+      const lean = style === 'sidecar' ? 0 : Math.sin(t * 0.9) * (bike ? 0.12 : 0.18);
+      const crank = bike ? t * 5.5 : null;
+      g.rotation.set(0, 0, -lean);
+      g.updateMatrixWorld(true);
+      const w = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(g.matrixWorld);
+      out.style = style;
+      out.yaw = 0;
+      out.lean = lean;
+      out.pitch = 0;
+      out.pedal = crank;
+      out.footDown = 0;
+      if (style === 'sidecar') {
+        // The passenger in the boat, hands on the MG grips.
+        out.hip = w(0.75, 0.42, 0.25);
+        out.handL = w(0.68, 0.92, -0.45);
+        out.handR = w(0.82, 0.92, -0.45);
+        out.footL = w(0.66, 0.32, -0.45);
+        out.footR = w(0.84, 0.32, -0.45);
+      } else if (style === 'pillion') {
+        out.hip = w(0, 0.9, 0.42);
+        out.handL = null;
+        out.handR = null;
+        out.footL = w(-0.2, 0.36, 0.38);
+        out.footR = w(0.2, 0.36, 0.38);
+      } else {
+        out.hip = w(...saddle).add(new THREE.Vector3(0, 0.02, 0));
+        out.handL = w(-0.26, bars[1], bars[2]);
+        out.handR = w(0.26, bars[1], bars[2]);
+        if (bike) {
+          const r = 0.17;
+          out.footL = w(-0.12, R + 0.02 + Math.sin(crank + Math.PI) * r, 0.02 - Math.cos(crank + Math.PI) * r);
+          out.footR = w(0.12, R + 0.02 + Math.sin(crank) * r, 0.02 - Math.cos(crank) * r);
+        } else {
+          out.footL = w(-0.2, 0.3, -0.1);
+          out.footR = w(0.2, 0.3, -0.1);
+        }
+      }
+      return out;
+    },
+  };
+}
+
+const soldiers = [];
+const S0 = []; // seat height (seated poses sit on an invisible 45 cm seat)
+// Strip mode: one faction, one pose, several moments laid out side by side.
+const strip = params.has('ts') ? params.get('ts').split(',').map(Number) : null;
+const rows = [];
+for (const cls of classes) for (const pose of poses) rows.push({ cls, pose });
+if (strip) {
+  strip.forEach((tt, i) => {
+    const f = factions[0];
+    const id = gunFor(f, classes[0]);
+    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: roleFor(kindFor(id)) });
+    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
+    m.setGround(ground);
+    const z0 = i * 1.4;
+    m.root.position.set(0, ground(0, z0), z0);
+    scene.add(m.root);
+    soldiers.push({ m, pose: poses[0], x0: 0, z0, t: tt });
+  });
+} else
+  rows.forEach(({ cls, pose }, row) => {
+    factions.forEach((f, i) => {
+      const id = gunFor(f, cls);
+      const kind = kindFor(id);
+      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: roleFor(kind), variant: params.has('variant') ? Number(params.get('variant')) : undefined });
+      if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kind);
+      m.setGround(ground);
+      const wide = /prone|crawl|dead/.test(pose);
+      let x0 = (i - (factions.length - 1) / 2) * (wide ? 1.6 : 1.1);
+      let z0 = row * 2.6;
+      if (RIDES.includes(pose)) {
+        // Riders in one line along z, seen from the side.
+        x0 = 0;
+        z0 = (row * factions.length + i) * 2.4;
+      }
+      S0[soldiers.length] = /seated|drive/.test(pose) ? 0.45 : 0;
+      m.root.position.set(x0, ground(x0, z0) + S0[soldiers.length], z0);
+      scene.add(m.root);
+      const S = { m, pose, x0, z0, cls };
+      if (RIDES.includes(pose)) {
+        S.ride = makeRide(pose, x0, z0);
+        scene.add(S.ride.group);
+      }
+      soldiers.push(S);
+    });
+  });
 
 function baseState(pose, t) {
   const s = { stance: 0, stanceBlend: 0, speed: 0, localVelX: 0, localVelZ: 0, sprinting: false, onGround: true, yaw: 0, aimPitch: Number(params.get('pitch') || 0) * DEG, aimYawOffset: Number(params.get('yawoff') || 0) * DEG, aiming: false, lean: 0, recoil: 0, action: null, actionT: 0, alive: true, deathT: 0, seated: false };
@@ -114,57 +357,29 @@ function baseState(pose, t) {
   return s;
 }
 
-const soldiers = [];
-const S0 = []; // seat height (seated poses sit on an invisible 45 cm seat)
-// Strip mode: one faction, one pose, several moments laid out side by side.
-const strip = params.has('ts') ? params.get('ts').split(',').map(Number) : null;
-if (strip) {
-  strip.forEach((tt, i) => {
-    const f = factions[0];
-    const m = new SoldierModel(f, lib, { seed, lod });
-    const id = gunFor(f);
-    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
-    m.setGround(ground);
-    const z0 = i * 1.4;
-    m.root.position.set(0, ground(0, z0), z0);
-    scene.add(m.root);
-    soldiers.push({ m, pose: poses[0], x0: 0, z0, t: tt });
-  });
-} else
-poses.forEach((pose, row) => {
-  factions.forEach((f, i) => {
-    const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, variant: params.has('variant') ? Number(params.get('variant')) : undefined });
-    const id = gunFor(f);
-    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
-    m.setGround(ground);
-    const wide = /prone|crawl|dead/.test(pose);
-    const x0 = (i - (factions.length - 1) / 2) * (wide ? 1.3 : 1.1);
-    const z0 = row * 2.6;
-    S0[soldiers.length] = /seated|drive/.test(pose) ? 0.45 : 0;
-    m.root.position.set(x0, ground(x0, z0) + S0[soldiers.length], z0);
-    scene.add(m.root);
-    soldiers.push({ m, pose, x0, z0 });
-  });
-});
-
 // Simulate.
 const dt = 1 / 60;
 const cycles = ['walk', 'run', 'sprint', 'strafe', 'back', 'crouchwalk', 'crawl'];
+let rideT = 0;
 for (const S of soldiers) {
   const { m, pose } = S;
   const tT = S.t ?? T;
   const s = baseState(pose, tT);
   const act = s.action;
-  const warm = 2.0 + (cycles.includes(pose) ? tT ?? 0 : 0);
+  const warm = 2.0 + (cycles.includes(pose) || S.ride ? tT ?? 0 : 0);
   const steps = Math.round(warm / dt);
   let x = S.x0, z = S.z0;
   const actT = act ? tT ?? 0.4 : 0;
   const ts = steps - Math.round((actT * 2) / dt);
+  if (S.ride) s.ride = {};
   for (let k = 0; k < steps; k++) {
     // Move the feet with the body velocity (world = local at yaw 0).
     x += s.localVelX * dt;
     z += s.localVelZ * dt;
-    m.root.position.set(x, ground(x, z) + (S0[soldiers.indexOf(S)] || 0), z);
+    if (S.ride) {
+      S.ride.riderPose(0, s.ride, k * dt);
+      m.root.position.copy(s.ride.hip);
+    } else m.root.position.set(x, ground(x, z) + (S0[soldiers.indexOf(S)] || 0), z);
     if (act) {
       s.action = k >= ts ? act : null;
       s.actionT = k >= ts ? Math.min(1, ((k - ts) * dt) / 2) : 0;
@@ -172,6 +387,7 @@ for (const S of soldiers) {
     if (pose === 'recoil') s.recoil = Math.max(0, 1 - (steps - 1 - k) * 0.25);
     m.update(dt, s);
   }
+  rideT = Math.max(rideT, steps * dt);
   if (pose === 'dead') {
     s.alive = false;
     if (!params.has('nohit')) s.hitDir = { x: Number(params.get('hx') ?? 0.3), z: Number(params.get('hz') ?? 1) };
@@ -182,7 +398,7 @@ for (const S of soldiers) {
     }
   }
   // Back to its slot so rows stay together (the pose is relative to the root).
-  if (!params.has('free') && pose !== 'dead') {
+  if (!params.has('free') && pose !== 'dead' && !S.ride) {
     const seat = S0[soldiers.indexOf(S)] || 0;
     m.root.position.set(S.x0, ground(S.x0, S.z0) + seat, S.z0);
     m.update(0, s);
@@ -218,13 +434,14 @@ const box = new THREE.Box3();
 for (const { m } of soldiers) box.expandByPoint(m.root.position);
 const center = box.getCenter(new THREE.Vector3());
 const view = params.get('cam') || 'three';
-const rows = poses.length;
+const nRows = rows.length;
 const low = poses.every((p) => /prone|crawl|dead/.test(p));
 const cy = low ? 0.35 : 0.95;
-const dist = strip ? 2.2 + strip.length * 0.9 : 4.6 + (factions.length - 3) * 1.2 + (rows - 1) * 2.2;
 const cams = { three: [-0.48, 0.32, -0.87], front: [0, 0.03, -1], side: [1, 0.05, 0], left: [-1, 0.05, 0], back: [0.3, 0.2, 1], top: [0.1, 0.9, 0.45], low: [-0.4, 0.05, -0.9] };
-const dir = new THREE.Vector3(...(cams[strip && !params.has('cam') ? 'side' : view] || cams.three)).normalize();
-const camera = new THREE.PerspectiveCamera(32, W / H, 0.05, 200);
+const riding = poses.some((p) => RIDES.includes(p));
+const dist = strip ? 2.2 + strip.length * 0.9 : riding ? 2.5 + soldiers.length * 1.25 : 4.6 + (factions.length - 3) * 1.2 + (nRows - 1) * 2.2;
+const dir = new THREE.Vector3(...(cams[(strip || riding) && !params.has('cam') ? 'side' : view] || cams.three)).normalize();
+const camera = new THREE.PerspectiveCamera(32, W / H, 0.02, 200);
 const target = new THREE.Vector3(center.x, center.y + cy, center.z);
 camera.position.copy(target).addScaledVector(dir, dist);
 if (params.has('zoom')) camera.zoom = Number(params.get('zoom'));
@@ -245,18 +462,64 @@ if (params.has('focus')) {
   camera.position.copy(t).addScaledVector(dir, d);
   camera.lookAt(t);
 }
-sun.position.set(center.x + 3, 6, center.z - 4);
+// Close-ups of one soldier: the face, the hands on the weapon, the kit at the
+// belt, the back, the feet, or the whole man.
+if (params.has('close')) {
+  const S = soldiers[Number(params.get('i') || 0)];
+  const m = S.m;
+  m.root.updateMatrixWorld(true);
+  const bone = (n) => m.bones[n].getWorldPosition(new THREE.Vector3());
+  const yaw = m.root.rotation.y;
+  const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const kind = params.get('close');
+  let t, from;
+  const k = Number(params.get('dist') || 1);
+  if (kind === 'face') {
+    t = m.eyeWorld.clone().add(new THREE.Vector3(0, -0.04, 0));
+    from = t.clone().addScaledVector(fwd, 0.62 * k).addScaledVector(right, 0.22 * k).add(new THREE.Vector3(0, 0.03, 0));
+  } else if (kind === 'hands') {
+    t = bone(12).lerp(bone(8), 0.5);
+    from = t.clone().addScaledVector(fwd, 0.45 * k).addScaledVector(right, 0.5 * k).add(new THREE.Vector3(0, 0.25 * k, 0));
+  } else if (kind === 'handR' || kind === 'handL') {
+    // One hand from the back (side=palm for the palm side).
+    const hb = m.bones[kind === 'handR' ? 12 : 8];
+    const q = hb.getWorldQuaternion(new THREE.Quaternion());
+    const sgn = kind === 'handR' ? 1 : -1;
+    t = hb.localToWorld(new THREE.Vector3(sgn * -0.01, -0.08, -0.01));
+    const back = new THREE.Vector3(sgn * (params.get('side') === 'palm' ? -1 : 1), 0, 0).applyQuaternion(q);
+    from = t.clone().addScaledVector(back, 0.32 * k).add(new THREE.Vector3(0, 0.08 * k, 0)).addScaledVector(fwd, 0.1 * k);
+  } else if (kind === 'kit') {
+    t = bone(0).add(new THREE.Vector3(0, 0.12, 0));
+    from = t.clone().addScaledVector(fwd, 1.0 * k).addScaledVector(right, 0.55 * k).add(new THREE.Vector3(0, 0.15, 0));
+  } else if (kind === 'back') {
+    t = bone(2).add(new THREE.Vector3(0, -0.08, 0));
+    from = t.clone().addScaledVector(fwd, -1.25 * k).addScaledVector(right, 0.5 * k).add(new THREE.Vector3(0, 0.25, 0));
+  } else if (kind === 'feet') {
+    t = bone(15).lerp(bone(18), 0.5).add(new THREE.Vector3(0, 0.12, 0));
+    from = t.clone().addScaledVector(fwd, 0.85 * k).addScaledVector(right, 0.45 * k).add(new THREE.Vector3(0, 0.2, 0));
+  } else {
+    t = bone(0).add(new THREE.Vector3(0, -0.05, 0));
+    from = t.clone().addScaledVector(fwd, 3.2 * k).addScaledVector(right, 1.2 * k).add(new THREE.Vector3(0, 0.3, 0));
+  }
+  camera.position.copy(from);
+  camera.lookAt(t);
+}
+{
+  const sy = Number(params.get("sunyaw") || 0) * DEG;
+  sun.position.set(center.x + 3 * Math.cos(sy) - 4 * Math.sin(sy), 6, center.z - 4 * Math.cos(sy) - 3 * Math.sin(sy));
+}
 sun.target.position.copy(center);
 const sc = sun.shadow.camera;
-sc.left = sc.bottom = -4 - rows * 2;
-sc.right = sc.top = 4 + rows * 2;
+sc.left = sc.bottom = -4 - nRows * 2;
+sc.right = sc.top = 4 + nRows * 2;
 sc.updateProjectionMatrix();
 
 function render() {
   renderer.render(scene, camera);
   const info = renderer.info.render;
-  const per = soldiers[0].m.meshes[lod].length;
-  document.getElementById('info').textContent = `${poses.join(',')}  t=${T ?? '-'}  scene: calls ${info.calls} tris ${info.triangles}  meshes/soldier ${per}`;
+  const st = soldiers[0].m.stats(lod);
+  document.getElementById('info').textContent = `${rows.map((r) => `${r.cls}:${r.pose}`).join(',')}  lod ${lod}  t=${T ?? '-'}  scene: calls ${info.calls} tris ${info.triangles}  soldier 0: ${st.meshes} meshes ${st.triangles} tris`;
 }
 render();
 if (params.has('live')) {
@@ -265,11 +528,17 @@ if (params.has('live')) {
     const now = performance.now();
     const d = Math.min(0.05, (now - last) / 1000);
     last = now;
+    rideT += d;
     for (const S of soldiers) {
       const s = S.state, p = S.m.root.position;
-      p.x += s.localVelX * d;
-      p.z += s.localVelZ * d;
-      p.y = ground(p.x, p.z);
+      if (S.ride) {
+        S.ride.riderPose(0, s.ride, rideT);
+        p.copy(s.ride.hip);
+      } else {
+        p.x += s.localVelX * d;
+        p.z += s.localVelZ * d;
+        p.y = ground(p.x, p.z);
+      }
       S.m.update(d, s);
     }
     render();
@@ -277,6 +546,8 @@ if (params.has('live')) {
   };
   loop();
 }
+window.__soldiers = soldiers;
+window.__renderer = renderer;
 window.__done = true;
 </script>
 </body>

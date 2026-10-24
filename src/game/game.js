@@ -151,6 +151,8 @@ export class Game {
         if (Math.abs(hf.getHeight(px + half, pz) - hf.getHeight(px - half, pz)) > half * 0.25) continue;
         if (Math.abs(hf.getHeight(px, pz + half) - hf.getHeight(px, pz - half)) > half * 0.25) continue;
         if (coll.query(px - half, h + 0.2, pz - half * 1.4, px + half, h + 2.5, pz + half * 1.4, [], 1).length) continue;
+        // (Parked bicycles have no collision box: keep clear of them too.)
+        if (this.vehicles.some((v) => v.isBike && (v.body.position.x - px) ** 2 + (v.body.position.z - pz) ** 2 < (half * 1.4 + 1.5) ** 2)) continue;
         return { x: px, z: pz };
       }
     }
@@ -472,9 +474,21 @@ export class Game {
   onVehicleDestroyed(v, attacker, cause) {
     const p = v.body.position;
     const big = v.def.kind === 'tracked';
-    this.effects.explosion(p.x, p.y + 0.5, p.z, big ? (cause === 'ammo' ? 4 : 2.5) : 1.6);
-    this.audio?.explosion?.('shellExplosion', p.x, p.y, p.z);
-    charModel(v);
+    if (v.isBike) {
+      // A bicycle is simply wrecked; a motorcycle's petrol tank goes up in a
+      // burst of flame, not a blast.
+      if (!v.def.pedal) {
+        this.effects.spawn('fire', p.x, p.y + 0.3, p.z, { count: 5, spread: 1, speed: 1.5, scale: 0.7 });
+        this.effects.spawn('smoke', p.x, p.y + 0.5, p.z, { count: 3, spread: 1, speed: 1, scale: 0.6 });
+        this.effects.flashLight(p.x, p.y + 0.6, p.z, 20, 10, 0.3);
+        this.audio?.play?.('fuelWhoosh', p, { volume: 0.9 });
+        charModel(v);
+      }
+    } else {
+      this.effects.explosion(p.x, p.y + 0.5, p.z, big ? (cause === 'ammo' ? 4 : 2.5) : 1.6);
+      this.audio?.explosion?.('shellExplosion', p.x, p.y, p.z);
+      charModel(v);
+    }
     this.hud?.killFeed(attacker, { name: v.def.name, faction: v.def.faction }, { kind: 'vehicle', weapon: { name: cause } });
     if (attacker === this.player?.soldier) this.hud?.hitMarker(2);
     // An ammunition explosion throws the turret off.
@@ -649,7 +663,7 @@ export class Game {
     this.hud.update(frameDt);
     const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;
     this.pipeline.grade.uniforms.uDamage.value = clamp(this.hud.damageFlash, 0, 1);
-    this.pipeline.render(this.world.scene, this.camera, vm?.scene, vm?.camera, this.time);
+    this.pipeline.render(this.world.scene, this.camera, vm?.scene, vm?.camera, this.time, { aim: vm?.visible ? vm.aim : 0, dt: frameDt });
   }
 
   _spectate(frameDt) {

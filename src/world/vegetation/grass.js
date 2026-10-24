@@ -79,17 +79,15 @@ export class GroundCover {
     this.site = site;
     this.terrain = terrain;
     this.seed = seed;
-    this.density = Math.max(0.1, quality.grassDensity ?? 1);
-    this.distance = Math.max(20, quality.grassDistance ?? 60);
-    this.spacing = 1 / Math.sqrt(MAX_DENSITY * this.density);
-    this.full = Math.min(14, this.distance * 0.2); // full density out to here
     this.exp = 1.25;
     this.tiles = new Map();
-    this.cap = Math.round(36000 * Math.min(2, Math.max(0.5, this.density * (this.distance / 70) ** 1.2)));
+    this._configure(quality);
     const geo = geometry;
     this.geo = geo;
-    this.aA = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * 4), 4).setUsage(THREE.DynamicDrawUsage);
-    this.aB = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    // Room for the most clumps any setting asks for (so settings can change live).
+    const most = 72000;
+    this.aA = new THREE.InstancedBufferAttribute(new Float32Array(most * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.aB = new THREE.InstancedBufferAttribute(new Float32Array(most * 4), 4).setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('iA', this.aA);
     geo.setAttribute('iB', this.aB);
     geo.instanceCount = 0;
@@ -104,6 +102,27 @@ export class GroundCover {
     this.count = 0;
     this.first = true;
     this.tris = geo.index.count / 3;
+  }
+
+  _configure(quality) {
+    this.density = Math.max(0.1, quality.grassDensity ?? 1);
+    this.distance = Math.max(20, quality.grassDistance ?? 60);
+    this.spacing = 1 / Math.sqrt(MAX_DENSITY * this.density);
+    this.full = Math.min(14, this.distance * 0.2); // full density out to here
+    this.cap = Math.round(36000 * Math.min(2, Math.max(0.5, this.density * (this.distance / 70) ** 1.2)));
+  }
+
+  // New grass density or distance while playing: the tiles are made again. Returns
+  // whether anything changed (then the material needs lodParams() again).
+  setQuality(quality) {
+    const d = Math.max(0.1, quality.grassDensity ?? 1),
+      r = Math.max(20, quality.grassDistance ?? 60);
+    if (d === this.density && r === this.distance) return false;
+    this._configure(quality);
+    this.tiles.clear();
+    this.first = true;
+    this.trigger.reset();
+    return true;
   }
 
   lodParams() {

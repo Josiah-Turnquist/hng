@@ -68,6 +68,11 @@ export class RefillTrigger {
     this._d = new THREE.Vector3();
   }
 
+  // Refill at the next check.
+  reset() {
+    this.pos.set(1e9, 0, 0);
+  }
+
   check(camera, pos, lod) {
     if (camera) camera.getWorldDirection(this._d);
     const moved = this.pos.distanceToSquared(pos) > this.move * this.move;

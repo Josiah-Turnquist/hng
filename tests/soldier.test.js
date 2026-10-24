@@ -181,15 +181,98 @@ test('a dead soldier falls and comes to rest on the ground', () => {
   assert.ok(m.muzzleWorld.y - ground(m.muzzleWorld.x, m.muzzleWorld.z) < 0.15, 'rifle on the ground');
 });
 
-test('full detail uses 3 skinned meshes, the distant version 1', () => {
+test('levels of detail: 2 skinned meshes up close, 1 in the middle distance and far away', () => {
   const m = new SoldierModel('GE', null, { seed: 1 });
   const count = (lod) => m.meshes[lod].filter((x) => x.visible).length;
-  assert.equal(count(0), 3);
+  assert.equal(count(0), 2);
   m.setLod(1);
   assert.equal(count(1), 1);
   assert.equal(count(0), 0);
-  const tris = (meshes) => meshes.reduce((n, x) => n + x.geometry.index.count / 3, 0);
-  assert.ok(tris(m.meshes[0]) < 9000, `full ${tris(m.meshes[0])} triangles`);
-  assert.ok(tris(m.meshes[1]) < 1800, `lod ${tris(m.meshes[1])} triangles`);
-  for (const mesh of [...m.meshes[0], ...m.meshes[1]]) assert.equal(mesh.skeleton.bones.length, 19);
+  m.setLod(2);
+  assert.equal(count(2), 1);
+  assert.equal(count(1), 0);
+  for (const mesh of m.meshes.flat()) assert.equal(mesh.skeleton.bones.length, 39);
+});
+
+test('every army and class builds at every level of detail within its triangle budget', () => {
+  const budget = [21500, 5000, 1400];
+  for (const f of ['US', 'GE', 'SU']) {
+    for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker']) {
+      for (const role of ['rifle', 'smg']) {
+        const m = new SoldierModel(f, null, { seed: 11, cls, role });
+        m.prepareLods();
+        for (let lod = 0; lod < 3; lod++) {
+          const { meshes, triangles } = m.stats(lod);
+          assert.ok(meshes >= 1 && meshes <= 2, `${f} ${cls} lod ${lod}: ${meshes} meshes`);
+          assert.ok(triangles < budget[lod], `${f} ${cls} ${role} lod ${lod}: ${triangles} triangles`);
+          for (const mesh of m.meshes[lod]) {
+            const pos = mesh.geometry.attributes.position.array;
+            for (let i = 0; i < pos.length; i += 97) assert.ok(Number.isFinite(pos[i]), `${f} ${cls} lod ${lod}: bad vertex`);
+            const sw = mesh.geometry.attributes.skinWeight.array;
+            for (let i = 0; i < sw.length; i += 4 * 13) near(sw[i] + sw[i + 1] + sw[i + 2] + sw[i + 3], 1, 1e-3, `${f} ${cls} skin weights`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('the fingers close round the grip of a held rifle', () => {
+  const m = new SoldierModel('US', null, { seed: 2 });
+  m.setWeapon(buildGun('kar98k', mats), 'rifle');
+  settle(m, idle({ aiming: true }), 40);
+  const bend = (name) => 2 * Math.acos(Math.min(1, Math.abs(m.pose.q[m.bones.findIndex((b) => b.name === name)].w)));
+  for (const n of ['middleR1', 'middleR2', 'ringR1', 'middleL1']) assert.ok(bend(n) > 0.7, `${n} bent ${bend(n)}`);
+  // The trigger finger stays straighter than the others.
+  assert.ok(bend('indexR1') < bend('middleR1'), 'trigger finger');
+});
+
+test('riders sit on the saddle and reach the grips and pedals', () => {
+  for (const style of ['bicycle', 'motorcycle']) {
+    const m = new SoldierModel('GE', null, { seed: 3 });
+    m.setWeapon(buildGun('kar98k', mats), 'rifle');
+    const hip = new THREE.Vector3(5, 0.95, -2);
+    const ride = {
+      style,
+      hip,
+      yaw: 0.6,
+      lean: 0.1,
+      pitch: 0,
+      handL: null,
+      handR: null,
+      footL: null,
+      footR: null,
+      pedal: style === 'bicycle' ? 1 : null,
+      footDown: 0,
+    };
+    // Grips 55 cm ahead and 8 cm above the saddle, 52 cm apart; pedals or footboards below.
+    const local = (x, y, z) => new THREE.Vector3(x, y, z).applyAxisAngle(new THREE.Vector3(0, 1, 0), ride.yaw).add(hip);
+    ride.handL = local(-0.26, 0.08, -0.55);
+    ride.handR = local(0.26, 0.08, -0.55);
+    ride.footL = local(-0.12, style === 'bicycle' ? -0.55 : -0.5, style === 'bicycle' ? -0.12 : -0.15);
+    ride.footR = local(0.12, style === 'bicycle' ? -0.75 : -0.5, style === 'bicycle' ? 0.05 : -0.15);
+    m.root.position.copy(hip);
+    settle(m, idle({ yaw: ride.yaw, ride }), 30);
+    m.root.updateMatrixWorld(true);
+    const world = (bone, out = new THREE.Vector3()) => m.bones[bone].getWorldPosition(out);
+    // Hips between the hip joints on the saddle point.
+    const mid = world(13).add(world(16)).multiplyScalar(0.5);
+    assert.ok(mid.distanceTo(hip) < 0.03, `${style}: hips ${mid.distanceTo(hip)} m off the saddle`);
+    // Hands at the grips (the grip passes ~3 cm in front of the wrist axis, 8 cm down the hand).
+    for (const [b, t] of [
+      [8, ride.handL],
+      [12, ride.handR],
+    ])
+      assert.ok(world(b).distanceTo(t) < 0.12, `${style}: hand ${world(b).distanceTo(t)} m from its grip`);
+    // Ankles near their pedal or footboard (the ball of the foot is on it).
+    for (const [b, t] of [
+      [15, ride.footL],
+      [18, ride.footR],
+    ])
+      assert.ok(world(b).distanceTo(t) < 0.2, `${style}: foot ${world(b).distanceTo(t)} m from its target`);
+    // The weapon is slung, and the hit zones follow the rider.
+    assert.equal(m.arms.holderOut, 'sling');
+    const head = m.getHitboxes([]).find((h) => h.part === 'head');
+    assert.ok(head.ay > hip.y + 0.4, `${style}: head at ${head.ay}`);
+  }
 });

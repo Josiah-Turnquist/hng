@@ -1,7 +1,7 @@
 // Main menu (battle setup, settings, controls) and the in-battle pause menu.
 import { MAPS } from '../world/maps.js';
 import { FACTIONS, WEAPONS, weaponsFor, DEFAULT_LOADOUT } from '../weapons/defs.js';
-import { QUALITY_PRESETS } from '../core/settings.js';
+import { GRAPHICS_OPTIONS, GRAPHICS_PRESETS } from '../core/settings.js';
 import { AMMO } from '../weapons/ammo.js';
 
 const SETUP_KEY = 'hng.setup.v1';
@@ -211,23 +211,126 @@ function weaponNote(w) {
   return parts.join(' · ');
 }
 
+// A short name for the graphics card from the browser's description of it.
+function gpuName(s) {
+  s = String(s || '');
+  const m = /^ANGLE \((.*)\)$/.exec(s);
+  if (m) {
+    const parts = m[1].split(', ');
+    s = parts[1] || parts[0];
+  }
+  return s
+    .replace(/\s*\(0x[0-9a-f]+\)/gi, '')
+    .replace(/\s*(Direct3D|vs_\d|OpenGL ES|D3D1).*$/i, '')
+    .replace(/^ANGLE Metal Renderer:\s*/i, '')
+    .replace(/,? or similar$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+// Settings: graphics (a preset and every option, applied at once where possible),
+// controls and sound. Used by the main menu and the pause menu.
 function settingsTab(body, app) {
   const st = app.settings;
+  const inBattle = !!app.game?.pipeline;
+  // Redraw in place, keeping the scroll position of whatever scrolls the settings.
+  const redraw = () => {
+    const sc = body.closest('.menu, .pause .box') || body;
+    const y = sc.scrollTop;
+    settingsTab(body, app);
+    sc.scrollTop = y;
+  };
   body.innerHTML = '';
+  body.appendChild(el('h3', 'set-head', 'Graphics'));
+
+  // Presets.
+  const preset = st.preset;
   const q = el('div', 'row');
   q.appendChild(el('label', '', 'Graphics quality'));
   const box = el('div', 'choices');
-  for (const [k, p] of Object.entries(QUALITY_PRESETS)) {
-    const b = el('button', st.get('quality') === k ? 'on' : '', p.label);
+  for (const [k, p] of Object.entries(GRAPHICS_PRESETS)) {
+    const b = el('button', preset === k ? 'on' : '', p.label);
     b.addEventListener('click', () => {
-      st.set('quality', k);
-      settingsTab(body, app);
+      st.setPreset(k);
+      redraw();
     });
     box.appendChild(b);
   }
+  if (preset === 'custom') box.appendChild(el('span', 'custom-tag', 'Custom'));
   q.appendChild(box);
-  q.appendChild(el('div', 'note', 'Shadows, grass, view distance and texture detail. Takes effect when the next battle loads.'));
+  const qn = el('div', 'note');
+  const gpu = gpuName(st.get('gpu'));
+  qn.textContent =
+    (st.get('autoQuality') ? `Picked automatically for this computer${gpu ? ` (${gpu})` : ''}. ` : '') +
+    'Low suits laptops and older computers, Medium most computers, High a gaming graphics card, Ultra a fast one. ' +
+    (inBattle ? 'Changes apply at once (the game may pause for a moment while it adjusts).' : 'You can change every option below.');
+  q.appendChild(qn);
   body.appendChild(q);
+  if (inBattle) {
+    // The battle keeps drawing behind this menu: show how fast.
+    const now = el('div', 'note fps-now');
+    q.appendChild(now);
+    const tick = () => {
+      if (!now.isConnected) return clearInterval(timer);
+      const fps = app.game?.loop?.fps || 0;
+      now.textContent = fps > 0 ? `Running now at ${Math.round(fps)} frames per second.` : '';
+    };
+    const timer = setInterval(tick, 500);
+    tick();
+  }
+
+  // Every option.
+  const g = st.graphics;
+  for (const o of GRAPHICS_OPTIONS) {
+    if (o.group) body.appendChild(el('h4', 'set-group', o.group));
+    const r = el('div', 'row opt');
+    const label = el('label');
+    const name = document.createTextNode(`${o.label}: `);
+    const val = el('b');
+    label.append(name, val);
+    r.appendChild(label);
+    const show = (v) => (val.textContent = o.type === 'range' ? o.fmt(v) : (o.choices.find((c) => c[0] === v)?.[1] ?? String(v)));
+    show(g[o.key]);
+    if (o.type === 'range') {
+      const i = el('input');
+      i.id = label.htmlFor = `setting-${o.key}`;
+      i.type = 'range';
+      i.min = o.min;
+      i.max = o.max;
+      i.step = o.step;
+      i.value = g[o.key];
+      i.addEventListener('input', () => show(Number(i.value)));
+      // Applied when the slider is let go (some changes rebuild things).
+      i.addEventListener('change', () => {
+        st.setGraphics(o.key, Number(i.value));
+        redraw();
+      });
+      r.appendChild(i);
+    } else {
+      const c = el('div', 'choices');
+      for (const [v, text] of o.choices) {
+        const b = el('button', g[o.key] === v ? 'on' : '', text);
+        b.addEventListener('click', () => {
+          st.setGraphics(o.key, v);
+          redraw();
+        });
+        c.appendChild(b);
+      }
+      r.appendChild(c);
+    }
+    const n = el('div', 'note');
+    n.textContent = o.note + (o.live ? '' : ' Takes effect when the next battle loads.');
+    r.appendChild(n);
+    body.appendChild(r);
+  }
+  body.appendChild(el('h4', 'set-group', 'Display'));
+  body.appendChild(toggleRow('Show frame rate', st.get('showFps'), () => {
+    st.set('showFps', !st.get('showFps'));
+    redraw();
+  }, 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));
+
+  body.appendChild(el('h3', 'set-head', 'Controls and sound'));
   const slider = (key, label, min, max, step, fmt = (v) => v) => {
     const r = el('div', 'row');
     const l = r.appendChild(el('label', '', `${label}: <b>${fmt(st.get(key))}</b>`));
@@ -250,17 +353,22 @@ function settingsTab(body, app) {
   slider('mouseSensitivity', 'Mouse sensitivity', 0.2, 3, 0.05, (v) => Number(v).toFixed(2));
   slider('adsSensitivity', 'Aiming sensitivity', 0.2, 1.5, 0.05, (v) => Number(v).toFixed(2));
   slider('masterVolume', 'Volume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`);
-  const inv = el('div', 'row');
-  inv.appendChild(el('label', '', 'Invert mouse'));
-  const cb = el('button', st.get('invertY') ? 'on' : '', st.get('invertY') ? 'On' : 'Off');
-  cb.addEventListener('click', () => {
+  body.appendChild(toggleRow('Invert mouse', st.get('invertY'), () => {
     st.set('invertY', !st.get('invertY'));
-    settingsTab(body, app);
-  });
-  const c2 = el('div', 'choices');
-  c2.appendChild(cb);
-  inv.appendChild(c2);
-  body.appendChild(inv);
+    redraw();
+  }));
+}
+
+function toggleRow(label, on, flip, note = '') {
+  const r = el('div', 'row');
+  r.appendChild(el('label', '', label));
+  const c = el('div', 'choices');
+  const b = el('button', on ? 'on' : '', on ? 'On' : 'Off');
+  b.addEventListener('click', flip);
+  c.appendChild(b);
+  r.appendChild(c);
+  if (note) r.appendChild(el('div', 'note', note));
+  return r;
 }
 
 function controlsTab(body) {
@@ -290,6 +398,7 @@ export class PauseMenu {
       const ex = root.querySelector('.extra');
       if (ex.childElementCount) ex.innerHTML = '';
       else settingsTab(ex, app);
+      root.querySelector('.box').classList.toggle('wide', ex.childElementCount > 0);
     });
   }
 

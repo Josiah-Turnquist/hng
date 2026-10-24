@@ -3,7 +3,7 @@
 // the left hand reaching the support grip by two-bone IK, recoil, and the
 // reload / bolt / throw / bandage / use gestures.
 import * as THREE from 'three';
-import { B, GRIP_CENTER_R, GRIP_CENTER_L, solveTwoBone, setModelRotation, quatFromAxes } from './soldierRig.js';
+import { B, solveTwoBone, setModelRotation, quatFromAxes, poseHand, gripCenter } from './soldierRig.js';
 import { clamp, lerp, smooth, yawOf, AX, AY, AZ, qAxis, TAU } from './soldierAnim.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -70,10 +70,14 @@ export function weaponInfo(gun, kind) {
     Zh = g.clone(),
     Yh = new THREE.Vector3().crossVectors(Zh, Xh);
   const qHG = quatFromAxes(Xh, Yh, Zh, new THREE.Quaternion()).invert();
-  const tHG = GRIP_CENTER_R.clone().sub(anchors.gripR.clone().applyQuaternion(qHG));
+  // The grip lies against the palm: its center sits its radius in front of it
+  // (rifle wrist ~3.8 cm thick, pistol and SMG grips ~3 x 5 cm; est.).
+  const gripRadius = meta.gripRadius ?? (kind === 'pistol' ? 0.015 : kind === 'smg' ? 0.017 : kind === 'grenade' ? 0.016 : 0.019);
+  const tHG = gripCenter(1, gripRadius).sub(anchors.gripR.clone().applyQuaternion(qHG));
   // Left hand: under the fore-end (cupped), or around a vertical front grip.
   let qLG = null,
     tLG = null;
+  const foreRadius = meta.foreRadius ?? (kind === 'smg' ? 0.018 : 0.021);
   if (anchors.gripL) {
     const vertical = meta.foregrip === 'vertical' || kind === 'pistol' || kind === 'launcher';
     let H;
@@ -81,15 +85,17 @@ export function weaponInfo(gun, kind) {
     if (vertical) {
       const gl = V(0, -Math.cos(0.3), Math.sin(0.3));
       H = quatFromAxes(V(1, 0, 0), new THREE.Vector3().crossVectors(gl, V(1, 0, 0)), gl, new THREE.Quaternion());
-      palm = GRIP_CENTER_L.clone();
+      palm = gripCenter(-1, 0.017);
     } else {
-      const fingers = V(0.55, 0.25, -0.8).normalize(); // wrist -> knuckles
+      // Fore-end lying across the palm, the fingers curling up its right side
+      // and the thumb along its left: the palm faces up and a little right.
+      const fingers = V(0.86, -0.1, -0.5).normalize(); // wrist -> knuckles
       const Y = fingers.clone().negate();
-      const X = V(0.45, 0.88, 0.15);
+      const X = V(0.3, 0.95, 0.05);
       X.addScaledVector(Y, -X.dot(Y)).normalize();
       const Z = new THREE.Vector3().crossVectors(X, Y);
       H = quatFromAxes(X, Y, Z, new THREE.Quaternion());
-      palm = V(0.024, -0.072, 0.0);
+      palm = gripCenter(-1, foreRadius);
     }
     qLG = H.invert();
     tLG = palm.sub(anchors.gripL.clone().applyQuaternion(qLG));
@@ -97,6 +103,8 @@ export function weaponInfo(gun, kind) {
   return {
     gun,
     kind,
+    gripRadius,
+    foreRadius,
     straightPull: !a.boltHandle,
     anchors,
     meta,
@@ -151,6 +159,30 @@ export class SoldierArms {
     this.weld = 0;
     this.gunVisible = true;
     this.released = false; // grenade left the hand during a throw
+    // Finger curls per hand (current and target): fingers, index, thumb.
+    this.fingers = { [1]: [0.35, 0.3, 0.25, 0], [-1]: [0.35, 0.3, 0.25, 0] };
+    this.fingerT = { [1]: [0.35, 0.3, 0.25, 0], [-1]: [0.35, 0.3, 0.25, 0] };
+  }
+
+  // Set a hand's grip target: c fingers, i index, t thumb (0 open .. 1 closed),
+  // wrap: radius of a grip the fingers close round (0 = none).
+  grip(side, c, i = c, t = c, wrap = 0) {
+    const g = this.fingerT[side];
+    g[0] = c;
+    g[1] = i;
+    g[2] = t;
+    g[3] = wrap;
+  }
+  // Ease the fingers toward their targets and write them to the pose.
+  applyFingers(pose, dt) {
+    const k = dt > 0 ? 1 - Math.exp(-18 * Math.min(dt, 0.1)) : 1;
+    for (const side of [1, -1]) {
+      const f = this.fingers[side],
+        g = this.fingerT[side];
+      for (let n = 0; n < 3; n++) f[n] += (g[n] - f[n]) * k;
+      f[3] = g[3];
+      poseHand(pose, side, f[0], f[1], f[2], 0, f[3]);
+    }
   }
 
   setWeapon(info) {
@@ -335,15 +367,33 @@ export class SoldierArms {
     const info = this.info;
     this.weld = 0;
     this.released = false;
+    if (s.ride && (s.ride.handL || s.ride.handR)) {
+      this._ride(dt, s, pose, s.ride);
+      return;
+    }
     if (!info) {
       this.gunVisible = false;
       this.holderOut = 'none';
       anim.bladeAngle = 0;
-      if (!this._freeHands(pose, s.action, clamp(s.actionT || 0, 0, 1))) {
+      // Relaxed hands, a fist for a throw, half open when working.
+      const a = s.action;
+      const tt = clamp(s.actionT || 0, 0, 1);
+      if (a === 'throw') {
+        this.grip(1, tt < 0.5 ? 0.85 : 0.2, tt < 0.5 ? 0.8 : 0.15, tt < 0.5 ? 0.8 : 0.2);
+        this.grip(-1, 0.15, 0.05, 0.2);
+      } else if (a === 'bandage' || a === 'use') {
+        this.grip(1, 0.55, 0.45, 0.5);
+        this.grip(-1, 0.55, 0.45, 0.5);
+      } else {
+        this.grip(1, 0.38, 0.3, 0.25);
+        this.grip(-1, 0.38, 0.3, 0.25);
+      }
+      if (!this._freeHands(pose, s.action, tt)) {
         this._clavicles(pose, null, null);
         this._swingArm(pose, 1);
         this._swingArm(pose, -1);
       }
+      this.applyFingers(pose, dt);
       return;
     }
     this.gunVisible = true;
@@ -520,15 +570,7 @@ export class SoldierArms {
       }
     } else if (act === 'bandage' || act === 'use') {
       // Sling the weapon over the back; both hands work in front.
-      const S = this.tmp3 || (this.tmp3 = new Xf());
-      // Muzzle up over the right shoulder, sights facing back.
-      const m = _v.set(0.38, 0.92, 0.1).normalize();
-      const yg = _v3.set(0, 0, 1);
-      yg.addScaledVector(m, -yg.dot(m)).normalize();
-      const zg = _v2.copy(m).negate();
-      _m.makeBasis(new THREE.Vector3().crossVectors(yg, zg), yg, zg);
-      S.q.setFromRotationMatrix(_m).premultiply(anim.mp.q[B.chest]);
-      S.placeAnchor(an.trigger, this.cp(0.03, -0.02, 0.2, _v));
+      const S = this._sling(this.tmp3 || (this.tmp3 = new Xf()));
       const e = env(t, 0.15, 0.85);
       G.lerp(S, e);
       holder = e > 0.5 ? 'sling' : 'right';
@@ -582,6 +624,18 @@ export class SoldierArms {
       else this._swingArm(pose, -1);
     }
     this.holderOut = holder;
+    // Fingers: the shooting hand round the grip with the index on the trigger,
+    // the support hand cupping the fore-end (or round a front grip), a pinch on
+    // the bolt, open hands for bandaging and for a thrown grenade's follow-through.
+    const vertical = info.meta.foregrip === 'vertical' || info.kind === 'pistol' || info.kind === 'launcher';
+    const onGun = !(handRT && wR > 0.5);
+    if (info.kind === 'grenade') this.grip(1, this.released ? 0.2 : 0.85, this.released ? 0.15 : 0.8, this.released ? 0.2 : 0.8);
+    else if (!onGun) this.grip(1, act === 'bandage' || act === 'use' ? 0.55 : 0.7, act === 'bandage' ? 0.45 : 0.62, 0.62);
+    else this.grip(1, 1, act === 'bolt' || act === 'reload' ? 0.75 : 0.55, 0.82, info.gripRadius);
+    if (handLT && wL > 0.5) this.grip(-1, act === 'bandage' || act === 'use' ? 0.5 : 0.7, 0.6, 0.5);
+    else if (info.qLG) this.grip(-1, vertical ? 1 : 0.95, vertical ? 1 : 0.9, vertical ? 0.75 : 0.45, vertical ? 0.017 : info.foreRadius);
+    else this.grip(-1, 0.38, 0.3, 0.25);
+    this.applyFingers(pose, dt);
     // Sight line for the head (cheek weld).
     if (info.shouldered && holder === 'right') {
       const rs = an.rearSight,
@@ -596,6 +650,89 @@ export class SoldierArms {
       }
       this.weld = anim.sm.aim * (act ? 0.4 : 1);
     }
+  }
+
+  // The weapon slung on the back: muzzle up over the right shoulder, sights
+  // facing back.
+  _sling(S) {
+    const an = this.info.anchors;
+    const m = _v.set(0.38, 0.92, 0.1).normalize();
+    const yg = _v3.set(0, 0, 1);
+    yg.addScaledVector(m, -yg.dot(m)).normalize();
+    const zg = _v2.copy(m).negate();
+    _m.makeBasis(new THREE.Vector3().crossVectors(yg, zg), yg, zg);
+    S.q.setFromRotationMatrix(_m).premultiply(this.anim.mp.q[B.chest]);
+    S.placeAnchor(an.trigger, this.cp(0.03, -0.02, 0.2, _v));
+    return S;
+  }
+
+  // Riding with the hands on the grips: handlebars (bicycle, motorcycle) held
+  // from above, palms down, or the spade grips of a sidecar machine gun; the
+  // rider's own weapon slung on his back.
+  _ride(dt, s, pose, r) {
+    const anim = this.anim;
+    const info = this.info;
+    const T = anim._rideT;
+    const qB = _q3.setFromAxisAngle(AZ, -(r.lean || 0)).multiply(qAxis(_q2, AX, r.pitch || 0));
+    const mg = r.style === 'sidecar';
+    const rBar = mg ? 0.016 : 0.012;
+    if (info) {
+      this.gunVisible = true;
+      this._sling(this.G);
+      this.holderOut = 'sling';
+      if (info.magPart) info.magPart.visible = true;
+      this._bolt(0, null);
+    } else {
+      this.gunVisible = false;
+      this.holderOut = 'none';
+    }
+    const hands = [];
+    for (const side of [1, -1]) {
+      const tgt = side > 0 ? r.handR && T.hR : r.handL && T.hL;
+      if (!tgt) {
+        hands.push(null);
+        continue;
+      }
+      const X = new THREE.Vector3(),
+        Y = new THREE.Vector3(),
+        Z = new THREE.Vector3();
+      if (mg) {
+        // Pistol-style spade grip, raked back: the palm against it from the side.
+        X.set(1, 0, 0);
+        Z.set(0, -Math.cos(0.3), Math.sin(0.3));
+      } else if (side > 0) {
+        X.set(0, 0.86, -0.5);
+        Z.set(1, 0, 0);
+      } else {
+        X.set(0, -0.86, 0.5);
+        Z.set(-1, 0, 0);
+      }
+      X.applyQuaternion(qB);
+      Z.applyQuaternion(qB);
+      Y.crossVectors(Z, X).normalize();
+      Z.crossVectors(X, Y).normalize();
+      const H = side > 0 ? this.handR : this.handL;
+      quatFromAxes(X, Y, Z, H.q);
+      gripCenter(side, rBar, _v).applyQuaternion(H.q);
+      H.p.copy(tgt).sub(_v);
+      hands.push(H);
+      this.grip(side, 1, 1, 0.75, rBar);
+    }
+    const [hR, hL] = hands;
+    this._clavicles(pose, hR ? hR.p : null, hL ? hL.p : null);
+    const poleR = (this.poleR ||= new THREE.Vector3()).set(0.8, -0.6, 0.35).applyQuaternion(qB);
+    const poleL = (this.poleL ||= new THREE.Vector3()).set(-0.8, -0.6, 0.35).applyQuaternion(qB);
+    if (hR) this._solveArm(pose, 1, hR, poleR);
+    else {
+      this._swingArm(pose, 1);
+      this.grip(1, 0.38, 0.3, 0.25);
+    }
+    if (hL) this._solveArm(pose, -1, hL, poleL);
+    else {
+      this._swingArm(pose, -1);
+      this.grip(-1, 0.38, 0.3, 0.25);
+    }
+    this.applyFingers(pose, dt);
   }
 
   // Throw / bandage / use with empty hands. Returns false when there is no

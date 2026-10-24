@@ -194,3 +194,267 @@ test('armor: historical match-ups come out right', () => {
   assert.ok(pen('M61 APC', 590) > pz4front);
   assert.ok(pen('M61 APC', 520) < pz4front);
 });
+
+// ---------------------------------------------------------------------------
+// Bicycles and motorcycles (bike.js, bikeDefs.js).
+
+const G = 9.80665;
+
+// Ride flat out on a long straight road; the best speed reached.
+function topSpeed(id, seconds = 60) {
+  const { game } = makeWorld({ size: 2048 });
+  const v = spawn(game, id, 0, 900, 0);
+  run(v, 1);
+  let top = 0;
+  run(v, seconds, () => {
+    v.driverInput(1, 0);
+    top = Math.max(top, kmh(v));
+  });
+  return { v, top };
+}
+
+test('motorcycles: real top speeds, solo and with sidecar', () => {
+  // WLA about 105 km/h (65 mph allowed); R 75 outfit 92-95; M-72 outfit 85-90.
+  const want = { wla: [96, 108], r75_sidecar: [88, 100], m72_sidecar: [82, 94], wla_sidecar: [80, 95], m72: [92, 108] };
+  for (const [id, [lo, hi]] of Object.entries(want)) {
+    const { v, top } = topSpeed(id);
+    assert.ok(top > lo && top < hi, `${id}: ${top.toFixed(1)} km/h, want ${lo}-${hi}`);
+    assert.ok(!v.fallen, `${id} fell over`);
+  }
+});
+
+test('bicycle: about 18 km/h at a steady effort, a sprint near 30 km/h that fades, hills slow it', () => {
+  const ride = (slopeDeg, sprint, seconds) => {
+    const { game } = makeWorld({ size: 2048, slopeDeg });
+    const v = spawn(game, 'bicycle', 0, 600, 0);
+    run(v, 1);
+    let top = 0;
+    run(v, seconds, () => {
+      v.driverInput(1, 0, false, sprint);
+      top = Math.max(top, kmh(v));
+    });
+    return { v, top, end: kmh(v) };
+  };
+  const cruise = ride(0, false, 40);
+  assert.ok(cruise.end > 15 && cruise.end < 22, `cruise ${cruise.end.toFixed(1)} km/h`);
+  assert.ok(Math.abs(cruise.v.power - 160) < 25, `cruise power ${cruise.v.power.toFixed(0)} W`);
+  const sprint = ride(0, true, 75);
+  assert.ok(sprint.top > 27 && sprint.top < 35, `sprint peak ${sprint.top.toFixed(1)} km/h`);
+  assert.ok(sprint.end < sprint.top - 2, `the sprint fades as he tires (${sprint.end.toFixed(1)} km/h at the end)`);
+  assert.ok(sprint.v.occupants[0].body.stamina < 60, 'sprinting uses stamina');
+  // A 3 degree (5 %) climb: walking pace and a little more at a steady effort.
+  const hill = ride(3, false, 30);
+  assert.ok(hill.end > 4 && hill.end < 10, `uphill ${hill.end.toFixed(1)} km/h`);
+  // Coasting down the same slope, it runs away to over 30 km/h.
+  const { game } = makeWorld({ size: 2048, slopeDeg: 3 });
+  const v = spawn(game, 'bicycle', 0, -600, Math.PI);
+  run(v, 3, () => v.driverInput(1, 0));
+  run(v, 40, () => v.driverInput(0, 0));
+  assert.ok(kmh(v) > 30, `downhill coasting ${kmh(v).toFixed(1)} km/h`);
+  assert.equal(v.effort, 'coast');
+});
+
+test('a straight ride stays upright; a steady turn leans by tan(lean) = v^2 / (g R)', () => {
+  const { game } = makeWorld({ size: 2048 });
+  const v = spawn(game, 'wla', 0, 0, 0);
+  run(v, 1);
+  let maxLean = 0;
+  run(v, 25, (t) => {
+    v.driverInput(kmh(v) < 50 ? 1 : 0, 0);
+    if (t > 3) maxLean = Math.max(maxLean, Math.abs(v.lean));
+  });
+  assert.ok(maxLean < 2 * (Math.PI / 180), `lean on a straight ${((maxLean * 180) / Math.PI).toFixed(2)} deg`);
+  assert.ok(Math.abs(v.body.position.x) < 8, `wandered ${v.body.position.x.toFixed(1)} m off the line`);
+  for (const [id, speed, steer] of [
+    ['wla', 40, 0.4],
+    ['r75', 60, 0.6],
+    ['bicycle', 15, 0.5],
+  ]) {
+    const { game: g2 } = makeWorld({ size: 2048 });
+    const b = spawn(g2, id, 0, 0, 0);
+    run(b, 1);
+    run(b, 25, () => b.driverInput(kmh(b) < speed ? 1 : 0, 0));
+    let lean = 0,
+      r = 0,
+      u = 0,
+      n = 0;
+    run(b, 10, (t) => {
+      b.driverInput(kmh(b) < speed ? 0.6 : 0, steer);
+      if (t > 5) {
+        lean += b.lean;
+        r += b.yawRate;
+        u += b.speed;
+        n++;
+      }
+    });
+    lean /= n;
+    u /= n;
+    const R = u / Math.abs(r / n);
+    const ideal = Math.atan((u * u) / (G * R));
+    assert.ok(lean > 0.1, `${id} leans into a right turn (${((lean * 180) / Math.PI).toFixed(1)} deg)`);
+    assert.ok(Math.abs(lean - ideal) < 2.5 * (Math.PI / 180), `${id}: lean ${((lean * 180) / Math.PI).toFixed(1)} deg, v^2/gR gives ${((ideal * 180) / Math.PI).toFixed(1)}`);
+    assert.ok(!b.fallen);
+  }
+});
+
+test('motorcycles cannot turn sharply at speed', () => {
+  // Full bars at 70 km/h: the rider leans as far as he dares, no further.
+  const { game } = makeWorld({ size: 2048 });
+  const v = spawn(game, 'wla', 0, 0, 0);
+  run(v, 1);
+  run(v, 30, () => v.driverInput(kmh(v) < 70 ? 1 : 0, 0));
+  let minR = Infinity,
+    maxLean = 0;
+  run(v, 6, (t) => {
+    v.driverInput(kmh(v) < 70 ? 0.5 : 0, 1);
+    if (t > 2) {
+      minR = Math.min(minR, Math.abs(v.speed / v.yawRate));
+      maxLean = Math.max(maxLean, Math.abs(v.lean));
+    }
+  });
+  assert.ok(minR > 35, `turn radius at 70 km/h ${minR.toFixed(1)} m`);
+  assert.ok(maxLean < 35 * (Math.PI / 180), `lean ${((maxLean * 180) / Math.PI).toFixed(1)} deg`);
+  assert.ok(!v.fallen, 'stays up on a dry road');
+});
+
+test('braking: front brake does most of the work, sensible stopping distances', () => {
+  const stop = (id, from) => {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, id, 0, 800, 0);
+    run(v, 1);
+    for (let t = 0; t < 60 && kmh(v) < from; t += 1 / 120) {
+      v.driverInput(1, 0, false, true);
+      v.step(1 / 120);
+    }
+    const z0 = v.body.position.z;
+    let nf = 0,
+      nr = 0;
+    for (let t = 0; t < 20 && v.speed > 0.1; t += 1 / 120) {
+      v.driverInput(-1, 0);
+      v.step(1 / 120);
+      nf = Math.max(nf, v.wF.N);
+      nr = Math.max(nr, v.wR.N);
+    }
+    return { v, d: z0 - v.body.position.z, nf };
+  };
+  const wla = stop('wla', 50);
+  // About 0.4-0.6 g on drum brakes: 16-25 m from 50 km/h.
+  assert.ok(wla.d > 16 && wla.d < 26, `WLA from 50 km/h: ${wla.d.toFixed(1)} m`);
+  assert.ok(!wla.v.fallen);
+  // Weight transfer loads the front wheel well past its static share.
+  const statF = wla.v.wF.L;
+  assert.ok(wla.nf > statF * 1.3, `front load ${wla.nf.toFixed(0)} N vs static ${statF.toFixed(0)} N`);
+  const bike = stop('bicycle', 25);
+  assert.ok(bike.d > 4 && bike.d < 10, `bicycle from 25 km/h: ${bike.d.toFixed(1)} m`);
+  const outfit = stop('r75_sidecar', 50);
+  assert.ok(outfit.d > 15 && outfit.d < 28, `R 75 outfit from 50 km/h: ${outfit.d.toFixed(1)} m`);
+});
+
+test('sidecar outfits stay on three wheels in gentle turns either way', () => {
+  for (const steer of [0.3, -0.3]) {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, 'r75_sidecar', 0, 0, 0);
+    run(v, 1);
+    run(v, 20, () => v.driverInput(kmh(v) < 40 ? 1 : 0, 0));
+    let minSide = Infinity,
+      maxRoll = 0;
+    run(v, 10, () => {
+      v.driverInput(kmh(v) < 40 ? 0.6 : 0, steer);
+      minSide = Math.min(minSide, v.wS.N);
+      maxRoll = Math.max(maxRoll, Math.abs(v.lean));
+    });
+    assert.ok(minSide > 300, `sidecar wheel load fell to ${minSide.toFixed(0)} N (steer ${steer})`);
+    assert.ok(maxRoll < 3 * (Math.PI / 180), `outfit rolled ${((maxRoll * 180) / Math.PI).toFixed(1)} deg`);
+    assert.ok(Math.abs(v.yawRate) > 0.05, 'it turned');
+    assert.ok(!v.fallen);
+  }
+});
+
+test('too much lean on grass puts a motorcycle down and hurts the rider', () => {
+  const { game } = makeWorld({ size: 2048, surface: SURF.GRASS });
+  const v = spawn(game, 'wla', 0, 0, 0);
+  const man = v.occupants[0];
+  run(v, 1);
+  run(v, 25, () => v.driverInput(kmh(v) < 60 ? 1 : 0, 0));
+  run(v, 6, () => v.driverInput(kmh(v) < 60 ? 0.6 : 0, 1));
+  assert.ok(v.fallen, 'it went down');
+  assert.ok(!v.occupants[0], 'the rider was thrown off');
+  assert.ok(man.hurt > 5, `the rider got hurt (${(man.hurt || 0).toFixed(0)})`);
+});
+
+test('parked machines go to sleep on their stands; riders sit where riderPose says', () => {
+  const { game } = makeWorld();
+  const v = spawn(game, 'r75', 0, 0, 0, { empty: true });
+  run(v, 4);
+  assert.ok(v.asleep, 'a parked motorcycle stops simulating');
+  assert.ok(v.lean < -0.05 && v.lean > -0.25, `leans on its side stand (${((v.lean * 180) / Math.PI).toFixed(1)} deg)`);
+  // Rider poses: the interface the soldier models read.
+  const bike = spawn(game, 'bicycle', 10, 0, 0);
+  run(bike, 3, () => bike.driverInput(1, 0));
+  const pose = bike.riderPose(0, {});
+  assert.equal(pose.style, 'bicycle');
+  assert.ok(pose.hip.isVector3 && pose.handL.isVector3 && pose.handR.isVector3 && pose.footL.isVector3 && pose.footR.isVector3);
+  assert.ok(typeof pose.pedal === 'number', 'pedal crank angle');
+  const ground = game.world.hf.getHeight(pose.hip.x, pose.hip.z);
+  assert.ok(pose.hip.y - ground > 0.9 && pose.hip.y - ground < 1.3, `saddle height ${(pose.hip.y - ground).toFixed(2)}`);
+  assert.ok(pose.handL.distanceTo(pose.handR) > 0.4, 'hands on both grips');
+  const eye = bike.seatPos(0, new THREE.Vector3(), 'eye');
+  assert.ok(eye.y > pose.hip.y + 0.5, 'eye above the hips');
+  const outfit = spawn(game, 'm72_sidecar', 20, 0, 0, { empty: true });
+  const side = outfit.riderPose(1, {});
+  assert.equal(side.style, 'sidecar');
+  assert.ok(side.handR?.isVector3, 'sidecar gunner holds the machine gun');
+  assert.equal(outfit.riderPose(5, {}), null);
+});
+
+test('the V-twin fires unevenly (315/405 degrees), the flat twins evenly', async () => {
+  const { generateSound, SOUNDS } = await import('../src/audio/synth.js');
+  const { BIKE_ENGINE_SPECS } = await import('../src/audio/recipes/bikes.js');
+  const corr = (id, deg) => {
+    const sr = 48000 * SOUNDS[id].rate;
+    const x = generateSound(id, 0, sr);
+    const cycle = 120 / BIKE_ENGINE_SPECS[id].refRpm;
+    const lag = Math.round((deg / 720) * cycle * sr);
+    let s = 0,
+      s0 = 0;
+    for (let i = 0; i < x.length; i++) {
+      s += x[i] * x[(i + lag) % x.length];
+      s0 += x[i] * x[i];
+    }
+    return s / s0;
+  };
+  assert.ok(corr('engineVTwin', 315) > corr('engineVTwin', 360) + 0.1, 'V-twin: the beat comes in pairs');
+  assert.ok(corr('engineBoxer', 360) > corr('engineBoxer', 315) + 0.3, 'boxer: one even beat per turn');
+  assert.ok(corr('engineBoxerSV', 360) > corr('engineBoxerSV', 315) + 0.3, 'M-72: one even beat per turn');
+});
+
+test('a bot rides a motorcycle toward a far goal and gets off short of it', async () => {
+  const { BikeRide } = await import('../src/ai/riderBot.js');
+  for (const [id, angleDeg] of [
+    ['wla', 150],
+    ['r75_sidecar', -100],
+    ['bicycle', 40],
+  ]) {
+    const { game } = makeWorld({ size: 2048, surface: SURF.ROAD });
+    const v = spawn(game, id, 0, 0, 0);
+    const man = v.occupants[0];
+    man.team = 1;
+    const a = (angleDeg * Math.PI) / 180;
+    const goal = { id: 'G', x: -Math.sin(a) * 300, z: -Math.cos(a) * 300, radius: 20 };
+    game.mode = { botGoal: () => goal };
+    const brain = { s: man, game, goal, thinkT: 1, target: null, skill: { aim: 1.4 }, path: null, _perceive() {}, lookYaw: 0 };
+    const ride = new BikeRide(brain, v);
+    ride.phase = 'ride';
+    let t = 0;
+    for (; t < 90; t += 1 / 120) {
+      game.navBudget = 1;
+      if (!ride.update(1 / 120)) break;
+      v.step(1 / 120);
+      game.time += 1 / 120;
+    }
+    const d = Math.hypot(goal.x - man.body.x, goal.z - man.body.z);
+    assert.ok(!v.fallen, `${id} fell on the way`);
+    assert.ok(!man.vehicle, `${id}: still aboard after ${t.toFixed(0)} s`);
+    assert.ok(d > 25 && d < 95, `${id}: got off ${d.toFixed(0)} m from the goal`);
+  }
+});

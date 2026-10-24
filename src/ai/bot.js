@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { clamp, gaussRandom, wrapAngle, DEG, G } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
+import { findRide } from './riderBot.js';
 
 const _hit = new RayHit();
 const _eye = { x: 0, y: 0, z: 0 };
@@ -59,6 +60,11 @@ export class BotBrain {
   update(dt) {
     const s = this.s;
     if (!s.alive) return;
+    // Getting to, riding or getting off a bicycle or motorcycle (riderBot.js).
+    if (this.ride) {
+      if (this.ride.update(dt)) return;
+      this.ride = null;
+    }
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
       this.thinkT = 0.2 + Math.random() * 0.1;
@@ -167,6 +173,8 @@ export class BotBrain {
       this.path = null;
       this.wander = null;
     }
+    // A long way to go: take a bicycle or motorcycle if there's one at hand.
+    if (!this.target && this.goal && !s.vehicle && !this.ride) this.ride = findRide(this);
     // Reload behind whatever cover we have when there's a lull.
     const w = s.weapon;
     if (w && w.state === 'ready') {

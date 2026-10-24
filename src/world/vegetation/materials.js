@@ -18,6 +18,9 @@ export function makeSharedUniforms(def) {
     uVegWind: { value: new THREE.Vector4(dir.x, dir.y, Math.min(1.2, w.speed / 10), 0) },
     uVegCam: { value: new THREE.Vector3() },
     uVegLod: { value: 1 },
+    // Added to the fade dither each frame when TAA is on, so cross-fades between
+    // levels of detail blend smoothly over a few frames (0 otherwise).
+    uVegDither: { value: 0 },
   };
 }
 
@@ -56,7 +59,8 @@ vec3 vegWindOffset(vec3 wp, vec3 w, float phase) {
 `;
 
 const COMMON_FRAG = /* glsl */ `
-float vegDither() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
+uniform float uVegDither;
+float vegDither() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uVegDither); }
 `;
 
 // Alpha-tested foliage loses coverage in smaller mipmaps (the alpha averages below

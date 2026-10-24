@@ -36,19 +36,23 @@ import { makeSharedUniforms, makeTreeMaterial, makeImpostorMaterial, makeGroundM
 import { InstanceStreamer, ViewFilter, RefillTrigger } from './vegetation/lod.js';
 import { GroundCover } from './vegetation/grass.js';
 
-// Level-of-detail distances (m) per quality preset: full trees, bushes and hedge
-// sections up to these distances, impostors and simple hedges beyond.
+// Level-of-detail distances (m) per tree detail setting: full trees, bushes and hedge
+// sections up to these distances, impostors and simple hedges beyond; and the size
+// of the baked impostor pictures.
 const LOD = {
-  Low: { tree: 80, bush: 45, hedge: 55, hedgeFar: 650, bushFar: 260, atlasCell: 256, impostor: 1024 },
-  Medium: { tree: 115, bush: 60, hedge: 85, hedgeFar: 900, bushFar: 350, atlasCell: 384, impostor: 1536 },
-  High: { tree: 155, bush: 75, hedge: 115, hedgeFar: 1200, bushFar: 450, atlasCell: 512, impostor: 1536 },
-  Ultra: { tree: 210, bush: 100, hedge: 150, hedgeFar: 1600, bushFar: 600, atlasCell: 512, impostor: 2048 },
+  low: { tree: 80, bush: 45, hedge: 55, hedgeFar: 650, bushFar: 260, impostor: 1024 },
+  medium: { tree: 115, bush: 60, hedge: 85, hedgeFar: 900, bushFar: 350, impostor: 1536 },
+  high: { tree: 155, bush: 75, hedge: 115, hedgeFar: 1200, bushFar: 450, impostor: 1536 },
+  ultra: { tree: 210, bush: 100, hedge: 150, hedgeFar: 1600, bushFar: 600, impostor: 2048 },
 };
+// Texture atlas cell size (px) per texture detail setting.
+const ATLAS_CELL = { low: 256, medium: 512, high: 512 };
 
 function lodFor(quality) {
   const td = quality.treeDistance ?? 1500;
-  const base = LOD[quality.label] || (td <= 700 ? LOD.Low : td <= 1100 ? LOD.Medium : td <= 1700 ? LOD.High : LOD.Ultra);
-  return { ...base, far: td, hedgeFar: Math.min(base.hedgeFar, td), bushFar: Math.min(base.bushFar, td), shadow: quality.shadowDistance ?? 300 };
+  const base = LOD[quality.treeDetail] || LOD[String(quality.label).toLowerCase()] || (td <= 700 ? LOD.low : td <= 1100 ? LOD.medium : td <= 1700 ? LOD.high : LOD.ultra);
+  const atlasCell = ATLAS_CELL[quality.options?.textureQuality] || (base === LOD.low ? 256 : 512);
+  return { ...base, atlasCell, far: td, hedgeFar: Math.min(base.hedgeFar, td), bushFar: Math.min(base.bushFar, td), shadow: quality.shadowDistance ?? 300 };
 }
 
 const MOVE = 8; // refill after moving this far (m)
@@ -57,7 +61,8 @@ const ALWAYS = 45; // plants this close are kept whatever the view direction (sh
 
 export function buildVegetation({ terrain, def, collision = null, textures = null, quality = {}, village = null, plan = null, shadows = null, camera = null, renderer = null } = {}) {
   const t0 = performance.now();
-  const q = lodFor(quality);
+  let q = lodFor(quality);
+  let taa = !!quality.taa;
   const site = new VegSite(terrain, def, { village, plan });
   const rng = new RNG(((def.seed || 1) * 101 + 17) >>> 0);
   const P = new PlantList(site.half);
@@ -99,17 +104,13 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
   if (!gl || typeof textures?.atlas !== 'function') {
     for (const s of shapes) s.geometry.dispose();
     stats.buildMs = Math.round(performance.now() - t0);
-    return { group, update() {}, debug: () => ({ drawCalls: 0, triangles: 0 }), stats, plants: P, hedges: runs, landmarks, site, dispose() {} };
+    return { group, update() {}, setQuality() {}, debug: () => ({ drawCalls: 0, triangles: 0 }), stats, plants: P, hedges: runs, landmarks, site, dispose() {} };
   }
 
   // --- Textures --------------------------------------------------------------------
   const atlas = textures.atlas('vegetation', ATLAS_CELLS, { cols: ATLAS_COLS, cellSize: q.atlasCell, orm: false });
   const groundAtlas = textures.atlas('vegetationGround', GROUND_CELLS, { cols: 4, cellSize: q.atlasCell, normals: false, orm: false });
   const imp = bakeImpostors(gl, shapes, atlas.map, { size: q.impostor });
-  VARIANTS.forEach((v, i) => {
-    const near = v.bush ? q.bush : q.tree;
-    imp.info[i].set(imp.info[i].x, near * 0.86, near, v.bush ? q.bushFar : q.far);
-  });
   const tTex = performance.now();
 
   // --- Materials -----------------------------------------------------------------
@@ -167,7 +168,6 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
     return mesh;
   });
   const plantMax = new Float32Array(VARIANTS.length);
-  VARIANTS.forEach((v, i) => (plantMax[i] = v.bush ? q.bush : q.tree));
   const plantStream = new InstanceStreamer(items, nearMeshes, { half: site.half });
 
   // --- Far plants: impostors, streamed like the near ones (trees and bushes have
@@ -220,8 +220,8 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
   const impGroups = new Uint8Array(P.n);
   for (let i = 0; i < P.n; i++) impGroups[i] = isBush(P.variant[i]) ? 1 : 0;
   const impStream = new InstanceStreamer({ ...items, group: impGroups }, [impSink, impSink], { half: site.half, cellSize: 128 });
-  const impMax = new Float32Array([q.far, q.bushFar]);
-  const impMin = new Float32Array([q.tree * 0.86, q.bush * 0.86]);
+  const impMax = new Float32Array(2);
+  const impMin = new Float32Array(2);
   const impTrigger = new RefillTrigger(30, 0.4);
   const impMesh = new THREE.Mesh(impGeo, impMat.material);
   impMesh.name = 'vegetation:impostors';
@@ -254,10 +254,33 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
   }
   const hedgeStream = new InstanceStreamer(nearSections, [hedgeNear], { half: site.half });
   const hedgeFarStream = new InstanceStreamer(farSections, [hedgeFar], { half: site.half, cellSize: 128 });
-  const hedgeMax = new Float32Array([q.hedge]);
-  const hedgeFarMax = new Float32Array([q.hedgeFar]);
+  const hedgeMax = new Float32Array(1);
+  const hedgeFarMax = new Float32Array(1);
 
   group.add(ground.mesh);
+
+  // --- Distances (changed live by the tree detail, view and shadow settings) ------------
+  const setFade = (m, fadeIn, fadeOut, shadow) => {
+    m.uniforms.uVegFade.value.set(fadeIn[0], fadeIn[1], fadeOut[0], fadeOut[1]);
+    m.uniforms.uVegShadow.value.set(shadow[0], shadow[1]);
+  };
+  const applyDistances = () => {
+    VARIANTS.forEach((v, i) => {
+      const near = v.bush ? q.bush : q.tree;
+      imp.info[i].set(imp.info[i].x, near * 0.86, near, v.bush ? q.bushFar : q.far);
+      plantMax[i] = near;
+    });
+    setFade(treeMat, [-2, -1], [q.tree * 0.86, q.tree], [-1, q.tree * 0.93]);
+    setFade(bushMat, [-2, -1], [q.bush * 0.86, q.bush], [-1, q.bush * 0.93]);
+    setFade(hedgeNearMat, [-2, -1], [q.hedge * 0.86, q.hedge], [-1, q.hedge * 0.93]);
+    setFade(hedgeFarMat, [q.hedge * 0.86, q.hedge], [q.hedgeFar * 0.9, q.hedgeFar], [q.hedge * 0.93, q.shadow]);
+    impMat.uniforms.uVegShadow.value.set(0, Math.min(q.shadow, q.far));
+    impMax.set([q.far, q.bushFar]);
+    impMin.set([q.tree * 0.86, q.bush * 0.86]);
+    hedgeMax[0] = q.hedge;
+    hedgeFarMax[0] = q.hedgeFar;
+  };
+  applyDistances();
 
   // --- Per-frame update ------------------------------------------------------------------
   const view = new ViewFilter();
@@ -268,6 +291,7 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
     pendingImp = false;
   const update = (cam, time) => {
     shared.uVegTime.value = time;
+    shared.uVegDither.value = taa ? (shared.uVegDither.value + 0.618034) % 1 : 0;
     shared.uVegCam.value.copy(cam);
     let lod = 1;
     if (camera?.isPerspectiveCamera) {
@@ -324,12 +348,28 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
     return out;
   };
 
+  // New graphics settings while playing: level-of-detail distances, shadow distance,
+  // grass density and distance. (Texture sizes stay until the next battle.)
+  const setQuality = (quality) => {
+    const atlasCell = q.atlasCell,
+      impostor = q.impostor;
+    q = { ...lodFor(quality), atlasCell, impostor };
+    taa = !!quality.taa;
+    stats.lod = q;
+    applyDistances();
+    if (ground.setQuality(quality)) groundMat.uniforms.uGrassLod.value.set(...ground.lodParams());
+    pendingNear = pendingImp = true;
+    trigger.reset();
+    impTrigger.reset();
+  };
+
   stats.textureMs = Math.round(tTex - tColl);
   stats.hedgeSections = { near: nearSections.count, far: farSections.count };
   stats.buildMs = Math.round(performance.now() - t0);
   return {
     group,
     update,
+    setQuality,
     debug,
     stats,
     plants: P,

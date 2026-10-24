@@ -16,6 +16,7 @@ import { BotBrain } from '../../ai/bot.js';
 import { DEFAULT_LOADOUT, weaponsFor, FACTIONS } from '../../weapons/defs.js';
 import { attachSoldierModel } from '../soldierView.js';
 import { TankBrain } from '../../ai/tankBot.js';
+import { BikeStands, placeAssaultBikes } from '../../vehicles/bikeSpots.js';
 
 export const DEF = 0; // defenders' team index
 export const ATT = 1; // attackers
@@ -33,6 +34,7 @@ export class AssaultMode {
     this.factions = [opts.defenders || 'GE', opts.attackers || 'US'];
     this.playerTeam = opts.playerTeam ?? ATT;
     this.perSide = opts.perSide ?? 12;
+    this.withBikes = opts.bikes ?? !game.headless;
     this.timeLeft = (opts.minutes ?? 30) * 60;
     this.suddenDeath = false;
     this.over = null;
@@ -123,6 +125,9 @@ export class AssaultMode {
       for (const p of this.points.filter((q) => q.kind === 'access')) this._park(jeep[this.factions[ATT]], p, ATT);
       for (const p of this.points.filter((q) => q.kind === 'objective')) this._park(jeep[this.factions[DEF]], p, DEF);
     }
+    // Bicycles and motorcycles at the spawn points and around the village.
+    this.bikes = new BikeStands(g);
+    if (this.withBikes) placeAssaultBikes(this, this.bikes);
     // HUD: points and timer.
     const el = document.createElement('div');
     el.className = 'assault-bar';
@@ -364,6 +369,7 @@ export class AssaultMode {
       spot.v.team = spot.team;
       spot.deadT = 0;
     }
+    this.bikes?.update(dt);
     if (((g.time * 4) | 0) !== this._barTick) {
       this._barTick = (g.time * 4) | 0;
       this._updateBar();

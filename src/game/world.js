@@ -7,6 +7,7 @@ import { buildRoads, buildRiver } from '../world/roadsWater.js';
 import { CollisionWorld } from '../physics/collision.js';
 import { SkySystem } from '../render/sky.js';
 import { Shadows } from '../render/shadows.js';
+import { SHARED_UNIFORMS, setAlphaToCoverage } from '../render/pipeline.js';
 import { TextureLibrary } from '../render/textures.js';
 import { Atmosphere } from '../ballistics/atmosphere.js';
 import { planVillage, buildVillage } from '../world/village/index.js';
@@ -66,6 +67,10 @@ export class World {
     this.sky.setSun(this.def.sun.elevation, this.def.sun.azimuth);
     this.sky.refresh();
     this.shadows = new Shadows(this.renderer, this.scene, this.camera, this.sky, q);
+    // Summer haze: a thin, even haze plus denser air low over the ground (the map
+    // can set its own: fog { density, falloff, base, haze }).
+    const f = this.def.fog || {};
+    SHARED_UNIFORMS.uFog.value.set(f.density ?? 0.0003, f.falloff ?? 0.006, f.base ?? this.hf.minH ?? 0, f.haze ?? 0.00008);
 
     progress(0.4, 'Laying out fields');
     await nextFrame();
@@ -100,13 +105,25 @@ export class World {
     progress(0.95, 'Final touches');
     await nextFrame();
     this.shadows.prepare(this.scene);
+    setAlphaToCoverage(this.scene, q.msaa > 0);
     progress(1, 'Ready');
+  }
+
+  // New graphics settings while playing (a resolved quality from settings.js).
+  applyQuality(q) {
+    this.quality = q;
+    this.sky.setQuality(q);
+    this.shadows.apply(q);
+    this.terrainRenderer.quality = q;
+    this.vegetation?.setQuality?.(q);
+    setAlphaToCoverage(this.scene, q.msaa > 0);
   }
 
   // Add a dynamic object (vehicle, soldier, effect) to the world scene.
   add(obj) {
     this.scene.add(obj);
     this.shadows.prepare(obj);
+    setAlphaToCoverage(obj, this.quality.msaa > 0);
     return obj;
   }
 

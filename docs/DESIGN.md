@@ -23,7 +23,7 @@ Plain ES modules and three.js, no build step during development (`npm start` ser
 | Vehicles | `src/vehicles/` | `vehicle.js` (rigid hull on raycast suspension, hull contacts, seats, armor plates and damage), `wheeled.js` (engine, gearbox, tires), `tracked.js` (tracks as gripping belts, steering systems, turret and gun), `trackMesh.js` (animated links), `models/` (procedural vehicle models). |
 | AI | `src/ai/` | `navgrid.js` (walkability grid, its connected areas, and A*; one grid for soldiers and a wider-clearance one for vehicles), `bot.js` (infantry), `tankBot.js` (tank crews). |
 | Game | `src/game/` | `game.js` (the match: update order, hits, explosions, vehicles, bots), `player.js` and `vehicleControl.js` (the player), `modes/` (Assault, firing range). |
-| Rendering | `src/render/` | HDR pipeline with atmosphere and fog, SSAO, bloom, filmic grade; cascaded shadow maps; GPU-baked procedural textures; particles and decals; spent cases. |
+| Rendering | `src/render/` | HDR pipeline (`pipeline.js`, shaders in `postfx.glsl.js`): contact shadows (SSAO), atmosphere and height fog from depth, edge smoothing (FXAA, 4x MSAA with alpha to coverage, or TAA), camera motion blur, focus blur when aiming, sun rays, bloom, eye adaptation, ACES tone mapping and a film grade; cascaded shadow maps; sky with clouds; GPU-baked procedural textures; lit soft particles and decals; spent cases. |
 | Sound | `src/audio/` | Every sound is synthesized at load (`synth.js` and `recipes/`); `audio.js` plays them with distance, air absorption, the speed of sound and reverb. |
 | UI | `src/ui/` | Menus, HUD, sights, scoreboard. |
 
@@ -52,6 +52,12 @@ Vehicles answer the same ray query with their armor plates (oriented boxes from 
 - **A vehicle:** add its data to `src/vehicles/defs.js` (mass, engine curve, gears, suspension, armor comes from the model) and a builder in `src/vehicles/models/` following the conventions in `vkit.js`. Add its expected top speed to `tests/vehicles.test.js`.
 - **A map:** add a definition to `src/world/maps.js` (terrain shape, river, roads, forests, objectives and lines for Assault).
 
+## Graphics settings
+
+`src/core/settings.js` lists every graphics option (`GRAPHICS_OPTIONS`: label, plain-English note, choices or range, and whether it applies at once) and the four presets (`GRAPHICS_PRESETS`). `settings.quality` resolves the options into the numbers the renderer reads (shadow maps and their size, edge smoothing mode, texture size...). Changing a setting in the menus calls `App.applyGraphics()`, which passes the new quality to the pipeline (`apply`), the world (`applyQuality`: shadows, terrain, vegetation distances and grass, sky) and the effects; only texture detail waits for the next battle. On the first start the preset is picked from the graphics card the browser reports (`detectQuality`).
+
+Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the biggest (each shadow map redraws the scene from the sun; the far maps are redrawn every other frame), then 4x MSAA (memory and bandwidth), contact shadows (two half-resolution passes), TAA (one full pass and a copy), focus when aiming (one pass, only while aiming), motion blur (one pass), sun rays (two quarter-resolution passes), bloom (ten small passes), eye adaptation (two tiny passes). Each flash light (Effects: Medium 2, High 4) adds a little to every lit pixel.
+
 ## Debug pages
 
 Open these through the dev server:
@@ -63,5 +69,6 @@ Open these through the dev server:
 - `debug/vegetation.html?view=lane` (or `aerial`, `forest`, `hedge`, `wheat`, `orchard`; `cam=x,y,z,yaw,pitch` for any view)
 - `debug/audio.html`
 - `debug/textures.html`
+- `debug/graphics.html?view=river&quality=high&aa=taa` (the world through the real pipeline with any graphics option; `fx=explosion|smoke|muzzle|impacts` for effects, `dof=1` for focus when aiming)
 
 `node tools/shot.mjs "map=town&quality=low" out.png` takes a screenshot of the game in a headless browser.
