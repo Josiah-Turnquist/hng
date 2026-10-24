@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Gun viewer</title>
-<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre}</style>
+<style>body{margin:0;background:#202020;color:#ddd;font:12px monospace;overflow:hidden}#info{position:absolute;left:8px;top:8px;white-space:pre;text-shadow:0 0 3px #000}</style>
 <script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
 </head>
 <body>
@@ -12,6 +12,13 @@
 // Shows a procedural gun model: a side view (top half) and a 3/4 view (bottom half),
 // with anchor points marked (red = sights, green = muzzle, blue = hands, yellow = others).
 // Usage: debug/guns.html?gun=kar98k  (or ?gun=all to list them in a grid)
+//   lod=0|1|2       level of detail (default 0)
+//   anchors=0       hide the anchor dots
+//   view=hip        the first-person hip view (as the game holds a rifle)
+//   view=close&at=x,y,z&from=x,y,z&fov=30   a close-up camera in gun space
+//   view=right|left|top|front|back            one big orthographic view (zoom, focus=z,y)
+//   sight=1&range=300  the sight picture through the iron sights
+//   size=1024       texture size
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
@@ -23,32 +30,60 @@ const W = innerWidth, H = innerHeight;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W, H);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = Number(params.get('exposure') || 1.1);
 document.body.appendChild(renderer.domElement);
 renderer.setScissorTest(true);
 const lib = new TextureLibrary(renderer, { size: 512 });
-const mats = makeGunMaterials(lib);
+const mats = makeGunMaterials(lib, { size: Number(params.get('size') || 512) });
 const pmrem = new THREE.PMREMGenerator(renderer);
 const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const lod = Number(params.get('lod') || 0);
+const showAnchors = params.get('anchors') !== '0';
+const view = params.get('view');
+const vec = (s, d) => (s ? s.split(',').map(Number) : d);
 
-// Sight picture mode: ?gun=kar98k&sight=1&range=300 renders the view from the
-// shooter's eye through the sights (red dot = screen center = point of aim).
+function makeScene(bg = 0x2a2c2e) {
+  const scene = new THREE.Scene();
+  scene.environment = env;
+  scene.environmentIntensity = Number(params.get('env') || 0.6);
+  scene.background = new THREE.Color(bg);
+  const sun = new THREE.DirectionalLight(0xfff4e6, 2.4);
+  sun.position.set(0.4, 1, 0.5);
+  scene.add(sun);
+  return scene;
+}
+
+function triCount(root) {
+  let tris = 0, calls = 0;
+  root.traverse((o) => { if (o.isMesh) { calls++; const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+  return { tris, calls };
+}
+
+function addAnchors(scene, gun) {
+  if (!showAnchors) return;
+  const colors = { frontSight: 0xff2222, rearSight: 0xff2222, muzzle: 0x22ff22, gripR: 0x2288ff, gripL: 0x2288ff, trigger: 0x2288ff };
+  for (const [name, p] of Object.entries(gun.anchors)) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.003, 8, 6), new THREE.MeshBasicMaterial({ color: colors[name] ?? 0xffdd22, depthTest: false }));
+    m.position.copy(p);
+    m.renderOrder = 10;
+    scene.add(m);
+  }
+}
+
+const t0 = performance.now();
 if (params.get('sight')) {
+  // Sight picture mode: ?gun=kar98k&sight=1&range=300 renders the view from the
+  // shooter's eye through the sights (red dot = screen center = point of aim).
   const { WEAPONS } = await import('../src/weapons/defs.js');
   const { Sighting } = await import('../src/weapons/sighting.js');
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
   const id = params.get('gun');
   const def = WEAPONS[params.get('weapon') || id];
-  const gun = buildGun(id, mats);
+  const gun = buildGun(id, mats, { lod });
   const sg = new Sighting(gun, def, new Atmosphere(0, 15));
   const ri = Math.max(0, def.sight.ranges.indexOf(Number(params.get('range') || def.sight.zero)));
   sg.setRangeIndex(ri);
-  const scene = new THREE.Scene();
-  scene.environment = env;
-  scene.background = new THREE.Color(0x8fa7bd);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(0.5, 1, 0.6);
-  scene.add(sun);
+  const scene = makeScene(0x8fa7bd);
   const q = new THREE.Quaternion().setFromUnitVectors(sg.losDir, new THREE.Vector3(0, 0, -1));
   gun.root.quaternion.copy(q);
   gun.root.position.copy(sg.eye).applyQuaternion(q).negate();
@@ -62,31 +97,72 @@ if (params.get('sight')) {
   document.body.appendChild(dot);
   document.getElementById('info').textContent = `${def.name} sight picture at ${def.sight.ranges[ri]} ${def.sight.unit}: bore elevation ${(sg.theta * 1000).toFixed(2)} mrad, eye relief ${(sg.eyeRelief * 100).toFixed(0)} cm, leaf ${(sg.state.leaf * 180 / Math.PI).toFixed(2)} deg`;
   window.__done = true;
+} else if (view === 'hip' || view === 'close') {
+  // One big perspective view: the first-person hip pose (eye 12 cm left and 17 cm
+  // above the trigger, 10 cm behind it, like viewmodel.js), or any close-up.
+  const id = params.get('gun') || 'kar98k';
+  const gun = buildGun(id, mats, { lod });
+  const scene = makeScene(Number(params.get('bg') || 0x6f7f8f));
+  scene.add(gun.root);
+  addAnchors(scene, gun);
+  const cam = new THREE.PerspectiveCamera(Number(params.get('fov') || (view === 'hip' ? 52 : 30)), W / H, 0.005, 50);
+  if (view === 'hip') {
+    const hp = vec(params.get('hp'), [0.12, -0.17, -0.1]);
+    cam.position.set(-hp[0], -hp[1], -hp[2]);
+    const dir = new THREE.Vector3(hp[0], hp[1], -25).normalize();
+    cam.lookAt(cam.position.clone().add(dir));
+  } else {
+    cam.position.fromArray(vec(params.get('from'), [0.25, 0.12, 0.1]));
+    cam.lookAt(new THREE.Vector3(...vec(params.get('at'), [0, 0, -0.15])));
+  }
+  renderer.setViewport(0, 0, W, H);
+  renderer.setScissor(0, 0, W, H);
+  renderer.render(scene, cam);
+  const tc = triCount(gun.root);
+  document.getElementById('info').textContent = `${id} LOD ${lod}: ${tc.tris} triangles, ${tc.calls} meshes, built in ${(performance.now() - t0).toFixed(0)} ms`;
+  window.__done = true;
+} else if (view) {
+  // One big orthographic view from a side.
+  const id = params.get('gun') || 'kar98k';
+  const gun = buildGun(id, mats, { lod });
+  const scene = makeScene();
+  scene.add(gun.root);
+  addAnchors(scene, gun);
+  const box = new THREE.Box3().setFromObject(gun.root);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const focus = params.get('focus');
+  if (focus) { const [fz, fy] = focus.split(',').map(Number); center.z = fz; center.y = fy; }
+  const zoom = Number(params.get('zoom') || 1);
+  const aspect = W / H;
+  const halfW = Math.max(size.z * 0.54, size.y * 0.54 * aspect) / zoom;
+  const halfH = halfW / aspect;
+  const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, -10, 10);
+  const dirs = { right: [1, 0, 0], left: [-1, 0, 0], top: [0, 1, 0], front: [0, 0, -1], back: [0, 0, 1] };
+  const d = dirs[view] || dirs.right;
+  cam.position.set(center.x + d[0], center.y + d[1], center.z + d[2]);
+  if (view === 'top') cam.up.set(-1, 0, 0);
+  cam.lookAt(center);
+  renderer.setViewport(0, 0, W, H);
+  renderer.setScissor(0, 0, W, H);
+  renderer.render(scene, cam);
+  const tc = triCount(gun.root);
+  document.getElementById('info').textContent = `${id} LOD ${lod}: ${tc.tris} triangles, ${tc.calls} meshes`;
+  window.__done = true;
 } else {
 const ids = params.get('gun') === 'all' || !params.get('gun') ? Object.keys(MODELS) : params.get('gun').split(',');
-const cols = ids.length > 1 ? Math.min(4, ids.length) : 1;
+const cols = ids.length > 1 ? Math.min(Number(params.get('cols') || 4), ids.length) : 1;
 const rows = Math.ceil(ids.length / cols);
 const info = [];
 ids.forEach((id, i) => {
-  const scene = new THREE.Scene();
-  scene.environment = env;
-  scene.background = new THREE.Color(0x2a2c2e);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-  sun.position.set(0.5, 1, 0.6);
-  scene.add(sun);
+  const scene = makeScene();
   let gun;
-  try { gun = buildGun(id, mats); } catch (e) { info.push(`${id}: ERROR ${e.message}`); return; }
+  try { gun = buildGun(id, mats, { lod }); } catch (e) { info.push(`${id}: ERROR ${e.message}`); console.error(e); return; }
   scene.add(gun.root);
   const box = new THREE.Box3().setFromObject(gun.root);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  const colors = { frontSight: 0xff2222, rearSight: 0xff2222, muzzle: 0x22ff22, gripR: 0x2288ff, gripL: 0x2288ff, trigger: 0x2288ff };
-  for (const [name, p] of Object.entries(gun.anchors)) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(0.004, 8, 6), new THREE.MeshBasicMaterial({ color: colors[name] ?? 0xffdd22, depthTest: false }));
-    m.position.copy(p);
-    m.renderOrder = 10;
-    scene.add(m);
-  }
+  addAnchors(scene, gun);
   const cw = W / cols, ch = H / rows;
   const cx = (i % cols) * cw, cy = H - (Math.floor(i / cols) + 1) * ch;
   // Side view (orthographic from the right side).
@@ -112,7 +188,8 @@ ids.forEach((id, i) => {
   renderer.render(scene, persp);
   const a = gun.anchors;
   const sr = a.frontSight && a.rearSight ? a.rearSight.distanceTo(a.frontSight) : 0;
-  info.push(`${id}: length ${size.z.toFixed(3)} m, height ${size.y.toFixed(3)} m, sight radius ${(sr * 1000).toFixed(0)} mm, parts ${Object.keys(gun.parts).join('/')}`);
+  const tc = triCount(gun.root);
+  info.push(`${id}: length ${size.z.toFixed(3)} m, height ${size.y.toFixed(3)} m, sight radius ${(sr * 1000).toFixed(0)} mm, ${tc.tris} tris in ${tc.calls} meshes (LOD ${lod}), parts ${Object.keys(gun.parts).join('/')}`);
 });
 document.getElementById('info').textContent = info.join('\n');
 window.__done = true;

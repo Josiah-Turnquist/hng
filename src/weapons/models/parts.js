@@ -327,6 +327,14 @@ export function path(pts, perSeg = 4) {
 // Gives smooth, evenly shaded stocks with truly rounded edges (no long
 // triangles bent by a taper). Ends are closed with flat caps.
 export function loft(b, { points, width, taper = null, r = 0.007, rTop = r, rBot = r, mat, x = 0, step = 0.005, seg = 4 }) {
+  // Coarser slices and corners at the soldier LODs.
+  if (b.lod === 1) {
+    step = Math.max(step, 0.015);
+    seg = Math.min(seg, 2);
+  } else if (b.lod === 2) {
+    step = Math.max(step, 0.06);
+    seg = 1;
+  }
   const n = points.length;
   let zmin = Infinity,
     zmax = -Infinity;

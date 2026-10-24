@@ -2,6 +2,7 @@
 import * as german from './german.js';
 import * as us from './us.js';
 import * as soviet from './soviet.js';
+import { GunBuilder } from './kit.js';
 
 export const MODELS = {
   ...us,
@@ -9,13 +10,53 @@ export const MODELS = {
   ...soviet,
 };
 
-import { GunBuilder } from './kit.js';
+// Levels of detail: 0 = first person (30k-60k triangles), 1 = soldiers nearby
+// (3k-6k), 2 = soldiers far away (a few hundred, one material).
+export const GUN_LODS = [0, 1, 2];
+
+// Distance (m) from the camera beyond which a soldier's gun drops to LOD 2.
+export const GUN_LOD2_DISTANCE = 40;
+
+// LOD for a gun carried by a soldier seen from `distance` meters (third person).
+export function gunLodForDistance(distance) {
+  return distance > GUN_LOD2_DISTANCE ? 2 : 1;
+}
+
+// Built models are kept per material set and LOD; each call returns a clone that
+// shares the geometry (and materials) with every other copy of the same gun.
+const built = new WeakMap();
 
 // Build a gun model by id. Returns { root, parts, anchors, meta }.
-export function buildGun(id, mats) {
+// opts.lod: 0 (default, full detail), 1 or 2.
+export function buildGun(id, mats, { lod = 0 } = {}) {
   const fn = MODELS[id];
   if (!fn) throw new Error(`No model for ${id}`);
-  const b = new GunBuilder(mats);
-  fn(b);
-  return b.build(id);
+  let cache = built.get(mats);
+  if (!cache) built.set(mats, (cache = new Map()));
+  const key = `${id}@${lod}`;
+  let proto = cache.get(key);
+  if (!proto) {
+    const b = new GunBuilder(mats, { lod });
+    fn(b);
+    proto = b.build(id);
+    proto.meta.lod = lod;
+    cache.set(key, proto);
+  }
+  return cloneGun(proto);
+}
+
+// Copy a built gun: new objects and transforms, shared geometry and materials.
+function cloneGun(proto) {
+  const src = proto.root;
+  const ud = src.userData;
+  src.userData = {}; // keep Object3D.clone from serializing anchors and parts
+  const root = src.clone(true);
+  src.userData = ud;
+  const parts = {};
+  for (const g of root.children) parts[g.name] = g;
+  const anchors = {};
+  for (const [k, v] of Object.entries(proto.anchors)) anchors[k] = v.clone();
+  const meta = structuredClone(proto.meta);
+  root.userData = { anchors, parts, meta };
+  return { root, parts, anchors, meta };
 }
