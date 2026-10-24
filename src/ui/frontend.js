@@ -464,12 +464,19 @@ export function showFrontEnd(app) {
       d.appendChild(b);
     }
 
-    // The battlefield's map, drawn from the map's plan (no terrain yet).
+    // The battlefield's map, drawn from the map's plan (no terrain yet); drawn
+    // again when the window changes size.
     function drawMap(canvas, def, team) {
       requestAnimationFrame(() => {
         if (!canvas.isConnected) return;
         const map = new BattleMap(canvas, def, {});
         map.draw({ team });
+        const onResize = () => {
+          if (!canvas.isConnected) return window.removeEventListener('resize', onResize);
+          clearTimeout(canvas._resizeT);
+          canvas._resizeT = setTimeout(() => map.resize(), 150);
+        };
+        window.addEventListener('resize', onResize);
       });
     }
 

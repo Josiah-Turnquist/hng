@@ -73,6 +73,7 @@ Open these through the dev server:
 - `debug/vegetation.html?view=lane` (or `aerial`, `forest`, `hedge`, `wheat`, `orchard`; `cam=x,y,z,yaw,pitch` for any view)
 - `debug/audio.html`
 - `debug/textures.html`
+- `debug/battlemap.html?map=town&world=1&live=1` (the battle map as the deploy screen shows it; without `world=1` as the menus show it before the terrain exists)
 - `debug/graphics.html?view=river&quality=high&aa=taa` (the world through the real pipeline with any graphics option; `fx=explosion|smoke|muzzle|impacts` for effects, `dof=1` for focus when aiming)
 
 `node tools/shot.mjs "map=town&quality=low" out.png` takes a screenshot of the game in a headless browser.
