@@ -20,6 +20,7 @@
 //   cls=infantry|recon|paratrooper|tanker|all (all: one row per class)
 //   f=US,GE,SU  variant=n  seed=n  role=rifle|smg|mg|at  lod=0|1|2
 //   gun=kar98k|none (else a per-faction, per-class default)  kind=rifle
+//   glod=0|1|2 gun detail (default as in the game: 1, or 2 with lod=2)
 //   close=face|hands|kit|back|feet|full&i=n: close-up of soldier i (dist= to adjust)
 //   ts=0,0.1,0.2  strip mode: the first faction at several moments, seen from the side
 //   t: action progress 0..1, seconds after death, or extra seconds of a cycle
@@ -161,6 +162,7 @@ const factions = (params.get('f') || 'US,GE,SU').split(',');
 const classes = params.get('cls') === 'all' ? ['infantry', 'recon', 'paratrooper', 'tanker'] : [params.get('cls') || 'infantry'];
 let poses = (params.get('pose') === 'all' ? 'idle,walk,run,aim,crouchaim,proneaim' : params.get('pose') || 'idle').split(',');
 const lod = Number(params.get('lod') || 0);
+const gunLod = params.has('glod') ? Number(params.get('glod')) : lod === 2 ? 2 : 1;
 const seed = Number(params.get('seed') || 1);
 const T = params.has('t') ? Number(params.get('t')) : null;
 const DEG = Math.PI / 180;
@@ -291,7 +293,7 @@ if (strip) {
     const f = factions[0];
     const id = gunFor(f, classes[0]);
     const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: roleFor(kindFor(id)) });
-    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kindFor(id));
+    if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kindFor(id));
     m.setGround(ground);
     const z0 = i * 1.4;
     m.root.position.set(0, ground(0, z0), z0);
@@ -304,7 +306,7 @@ if (strip) {
       const id = gunFor(f, cls);
       const kind = kindFor(id);
       const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: roleFor(kind), variant: params.has('variant') ? Number(params.get('variant')) : undefined });
-      if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats), kind);
+      if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kind);
       m.setGround(ground);
       const wide = /prone|crawl|dead/.test(pose);
       let x0 = (i - (factions.length - 1) / 2) * (wide ? 1.6 : 1.1);

@@ -74,12 +74,23 @@ export function weaponInfo(gun, kind) {
   // (rifle wrist ~3.8 cm thick, pistol and SMG grips ~3 x 5 cm; est.).
   const gripRadius = meta.gripRadius ?? (kind === 'pistol' ? 0.015 : kind === 'smg' ? 0.017 : kind === 'grenade' ? 0.016 : 0.019);
   const tHG = gripCenter(1, gripRadius).sub(anchors.gripR.clone().applyQuaternion(qHG));
-  // Left hand: under the fore-end (cupped), or around a vertical front grip.
+  // Left hand: under the fore-end (cupped), around a vertical front grip, or
+  // (a launcher without one: bazooka M1A1, Panzerfaust) cupping the tube itself,
+  // its anchor lying under the tube near the bore line (meta.foregrip: 'vertical'
+  // | 'tube' | 'fore' overrides the guess).
   let qLG = null,
-    tLG = null;
-  const foreRadius = meta.foreRadius ?? (kind === 'smg' ? 0.018 : 0.021);
+    tLG = null,
+    leftGrip = null;
+  let foreRadius = meta.foreRadius ?? (kind === 'smg' ? 0.018 : 0.021);
   if (anchors.gripL) {
-    const vertical = meta.foregrip === 'vertical' || kind === 'pistol' || kind === 'launcher';
+    const gl0 = anchors.gripL;
+    const off = Math.hypot(gl0.x, gl0.y);
+    const tube = meta.foregrip === 'tube' || (kind === 'launcher' && !meta.foregrip && off < 0.085);
+    const vertical = !tube && (meta.foregrip === 'vertical' || kind === 'pistol' || kind === 'launcher');
+    leftGrip = tube ? 'tube' : vertical ? 'vertical' : 'fore';
+    // Tube radius: from the gun when given, else the anchor's depth under the
+    // bore less a hand's half thickness (est. 3.5 cm), 2.5 to 5 cm.
+    if (tube) foreRadius = meta.foreRadius ?? Math.min(0.05, Math.max(0.025, off - 0.035));
     let H;
     let palm;
     if (vertical) {
@@ -98,13 +109,16 @@ export function weaponInfo(gun, kind) {
       palm = gripCenter(-1, foreRadius);
     }
     qLG = H.invert();
-    tLG = palm.sub(anchors.gripL.clone().applyQuaternion(qLG));
+    // The held cylinder's center: the anchor, or for a tube the bore line there.
+    const center = tube ? V(0, 0, gl0.z) : gl0;
+    tLG = palm.sub(center.clone().applyQuaternion(qLG));
   }
   return {
     gun,
     kind,
     gripRadius,
     foreRadius,
+    leftGrip,
     straightPull: !a.boltHandle,
     anchors,
     meta,
@@ -627,7 +641,7 @@ export class SoldierArms {
     // Fingers: the shooting hand round the grip with the index on the trigger,
     // the support hand cupping the fore-end (or round a front grip), a pinch on
     // the bolt, open hands for bandaging and for a thrown grenade's follow-through.
-    const vertical = info.meta.foregrip === 'vertical' || info.kind === 'pistol' || info.kind === 'launcher';
+    const vertical = info.leftGrip === 'vertical';
     const onGun = !(handRT && wR > 0.5);
     if (info.kind === 'grenade') this.grip(1, this.released ? 0.2 : 0.85, this.released ? 0.15 : 0.8, this.released ? 0.2 : 0.8);
     else if (!onGun) this.grip(1, act === 'bandage' || act === 'use' ? 0.55 : 0.7, act === 'bandage' ? 0.45 : 0.62, 0.62);

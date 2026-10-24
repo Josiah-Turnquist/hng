@@ -169,10 +169,10 @@ export class BikeStands {
   }
 }
 
-// Assault: each side's motorcycles (solo and with sidecar) and a row of
+// Assault: each side's motorcycles (solo and with sidecar) and a pair of
 // bicycles where it comes in (attackers at the access points, defenders at the
-// objectives), a couple of bicycles at every other point, and bicycles by
-// doors around the village.
+// objectives), a bicycle at every other point, and bicycles by doors around
+// the village.
 export function placeAssaultBikes(mode, stands) {
   const g = mode.game;
   for (const p of mode.points) {
@@ -185,12 +185,12 @@ export function placeAssaultBikes(mode, stands) {
       const hint = g.world.village?.spawnHints?.[p.id]?.[0];
       const x = hint ? hint.x : p.x,
         z = hint ? hint.z : p.z;
-      stands.row('bicycle', 3, x, z, yaw, { r0: 5, r1: 30 });
+      stands.row('bicycle', 2, x, z, yaw, { r0: 5, r1: 30 });
       if (army) {
         stands.park(army.solo, x, z, yaw, { team, r0: 6, r1: 34 });
         stands.park(army.sidecar, x, z, yaw, { team, r0: 7, r1: 36 });
       }
-    } else stands.row('bicycle', 2, p.x, p.z, yaw, { r0: 4, r1: 22 });
+    } else stands.park('bicycle', p.x, p.z, yaw, { r0: 4, r1: 22 });
   }
   // Around the village: shops first (the café and the bakery on the square),
   // then house doors, spread out.

@@ -169,7 +169,7 @@ export class FirstPersonArms {
     set(hb, W, H.q);
     // Fingers.
     const c = target.curl || [1, 0.55, 0.8];
-    const wrap = target.mode === 'grip' && info ? (side > 0 ? info.gripRadius : info.qLG && (info.meta.foregrip === 'vertical' || info.kind === 'pistol') ? 0.017 : info.foreRadius) : 0;
+    const wrap = target.mode === 'grip' && info ? (side > 0 ? info.gripRadius : info.leftGrip === 'vertical' ? 0.017 : info.foreRadius) : 0;
     poseHand(this.pose, side, c[0], c[1], c[2], 0, wrap);
     for (const name of ['thumb', 'index', 'middle', 'ring', 'pinky']) {
       const [b1, b2] = FINGER_BONES[side][name];

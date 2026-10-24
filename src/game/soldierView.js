@@ -4,7 +4,7 @@
 // skeleton also provides the bullet hit zones. The uniform and kit follow the
 // soldier's army, class and primary weapon; three levels of detail by distance.
 import { SoldierModel } from '../actors/soldierModel.js';
-import { buildGun, MODELS } from '../weapons/models/index.js';
+import { buildGun, gunLodForDistance, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
 
 const KIND = {
@@ -43,7 +43,7 @@ export function attachSoldierModel(game, s) {
   model.setGround((x, z) => hf.getHeight(x, z));
   game.world.add(model.root);
   s.model = model;
-  s.view = { gunId: null, guns: new Map(), recoil: 0, lod: 0, deathSeen: false, ride: {} };
+  s.view = { gunId: null, gunLod: 1, guns: new Map(), recoil: 0, lod: 0, deathSeen: false, ride: {} };
   setSoldierWeapon(game, s);
   // The player's first-person arms wear the same sleeves, cuffs and hands.
   if (s.isPlayer) game.player?.viewmodel?.setOutfit?.({ faction: model.faction, cls: model.cls, seed: model.seed, role: model.role, variant: model.variant });
@@ -60,26 +60,32 @@ function lodDistances(game) {
   return [16 * k, 50 * k];
 }
 
-// Put the soldier's current weapon in its hands (guns are built once per soldier).
-export function setSoldierWeapon(game, s) {
+// Put the soldier's current weapon in its hands. Guns are built once per soldier
+// and level of detail (copies share their geometry); dist (m from the camera)
+// picks the detail: the lighter gun beyond GUN_LOD2_DISTANCE, with a 10% band
+// so it doesn't flicker at the boundary. The anchors are the same at every level.
+export function setSoldierWeapon(game, s, dist = 0) {
   const m = s.model;
   if (!m) return;
   const w = s.weapon;
   const id = w?.def.id ?? null;
-  if (s.view.gunId === id) return;
-  s.view.gunId = id;
+  const lod = gunLodForDistance(s.view.gunLod === 2 ? dist * 1.1 : dist / 1.1);
+  const key = id && MODELS[id] ? `${id}@${lod}` : id;
+  if (s.view.gunId === key) return;
+  s.view.gunId = key;
   if (!id || !MODELS[id]) {
     m.setWeapon(null, w ? KIND[w.def.type] || 'rifle' : 'none');
     return;
   }
-  let gun = s.view.guns.get(id);
+  s.view.gunLod = lod;
+  let gun = s.view.guns.get(key);
   if (!gun) {
     const tex = game.world.textures;
     let mats = gunMats.get(tex);
     if (!mats) gunMats.set(tex, (mats = makeGunMaterials(tex)));
-    gun = buildGun(id, mats);
+    gun = buildGun(id, mats, { lod });
     game.world.shadows.prepare(gun.root);
-    s.view.guns.set(id, gun);
+    s.view.guns.set(key, gun);
   }
   m.setWeapon(gun, KIND[w.def.type] || 'rifle');
 }
@@ -116,7 +122,6 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   const hidden = (s.isPlayer && firstPersonPlayer && !v && s.alive) || (v && v.def.kind === 'tracked') || (!s.alive && s.deathTime > 90);
   m.root.visible = !hidden;
   if (hidden && s.alive) return;
-  setSoldierWeapon(game, s);
   const st = _state;
   const smooth = (t) => t * t * (3 - 2 * t);
   st.stance = b.targetStance;
@@ -180,6 +185,7 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   } else m.root.position.set(b.x, b.y, b.z);
   // Detail by distance, with a little hysteresis so it doesn't flicker.
   const d = m.root.position.distanceTo(camPos);
+  setSoldierWeapon(game, s, d);
   const [d0, d1] = lodDistances(game);
   const cur = s.view.lod;
   const h = cur === 0 ? 1.1 : 1.0;

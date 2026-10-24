@@ -90,7 +90,22 @@ export function simplifyClosed(points, tol) {
 
 // Douglas-Peucker simplification of an open polyline (keeps both ends).
 export function simplifyOpen(points, tol) {
-  return points.length > 2 && tol > 0 ? dp(points, tol) : points;
+  if (!(points.length > 2 && tol > 0)) return points;
+  const [x0, y0] = points[0],
+    [x1, y1] = points[points.length - 1];
+  if (Math.hypot(x1 - x0, y1 - y0) < 1e-9) {
+    // A profile that ends where it starts (tube() walls): with a zero-length
+    // baseline every point would be dropped, so split it at the point farthest
+    // from the start and simplify the two halves.
+    let k = 1,
+      far = -1;
+    for (let i = 1; i < points.length - 1; i++) {
+      const d = Math.hypot(points[i][0] - x0, points[i][1] - y0);
+      if (d > far) [far, k] = [d, i];
+    }
+    return [...dp(points.slice(0, k + 1), tol).slice(0, -1), ...dp(points.slice(k), tol)];
+  }
+  return dp(points, tol);
 }
 
 function dp(pts, tol) {

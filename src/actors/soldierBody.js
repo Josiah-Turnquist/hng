@@ -440,7 +440,8 @@ export function buildElbowPatch(b, side, { bulk = 0, wide = 0, s0 = 0.245, s1 = 
   const us = [],
     vs = [];
   for (let i = 0; i <= 6; i++) us.push(PI / 2 - half + (2 * half * i) / 6);
-  for (let j = 0; j <= 4; j++) vs.push(s0 + ((s1 - s0) * j) / 4);
+  // Rows close enough to follow the sleeve round the bent elbow.
+  for (let j = 0; j <= 8; j++) vs.push(s0 + ((s1 - s0) * j) / 8);
   b.bones(armWeights(side));
   b.part();
   b.grid(
@@ -488,15 +489,15 @@ export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, st
   if (blouse) {
     // Closer rings round the tuck, so the roll of cloth over the edge reads.
     prof = denseProfile(rows, -0.09, tuck - 0.05, ds);
-    const near = [[-0.032, -0.018, -0.008, 0, 0.012], [-0.02, 0.004], []][lod].map((d) => tuck + d);
+    const near = [[-0.03, -0.014, -0.004, 0.005, 0.012, 0.02], [-0.014, 0.012], []][lod].map((d) => tuck + d);
     const pad = rows.map((r) => [r[0], r[1], r[2], r[3] ?? 0, r[4] ?? 0]);
     for (const s of [...near, end]) if (s > prof[prof.length - 1][0] + 0.002 && s <= end) prof.push([s, ...interpRows(pad, s).slice(1)]);
-    // The roll hangs over the top edge; below it the leg is drawn in (est.
-    // 8 mm plus the overhang), so it stays inside the boot or wrap.
+    // The roll hangs down over the top edge; below that the leg is drawn in
+    // (est. 8 mm plus the overhang), so it stays inside the boot or wrap.
     for (const r of prof) {
       const s = r[0];
-      const over = smooth01(tuck - 0.075, tuck - 0.022, s) * (1 - smooth01(tuck - 0.014, tuck + 0.001, s));
-      const pull = smooth01(tuck - 0.008, tuck + 0.01, s) * (0.008 + blouse);
+      const over = smooth01(tuck - 0.065, tuck - 0.012, s) * (1 - smooth01(tuck - 0.002, tuck + 0.008, s));
+      const pull = smooth01(tuck + 0.004, tuck + 0.02, s) * (0.008 + blouse);
       r[1] += blouse * over - pull;
       r[2] += blouse * over - pull;
     }
@@ -513,7 +514,7 @@ export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, st
           // Diagonal drape folds from the crotch over the thigh.
           d += bump(s, 0.14, 0.1) * 0.0025 * foldWave(a * 4 + s * 35 + seed * 2);
           // Blousing: a few irregular folds in the roll, none at the edge itself.
-          if (blouse) d += bump(s, tuck - 0.03, 0.03) * (0.0015 + blouse * 0.35) * foldWave(a * 5 + noise1(a * 1.3, seed) * 2.5);
+          if (blouse) d += bump(s, tuck - 0.02, 0.025) * (0.0015 + blouse * 0.35) * foldWave(a * 5 + noise1(a * 1.3, seed) * 2.5);
           // Shin: a few loose diagonal folds.
           d += bump(s, sK + 0.18, 0.12) * 0.002 * foldWave(a * 3 - s * 30 + seed);
           return d * folds;
@@ -645,7 +646,9 @@ export function buildBoot(b, side, { lod = 0, upper = 0x3a2a1e, sole = 0x1a1612,
     [-0.19, 0.035 * w, 0.023, 0.031],
   ].map(([z, rx, rz, yc]) => ({ c: V(ax + side * 0.004 * (z < -0.05 ? 1 : 0), yc + heel - 0.028, z), rx, rz }));
   const pick = lod === 0 ? rings : lod === 1 ? rings.filter((_, i) => i % 2 === 0 || i === rings.length - 1) : [rings[1], rings[4], rings[8]];
-  b.tube(pick, { seg: [12, 8, 5][lod], capStart: 0.5, capEnd: 0.55, side: [1, 0, 0] });
+  // A slightly squared section: flat under the foot, the sides nearly upright
+  // where they meet the sole.
+  b.tube(pick, { seg: [12, 8, 5][lod], capStart: 0.5, capEnd: 0.55, side: [1, 0, 0], exp: lod < 2 ? 2.6 : 2 });
   // Ankle / shaft.
   b.tube(
     [
@@ -660,7 +663,7 @@ export function buildBoot(b, side, { lod = 0, upper = 0x3a2a1e, sole = 0x1a1612,
       b.part();
       b.tube(
         rings.slice(6).map((r) => ({ c: r.c.clone().add(V(0, 0.0012, 0)), rx: r.rx + 0.0015, rz: r.rz + 0.0015 })),
-        { seg: 12, capStart: 0, capEnd: 0.55 },
+        { seg: 12, capStart: 0, capEnd: 0.55, exp: 2.6 },
       );
     }
     // Lacing: the tongue and the laces up the instep.
@@ -684,8 +687,8 @@ export function buildBoot(b, side, { lod = 0, upper = 0x3a2a1e, sole = 0x1a1612,
   b.paint(sole);
   b.part();
   if (lod < 2) {
-    const soleRings = pick.map((r) => ({ c: V(r.c.x, 0.008 + heel * 0.15, r.c.z), rx: r.rx + 0.0035, rz: 0.008 }));
-    b.tube(soleRings, { seg: [12, 8][lod], capStart: 0.35, capEnd: 0.4, exp: 5, side: [1, 0, 0] });
+    const soleRings = pick.filter((_, i) => lod > 0 || i % 2 === 0 || i === pick.length - 1).map((r) => ({ c: V(r.c.x, 0.008 + heel * 0.15, r.c.z), rx: r.rx + 0.003, rz: 0.008 }));
+    b.tube(soleRings, { seg: 8, capStart: 0.35, capEnd: 0.4, exp: 5, side: [1, 0, 0] });
   } else b.box([ax + side * 0.002, 0.008 + heel * 0.15, -0.065], [0.098 * w, 0.016, 0.27], { r: 0.007, seg: [8, 2] });
   b.box([ax, heel * 0.6, 0.048], [0.076 * w, heel, 0.072], { r: 0.006 });
 }

@@ -953,7 +953,9 @@ export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, roun
   if (straps) {
     b.material(CELL.webbing);
     b.paint(strapColor ?? color);
-    for (const x of straps) f.box(b, x, -h * 0.5, d + 0.007, 0.022, h * 0.95, 0.004, { r: 0.0015 });
+    // Straps over the flap down to their buckles (flat ribbons on the front).
+    const out = f.dir(0, 0, 1);
+    for (const x of straps) b.strap([f.point(x, -0.03, d + 0.0075), f.point(x, -h * 0.55, d + 0.0045), f.point(x, -h + 0.03, d + 0.002)], 0.022, 0.003, () => out);
   }
 }
 

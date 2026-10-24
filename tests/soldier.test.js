@@ -227,6 +227,26 @@ test('the fingers close round the grip of a held rifle', () => {
   assert.ok(bend('indexR1') < bend('middleR1'), 'trigger finger');
 });
 
+test('the support hand takes a front grip, a fore-end or a bare launcher tube, at every gun detail', () => {
+  const cases = [
+    ['kar98k', 'rifle', 'fore'],
+    ['panzerschreck', 'launcher', 'vertical'],
+    ['bazooka_m1a1', 'launcher', 'tube'],
+  ];
+  for (const [id, kind, grip] of cases) {
+    for (const lod of [0, 1, 2]) {
+      const m = new SoldierModel('US', null, { seed: 4 });
+      m.setWeapon(buildGun(id, mats, { lod }), kind);
+      assert.equal(m.arms.info.leftGrip, grip, `${id} at gun LOD ${lod}`);
+      settle(m, idle({ aiming: true }), 40);
+      // The left hand reaches its hold on the gun (within 4 cm).
+      const want = m.arms.handL.p;
+      const hand = m.bones.find((b) => b.name === 'handL').getWorldPosition(new THREE.Vector3());
+      assert.ok(hand.distanceTo(want) < 0.04, `${id} LOD ${lod}: left hand ${hand.distanceTo(want).toFixed(3)} m off its hold`);
+    }
+  }
+});
+
 test('riders sit on the saddle and reach the grips and pedals', () => {
   for (const style of ['bicycle', 'motorcycle']) {
     const m = new SoldierModel('GE', null, { seed: 3 });

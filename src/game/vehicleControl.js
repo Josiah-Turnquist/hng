@@ -238,11 +238,9 @@ export class VehicleController {
       const sd = v.def.bowMg.sight;
       if (sd) fov = sightFov(sd);
     } else if (role === 'sidecarMg' && this.view === 'first' && v.mg) {
-      // Behind the sidecar gun, head down over the receiver, looking along the bore.
+      // Behind the sidecar gun: from the gunner's eyes, looking along the bore.
       const dir = v.mgDir(new THREE.Vector3());
-      const g = v.model.anchors?.mgGripR;
-      if (g) v.mgPointWorld(_v.copy(g).add(_v3.set(0, 0.2, 0.12)), cam.position);
-      else cam.position.copy(v.anchorWorld('mgMuzzle', _v)).addScaledVector(dir, -0.95).addScaledVector(up, 0.14);
+      this._bikeEye(v, cam.position);
       lookAlong(cam, dir, up);
     } else if (this.view === 'first') {
       // Seat view: turn your head inside the vehicle. On a bike the head follows
@@ -318,18 +316,30 @@ export class VehicleController {
   // put it: last frame's head (the rider is posed after the camera), carried
   // along with the machine; the seat's eye point until there is one.
   _bikeEye(v, out) {
-    const head = this.soldier.model?.bones?.[4];
+    const m = this.soldier.model;
+    const head = m?.eyeWorld || m?.bones?.[4];
     const T = (this._bikeT ??= { p: new THREE.Vector3(), q: new THREE.Quaternion(), ok: false });
     if (head && T.ok) {
-      head.getWorldPosition(_v3);
+      // The eyes (as the soldier model last posed them, or above and in front
+      // of the top of the neck), the camera just clear of the face so the head
+      // itself never fills the view.
+      if (m.eyeWorld && m.aimDir) _v3.copy(m.eyeWorld).addScaledVector(m.aimDir, 0.14);
+      else {
+        head.getWorldPosition(_v3);
+        head.getWorldQuaternion(_qh);
+        _v3.add(_v.set(0, 0.08, -0.2).applyQuaternion(_qh));
+      }
       this._eyeLocal = (this._eyeLocal || new THREE.Vector3()).copy(_v3).sub(T.p).applyQuaternion(_qh.copy(T.q).invert());
     }
     T.p.copy(v.body.position);
     T.q.copy(v.body.quaternion);
     T.ok = !!head;
-    if (!this._eyeLocal) return v.seatPos(this.soldier.seat, out, 'eye');
-    // (The eyes: a little above and in front of the top of the neck.)
-    return out.set(0, 0.07, -0.09).add(this._eyeLocal).applyQuaternion(v.body.quaternion).add(v.body.position);
+    if (!this._eyeLocal) {
+      // (First frame: the seat's eye point, moved clear of the face.)
+      v.seatPos(this.soldier.seat, out, 'eye');
+      return out.add(_v.set(-Math.sin(v.yaw) * 0.18, 0, -Math.cos(v.yaw) * 0.18));
+    }
+    return out.copy(this._eyeLocal).applyQuaternion(v.body.quaternion).add(v.body.position);
   }
 
   // The same for the sidecar gun: the gunner swings it toward the point under

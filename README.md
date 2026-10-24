@@ -33,6 +33,7 @@ To make a single HTML file you can open without a server: `npm run build` (write
 | Weapons, grenade, bandage | 1 2 3, G, X |
 | Get in or out of a vehicle | F |
 | Drive | W / S (S brakes, then reverses), A / D, Space handbrake (jeeps) |
+| Ride a bicycle or motorcycle | W / S, A / D (you lean into the turn), Space rear brake, Shift pedal hard (bicycle); in the sidecar the mouse lays the machine gun |
 | Tank gunner's sight, shell type, coaxial MG | Hold right mouse or V, 1 / 2, Space |
 | Change seat, camera | F1 to F4, V |
 | Scoreboard | Tab |
