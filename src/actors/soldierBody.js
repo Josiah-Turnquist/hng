@@ -216,7 +216,7 @@ export const SKIRT_Y = 0.91;
 // Below this the cloth of a long garment lies over the thighs (g.legs: the
 // trousers' cut rows, set when the trousers are built first); higher up the
 // tops of the trouser legs are inside the hips.
-const LEG_TOP = 0.935;
+const LEG_TOP = 0.94;
 export function garmentPoint(g, theta, y, out, extra = 0) {
   const off = garmentOffset(g, theta, y) + extra;
   if (y >= SKIRT_Y) torsoPoint(theta, y, out, off);
@@ -229,9 +229,10 @@ export function garmentPoint(g, theta, y, out, extra = 0) {
     out.z = cz + (out.z - cz) * k;
     out.y = y;
   }
-  // Standing, the thighs fill out the front of a skirt: keep the cloth 5 mm
-  // (and any layer on it, `extra`) clear of the trousers and their folds.
-  if (g.legs && y < LEG_TOP) clearLegs(out, g.legs, 0.007 + extra, smooth01(LEG_TOP, LEG_TOP - 0.05, y));
+  // Standing, the thighs fill out the front of a skirt: keep the cloth (and
+  // any layer on it, `extra`) clear of the trousers and their folds, a little
+  // more toward the hem where a stance spreads the legs.
+  if (g.legs && y < LEG_TOP) clearLegs(out, g.legs, 0.007 + 0.06 * (LEG_TOP - y) + extra, smooth01(LEG_TOP, LEG_TOP - 0.02, y));
   return out;
 }
 const _lr = [0, 0, 0, 0];

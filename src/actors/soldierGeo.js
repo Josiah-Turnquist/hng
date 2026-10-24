@@ -327,8 +327,9 @@ export class SkinBuilder {
   }
 
   // Rounded box: center, size [w, h, d], optional euler rotation [rx, ry, rz]
-  // or quaternion. A superellipsoid (flat faces with rounded edges); seg sets
-  // the grid (default 8 x 4, 48 triangles). Low-poly builders use a plain box.
+  // or quaternion. seg sets the grid: the default 8 x 3 (48 triangles) is a
+  // rounded-rectangle prism, finer grids a superellipsoid (flat faces with
+  // rounded edges). Low-poly builders use a plain box.
   box(c, size, { rot = null, r = 0.004, quat = null, seg = null } = {}) {
     const [w, h, d] = size;
     const q = quat || new THREE.Quaternion().setFromEuler(new THREE.Euler(...(rot || [0, 0, 0])));
@@ -340,9 +341,28 @@ export class SkinBuilder {
       geo.dispose();
       return this;
     }
+    const [nu, nv] = seg || [8, 3];
+    if (nv === 3) {
+      // Four rows: a rounded-rectangle section with upright sides and nearly
+      // flat (slightly crowned) top and bottom. A superellipsoid sampled this
+      // coarsely would come to a point top and bottom.
+      const exz = Math.min(1, Math.max(0.1, (2.4 * r) / Math.min(w, d)));
+      const px = (x) => Math.sign(x) * Math.pow(Math.abs(x), exz);
+      const k = Math.min(h * 0.2, r * 0.6);
+      const ys = [h / 2, h / 2 - k, k - h / 2, -h / 2];
+      return this.param(
+        nu,
+        3,
+        (u, v, out, i, j) => {
+          const az = u * Math.PI * 2 + Math.PI / nu;
+          const s = j === 0 || j === 3 ? 0 : 1;
+          out.set((px(Math.cos(az)) * s * w) / 2, ys[j], (px(Math.sin(az)) * s * d) / 2).applyQuaternion(q).add(C);
+        },
+        { center: C },
+      );
+    }
     const eps = Math.min(1, Math.max(0.1, (2.4 * r) / Math.min(w, h, d)));
     const pw = (x) => Math.sign(x) * Math.pow(Math.abs(x), eps);
-    const [nu, nv] = seg || [8, 3];
     return this.param(
       nu,
       nv,
@@ -457,8 +477,11 @@ export class SkinBuilder {
         let ref = 0;
         if (normal) ref = _n.dot(normal(p, _f));
         else if (center) ref = _n.dot(_f.copy(p).sub(center));
-        if (pole && ref < 0) _n.negate(); // pole normals are radial: fix them alone
-        else vote += Math.sign(ref);
+        // Pole normals are radial: fix them alone, and leave the vote to the
+        // rest (a coarse box has as many pole vertices as ring ones).
+        if (pole) {
+          if (ref < 0) _n.negate();
+        } else vote += Math.sign(ref);
         const q = (j * cols + i) * 4;
         NS[q] = _n.x;
         NS[q + 1] = _n.y;
