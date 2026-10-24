@@ -65,7 +65,7 @@ export function rankOf(xp) {
   while (r < RANK_XP.length - 1 && xp >= RANK_XP[r + 1]) r++;
   const lo = RANK_XP[r],
     hi = RANK_XP[r + 1];
-  return { rank: r, title: null, next: hi ?? null, progress: hi === undefined ? 1 : (xp - lo) / (hi - lo) };
+  return { rank: r, next: hi ?? null, progress: hi === undefined ? 1 : (xp - lo) / (hi - lo) };
 }
 
 export function rankTitle(faction, rank) {

@@ -11,7 +11,14 @@ npm install
 npm start
 ```
 
-Then open http://localhost:8000 in Chrome, Edge or Firefox. Pick a battlefield, army, side, class and weapon in the menu and press **Deploy**. Click the game to capture the mouse; **Esc** releases it and pauses.
+Then open http://localhost:8000 in Chrome, Edge or Firefox. The menus follow the original game's main interface:
+
+- **Heroes**: your soldiers. You start with an infantryman of each army and can recruit more of any army and class (infantry, recon, paratrooper, tank crew). The chosen soldier stands in 3D (drag to turn him); beside him, his loadout: primary weapon, sidearm and grenade (with their real data), the tank for a tank crewman, and his uniform. **Ready for battle** takes him into the battle shown above it.
+- **Generals**: the battles to join, with the battlefield's map and the battle's settings: your side, the enemy army, soldiers per side and the battle clock.
+- **Progression**: your player level, each soldier's rank (0 to 22, with the period ranks of his army and the original game's experience table) and record. A soldier earns experience in an Assault for taking part, for every enemy he puts down and every point he takes, and more for a win.
+- At the top right: settings, full screen and about. Your soldiers are kept in this browser.
+
+In battle, click the game to capture the mouse; **Esc** releases it and opens the menu. When you fall in an Assault, the deploy map shows your points and how long until you can deploy at each: click one (or use the lean keys) and **Deploy**.
 
 To make a single HTML file you can open without a server: `npm run build` (writes `dist/hng.html`, plus `dist/hng-page.html`, the same game without the outer page tags, for sites that add their own, such as a claude.ai artifact).
 
@@ -72,7 +79,7 @@ src/vehicles/         vehicle data, wheeled and tracked physics, damage, tracks,
 src/ai/               navigation grid and path finding, infantry bots, tank crews
 src/audio/            sound synthesis and the Web Audio system
 src/game/             game loop, world, player, vehicle controls, game modes
-src/ui/               app, menus, HUD
+src/ui/               app, front end (Heroes, Generals, Progression), battle map, settings pages, pause menu, HUD
 debug/                viewers for guns, vehicles, soldiers, the village and sounds
 tests/                node:test suites (npm test)
 tools/                dev server, build, screenshot tools
