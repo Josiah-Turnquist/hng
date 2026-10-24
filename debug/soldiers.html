@@ -74,7 +74,8 @@ if (params.has('atlas')) {
 
 if (params.has('fp')) {
   // First-person view of the player's arms and gun (the game's ViewModel):
-  // fp=kar98k&aim=1&f=GE&cls=infantry&seed=3, act=boltBack&u=0.5 for a reload step.
+  // fp=kar98k&aim=1&f=GE&cls=infantry&seed=3, act=boltBack&u=0.5 for a reload step,
+  // fpzoom=handL|handR|hands (the player's view narrowed onto the hands), fporbit=az,el,dist.
   const { ViewModel } = await import('../src/weapons/viewmodel.js');
   const { WEAPONS } = await import('../src/weapons/defs.js');
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
@@ -111,6 +112,23 @@ if (params.has('fp')) {
       rc.position.copy(t).addScaledVector(back, 0.28).add(new THREE.Vector3(0, 0.06, 0));
       rc.lookAt(t);
     }
+  }
+  if (params.get('fpzoom')) {
+    // fpzoom=handL|handR|hands: the player's own view (same eye), narrowed onto
+    // the hand(s); fporbit=az,el,dist (deg, deg, m) circles the hand instead.
+    const z = params.get('fpzoom');
+    const pts = (z === 'hands' ? [8, 12] : [z === 'handL' ? 8 : 12]).map((i) => vm.fpArms.bones[i].getWorldPosition(new THREE.Vector3()));
+    const t = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(pts.length);
+    // The palm's middle rather than the wrist joint.
+    if (z !== 'hands') t.add(new THREE.Vector3(0, -0.06, 0).applyQuaternion(vm.fpArms.bones[z === 'handL' ? 8 : 12].getWorldQuaternion(new THREE.Quaternion())));
+    rc = new THREE.PerspectiveCamera(z === 'hands' ? 30 : 16, W / H, 0.005, 30);
+    rc.position.copy(vm.camera.getWorldPosition(new THREE.Vector3()));
+    if (params.get('fporbit')) {
+      const [az, el, d] = params.get('fporbit').split(',').map(Number);
+      const r = Math.PI / 180;
+      rc.position.copy(t).add(new THREE.Vector3(Math.sin(az * r) * Math.cos(el * r), Math.sin(el * r), Math.cos(az * r) * Math.cos(el * r)).multiplyScalar(d));
+    }
+    rc.lookAt(t);
   }
   renderer.render(vm.scene, rc);
   window.__vm = vm;
