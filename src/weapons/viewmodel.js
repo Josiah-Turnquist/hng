@@ -451,13 +451,15 @@ export class ViewModel {
     const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     // Shoulders sit low and slightly behind the eye, so the upper arms stay
-    // mostly out of view and the forearms reach up to the gun.
+    // mostly out of view and the forearms reach up to the gun. The stance is
+    // bladed: the left shoulder turned forward and in (est. 12 cm ahead of the
+    // right), so the support arm reaches a long fore-end with its elbow bent.
     const shoulder = (side) =>
       cam.position
         .clone()
-        .addScaledVector(camRight, side * (side > 0 ? 0.16 : 0.2))
-        .addScaledVector(camUp, -0.34)
-        .addScaledVector(camFwd, side > 0 ? -0.02 : 0.02);
+        .addScaledVector(camRight, side * (side > 0 ? 0.16 : 0.15))
+        .addScaledVector(camUp, side > 0 ? -0.34 : -0.33)
+        .addScaledVector(camFwd, side > 0 ? -0.02 : 0.1);
     const arms = this.fpArms;
     if (this.fpArmsGun !== this.gun) {
       arms.setWeapon(this.gun, this.kind);

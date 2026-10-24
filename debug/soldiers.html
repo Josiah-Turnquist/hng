@@ -113,6 +113,7 @@ if (params.has('fp')) {
     }
   }
   renderer.render(vm.scene, rc);
+  window.__vm = vm;
   const st = vm.fpArms.mesh.geometry.index.count / 3;
   document.getElementById('info').textContent = `first person: ${def.name}  arms ${st} triangles`;
   window.__done = true;

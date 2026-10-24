@@ -510,7 +510,7 @@ float sGunOcclusion( vec3 p, vec3 n ) {
       float l = max( length( d ), 1e-5 );
       float c = max( 0.0, dot( n, d / l ) );
       float k = A.w / max( l, A.w );
-      vis *= 1.0 - 0.9 * c * k;
+      vis *= 1.0 - 0.75 * c * k;
     }
   }
   return vis;
@@ -520,7 +520,7 @@ const VM_FRAG_AO = /* glsl */ `
   float sGO = sGunOcclusion( vSWPos, inverseTransformDirection( normal, viewMatrix ) );
   reflectedLight.indirectDiffuse *= sGO;
   reflectedLight.indirectSpecular *= sGO;
-  reflectedLight.directDiffuse *= mix( 1.0, sGO, 0.65 );
+  reflectedLight.directDiffuse *= mix( 1.0, sGO, 0.5 );
   reflectedLight.directSpecular *= sGO;
 }`;
 
