@@ -22,19 +22,21 @@ To make a single HTML file you can open without a server: `npm run build` (write
 
 ### Controls
 
+These are the keys the game starts with. Every one can be changed in Settings > Controls > Keys (also in the Esc menu during a battle), where each action can have two keys or mouse buttons. Esc opens the menu, steps back through its pages and closes it again.
+
 | Action | Keys |
 |---|---|
 | Move, sprint (hold breath while aiming) | W A S D, Shift |
 | Crouch, prone, jump or stand up | C, Z, Space |
 | Lean | Q / E |
-| Aim through the sights, fire | Right mouse, left mouse |
+| Aim through the sights (hold, or press once in Settings > Controls), fire | Right mouse or `, left mouse |
 | Sight range up / down | Mouse wheel while aiming, or Page Up / Page Down |
 | Reload or work the bolt, fire mode | R, B (or middle mouse) |
 | Weapons, grenade, bandage | 1 2 3, G, X |
-| Get in or out of a vehicle | F |
+| Get in or out of a vehicle (walk up to it; a prompt shows when you can) | F |
 | Drive | W / S (S brakes, then reverses), A / D, Space handbrake (jeeps) |
 | Ride a bicycle or motorcycle | W / S, A / D (you lean into the turn), Space rear brake, Shift pedal hard (bicycle); in the sidecar the mouse lays the machine gun |
-| Tank gunner's sight, shell type, coaxial MG | Hold right mouse or V, 1 / 2, Space |
+| Tank gunner's sight, shell type, coaxial MG | Hold right mouse (or `) or V, 1 / 2, Space |
 | Change seat, camera | F1 to F4, V |
 | Scoreboard | Tab |
 

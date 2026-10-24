@@ -25,7 +25,7 @@ Plain ES modules and three.js, no build step during development (`npm start` ser
 | Game | `src/game/` | `game.js` (the match: update order, hits, explosions, vehicles, bots), `player.js` and `vehicleControl.js` (the player), `modes/` (Assault, firing range). |
 | Rendering | `src/render/` | HDR pipeline (`pipeline.js`, shaders in `postfx.glsl.js`): contact shadows (SSAO), atmosphere and height fog from depth, edge smoothing (FXAA, 4x MSAA with alpha to coverage, or TAA), camera motion blur, focus blur when aiming, sun rays, bloom, eye adaptation (and an exposure that follows the daylight, so a low sun reads as warm rather than dim), ACES tone mapping and a film grade; cascaded shadow maps; sky with clouds and a late-afternoon sun (each map sets its sun in `maps.js`; the light's color and strength follow from how much air it crosses, `sky.js`); GPU-baked procedural textures; lit soft particles and decals; spent cases. |
 | Sound | `src/audio/` | Every sound is synthesized at load (`synth.js` and `recipes/`); `audio.js` plays them with distance, air absorption, the speed of sound and reverb. |
-| UI | `src/ui/` | Menus, HUD, sights, scoreboard. |
+| UI | `src/ui/` | Menus (`menu.js`: battle setup and the pause menu), the settings pages (`settingsView.js`: Graphics, Controls with the key list, Sound, Screen, each with pages below; Esc and Back go up a level), HUD, sights, scoreboard. |
 
 ## One simulation step
 
@@ -51,6 +51,10 @@ Vehicles answer the same ray query with their armor plates (oriented boxes from 
 - **A weapon:** add its data to `src/weapons/defs.js` (and its cartridge to `ammo.js` if new), a model builder in `src/weapons/models/` with the standard anchors (`muzzle`, `rearSight`, `frontSight`, grips, ejection port), then run `npm test`: the sighting test checks that its sights hit at the zero range.
 - **A vehicle:** add its data to `src/vehicles/defs.js` (mass, engine curve, gears, suspension, armor comes from the model) and a builder in `src/vehicles/models/` following the conventions in `vkit.js`. Add its expected top speed to `tests/vehicles.test.js`.
 - **A map:** add a definition to `src/world/maps.js` (terrain shape, river, roads, forests, objectives and lines for Assault).
+
+## Controls
+
+`src/core/input.js` names every action (`DEFAULT_BINDINGS`: up to two keys or mouse buttons each, by position on the keyboard, mouse buttons as `Mouse0` to `Mouse4`) and lists them for the controls menu (`ACTIONS`, with where each is used: on foot, in a vehicle or both). The game asks for actions (`input.is('aim')`, `hit`, `up`), never for raw keys, so a player's changes (saved as the differences from the defaults in `settings.bindings`) apply everywhere. Two actions may share a key only if they are never used in the same place; `tests/controls.test.js` checks the defaults, and the keys page moves a key off any action it would clash with.
 
 ## Graphics settings
 
