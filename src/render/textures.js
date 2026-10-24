@@ -150,6 +150,18 @@ export const PRESETS = {
   vegWeeds: { mat: 'vegGround', world: 0.6, alpha: true, a: lin(0.3, 0.4, 0.13), b: lin(0.16, 0.24, 0.08), uniforms: { uVegP: [7, 10, 0, 0] } },
 };
 
+// Other parts of the game keep their own procedural materials next to their code
+// and register them here when their module loads:
+//   addMaterials({ myCloth: glslSource }, { clothUS: { mat: 'myCloth', world: 1 } });
+// A material's GLSL defines surface(uv, albedo, rough, height, metal, alpha) like
+// the ones in textureLib.glsl.js. Names must be new.
+export function addMaterials(materials = {}, presets = {}) {
+  for (const k of Object.keys(materials)) if (k in MATERIALS && MATERIALS[k] !== materials[k]) throw new Error(`Material ${k} is already defined`);
+  for (const k of Object.keys(presets)) if (k in PRESETS && PRESETS[k] !== presets[k]) throw new Error(`Texture preset ${k} is already defined`);
+  Object.assign(MATERIALS, materials);
+  Object.assign(PRESETS, presets);
+}
+
 // Terrain layers (index = layer in the texture arrays; matches SURF ids 0..8).
 export const TERRAIN_LAYERS = ['grass', 'dryGrass', 'dirt', 'mud', 'rock', 'plowed', 'cobble', 'forest', 'sand'];
 
