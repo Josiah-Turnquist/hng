@@ -136,7 +136,7 @@ addEventListener('resize', () => map.resize());
 if (!world && params.get('preview') !== '0') {
   const t0 = performance.now();
   while (!map.preview && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 30));
-  stats.previewMs = Math.round(performance.now() - t0);
+  stats.previewMs = Math.round(map.preview?.ms ?? -1);
 }
 // The live layer alone, timed over many frames.
 map.draw(state);

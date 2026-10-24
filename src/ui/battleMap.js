@@ -162,11 +162,13 @@ function tileAt(t, u, v) {
 
 // Paints the ground seen from above into RGBA pixels (w x h, mpp meters per pixel,
 // the top left pixel's corner at x0, z0): the surface color of each spot, relief
-// shading with light from the north-west, and texture. src: { hf, classify?,
+// shading with light from the north-west, and texture. src: { hf, classify?, forest?,
 // hedgeMask?, hedges?, relief? }. classify(x, z) returns a ground code (see above)
-// instead of reading hf.surface (the preview has no surfaces of its own); hedgeMask
-// (one byte per cell, as terrainGen's) marks the hedgerows, hedges (0-1) is how
-// dark they are; relief is the height exaggeration (the battlefields are gentle).
+// instead of reading hf.surface (the preview has no surfaces of its own). forest
+// (terrainGen's forest value per cell) draws the woods where it is above zero, as
+// the trees are planted, with smooth edges; hedgeMask (one byte per cell) marks the
+// hedgerows, hedges (0-1) is how dark they are; relief is the height exaggeration
+// (the battlefields are gentle).
 export function paintGround(out, w, h, x0, z0, mpp, src) {
   const hf = src.hf;
   const H = hf.heights,
@@ -177,6 +179,8 @@ export function paintGround(out, w, h, x0, z0, mpp, src) {
   const last = res - 1;
   const classify = src.classify || null;
   const mask = src.hedgeMask || null;
+  const forest = src.forest || null;
+  const soft = 0.004 * Math.max(mpp, 2); // the forest value across a wood's edge
   const hedges = 0.85 * (src.hedges ?? 1);
   const tile = noiseField();
   const grass = GROUND[SURF.GRASS],
@@ -223,6 +227,10 @@ export function paintGround(out, w, h, x0, z0, mpp, src) {
     lz = lz < 0 ? 0 : lz > lMaxZ ? lMaxZ : lz;
     const lj = lz | 0,
       fz = lz - lj;
+    let gz = (z + half) / cell;
+    gz = gz < 0 ? 0 : gz > last - 0.001 ? last - 0.001 : gz;
+    const frow = (gz | 0) * res,
+      ffz = gz - (gz | 0);
     for (let i = 0; i < w; i++, p += 4) {
       const x = x0 + (i + 0.5) * mpp;
       let code;
@@ -232,6 +240,22 @@ export function paintGround(out, w, h, x0, z0, mpp, src) {
         ix = ix < 0 ? 0 : ix > last ? last : ix;
         code = S[row + ix];
         if (mask !== null && mask[row + ix]) code |= FULL_HEDGE;
+        if (forest !== null) {
+          let gx = (x + half) / cell;
+          gx = gx < 0 ? 0 : gx > last - 0.001 ? last - 0.001 : gx;
+          const fi = gx | 0,
+            ffx = gx - fi;
+          const q = frow + fi;
+          const fa = forest[q] + (forest[q + 1] - forest[q]) * ffx;
+          const fb = forest[q + res] + (forest[q + res + 1] - forest[q + res]) * ffx;
+          const fv = fa + (fb - fa) * ffz;
+          if (fv >= soft) code = SURF.FOREST;
+          else {
+            // Under the edge of a wood: the meadow, with as much canopy as reaches it.
+            if ((code & 31) === SURF.FOREST) code = (code & ~31) | SURF.GRASS;
+            if (fv > -soft) code |= Math.round(((fv + soft) / (2 * soft)) * 255) << WOOD_W;
+          }
+        }
       }
       const base = code & 31;
       const c = GROUND[base] || grass;
@@ -292,29 +316,43 @@ export function paintGround(out, w, h, x0, z0, mpp, src) {
 // river and the seed).
 const previews = new WeakMap();
 
+// Made in two short tasks (the terrain, then the village plan) so the page keeps
+// drawing in between.
 function requestPreview(def) {
   let p = previews.get(def);
   if (p) return p;
   p = { data: null, waiters: [] };
   previews.set(def, p);
-  setTimeout(() => {
-    try {
-      p.data = makePreview(def);
-    } catch (e) {
-      console.warn('battle map: no preview', e);
-      p.data = { failed: true };
-    }
+  const fail = (e) => {
+    console.warn('battle map: no preview', e);
+    p.data = { failed: true };
     for (const f of p.waiters.splice(0)) f(p.data);
+  };
+  setTimeout(() => {
+    let t0 = performance.now(),
+      terrain;
+    try {
+      terrain = generateTerrain({ ...def, res: Math.max(33, Math.round(def.size / 16) + 1) });
+    } catch (e) {
+      return fail(e);
+    }
+    let ms = performance.now() - t0;
+    setTimeout(() => {
+      t0 = performance.now();
+      let plan = null;
+      try {
+        // As in World.build.
+        if (def.objectives && def.village) plan = planVillage(terrain, def, new RNG(def.seed * 7 + 3));
+      } catch (e) {
+        return fail(e);
+      }
+      ms += performance.now() - t0;
+      const classifier = (x0, z0, x1, z1, mpp) => previewClassifier(terrain, def, x0, z0, x1, z1, mpp);
+      p.data = { terrain, plan, classifier, ms };
+      for (const f of p.waiters.splice(0)) f(p.data);
+    }, 0);
   }, 0);
   return p;
-}
-
-function makePreview(def) {
-  const res = Math.max(33, Math.round(def.size / 16) + 1);
-  const terrain = generateTerrain({ ...def, res });
-  // As in World.build.
-  const plan = def.objectives && def.village ? planVillage(terrain, def, new RNG(def.seed * 7 + 3)) : null;
-  return { terrain, plan, classifier: (x0, z0, x1, z1, mpp) => previewClassifier(terrain, def, x0, z0, x1, z1, mpp) };
 }
 
 // Ground codes for the area x0..x1, z0..z1 at mpp meters per pixel.
@@ -872,17 +910,15 @@ export class BattleMap {
     const hf = world?.hf || preview?.terrain.hf || null;
     const half = (hf?.size ?? this.def.size) / 2;
     toWorldT();
-    // The ground.
-    const tg = performance.now();
-    if (hf) this._paintGround(b, hf, preview, half, k);
-    else this._sketchGround(b, half);
-    this.stats.groundMs = performance.now() - tg;
-
     // Everything on the ground stops at the edge of the map.
     b.save();
     b.beginPath();
     b.rect(-half, -half, 2 * half, 2 * half);
     b.clip();
+    const tg = performance.now();
+    if (hf) this._paintGround(b, hf, preview, half, k);
+    else this._sketchGround(b, half);
+    this.stats.groundMs = performance.now() - tg;
     const sun = this.def.sun || { elevation: 25, azimuth: 285 };
     const az = (sun.azimuth * Math.PI) / 180;
     this.sunDir = [Math.sin(az), Math.cos(az)];
@@ -958,10 +994,11 @@ export class BattleMap {
     if (!cnv) return;
     const g = cnv.getContext('2d');
     const img = g.createImageData(w, h);
-    const hedgeMask = this.world && !this.world.vegetation?.hedges ? this.world.terrain?.hedgeMask : null;
+    const terrain = this.world?.terrain;
+    const hedgeMask = terrain && !this.world.vegetation?.hedges ? terrain.hedgeMask : null;
     const classify = preview ? preview.classifier(x0, z0, x0 + w * mpp, z0 + h * mpp, mpp) : null;
     const t0 = performance.now();
-    paintGround(img.data, w, h, x0, z0, mpp, { hf, classify, hedgeMask, hedges: this._fine() });
+    paintGround(img.data, w, h, x0, z0, mpp, { hf, classify, forest: terrain?.forest, hedgeMask, hedges: this._fine() });
     this.stats.paintMs = performance.now() - t0;
     this.stats.groundPx = w * h;
     g.putImageData(img, 0, 0);
@@ -1388,9 +1425,10 @@ export class BattleMap {
     for (const p of points) byId[p.id] = p;
     const side = (owner) => (owner === null || owner === undefined ? NEUTRAL : owner === team ? OWN : ENEMY);
     this._drawLinks(ctx, points, byId, side);
-    for (const m of state.marks || []) this._drawMark(ctx, m);
-    for (const f of state.friends || []) this._dot(ctx, f.body || f, OWN);
-    for (const f of state.enemies || []) this._dot(ctx, f.body || f, ENEMY);
+    const labels = [];
+    for (const m of state.marks || []) this._drawMark(ctx, m, labels);
+    for (const f of state.friends || []) if (f.alive !== false) this._dot(ctx, f.body || f, OWN);
+    for (const f of state.enemies || []) if (f.alive !== false) this._dot(ctx, f.body || f, ENEMY);
     const spawns = this._spawnMarkers(state.spawns, points);
     for (const m of spawns) this._drawSpawnRing(ctx, m, m.id === state.selected, m.id === state.hover, state.time);
     for (const p of points) this._drawPoint(ctx, p, side, team);
@@ -1593,7 +1631,7 @@ export class BattleMap {
   }
 
   _dot(ctx, p, col) {
-    if (p.alive === false || p.x === undefined) return;
+    if (p.x === undefined) return;
     const [x, y] = this.toMap(p.x, p.z);
     const r = Math.max(2.4, this.R * 0.3);
     ctx.beginPath();
@@ -1605,8 +1643,9 @@ export class BattleMap {
     ctx.stroke();
   }
 
-  // A small labeled marker (firing range targets and the like).
-  _drawMark(ctx, m) {
+  // A small labeled marker (firing range targets and the like), its label on the
+  // right or, if another label is there already, on the left.
+  _drawMark(ctx, m, labels) {
     const R = this.R;
     const [x, y] = this.toMap(m.x, m.z);
     const a = R * 0.34;
@@ -1617,12 +1656,17 @@ export class BattleMap {
     ctx.rect(x - a, y - a, a * 2, a * 2);
     ctx.fill();
     ctx.stroke();
-    if (m.label) {
-      setFont(ctx, clamp(R * 0.85, 8.5, 11), 600);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      this._halo(ctx, m.label, x + a + 3, y + 0.5, PAPER);
-    }
+    if (!m.label) return;
+    const size = clamp(R * 0.85, 8.5, 11);
+    setFont(ctx, size, 600);
+    const w = ctx.measureText(m.label).width + 4;
+    const hits = (bx) => labels.some((q) => q.x < bx + w && q.x + q.w > bx && q.y < y + size / 2 && q.y + size > y - size / 2);
+    const left = hits(x + a + 1) && !hits(x - a - 1 - w);
+    const bx = left ? x - a - 1 - w : x + a + 1;
+    labels.push({ x: bx, y: y - size / 2, w });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    this._halo(ctx, m.label, bx + 2, y + 0.5, PAPER);
   }
 
   // The player: an arrow along his facing and a faint cone of view.
