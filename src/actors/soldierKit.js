@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { SkinBuilder, torsoWeights, armWeights, legWeights, rigid, smooth01, weightsAt } from './soldierGeo.js';
 import { CELL, CAMO_GREY } from './soldierMaterials.js';
-import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
+import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
 import { buildHead, buildNeck, buildHand, buildForearm } from './soldierHead.js';
 import { Frame, torsoFrame, torsoBand, torsoStrap, rigidAt, pouch, buckle, starDecal } from './soldierGear.js';
 
@@ -79,7 +79,7 @@ export class Outfit {
   // folds, seed, top / neckline. color, cell. colorFn(x, y, z, c) optional.
   torso(g, { color, cell = CELL.wool, colorFn = null }) {
     const b = this.b;
-    this.g = { seed: this.variant * 7 + 1, ...g };
+    this.g = { seed: this.variant * 7 + 1, legs: this.legCut, ...g };
     b.material(cell);
     b.paint(color);
     if (colorFn) this.g.colorFn = colorFn;
@@ -95,6 +95,8 @@ export class Outfit {
     b.paint(color);
     buildSeat(b, { top: seatTop, lod: this.lod, waistband });
     for (const s of [-1, 1]) buildTrouserLeg(b, s, { lod: this.lod, end, style, blouse, tuck, bulk, folds, seed: this.variant + s });
+    // A tunic or jacket skirt built after this hangs clear of these legs.
+    this.legCut = trouserRows(bulk, style);
   }
 
   // Sleeves, both sides.

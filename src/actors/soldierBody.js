@@ -213,17 +213,61 @@ export function garmentFolds(g, theta, y) {
 // Below the hips a skirt hangs nearly straight instead of following the seat
 // and the crotch.
 export const SKIRT_Y = 0.91;
+// Below this the cloth of a long garment lies over the thighs (g.legs: the
+// trousers' cut rows, set when the trousers are built first); higher up the
+// tops of the trouser legs are inside the hips.
+const LEG_TOP = 0.935;
 export function garmentPoint(g, theta, y, out, extra = 0) {
   const off = garmentOffset(g, theta, y) + extra;
-  if (y >= SKIRT_Y) return torsoPoint(theta, y, out, off);
-  torsoPoint(theta, SKIRT_Y, out, off);
-  const [, , zf, zb] = interpRows(TORSO_ROWS, SKIRT_Y);
-  const cz = (zf + zb) / 2;
-  const k = 1 - 0.18 * (SKIRT_Y - y);
-  out.x *= k;
-  out.z = cz + (out.z - cz) * k;
-  out.y = y;
+  if (y >= SKIRT_Y) torsoPoint(theta, y, out, off);
+  else {
+    torsoPoint(theta, SKIRT_Y, out, off);
+    const [, , zf, zb] = interpRows(TORSO_ROWS, SKIRT_Y);
+    const cz = (zf + zb) / 2;
+    const k = 1 - 0.18 * (SKIRT_Y - y);
+    out.x *= k;
+    out.z = cz + (out.z - cz) * k;
+    out.y = y;
+  }
+  // Standing, the thighs fill out the front of a skirt: keep the cloth 5 mm
+  // (and any layer on it, `extra`) clear of the trousers and their folds.
+  if (g.legs && y < LEG_TOP) clearLegs(out, g.legs, 0.007 + extra, smooth01(LEG_TOP, LEG_TOP - 0.05, y));
   return out;
+}
+const _lr = [0, 0, 0, 0];
+function clearLegs(p, rows, clear, w) {
+  const s = BIND[B.thighR].y - p.y;
+  interpRows(rows, Math.max(rows[0][0], s), _lr);
+  const [, , zf, zb] = interpRows(TORSO_ROWS, Math.min(p.y, SKIRT_Y));
+  const cz = (zf + zb) / 2;
+  // Ray from the skirt's axis out through p; the far crossing of each thigh.
+  let dx = p.x,
+    dz = p.z - cz;
+  const L = Math.hypot(dx, dz);
+  if (L < 1e-6) return;
+  dx /= L;
+  dz /= L;
+  let far = 0;
+  const a = _lr[1] + clear,
+    c = _lr[2] + clear;
+  if (a <= 0 || c <= 0) return;
+  for (const sx of [-1, 1]) {
+    const ox = -(sx * BIND[B.thighR].x) / a,
+      oz = (cz - _lr[3]) / c;
+    const vx = dx / a,
+      vz = dz / c;
+    const A = vx * vx + vz * vz,
+      Bq = 2 * (ox * vx + oz * vz),
+      C = ox * ox + oz * oz - 1;
+    const disc = Bq * Bq - 4 * A * C;
+    if (disc <= 0) continue;
+    far = Math.max(far, (-Bq + Math.sqrt(disc)) / (2 * A));
+  }
+  if (far > L) {
+    const r = L + (far - L) * w;
+    p.x = dx * r;
+    p.z = cz + dz * r;
+  }
 }
 
 // Build the torso piece (tunic, jacket, shirt, smock): its outside from the hem
@@ -464,15 +508,16 @@ export function buildElbowPatch(b, side, { bulk = 0, wide = 0, s0 = 0.245, s1 = 
 // 'jump' (full, bloused). blouse: overhang where the leg goes into a boot,
 // legging or gaiter (m) whose top edge is at `tuck` (default 3 cm above the
 // end): below it the cloth is drawn in, inside. folds 0..1.
-export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, style = 'straight', blouse = 0, tuck = end - 0.03, folds = 1, seed = 1 } = {}) {
-  const k = bulk;
+// The cut of a trouser leg: rows [s, rx, rz, dz] down the leg from inside the
+// pelvis (s from the hip joint). k: extra fullness; style 'straight' |
+// 'breeches' | 'jump'. Wool service trousers were cut full: ~64 cm round the
+// thigh, ~44 cm at the knee (est. from 1940s patterns), over a 56 / 38 cm leg.
+export function trouserRows(k = 0.004, style = 'straight') {
   const br = style === 'breeches' ? 1 : 0;
   const jp = style === 'jump' ? 1 : 0;
-  // Wool service trousers were cut full: ~64 cm round the thigh, ~44 cm at the
-  // knee (est. from 1940s patterns), over a 56 / 38 cm leg.
-  const rows = [
-    [-0.09, 0.072, 0.076],
-    [-0.02, 0.093 + k, 0.097 + k],
+  return [
+    [-0.09, 0.072, 0.076, 0],
+    [-0.02, 0.093 + k, 0.097 + k, 0],
     [0.06, 0.095 + k + br * 0.018 + jp * 0.008, 0.1 + k + br * 0.022 + jp * 0.008, 0.002],
     [0.16, 0.088 + k + br * 0.024 + jp * 0.012, 0.093 + k + br * 0.028 + jp * 0.012, 0.004],
     [0.26, 0.079 + k + br * 0.016 + jp * 0.012, 0.084 + k + br * 0.018 + jp * 0.012, 0.004],
@@ -483,6 +528,10 @@ export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, st
     [0.72, 0.052 + k - br * 0.008, 0.056 + k - br * 0.008, 0.006],
     [0.84, 0.049 + k, 0.053 + k, 0.004],
   ];
+}
+
+export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, style = 'straight', blouse = 0, tuck = end - 0.03, folds = 1, seed = 1 } = {}) {
+  const rows = trouserRows(bulk, style);
   const sK = BIND[B.thighR].distanceTo(BIND[B.shinR]);
   const ds = [0.03, 0.06, 0.12][lod];
   let prof;
