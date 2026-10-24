@@ -515,13 +515,18 @@ canvas.game {
   background: var(--panel);
   border: 1px solid var(--panel-edge);
 }
-.pause h2 { margin: 0 0 6px; letter-spacing: 0.2em; text-transform: uppercase; font-size: 18px; text-align: center; }
+.pause h2 { margin: 0 0 8px; font-family: var(--cond); font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; font-size: 24px; text-align: center; }
+.pause .box { border-top: 3px solid var(--amber); }
+.pause-home button { padding: 11px 14px; font-family: var(--cond); font-size: 17px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.pause-home .resume { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; }
+.pause-home .resume:hover { background: linear-gradient(180deg, #f5c867, #d6a03b); }
+.pause-home .leave:hover { border-color: rgba(208, 87, 74, 0.7); background: rgba(208, 87, 74, 0.12); }
 .pause .box.wide { width: min(680px, calc(100% - 32px)); }
 .pause-home { display: flex; flex-direction: column; gap: 8px; }
 .pause-tip { margin-top: 4px; text-align: center; font-size: 11px; color: var(--ink-dim); letter-spacing: 0.04em; }
 /* After Esc closes the menu: the battle waits for a click or a key. */
 .pause-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.pause-wait > div { padding: 10px 16px; background: var(--panel); border: 1px solid var(--panel-edge); font-size: 14px; letter-spacing: 0.04em; }
+.pause-wait > div { padding: 12px 18px; background: rgba(13, 14, 12, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 2px solid var(--amber); font-family: var(--cond); font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; }
 
 /* Settings pages (main menu and pause menu). */
 .set-view .row { margin: 0 0 14px; }
