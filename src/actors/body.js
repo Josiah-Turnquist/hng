@@ -32,6 +32,11 @@ const STEP_HEIGHT = 0.45;
 const MAX_SLOPE = (46 * Math.PI) / 180; // steeper than this, you slide (H&G used ~49 degrees)
 const JUMP_SPEED = 3.3; // m/s up: about a 0.5 m jump with gear
 const SAFE_FALL_SPEED = 8; // m/s (~3.3 m drop) before fall damage starts
+// Stamina: three times as much as a plain reading of a loaded soldier's sprint
+// gives (a full bar lasts about 27 s of sprinting with a normal load), and it
+// comes back twice as fast (an empty bar refills in about 4 s standing still).
+export const STAMINA_POOL = 3;
+export const STAMINA_REGEN = 2;
 
 export class Body {
   constructor(world, x, y, z) {
@@ -170,7 +175,7 @@ export class Body {
     if (intent.jump && this.onGround && this.stance === STANCE.STAND && !transitioning && this.stamina > 8 && this.inWater < 1.0) {
       this.vy = JUMP_SPEED * (this.legWound > 0.5 ? 0.6 : 1);
       this.onGround = false;
-      this.stamina -= 8;
+      this.stamina -= 8 / STAMINA_POOL;
       this.staminaDelay = 1;
       this.jumped = true;
     }
@@ -243,9 +248,11 @@ export class Body {
 
   _updateStamina(dt) {
     // Sprinting burns stamina, more with heavy loads; resting restores it.
+    // (Stamina is a percentage: STAMINA_POOL times more of it lasts that much
+    // longer, STAMINA_REGEN refills the bar that much faster.)
     const loadFactor = clamp(this.load / 20, 0.8, 2);
     if (this.sprinting) {
-      this.stamina -= 11 * loadFactor * dt;
+      this.stamina -= (11 * loadFactor * dt) / STAMINA_POOL;
       this.staminaDelay = 0.8;
       this.breath = Math.min(1, this.breath + 0.12 * dt * loadFactor);
     } else if (this.staminaDelay > 0) {
@@ -253,7 +260,7 @@ export class Body {
     } else {
       const rest = this.moving < 0.2 ? 14 : this.moving < 2 ? 9 : 5;
       const stanceBonus = this.stance === STANCE.PRONE ? 1.3 : this.stance === STANCE.CROUCH ? 1.15 : 1;
-      this.stamina += rest * stanceBonus * dt;
+      this.stamina += rest * stanceBonus * STAMINA_REGEN * dt;
     }
     // Breathing settles more slowly than stamina recovers.
     const exertion = 1 - this.stamina / 100;
@@ -272,7 +279,7 @@ export class Body {
     const v = this.maxFallSpeed;
     this.landImpact = clamp(v / 10, 0, 1);
     if (v > SAFE_FALL_SPEED) this.fallDamage += (v - SAFE_FALL_SPEED) * 13;
-    if (v > 5) this.stamina -= 5;
+    if (v > 5) this.stamina -= 5 / STAMINA_POOL;
     this.maxFallSpeed = 0;
     this.airTime = 0;
   }

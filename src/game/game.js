@@ -663,7 +663,10 @@ export class Game {
     this.hud.update(frameDt);
     const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;
     this.pipeline.grade.uniforms.uDamage.value = clamp(this.hud.damageFlash, 0, 1);
-    this.pipeline.render(this.world.scene, this.camera, vm?.scene, vm?.camera, this.time, { aim: vm?.visible ? vm.aim : 0, dt: frameDt });
+    // (The first-person gun and arms only while they are shown: not when killed,
+    // scoped, or seen from outside.)
+    const fpv = vm?.visible ? vm : null;
+    this.pipeline.render(this.world.scene, this.camera, fpv?.scene, fpv?.camera, this.time, { aim: fpv ? fpv.aim : 0, dt: frameDt });
   }
 
   _spectate(frameDt) {
