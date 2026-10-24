@@ -408,18 +408,18 @@ export class Settings {
       // Storage can be unavailable (private mode, sandboxed page). Defaults are fine.
     }
     const v = this.values;
-    if (!v.graphics || typeof v.graphics !== 'object') {
-      if (GRAPHICS_PRESETS[v.quality]) {
-        // Saved by an older version: only the preset name.
-        v.graphics = this._presetOptions(v.quality);
-      } else {
-        const d = detectQuality();
-        v.quality = d.preset;
-        v.graphics = this._presetOptions(d.preset);
-        v.autoQuality = true;
-        v.gpu = d.gpu;
-        this._save();
-      }
+    if (GRAPHICS_PRESETS[v.quality]) {
+      // Saved on a preset (or by an older version that kept only its name): take the
+      // preset as it is now, since an update may have retuned its values. Otherwise
+      // the menu would show "Custom" though the player never changed anything.
+      v.graphics = this._presetOptions(v.quality);
+    } else if (!v.graphics || typeof v.graphics !== 'object') {
+      const d = detectQuality();
+      v.quality = d.preset;
+      v.graphics = this._presetOptions(d.preset);
+      v.autoQuality = true;
+      v.gpu = d.gpu;
+      this._save();
     }
     // Options added since the settings were saved take the preset's value.
     const base = GRAPHICS_PRESETS[v.quality] || GRAPHICS_PRESETS.high;

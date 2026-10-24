@@ -63,3 +63,25 @@ test('settings work without browser storage, and one change makes the preset cus
   s.setPreset('low');
   assert.equal(s.quality.renderScale, GRAPHICS_PRESETS.low.renderScale);
 });
+
+test('a preset saved by an older version follows the preset as it is now', () => {
+  const saved = new Map();
+  const old = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
+  try {
+    // Low, as an older version saved it, with a grass density it no longer has.
+    const oldLow = { ...GRAPHICS_PRESETS.low, grassDensity: GRAPHICS_PRESETS.low.grassDensity + 0.05 };
+    saved.set('hng.settings.v1', JSON.stringify({ quality: 'low', graphics: oldLow }));
+    const s = new Settings();
+    assert.equal(s.preset, 'low');
+    assert.equal(s.graphics.grassDensity, GRAPHICS_PRESETS.low.grassDensity);
+    // Options the player changed are kept.
+    saved.set('hng.settings.v1', JSON.stringify({ quality: 'custom', graphics: { ...GRAPHICS_PRESETS.high, bloom: false } }));
+    const c = new Settings();
+    assert.equal(c.preset, 'custom');
+    assert.equal(c.graphics.bloom, false);
+  } finally {
+    if (old === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = old;
+  }
+});
