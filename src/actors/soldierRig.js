@@ -179,10 +179,13 @@ const FIST = { index: [1.5, 1.95], middle: [1.55, 2.05], ring: [1.58, 2.05], pin
 const SPREAD = { index: 0.1, middle: 0.02, ring: -0.06, pinky: -0.14 };
 // Knuckle angles [a1, a2] that wrap a finger round a cylinder of radius r lying
 // against the palm (see gripCenter), from circle intersections in the plane of
-// the finger: the middle knuckle and the tip both touch the cylinder.
+// the finger: the middle knuckle and the tip both touch the cylinder. cy: where
+// the cylinder crosses the hand (from the wrist; -0.083 at the finger roots, as
+// a grip is held, about -0.06 for a fore-end lying in the palm); cup: how far it
+// sinks into the palm's flesh.
 const WRAP = {};
-function wrapAngles(name, r) {
-  const key = `${name}${Math.round(r * 2000)}`;
+function wrapAngles(name, r, cy = -0.083, cup = 0) {
+  const key = `${name}${Math.round(r * 2000)}|${Math.round(cy * 2000)}|${Math.round(cup * 2000)}`;
   if (WRAP[key]) return WRAP[key];
   const J = HAND_JOINTS[name];
   const fr = { thumb: 0.0095, index: 0.0088, middle: 0.009, ring: 0.0086, pinky: 0.0078 }[name];
@@ -192,7 +195,7 @@ function wrapAngles(name, r) {
     T = [J[3][0], J[3][1]];
   const L1 = Math.hypot(Pj[0] - M[0], Pj[1] - M[1]),
     L2 = Math.hypot(T[0] - Pj[0], T[1] - Pj[1]);
-  const C = [-(PALM_X + r), -0.083];
+  const C = [-(PALM_X + r - cup), cy];
   const rho = r + fr;
   // Angle a (from straight down, toward the palm) where a segment from A of
   // length L meets the circle (C, rho); the far intersection (wrapping round).
@@ -227,8 +230,11 @@ function wrapAngles(name, r) {
 }
 
 // wrap: radius of a grip the fingers close round (overrides curl, which then
-// scales how firmly: 1 = fully closed on it).
-export function poseHand(pose, side, curl = 0.3, index = curl, thumb = curl, spread = 0, wrap = 0) {
+// scales how firmly: 1 = fully closed on it). opts (for a fore-end lying in the
+// palm): cy and cup (see wrapAngles), tilt: the slope of the cylinder across the
+// hand (dy/dz: a fore-end runs from the heel of the hand to the index's root),
+// thumbAlong: the thumb lies along the cylinder's near side, pointing forward.
+export function poseHand(pose, side, curl = 0.3, index = curl, thumb = curl, spread = 0, wrap = 0, { cy = -0.083, cup = 0, tilt = 0, thumbAlong = false } = {}) {
   const fb = FINGER_BONES[side < 0 ? -1 : 1];
   for (const name of ['index', 'middle', 'ring', 'pinky']) {
     const c = name === 'index' ? index : curl;
@@ -237,7 +243,7 @@ export function poseHand(pose, side, curl = 0.3, index = curl, thumb = curl, spr
     let [a1, a2] = FIST[name];
     let cc = Math.min(1, c * k);
     if (wrap > 0 && !(name === 'index' && index < curl - 0.1)) {
-      [a1, a2] = wrapAngles(name, wrap);
+      [a1, a2] = wrapAngles(name, wrap, cy + HAND_JOINTS[name][0][2] * tilt, cup);
       cc = Math.min(1, c);
     }
     const [b1, b2] = fb[name];
@@ -253,6 +259,8 @@ export function poseHand(pose, side, curl = 0.3, index = curl, thumb = curl, spr
   // fingers' middle joints on the far side of the grip (or of the fist).
   const [t1, t2] = fb.thumb;
   const T = wrap > 0 ? _ht.set(-(PALM_X + 2 * wrap) - 0.004, -0.072, -0.012) : _ht.set(-0.045, -0.104, -0.012);
+  // Along the cylinder: on its flank toward the wrist, 7 cm ahead of the hand.
+  if (wrap > 0 && thumbAlong) T.set(-(PALM_X + wrap - cup) - 0.2 * wrap, cy - 0.07 * tilt + wrap + 0.008, -0.07);
   thumbIK(T, _tq1, _tq2);
   const k = Math.min(1, thumb / (wrap > 0 ? 0.8 : 1));
   _hq.identity().slerp(_tq1, k);

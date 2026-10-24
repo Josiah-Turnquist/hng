@@ -628,18 +628,25 @@ export function buildHand(b, side, { lod = 0, skin, nails, glove = null, dirt = 
   }
   // Palm: rows down from the wrist to the knuckles, a rounded slab with the
   // thumb pad (thenar) on the palm side.
+  const fore = side < 0 ? B.forearmL : B.forearmR;
   b.bones((x, y, z, o) => {
     // The thenar flesh moves partly with the thumb's base.
     const [t1] = FINGER_BONES[side].thumb;
     const lx = (x - BIND[hand].x) * (side < 0 ? -1 : 1),
       ly = y - BIND[hand].y,
       lz = z - BIND[hand].z;
-    const w = Math.exp(-(((lz + 0.026) / 0.016) ** 2) - (((ly + 0.045) / 0.022) ** 2)) * (lx < 0.002 ? 0.6 : 0.25);
-    setN(o, [hand, 1 - w, t1, w]);
+    // (Not much: the thumb turns far round a fore-end, and the flesh it pulls
+    // with it would fold out of the palm.)
+    const w = Math.exp(-(((lz + 0.026) / 0.016) ** 2) - (((ly + 0.045) / 0.022) ** 2)) * (lx < 0.002 ? 0.3 : 0.15);
+    // Above the wrist the skin goes with the forearm, into the sleeve.
+    const fw = smooth01(0.002, 0.022, ly);
+    setN(o, [hand, (1 - w) * (1 - fw), t1, w * (1 - fw), fore, fw]);
   });
   const rows = [
     // [y, half width (z), back x, palm x, z center]: wrist 5.6 x 3.6 cm,
-    // palm 8.4 x 3 cm, knuckles 8.2 x 2.4 cm (est.).
+    // palm 8.4 x 3 cm, knuckles 8.2 x 2.4 cm (est.). The first row is the end
+    // of the forearm, inside the cuff, so no gap shows when the wrist bends.
+    [0.035, 0.025, 0.016, -0.016, 0.002],
     [0.006, 0.027, 0.015, -0.017, 0.002],
     [-0.012, 0.031, 0.014, -0.018, 0.0],
     [-0.032, 0.037, 0.013, -0.019, -0.001],
@@ -653,7 +660,7 @@ export function buildHand(b, side, { lod = 0, skin, nails, glove = null, dirt = 
   const us = [];
   for (let i = 0; i <= nu; i++) us.push(PI / 2 + (i / nu) * 2 * PI);
   // Rows: those of the profile, closer over the knuckles.
-  const ys = [0.006, -0.012, -0.032, -0.054, -0.068, -0.078, -0.086, -0.091, -0.096];
+  const ys = [0.035, 0.006, -0.012, -0.032, -0.054, -0.068, -0.078, -0.086, -0.091, -0.096];
   // Backs tanned and weathered by a summer outdoors, palms paler and pinker,
   // knuckles ruddy, grime worked into the skin (blotchy, not uniform).
   const sk = skin ? skin.clone() : null;
@@ -712,7 +719,7 @@ export function buildHand(b, side, { lod = 0, skin, nails, glove = null, dirt = 
       for (let i = 0; i <= nu; i++) {
         const q = (g0 + j * (nu + 1) + i) * 2;
         b.uv[q] = 0.01 + 0.48 * (i / nu);
-        b.uv[q + 1] = 0.005 + 0.99 * ((ys[0] - ys[j]) / (ys[0] - ys[ys.length - 1]));
+        b.uv[q + 1] = 0.005 + 0.99 * Math.max(0, (ys[1] - ys[j]) / (ys[1] - ys[ys.length - 1]));
       }
   }
   // Fingers.

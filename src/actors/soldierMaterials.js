@@ -630,7 +630,9 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
         fs = after(fs, '#include <aomap_fragment>', VM_FRAG_AO);
         // The player's own hands, a hand's breadth from the eye and never in a
         // shadow map, come out lighter than skin out in the world: a little less.
-        fs = after(fs, '#include <map_fragment>', 'diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.84, 0.82, 0.8 ), sSkin );');
+        // The sleeves, seen from a hand's breadth and without the world's sky and
+        // bounce light, keep the cloth's own swatch value (not darkened for distance).
+        fs = after(fs, '#include <map_fragment>', 'diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.84, 0.82, 0.8 ), sSkin ) * ( 1.0 + 0.35 * sCloth );');
       }
       fs = replace(fs, '#include <map_fragment>', FRAG_MAP);
       fs = replace(fs, '#include <roughnessmap_fragment>', THREE.ShaderChunk.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'textureGrad( roughnessMap, sAtlasUv, sDx, sDy )') + '\nroughnessFactor = mix( roughnessFactor, 0.16, vSGloss );');

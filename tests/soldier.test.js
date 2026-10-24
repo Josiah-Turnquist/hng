@@ -296,3 +296,59 @@ test('riders sit on the saddle and reach the grips and pedals', () => {
     assert.ok(head.ay > hip.y + 0.4, `${style}: head at ${head.ay}`);
   }
 });
+
+test('first person: with every gun the hands stay on the forearms and on their holds, at the hip, aimed, sprinting, reloading and on the bolt', async () => {
+  // A stand-in for the page's canvas (the view model paints a few small textures).
+  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => ({ addColorStop() {}, data: new Uint8ClampedArray(16) })), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+  const { ViewModel } = await import('../src/weapons/viewmodel.js');
+  const { WEAPONS } = await import('../src/weapons/defs.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const vm = new ViewModel({ get: () => ({ map: null, normalMap: null, ormMap: null, world: 1 }) }, 'US', null);
+  const cam = new THREE.PerspectiveCamera(52, 16 / 9, 0.01, 30);
+  cam.position.set(0, 1.6, 0);
+  cam.updateMatrixWorld();
+  const base = { aiming: false, sprinting: false, speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, light: 1, sunDir: new THREE.Vector3(0.4, 0.8, 0.3).normalize(), sunColor: new THREE.Color(1, 1, 1), sunIntensity: 3, ambient: 1 };
+  const atm = new Atmosphere(0, 15);
+  const steps = ['boltOpen', 'boltBack', 'boltForward', 'clip', 'round', 'clipIn', 'boltRelease', 'magOut', 'magIn', 'charge', 'coverOpen', 'load'];
+  const arms = vm.fpArms;
+  let n = 0;
+  for (const [id, def] of Object.entries(WEAPONS)) {
+    if (def.type === 'grenade') continue;
+    vm.setWeapon(def, atm);
+    const check = (what) => {
+      n++;
+      for (const side of [1, -1]) {
+        const gap = arms.wristGap(side);
+        assert.ok(gap < 1e-4, `${id} ${what}: ${side > 0 ? 'right' : 'left'} hand ${(gap * 100).toFixed(1)} cm off the end of the forearm`);
+      }
+    };
+    const run = (ctx, frames) => {
+      vm.stopAction();
+      for (let i = 0; i < frames; i++) vm.update(1 / 60, cam, ctx);
+    };
+    run(base, 90);
+    check('at the hip');
+    // At the hip the support hand closes on the fore-end (its palm within 1 cm of the wood).
+    if (arms.foreHeld) {
+      const H = arms.bones[8];
+      const palm = new THREE.Vector3(0.019 + arms.fore.r, -0.06, 0).applyQuaternion(H.quaternion).add(H.position);
+      const axis = arms.fore.c.clone().applyQuaternion(vm.gun.root.quaternion).add(vm.gun.root.position);
+      const dir = arms.fore.axis.clone().applyQuaternion(vm.gun.root.quaternion);
+      const off = palm.sub(axis);
+      off.addScaledVector(dir, -off.dot(dir));
+      assert.ok(off.length() < 0.012, `${id}: the left hand ${(off.length() * 100).toFixed(1)} cm from the fore-end`);
+    }
+    run({ ...base, aiming: true }, 90);
+    check('aimed');
+    run({ ...base, sprinting: true }, 90);
+    check('sprinting');
+    for (const st of steps) {
+      run(base, 20);
+      vm.playStep(st, 0.6);
+      for (let i = 0; i < 18; i++) vm.update(1 / 60, cam, base);
+      check(st);
+    }
+  }
+  assert.ok(n > 400, `checked ${n} poses`);
+});

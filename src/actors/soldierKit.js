@@ -560,9 +560,12 @@ export class Outfit {
   // Baked shading: the body and the larger kit occlude the sky (armpits, the
   // inside of the arms and thighs, the crotch, under the chin and the helmet
   // brim, round pouches and packs), and close contact darkens creases.
-  finish() {
+  // (bakes false: none of it, for the first-person arms, which are not by the
+  // body where the bind pose has them.)
+  finish(bakes = true) {
     const spheres = [...bodySpheres(this.info.headgear), ...this.b.partSpheres()];
     this.info.spheres = spheres;
+    if (!bakes) return { b: this.b, info: this.info };
     this.b.bakeSphereAO(spheres, 0.75);
     if (this.lod < 2) this.b.bakeContact(this.lod ? 0.05 : 0.028, this.lod ? 0.4 : 0.55);
     return { b: this.b, info: this.info };
@@ -582,14 +585,14 @@ export function variantCount(faction, cls) {
 
 // Build an outfit. role: the primary weapon's kind ('rifle' | 'smg' | 'mg' |
 // 'at'), for the ammunition pouches.
-export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle') {
+export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true } = {}) {
   const t = OUTFITS[faction] || OUTFITS.US;
   const def = t[cls] || t.infantry;
   const v = variant % def.variants;
   const rng = mulberry(hashStr(`${faction}|${cls}|${v}`));
   const o = new Outfit(faction, cls, v, lod, role, rng);
   def.build(o);
-  return o.finish();
+  return o.finish(bakes);
 }
 
 // ---------------------------------------------------------------------------
