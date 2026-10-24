@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import { BattleMap, mapPoints, paintGround } from '../src/ui/battleMap.js';
 import { MAPS } from '../src/world/maps.js';
 import { Heightfield, SURF } from '../src/world/heightfield.js';
+import { generateTerrain } from '../src/world/terrainGen.js';
+import { planVillage } from '../src/world/village/plan.js';
+import { RNG } from '../src/core/math.js';
 
 // A canvas whose 2D context accepts every call and draws nothing.
 function fakeCanvas(w, h) {
@@ -94,10 +97,14 @@ test('a click picks the spawn under it, or its delay tag, or nothing', () => {
   // Points without a spawn there are not clickable.
   const [qx, qy] = map.toMap(by.O2.x, by.O2.z);
   assert.equal(map.spawnAt(qx, qy), null);
-  // Spawns found by their point's id, from the definition's points.
-  map.draw({ spawns: [{ id: 'B1' }] });
+  // Spawns found by their point's id, from the definition's points; one ready to go
+  // still has its tag.
+  map.draw({ spawns: [{ id: 'B1' }, { id: 'E1', x: by.E1.x, z: by.E1.z, delay: 0 }] });
   const [bx, by1] = map.toMap(by.B1.x, by.B1.z);
   assert.equal(map.spawnAt(bx + 3, by1), 'B1');
+  assert.equal(map.spawnAt(bx, by1 + map.R * 2.6), null, 'no delay, no tag');
+  const [ex, ey] = map.toMap(by.E1.x, by.E1.z);
+  assert.equal(map.spawnAt(ex, ey + map.R * 2.6), 'E1');
   // Of two spawns within reach, the nearer one.
   const near = [{ id: 'west', point: { x: -10, z: 0 } }, { id: 'east', point: { x: 10, z: 0 } }];
   map.draw({ spawns: near });
@@ -174,7 +181,7 @@ test('the ground painter: woods dark, wheat light, water dark and cool', () => {
   // Hedgerows from the mask darken their cells.
   const hf = ground();
   const mask = new Uint8Array(33 * 33);
-  // (Pixel i of this painting falls on cell i + 1.)
+  // Cell column 16, under pixel column 15 (pixel i of this painting lands on cell i + 1).
   for (let iz = 0; iz < 33; iz++) mask[iz * 33 + 16] = 1;
   const hedged = paint(hf, { hedgeMask: mask });
   const col = (p, i) => mean(p, i, i + 1);
@@ -203,4 +210,57 @@ test('the ground painter: slopes facing the light from the north-west are lighte
     se = lum(at(6, 6));
   assert.ok(nw > se * 1.15, `north-west flank ${nw.toFixed(0)} against south-east ${se.toFixed(0)}`);
   assert.ok(nw > lum(flat) && se < lum(flat));
+});
+
+test('the ground painter: woods follow the forest value, with soft edges', () => {
+  // Forest value rising from west to east, zero at x = 0 (the surfaces all say forest).
+  const hf = ground(SURF.FOREST);
+  const forest = new Float32Array(33 * 33);
+  for (let iz = 0; iz < 33; iz++) for (let ix = 0; ix < 33; ix++) forest[iz * 33 + ix] = hf.worldX(ix) * 0.002;
+  const px = paint(hf, { forest });
+  const lum = (c) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+  const column = (i) => lum(mean(px, 16 * 32 + i, 16 * 32 + i + 1));
+  const meadow = lum(mean(paint(ground(SURF.GRASS)))),
+    wood = lum(mean(paint(ground(SURF.FOREST))));
+  assert.ok(Math.abs(column(2) - meadow) < meadow * 0.12, 'west of the edge: meadow');
+  assert.ok(Math.abs(column(29) - wood) < wood * 0.35, 'east of the edge: wood');
+  // Across the edge the light falls off in steps, not all at once.
+  const edge = [13, 14, 15, 16, 17, 18].map(column);
+  assert.ok(edge.some((v) => v < meadow * 0.9 && v > wood * 1.15), `an in-between pixel at the edge: ${edge.map((v) => v.toFixed(0))}`);
+});
+
+test('the preview from the definition shows the village and woods the battle will have', async () => {
+  const map = new BattleMap(fakeCanvas(400, 400), town, { dpr: 1 });
+  for (let i = 0; i < 500 && !map.preview; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.ok(map.preview, 'the preview arrived');
+  // Another map of the same battlefield has it at once.
+  assert.equal(new BattleMap(fakeCanvas(300, 300), town, { dpr: 1 }).preview, map.preview);
+  // A finer terrain (as the battle's) plans the same village.
+  const terrain = generateTerrain({ ...town, res: 257 });
+  const plan = planVillage(terrain, town, new RNG(town.seed * 7 + 3));
+  const pv = map.preview.plan;
+  assert.equal(pv.buildings.length, plan.buildings.length);
+  assert.equal(pv.farms.length, plan.farms.length);
+  for (let i = 0; i < plan.buildings.length; i++) assert.ok(Math.hypot(pv.buildings[i].x - plan.buildings[i].x, pv.buildings[i].z - plan.buildings[i].z) < 0.01);
+  // Woods where the battle's terrain has forest floor, and nowhere else. (The
+  // preview's ground codes keep how much wood is in a pixel in bits 11-18.)
+  const classify = map.preview.classifier(-760, -760, 760, 760, 8);
+  const hf = terrain.hf;
+  const plants = new Set([SURF.GRASS, SURF.DRY_GRASS, SURF.FIELD, SURF.WHEAT, SURF.FOREST]);
+  let same = 0,
+    n = 0;
+  for (let iz = 0; iz < hf.res; iz += 2)
+    for (let ix = 0; ix < hf.res; ix += 2) {
+      const x = hf.worldX(ix),
+        z = hf.worldZ(iz);
+      const real = hf.surface[iz * hf.res + ix];
+      if (Math.max(Math.abs(x), Math.abs(z)) > 740 || !plants.has(real)) continue;
+      const code = classify(x, z);
+      const wood = (code & 31) === SURF.FOREST || code >> 11 >= 128;
+      n++;
+      if (wood === (real === SURF.FOREST)) same++;
+    }
+  assert.ok(n > 3000);
+  assert.ok(same / n > 0.97, `woods agree at ${((100 * same) / n).toFixed(1)} % of ${n} spots`);
+  map.dispose();
 });

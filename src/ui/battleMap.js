@@ -13,25 +13,34 @@
 //   map.resize();              // after the canvas changes size (cheap when it didn't)
 //   map.setView({ x, z, radius } or { x, z, scale });   map.dispose();
 //
+// Give the canvas a CSS width and height; the map sizes its pixels from them and
+// the screen's pixel ratio (opts.dpr, opts.width, opts.height override). Other
+// options: preview (default true, see below), grid (default true).
+//
 // Everything in draw() is optional. points: Assault's points (id, kind, x, z,
 // owner DEF 0 / ATT 1 / null, c -1..1, links; count [def, att] shows a fight), or
 // the opening state from the map definition. team: the viewer's side (default the
 // attackers): own points blue, the enemy's red, neutral grey. spawns: what
-// deployOptions() returns ({ id, delay, point }); selected and hover are spawn ids.
-// player: { x, z, yaw } with the game's yaw (0 faces north, positive turns left).
-// friends, enemies: [{ x, z }] or soldiers. marks: [{ x, z, label }] (range targets).
-// time: seconds, makes the selected spawn pulse.
+// deployOptions() returns ({ id, delay, point }, or { id, x, z, delay }; a delay of
+// 0 shows Ready); selected and hover are spawn ids.
+// player: { x, z, yaw } with the game's yaw (0 faces north, positive turns left),
+// or a soldier. friends, enemies: soldiers or { x, z }. marks: [{ x, z, label }]
+// (range targets). time: seconds, makes the selected spawn pulse.
 //
-// world: anything with the heightfield `hf`; it also uses `terrain` (hedgerow
-// mask), `villagePlan` (roofs, farms, walls, the square), `village.footprints`
-// when there is no plan, and `vegetation` (hedgerows and single trees), as the
-// game's World keeps them. Without a world the map draws from the definition: at
-// once a sketch (river, roads, woods, the village area), then a low-resolution
-// preview of the real terrain and village made in the background (opts.preview:
-// false turns it off; about a tenth of a second, once per map definition).
+// world: anything with the heightfield `hf`; it also uses `terrain` (the forest
+// value and hedgerow mask), `villagePlan` (roofs, farms, walls, the square),
+// `village.footprints` when there is no plan, and `vegetation` (hedgerows and the
+// trees that stand alone), as the game's World keeps them. Without a world the map
+// draws from the definition: at once a sketch (river, roads, woods, the village
+// area), then a preview of the real terrain at low resolution with the village
+// plan, made in the background once per map definition and shared by every map
+// (two tasks of a few tenths of a second at most; opts.preview: false skips it).
 //
 // The ground and everything else that never changes is drawn once into an
-// offscreen canvas, so draw() copies it and adds the live layer on top.
+// offscreen canvas (about 0.1 s for the Town's 1025 x 1025 heightfield), so
+// draw() copies it and adds the live layer on top (well under a millisecond).
+// Maps without a world that match (battlefield, size, view) share that canvas, so
+// a new map for a page shown again costs nothing.
 import { SURF } from '../world/heightfield.js';
 import { RNG, sampleSpline2 } from '../core/math.js';
 import { generateTerrain } from '../world/terrainGen.js';
@@ -747,6 +756,11 @@ function grainCanvas(like) {
   return grainTile;
 }
 
+// Base layers drawn from a definition alone come out the same every time, and the
+// front end makes a new map each time it shows a battle: the last few are kept and
+// shared (they are only ever read; a map that redraws its ground takes a new one).
+const sharedBases = new Map();
+
 export class BattleMap {
   constructor(canvas, def, opts = {}) {
     this.canvas = canvas;
@@ -887,7 +901,16 @@ export class BattleMap {
     const t0 = performance.now();
     const W = this.canvas.width,
       H = this.canvas.height;
-    if (!this.base || this.base.width !== W || this.base.height !== H) this.base = makeCanvas(W, H, this.canvas);
+    const v = this.view;
+    const key = this.world ? null : `${this.def.id} ${W}x${H} ${this.dpr} ${v.x},${v.z},${v.scale} ${this.preview ? 'preview' : 'sketch'} ${this.opts.grid}`;
+    if (key && sharedBases.has(key)) {
+      this.base = sharedBases.get(key);
+      this.baseShared = true;
+      this.stats.baseMs = performance.now() - t0;
+      return;
+    }
+    if (!this.base || this.baseShared || this.base.width !== W || this.base.height !== H) this.base = makeCanvas(W, H, this.canvas);
+    this.baseShared = false;
     if (!this.base) return;
     const b = this.base.getContext('2d');
     const dpr = this.dpr;
@@ -971,6 +994,12 @@ export class BattleMap {
     b.setTransform(dpr, 0, 0, dpr, 0, 0);
     this._drawNorth(b);
     this._drawScale(b);
+    if (key) {
+      sharedBases.delete(key);
+      sharedBases.set(key, this.base);
+      this.baseShared = true;
+      while (sharedBases.size > 4) sharedBases.delete(sharedBases.keys().next().value);
+    }
     this.stats.baseMs = performance.now() - t0;
   }
 
@@ -1395,7 +1424,7 @@ export class BattleMap {
       if (p.x === undefined) continue;
       const [x, y] = this.toMap(p.x, p.z);
       const r = (p.kind === 'objective' ? R * 1.3 : R) + R * 0.55;
-      const label = s.delay !== undefined && s.delay !== null ? `${Math.ceil(s.delay)} s` : '';
+      const label = s.delay === undefined || s.delay === null ? '' : s.delay > 0 ? `${Math.ceil(s.delay)} s` : 'Ready';
       const tw = label ? Math.max(R * 2.4, label.length * R * 0.62 + R * 0.8) : 0;
       const th = R * 1.35;
       out.push({ id: s.id, x, y, r, label, reach: Math.max(r + 6, 16), tag: { x: x - tw / 2, y: y + r + 2, w: tw, h: label ? th : 0 } });
@@ -1611,7 +1640,7 @@ export class BattleMap {
     ctx.stroke();
   }
 
-  // The time to deploy under the spawn's point.
+  // The time to deploy (or Ready) under the spawn's point.
   _drawSpawnTag(ctx, m, selected, hover) {
     if (!m.label) return;
     const R = this.R;

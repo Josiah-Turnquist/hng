@@ -22,6 +22,7 @@
 //                      with a fight on it, one neutral, three spawns (one chosen), the
 //                      player and a few friends (on the range: the targets)
 //   team=att|def       the viewer's side     view=x,z,radius     preview=0 (the sketch only)
+//   anim=1             redraw every frame with the time (the chosen spawn pulses)
 //   info=0             no timings box (they are also printed as BATTLEMAP_STATS)
 import { MAPS } from '../src/world/maps.js';
 import { generateTerrain } from '../src/world/terrainGen.js';
@@ -94,12 +95,20 @@ if (params.get('live') === '1') {
     by.B3.owner = null;
     by.B3.c = -0.4;
     state.points = pts;
-    const mine = (p) => p.owner === team && Math.abs(p.c) >= 0.999;
-    const depth = { access: 0, point: 1, objective: 1 };
-    state.spawns = pts.filter(mine).slice(0, 12).map((p) => ({ id: p.id, name: p.name, delay: 10 + 0.5 * (depth[p.kind] + Number(p.id[1] || 1) - 1), point: p }));
+    // Spawn delays as Assault works them out: 10 s plus 0.5 s per link from the
+    // side's home points (access points or objectives).
+    const depth = new Map(pts.filter((p) => p.kind === (team === 1 ? 'access' : 'objective')).map((p) => [p.id, 0]));
+    for (const queue = [...depth.keys()]; queue.length; ) {
+      const id = queue.shift();
+      for (const n of by[id].links) {
+        if (depth.has(n)) continue;
+        depth.set(n, depth.get(id) + 1);
+        queue.push(n);
+      }
+    }
     // Three spawns, the middle one chosen.
     const front = team === 1 ? ['A2', 'C3', 'D1'] : ['O2', 'O1', 'B4'];
-    state.spawns = state.spawns.filter((s) => front.includes(s.id));
+    state.spawns = front.map((id) => ({ id, name: by[id].name, delay: 10 + 0.5 * depth.get(id), point: by[id] }));
     state.selected = front[1];
     const at = by[front[1]];
     state.player = { x: at.x + 40, z: at.z - 25, yaw: team === 1 ? Math.PI * 0.35 : -Math.PI * 0.6 };
@@ -159,6 +168,14 @@ console.log('BATTLEMAP_STATS ' + JSON.stringify(stats));
 window.__map = map;
 window.__state = state;
 window.__done = true;
+if (params.get('anim') === '1') {
+  const frame = (t) => {
+    state.time = t / 1000;
+    map.draw(state);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
 </script>
 </body>
 </html>
