@@ -277,7 +277,7 @@ export function buildVegetation({ terrain, def, collision = null, textures = nul
   // ones it would be a blur that costs just as much.
   let grassShadowCount = 0;
   groundShadow.onBeforeShadow = (renderer, object, camera, shadowCamera) => {
-    groundShadowGeo.instanceCount = shadowCamera.right - shadowCamera.left < 260 ? grassShadowCount : 0;
+    groundShadowGeo.instanceCount = shadowCamera.right - shadowCamera.left < 220 ? grassShadowCount : 0;
   };
   group.add(groundShadow);
 

@@ -58,6 +58,9 @@ for (let i = 1; i <= 8; i++) {
 }
 
 const BLOOM_LEVELS = 5;
+// Sunlight on flat ground (brightness times the sun's height) that the exposure was
+// tuned for: a sun about 30 degrees up.
+const DAYLIGHT_REF = 2.2;
 
 function hdrTarget(w, h, { depth = false, depthTexture = false, samples = 0 } = {}) {
   const rt = new THREE.WebGLRenderTarget(w, h, {
@@ -479,6 +482,12 @@ export class Pipeline {
     const g = this.grade.uniforms;
     g.tColor.value = cur.texture;
     g.uTime.value = time;
+    // Like a camera, the exposure also follows the daylight: a low afternoon sun
+    // lights the ground at a slant and less strongly, so the view is exposed a little
+    // longer (part of the difference; never darker than with a high sun).
+    const sl = SHARED_UNIFORMS.uSunLight.value;
+    const day = (0.2126 * sl.r + 0.7152 * sl.g + 0.0722 * sl.b) * Math.max(0.05, SHARED_UNIFORMS.uSunDir.value.y);
+    g.uExposure.value = this.exposure * Math.min(1.5, Math.max(1, Math.pow(DAYLIGHT_REF / Math.max(day, 1e-3), 0.35)));
     const sharpen = q.taa ? 0.45 : this.scale < 0.99 ? 0.35 : q.msaa ? 0.15 : 0;
     if (q.fxaa) {
       this._pass(this.grade, this.ldrRT);
