@@ -275,8 +275,8 @@ export function m1_garand(b) {
   // --- Bolt and operating rod (they cycle together). The rod runs from the piston
   // in the gas cylinder back along the right of the barrel to its handle.
   b.part('bolt', [0, 0, -0.072]);
-  b.cyl({ z0: -0.176, z1: -0.073, r0: 0.0093, mat: 'steelBright', seg: 24 });
-  b.box({ x: 0.0078, y: 0.0042, z: -0.108, w: 0.0062, h: 0.0072, d: 0.019, mat: 'steelBright', r: 0.0012 }); // right lug
+  b.cyl({ z0: -0.176, z1: -0.073, r0: 0.0093, mat: P, seg: 24 }); // parkerized like the rest
+  b.box({ x: 0.0078, y: 0.0042, z: -0.108, w: 0.0062, h: 0.0072, d: 0.019, mat: P, r: 0.0012 }); // right lug
   b.cylAxis({ axis: 'x', x: 0.0118, y: 0.0042, z: -0.108, len: 0.0042, r: 0.0031, mat: 'steelBright', seg: 12 }); // roller
   lathe(b, { mat: 'steelBright', seg: 18, profile: [[0, -0.075], [0.0072, -0.075], [0.0074, -0.068], [0.0052, -0.062], [0.0028, -0.06], [0, -0.06]] }); // firing pin tail
   bar(b, {
@@ -576,8 +576,8 @@ function carbine(b, v) {
 
   // --- Operating slide with the charging handle, and the bolt (cycle together).
   b.part('bolt', [0, 0, -0.06]);
-  b.cyl({ z0: -0.118, z1: -0.06, r0: 0.0068, x: 0.0045, y: 0.006, mat: 'steelBright', seg: 18 });
-  b.box({ x: 0.0095, y: 0.0068, z: -0.088, w: 0.0045, h: 0.0062, d: 0.012, mat: 'steelBright', r: 0.0008 }); // bolt lug
+  b.cyl({ z0: -0.118, z1: -0.06, r0: 0.0068, x: 0.0045, y: 0.006, mat: P, seg: 18 });
+  b.box({ x: 0.0095, y: 0.0068, z: -0.088, w: 0.0045, h: 0.0062, d: 0.012, mat: P, r: 0.0008 }); // bolt lug
   bar(b, { pts: [[0.0062, -0.0135, -0.29], [0.011, -0.009, -0.2], [0.0135, -0.0045, -0.14]], r: 0.0033, mat: P, seg: 10 });
   b.span({ z0: -0.14, z1: -0.064, y0: -0.008, y1: 0.002, w: 0.005, x: 0.0145, mat: P, r: 0.0012 });
   b.extrude({ points: S([[-0.078, -0.006], [-0.06, -0.006], [-0.057, 0.0], [-0.06, 0.004], [-0.078, 0.004]], 2), width: 0.008, x: 0.019, mat: P, bevel: 0.001 });
@@ -1492,7 +1492,7 @@ export function bar_m1918a2(b) {
   b.anchor('muzzle', 0, 0, MZ);
   b.anchor('gripR', 0, -0.088, 0.09);
   b.anchor('trigger', 0, -0.056, 0.0);
-  b.anchor('gripL', 0, -0.05, -0.47);
+  b.anchor('gripL', 0, -0.05, -0.385); // rear of the fore-end
   b.anchor('shoulder', 0, -0.09, 0.352);
   b.meta.sight = 'aperture';
   b.meta.boltThrow = 0.11;

@@ -1699,8 +1699,7 @@ export function p38(b) {
 // lever on the left, checkered walnut grips, magazine release and lanyard loop;
 // magazine with the wooden base. The trigger sits under the barrel's breech end.
 // The toggle assembly is the 'bolt' (it moves back and the knee rises on firing).
-// Blued, the small parts straw yellow in early guns (here blued). Dimensions est.
-// from side views.
+// Blued, toggle train included. Dimensions est. from side views.
 export function luger_p08(b) {
   const P = 'steel';
   // --- Barrel with the front sight base and blade.
@@ -1794,13 +1793,13 @@ export function luger_p08(b) {
   // --- Toggle: breechblock with the extractor, front link, the knee with its
   // knurled grips, rear link with the rear sight, hinged at the frame's back.
   b.part('bolt', [0, 0, 0.098]);
-  b.span({ z0: 0.0062, z1: 0.0438, y0: -0.0058, y1: 0.0093, w: 0.0136, mat: 'steelBright', r: 0.0022 });
-  b.span({ z0: 0.0108, z1: 0.0405, y0: 0.0088, y1: 0.0101, w: 0.0042, mat: 'steelBright', r: 0.0005 }); // extractor
-  b.extrude({ points: path([[0.0428, -0.002, 1], [0.0715, -0.002], [0.0742, 0.0045], [0.0708, 0.0104], [0.0462, 0.0101], [0.0428, 0.0078]], 3), width: 0.0142, mat: 'steelBright', bevel: 0.0012 });
-  b.extrude({ points: path([[0.0688, -0.0025], [0.0882, 0.0018], [0.0978, 0.0006, 1], [0.0982, 0.0068], [0.0928, 0.0103], [0.0708, 0.0104], [0.0672, 0.0048]], 3), width: 0.0148, mat: 'steelBright', bevel: 0.0012 });
-  b.cylAxis({ axis: 'x', x: 0, y: 0.0045, z: 0.0705, len: 0.019, r: 0.0042, mat: 'steelBright', seg: 14 });
-  for (const sx of [-1, 1]) knurledKnob(b, { at: [sx * 0.0128, 0.0045, 0.0705], axis: 'x', r: 0.0079, len: 0.0078, teeth: 24, depth: 0.0006, mat: 'steelBright' });
-  plateXYz(b, { outline: [[-0.0042, 0.0098], [0.0042, 0.0098], [0.0042, 0.0142], [0.0013, 0.0142], [0, 0.0128], [-0.0013, 0.0142], [-0.0042, 0.0142]], z0: 0.0842, z1: 0.0898, mat: 'steelBright', bevel: 0.0003 });
+  b.span({ z0: 0.0062, z1: 0.0438, y0: -0.0058, y1: 0.0093, w: 0.0136, mat: 'steel', r: 0.0022 });
+  b.span({ z0: 0.0108, z1: 0.0405, y0: 0.0088, y1: 0.0101, w: 0.0042, mat: 'steel', r: 0.0005 }); // extractor
+  b.extrude({ points: path([[0.0428, -0.002, 1], [0.0715, -0.002], [0.0742, 0.0045], [0.0708, 0.0104], [0.0462, 0.0101], [0.0428, 0.0078]], 3), width: 0.0142, mat: 'steel', bevel: 0.0012 });
+  b.extrude({ points: path([[0.0688, -0.0025], [0.0882, 0.0018], [0.0978, 0.0006, 1], [0.0982, 0.0068], [0.0928, 0.0103], [0.0708, 0.0104], [0.0672, 0.0048]], 3), width: 0.0148, mat: 'steel', bevel: 0.0012 });
+  b.cylAxis({ axis: 'x', x: 0, y: 0.0045, z: 0.0705, len: 0.019, r: 0.0042, mat: 'steel', seg: 14 });
+  for (const sx of [-1, 1]) knurledKnob(b, { at: [sx * 0.0128, 0.0045, 0.0705], axis: 'x', r: 0.0079, len: 0.0078, teeth: 24, depth: 0.0006, mat: 'steel' });
+  plateXYz(b, { outline: [[-0.0042, 0.0098], [0.0042, 0.0098], [0.0042, 0.0142], [0.0013, 0.0142], [0, 0.0128], [-0.0013, 0.0142], [-0.0042, 0.0142]], z0: 0.0842, z1: 0.0898, mat: 'steel', bevel: 0.0003 });
   b.body();
   b.anchor('rearSight', 0, 0.0128, 0.087);
   // --- Magazine with the wooden base.

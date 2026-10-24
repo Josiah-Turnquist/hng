@@ -19,6 +19,7 @@
 //   view=right|left|top|front|back            one big orthographic view (zoom, focus=z,y)
 //   sight=1&range=300  the sight picture through the iron sights
 //   size=1024       texture size
+//   fp=1            the first-person materials (clear coats, polished edges)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
@@ -34,7 +35,7 @@ renderer.toneMappingExposure = Number(params.get('exposure') || 1.1);
 document.body.appendChild(renderer.domElement);
 renderer.setScissorTest(true);
 const lib = new TextureLibrary(renderer, { size: 512 });
-const mats = makeGunMaterials(lib, { size: Number(params.get('size') || 512) });
+const mats = makeGunMaterials(lib, { size: Number(params.get('size') || 512), firstPerson: params.get('fp') === '1' });
 const pmrem = new THREE.PMREMGenerator(renderer);
 const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 const lod = Number(params.get('lod') || 0);
@@ -71,7 +72,49 @@ function addAnchors(scene, gun) {
 }
 
 const t0 = performance.now();
-if (params.get('sight')) {
+if (view === 'fp') {
+  // The game's own first-person gun (viewmodel.js: pose, arms, first-person
+  // materials and lights) under the game's sky, without the post effects:
+  // ?gun=m1_garand&view=fp&aim=1&sun=34,215&look=0,0 (camera yaw, pitch in degrees).
+  const { WEAPONS } = await import('../src/weapons/defs.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const { ViewModel } = await import('../src/weapons/viewmodel.js');
+  const { SkySystem } = await import('../src/render/sky.js');
+  const world = new THREE.Scene();
+  const sky = new SkySystem(renderer, world, { effects: 'high' });
+  const [el, az] = vec(params.get('sun'), [34, 215]);
+  sky.setSun(el, az);
+  sky.refresh();
+  world.add(sky.sun);
+  sky.sun.position.copy(sky.sunDir).multiplyScalar(100);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.16, 0.24, 0.08, THREE.SRGBColorSpace), roughness: 0.95 }));
+  ground.rotation.x = -Math.PI / 2;
+  world.add(ground);
+  const def = WEAPONS[params.get('weapon') || params.get('gun') || 'm1_garand'];
+  const vm = new ViewModel(lib, def.faction, world.environment);
+  vm.setOutfit({ faction: def.faction });
+  vm.setWeapon(def, new Atmosphere(0, 15));
+  const cam = new THREE.PerspectiveCamera(70, W / H, 0.1, 30000);
+  const [lyaw, lpitch] = vec(params.get('look'), [0, 0]);
+  cam.position.set(0, 1.6, 0);
+  cam.rotation.set((lpitch * Math.PI) / 180, (lyaw * Math.PI) / 180, 0, 'YXZ');
+  cam.updateMatrixWorld();
+  const ctx = { aiming: params.get('aim') === '1', sprinting: false, speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, sunDir: sky.sunDir, sunColor: sky.sun.color, sunIntensity: sky.sun.intensity, light: 1, ambient: 1 };
+  for (let i = 0; i < 150; i++) vm.update(1 / 60, cam, ctx);
+  vm.camera.fov = 52;
+  vm.camera.aspect = W / H;
+  vm.camera.updateProjectionMatrix();
+  renderer.toneMappingExposure = Number(params.get('exposure') || 1.1); // the game's exposure outdoors (base 1/0.6, eye adaptation -0.6 stops)
+  renderer.setViewport(0, 0, W, H);
+  renderer.setScissor(0, 0, W, H);
+  renderer.autoClear = false;
+  renderer.clear();
+  renderer.render(world, cam);
+  renderer.clearDepth();
+  renderer.render(vm.scene, vm.camera);
+  document.getElementById('info').textContent = `${def.name} in first person (${ctx.aiming ? 'aimed' : 'hip'}), sun ${el}/${az} deg`;
+  window.__done = true;
+} else if (params.get('sight')) {
   // Sight picture mode: ?gun=kar98k&sight=1&range=300 renders the view from the
   // shooter's eye through the sights (red dot = screen center = point of aim).
   const { WEAPONS } = await import('../src/weapons/defs.js');

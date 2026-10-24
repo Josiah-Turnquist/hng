@@ -192,12 +192,12 @@ const raw = (r, g, b) => new THREE.Color(r, g, b);
 const PRESETS = {
   // Steel. b = (roughness, metalness, kind).
   gunBlued: { mat: 'gunFinish', world: 0.15, a: lin(0.3, 0.312, 0.345), b: raw(0.33, 0.9, 0) }, // rust-blued service finish
-  gunBluedDark: { mat: 'gunFinish', world: 0.15, a: lin(0.22, 0.228, 0.25), b: raw(0.48, 0.82, 0) }, // wartime Soviet bluing, coarser polish
-  gunParkerized: { mat: 'gunFinish', world: 0.15, a: lin(0.215, 0.228, 0.206), b: raw(0.66, 0.32, 1) }, // US manganese phosphate, grey-green
-  gunPhosphate: { mat: 'gunFinish', world: 0.15, a: lin(0.22, 0.225, 0.23), b: raw(0.58, 0.3, 1) }, // German late-war phosphate under black lacquer
-  gunBright: { mat: 'gunFinish', world: 0.15, a: lin(0.76, 0.76, 0.75), b: raw(0.26, 1.0, 2) }, // bolts and polished parts "in the white"
+  gunBluedDark: { mat: 'gunFinish', world: 0.15, a: lin(0.22, 0.228, 0.25), b: raw(0.42, 0.82, 0) }, // wartime Soviet bluing, coarser polish
+  gunParkerized: { mat: 'gunFinish', world: 0.15, a: lin(0.2, 0.212, 0.192), b: raw(0.48, 0.38, 1) }, // US manganese phosphate, grey-green, oiled
+  gunPhosphate: { mat: 'gunFinish', world: 0.15, a: lin(0.22, 0.225, 0.23), b: raw(0.5, 0.42, 1) }, // German late-war phosphate under black lacquer
+  gunBright: { mat: 'gunFinish', world: 0.15, a: lin(0.62, 0.62, 0.61), b: raw(0.3, 1.0, 2) }, // bolts and polished parts "in the white"
   // Wood. b = (pores, finish roughness, ray flecks).
-  gunWalnut: { mat: 'gunWood', world: 0.15, a: lin(0.33, 0.2, 0.12), b: raw(0.8, 0.5, 0.0) },
+  gunWalnut: { mat: 'gunWood', world: 0.15, a: lin(0.31, 0.19, 0.118), b: raw(0.8, 0.5, 0.0) },
   gunBeech: { mat: 'gunWood', world: 0.15, a: lin(0.37, 0.205, 0.11), b: raw(0.3, 0.46, 0.7) },
   gunBirch: { mat: 'gunWood', world: 0.15, a: lin(0.42, 0.215, 0.1), b: raw(0.2, 0.34, 0.15) }, // shellacked, reddish
   gunLaminate: { mat: 'gunWood', world: 0.15, a: lin(0.32, 0.175, 0.105), b: raw(0.15, 0.44, 0.35) },
@@ -271,7 +271,7 @@ float gunWearN = 0.5;
     float yr = gunH13(vec3(floor(rings), 1.0, 2.0));
     float late = smoothstep(0.55 - 0.25 * yr, 0.9, rf) * (1.0 - smoothstep(0.92, 1.0, rf)) * (0.5 + yr);
     float aa = clamp(1.0 - fwidth(rings) * 0.7, 0.0, 1.0);
-    float figure = 0.86 + 0.28 * gunNoise3(p * vec3(9.0, 9.0, 1.6));
+    float figure = 0.8 + 0.4 * gunNoise3(p * vec3(9.0, 9.0, 1.6));
     diffuseColor.rgb *= figure * (1.0 - late * GUN_LATE * aa);
   #endif
 }
@@ -296,6 +296,14 @@ const AFTER_NORMALS = /* glsl */ `
   float wear = clamp(edge * smoothstep(0.3, 0.72, wn) * GUN_WEAR, 0.0, 1.0);
   float grime = smoothstep(GUN_EDGE.x * 0.5, GUN_EDGE.y, -curv) * (0.5 + 0.5 * wn);
   #if GUN_KIND == 0
+    #ifdef GUN_POLISH
+      // Handling polishes every edge a little: the finish there is thin and
+      // smooth and catches the light (the player's own gun, seen up close).
+      float pol = edge * GUN_POLISH;
+      roughnessFactor = mix(roughnessFactor, 0.26, pol);
+      metalnessFactor = mix(metalnessFactor, 1.0, pol * 0.7);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.3, 0.31), pol * 0.45);
+    #endif
     // Finish worn through to bright steel.
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.36, 0.36, 0.37), wear);
     metalnessFactor = mix(metalnessFactor, 1.0, wear);
@@ -315,11 +323,24 @@ const AFTER_NORMALS = /* glsl */ `
 }
 `;
 
+// After the image-based light: GUN_ENV = (reflections, diffuse sky light) multipliers.
+const AFTER_IBL = /* glsl */ `
+#ifdef GUN_ENV
+  radiance *= GUN_ENV.x;
+  iblIrradiance *= GUN_ENV.y;
+  #ifdef USE_CLEARCOAT
+    clearcoatRadiance *= GUN_ENV.x;
+  #endif
+#endif
+`;
+
 // kind: 0 steel, 1 paint, 2 wood or plastic. wood: { pith: [x, y], runout: [dx, dy] per
 // meter of z, rings: per meter, late: latewood darkening } or { laminate: true }.
-function patchGun(mat, { kind = 0, edge = [180, 650], wear = 1, wood = null } = {}) {
+// polish: steel edges smoothed by handling (0..1).
+function patchGun(mat, { kind = 0, edge = [180, 650], wear = 1, wood = null, polish = 0 } = {}) {
   const f = (v) => (Number.isInteger(v) ? `${v}.0` : `${v}`);
   const defines = { GUN_KIND: kind, GUN_EDGE: `vec2(${f(edge[0])}, ${f(edge[1])})`, GUN_WEAR: f(wear) };
+  if (polish > 0) defines.GUN_POLISH = f(polish);
   if (wood) {
     defines.GUN_WOOD = 1;
     if (wood.alongY) defines.GUN_WOOD_Y = 1;
@@ -338,6 +359,7 @@ function patchGun(mat, { kind = 0, edge = [180, 650], wear = 1, wood = null } = 
     shader.fragmentShader = after(shader.fragmentShader, '#include <common>', DECL);
     shader.fragmentShader = after(shader.fragmentShader, '#include <map_fragment>', AFTER_MAP);
     shader.fragmentShader = after(shader.fragmentShader, '#include <normal_fragment_maps>', AFTER_NORMALS);
+    shader.fragmentShader = after(shader.fragmentShader, '#include <lights_fragment_maps>', AFTER_IBL);
   });
   return mat;
 }
@@ -346,9 +368,9 @@ function patchGun(mat, { kind = 0, edge = [180, 650], wear = 1, wood = null } = 
 // of the stocks, so their sides cut the rings almost tangentially (flat-sawn): long
 // arches and bands with straight grain along the edges.
 const WOOD = {
-  walnut: { pith: [0.34, -0.07], runout: [0.03, 0.045], rings: 150, late: 0.2 },
-  beech: { pith: [-0.3, -0.04], runout: [-0.025, 0.04], rings: 190, late: 0.13 },
-  birch: { pith: [0.28, 0.0], runout: [0.03, -0.035], rings: 230, late: 0.11 },
+  walnut: { pith: [0.34, -0.07], runout: [0.03, 0.045], rings: 150, late: 0.34 },
+  beech: { pith: [-0.3, -0.04], runout: [-0.025, 0.04], rings: 190, late: 0.24 },
+  birch: { pith: [0.28, 0.0], runout: [0.03, -0.035], rings: 230, late: 0.2 },
   laminate: { laminate: true },
   handle: { pith: [-0.3, -0.04], runout: [-0.025, 0.04], rings: 190, late: 0.16, alongY: true },
 };
@@ -390,8 +412,13 @@ const LOW = {
 
 // Standard gun materials from the texture library. size = texture size in pixels.
 // Every material carries userData.texWorld (meters per texture tile, for UVs) and
-// userData.lowColor (for the far LOD).
-export function makeGunMaterials(textures, { size = 512 } = {}) {
+// userData.lowColor (for the far LOD). firstPerson: the player's own gun, seen up
+// close: the woods get the sheen of their oil or shellac finish and the steel a
+// thin film of oil (clear coats that catch the light along edges and curves), and
+// the edges show more wear.
+export function makeGunMaterials(textures, { size = 512, firstPerson = false } = {}) {
+  const fp = firstPerson;
+  const Coat = fp ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
   const std = (preset, extra = {}, Mat = THREE.MeshStandardMaterial) => {
     const t = textures.get(preset, size);
     const m = new Mat({
@@ -406,8 +433,10 @@ export function makeGunMaterials(textures, { size = 512 } = {}) {
     m.userData.texWorld = t.world;
     return m;
   };
-  const steel = (p, kind = 0) => patchGun(std(p), { kind, edge: [260, 900], wear: 0.75 });
-  const wood = (p, w) => patchGun(std(p), { kind: 2, wood: WOOD[w], edge: [160, 620], wear: 0.55 });
+  const oil = fp ? { clearcoat: 0.1, clearcoatRoughness: 0.3 } : {};
+  const finish = fp ? { clearcoat: 0.5, clearcoatRoughness: 0.3 } : {};
+  const steel = (p, kind = 0) => patchGun(std(p, oil, Coat), { kind, edge: fp ? [200, 760] : [260, 900], wear: fp ? 1 : 0.75, polish: fp ? 0.75 : 0 });
+  const wood = (p, w) => patchGun(std(p, finish, Coat), { kind: 2, wood: WOOD[w], edge: [160, 620], wear: fp ? 0.7 : 0.55 });
   const plastic = (p, extra) => patchGun(std(p, extra), { kind: 2, edge: [160, 600], wear: 0.6 });
   const mats = {
     steel: steel('gunBlued'),
@@ -468,6 +497,9 @@ export function makeGunMaterials(textures, { size = 512 } = {}) {
   // Far LOD: one flat material colored per vertex.
   mats.low = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.25, side: THREE.DoubleSide });
   for (const [k, m] of Object.entries(mats)) {
+    // First person: the sky shows more strongly in the gun's surfaces (they are
+    // seen from a hand's breadth, and the eye reads the shape from them).
+    if (fp && m.defines?.GUN_KIND !== undefined) m.defines.GUN_ENV = ['vec2(1.45, 1.2)', 'vec2(1.3, 1.15)', 'vec2(1.35, 1.2)'][m.defines.GUN_KIND];
     if (m.userData.texWorld === undefined) m.userData.texWorld = 0.3;
     m.userData.lowColor = LOW[k] || LOW[m.userData.perforated ? 'steel' : 'black'] || [0.05, 0.05, 0.05];
     m.name = `gun:${k}`;
