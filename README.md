@@ -47,6 +47,8 @@ These are the keys the game starts with. Every one can be changed in Settings > 
 | Change seat, camera | F1 to F4, V |
 | Scoreboard | Tab |
 
+Red marks round the middle of the screen point to where a shot that hit you came from, pale ones to bullets that only just missed, and bullets flying near you leave faint trails (both can be turned off in Settings > Screen).
+
 ## What is simulated
 
 **Ballistics.** Every bullet and shell is flown in small time steps with gravity, air drag from its real ballistic coefficient (G1, G2 or G7 drag tables), air density from altitude and temperature, and wind. A Kar 98k's 7.92 mm s.S. bullet leaves at 760 m/s and arrives at 100 m at 709 m/s after 0.14 s, as the real round does. Bullets slow down through what they hit using a two-term penetration law calibrated to field-fortification data (a .30-06 ball round gets through about 60 cm of pine, 15 cm of brick or 9 mm of mild steel), glance off at shallow angles, tumble after passing through, and crack overhead when they miss you.

@@ -475,6 +475,10 @@ function screenPage(body, view) {
   body.appendChild(
     toggleRow(view, 'crosshair', 'Crosshair', 'A mark where the gun points when you shoot from the hip. Its gap shows how widely the shots spread (wider on the move, narrower crouched or prone). It fades out when you aim through the sights.'),
   );
+  body.appendChild(
+    toggleRow(view, 'shotMarkers', 'Shot direction markers', 'Red marks round the middle of the screen point the way a shot that hit you came from; pale ones point to bullets that only just missed.'),
+  );
+  body.appendChild(toggleRow(view, 'bulletTrails', 'Bullet trails', 'Faint streaks behind bullets flying near you (your own shots leave none), so you can see where fire is coming from.'));
   body.appendChild(toggleRow(view, 'showFps', 'Show frame rate', 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));
 }
 

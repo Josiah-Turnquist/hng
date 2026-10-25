@@ -445,6 +445,8 @@ export class Game {
         fx.impact({ ...info, effect: 'blood' });
         this.audio?.impact('flesh', info.x, info.y, info.z, info.energy);
         if (p.owner === this.player.soldier && dmg > 0) this.hud.hitMarker(info.target.alive ? 1 : 2);
+        // Hit: the HUD points to where the shot came from.
+        if (info.target === this.player.soldier && dmg > 0) this.hud?.shotFrom?.(p.ox, p.oz, 'hit', dmg / 40);
       }
       return;
     }
@@ -480,6 +482,9 @@ export class Game {
       fx.flashLight?.(info.x, info.y, info.z, 12, 8, 0.06);
     }
     if (info.detonate) this.explode(info.x, info.y, info.z, p, v);
+    // Our own vehicle hit: point to where it came from (a shell or a hole
+    // through the armor in red; small arms rattling off it, pale).
+    if (v === this.player?.soldier.vehicle && p.owner !== this.player.soldier) this.hud?.shotFrom?.(p.ox, p.oz, big || info.kind === 'penetrate' ? 'hit' : 'near', big ? 1 : 0.6);
     if (p.owner === this.player?.soldier && big) {
       const msg = info.kind === 'penetrate' ? 'Penetration' : info.kind === 'ricochet' ? 'Ricochet' : 'No penetration';
       this.hud?.flash(`${msg} (${Math.round(info.penMM || 0)} mm vs ${Math.round(info.effMM || 0)} mm)`, 2);
@@ -546,6 +551,8 @@ export class Game {
       p.crackPlayed = true;
       this.audio?.crack(e.x + cx, e.y + cy, e.z + cz, miss, p.speed);
       this.player.suppression = Math.min(1, (this.player.suppression || 0) + (1 - miss / 8) * 0.4);
+      // An enemy bullet close by: a pale mark points to where it came from.
+      if (miss < 6 && !p.ammo.fragment && (!p.owner || p.owner.team !== me.team)) this.hud?.shotFrom?.(p.ox, p.oz, 'near', 1 - miss / 6);
     }
   }
 
@@ -590,6 +597,7 @@ export class Game {
       if (!this.world.collision.lineOfSight(x, y + 0.2, z, s.body.x, s.body.y + 1, s.body.z)) continue;
       const blast = (ex.blast * 900) / Math.max(1, d * d);
       if (blast > 1) s.damage(blast, { kind: 'explosion', attacker: p.owner, weapon: p.weapon });
+      if (blast > 1 && s === this.player?.soldier) this.hud?.shotFrom?.(x, z, 'hit', blast / 40);
     }
     // Vehicles: blast against thin-skinned ones, tracks of tanks close by.
     for (const v of this.vehicles) {
@@ -602,7 +610,7 @@ export class Game {
     }
     // Fragments.
     const n = Math.min(60, ex.fragments || 30);
-    const frag = { diameter: 0.004, mass: 0.0008, bc: 0.015, drag: 'G1', maxAge: 1.5 };
+    const frag = { diameter: 0.004, mass: 0.0008, bc: 0.015, drag: 'G1', maxAge: 1.5, fragment: true };
     for (let i = 0; i < n; i++) {
       const u = Math.random() * 2 - 1,
         th = Math.random() * Math.PI * 2;
@@ -677,7 +685,9 @@ export class Game {
     this.effects.update(frameDt, camPos, this.world.fogColor);
     if (!this.paused) this.casings.update(frameDt);
     const colors = FACTION_TRACERS;
-    this.effects.updateTracers(this.projectiles.active, (p) => colors[p.owner?.faction] || colors.GE);
+    const cp = this.camera.position;
+    const trails = this.settings.get('bulletTrails') ? { x: cp.x, y: cp.y, z: cp.z, skip: this.player?.soldier } : null;
+    this.effects.updateTracers(this.projectiles.active, (p) => colors[p.owner?.faction] || colors.GE, trails);
     this.hud.update(frameDt);
     const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;
     this.pipeline.grade.uniforms.uDamage.value = clamp(this.hud.damageFlash, 0, 1);

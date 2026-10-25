@@ -391,6 +391,8 @@ const DEFAULTS = {
   effectsVolume: 1.0,
   showFps: false,
   crosshair: true, // hip-fire crosshair (hidden when aiming through the sights)
+  shotMarkers: true, // marks round the middle of the screen pointing where shots came from
+  bulletTrails: true, // faint streaks behind bullets flying near you
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
   bindings: {}, // the player's key changes: { action: [codes] } (see input.js)
   units: 'metric',

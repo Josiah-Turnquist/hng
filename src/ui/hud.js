@@ -1,10 +1,11 @@
 // Heads-up display. Kept sparse and period-appropriate like the original game:
 // a small hip-fire crosshair (gone when you aim with the real sights; it can be
 // turned off), ammo and sight setting at the bottom right, health and stamina at
-// the bottom left, a compass at the top.
+// the bottom left, a compass at the top, and marks round the middle of the
+// screen pointing where shots at you came from.
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
-import { damp, clamp, clamp01, DEG } from '../core/math.js';
+import { damp, clamp, clamp01, DEG, wrapAngle } from '../core/math.js';
 import { HIP_CONVERGE } from '../weapons/viewmodel.js';
 import { BattleMap } from './battleMap.js';
 
@@ -13,6 +14,14 @@ const _cv = new THREE.Vector3();
 const FACTION_ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
 
 const STANCE_NAMES = ['Standing', 'Crouched', 'Prone'];
+
+// Where on the screen a shot mark goes: the angle round the middle of the
+// screen (0 = right, then clockwise, as the canvas draws arcs) pointing from
+// (fx, fz) toward the shot's origin (x, z), for a camera looking along camYaw.
+export function shotMarkAngle(fx, fz, x, z, camYaw) {
+  const rel = wrapAngle(Math.atan2(-(x - fx), -(z - fz)) - camYaw); // (> 0: from our left)
+  return Math.atan2(-Math.cos(rel), -Math.sin(rel));
+}
 
 export class Hud {
   constructor(game) {
@@ -49,6 +58,7 @@ export class Hud {
       <div class="hud-gunmark"></div>
       <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
       <canvas class="hud-scope"></canvas>
+      <canvas class="hud-shots"></canvas>
       <div class="hud-scores"></div>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint"></div></div>
       <div class="hud-use"><span class="k"></span><span class="t"></span></div>
@@ -98,6 +108,10 @@ export class Hud {
     this.tankDirTurret = this.el('.hud-tankdir .turret');
     this.scope = this.el('.hud-scope');
     this.scopeCtx = this.scope.getContext('2d');
+    this.shotsCanvas = this.el('.hud-shots');
+    this.shotsCtx = this.shotsCanvas.getContext('2d');
+    this.shots = []; // { x, z (where the shot came from), kind: 'hit' | 'near', t, life, s }
+    this.shotsDrawn = false;
     this.damageFlash = 0;
     this.msgT = 0;
     this.hitT = 0;
@@ -127,6 +141,9 @@ export class Hud {
   resize(w, h) {
     this.scope.width = w;
     this.scope.height = h;
+    this.shotsCanvas.width = w;
+    this.shotsCanvas.height = h;
+    this.shotsDrawn = true;
     this.lastScope = null;
   }
 
@@ -235,6 +252,28 @@ export class Hud {
     this.damageFlash = Math.min(1, this.damageFlash + amount / 50);
   }
 
+  // A shot from (x, z) hit us ('hit': a red mark) or cracked past ('near': a
+  // pale one). The mark points that way round the middle of the screen, and
+  // keeps pointing there as you turn and move, until it fades.
+  shotFrom(x, z, kind = 'hit', strength = 1) {
+    if (!this.game.settings.get('shotMarkers') || !Number.isFinite(x) || !Number.isFinite(z)) return;
+    const b = this.game.player.soldier.body;
+    const ang = Math.atan2(-(x - b.x), -(z - b.z));
+    const life = kind === 'hit' ? 2.4 : 1.4;
+    // A shot from about the same way as one already showing renews that mark.
+    for (const m of this.shots) {
+      if (m.kind === kind && Math.abs(wrapAngle(Math.atan2(-(m.x - b.x), -(m.z - b.z)) - ang)) < 0.3) {
+        m.x = x;
+        m.z = z;
+        m.t = m.life;
+        m.s = Math.min(1, Math.max(m.s, strength) + 0.15);
+        return;
+      }
+    }
+    this.shots.push({ x, z, kind, t: life, life, s: clamp(strength, 0.4, 1) });
+    if (this.shots.length > 12) this.shots.shift();
+  }
+
   killFeed(killer, victim, cause) {
     const row = document.createElement('div');
     const weapon = cause?.weapon?.name || (cause?.kind === 'bleeding' ? 'bled out' : cause?.kind === 'fall' ? 'fell' : cause?.kind === 'explosion' ? 'explosion' : '');
@@ -297,6 +336,58 @@ export class Hud {
     this._updateCrosshair(p, dt);
     this._updateUse(p, dt);
     this._drawScope(p);
+    this._drawShots(p, dt);
+  }
+
+  // The shot marks: arcs on a ring round the middle of the screen, each
+  // pointing the way its shot came from (relative to where the camera looks).
+  _drawShots(p, dt) {
+    const marks = this.shots;
+    for (let i = marks.length - 1; i >= 0; i--) {
+      marks[i].t -= dt;
+      if (marks[i].t <= 0 || !p.soldier.alive) marks.splice(i, 1);
+    }
+    if (!marks.length && !this.shotsDrawn) return;
+    const c = this.shotsCanvas;
+    const ctx = this.shotsCtx;
+    ctx.clearRect(0, 0, c.width, c.height);
+    this.shotsDrawn = marks.length > 0;
+    if (!marks.length) return;
+    const f = _cv.set(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
+    const camYaw = Math.atan2(-f.x, -f.z);
+    const b = p.soldier.body;
+    const cx = c.width / 2,
+      cy = c.height / 2;
+    const R = Math.max(70, Math.min(c.width, c.height) * 0.16);
+    ctx.lineCap = 'butt';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 4;
+    for (const m of marks) {
+      const th = shotMarkAngle(b.x, b.z, m.x, m.z, camYaw);
+      const fade = Math.min(1, m.t / 0.7);
+      const hit = m.kind === 'hit';
+      const a = fade * (hit ? 0.6 + 0.35 * m.s : 0.45 + 0.3 * m.s);
+      const half = hit ? 0.17 + 0.07 * m.s : 0.12;
+      const wdt = hit ? 5 + 3 * m.s : 3;
+      ctx.strokeStyle = hit ? `rgba(214, 40, 26, ${a})` : `rgba(255, 240, 205, ${a})`;
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, th - half, th + half);
+      ctx.stroke();
+      // A point on the outside of the arc, aimed at the shooter.
+      const ux = Math.cos(th),
+        uy = Math.sin(th);
+      const r0 = R + wdt / 2,
+        r1 = R + wdt / 2 + (hit ? 12 : 8),
+        side = hit ? 6 : 4;
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath();
+      ctx.moveTo(cx + ux * r1, cy + uy * r1);
+      ctx.lineTo(cx + ux * r0 - uy * side, cy + uy * r0 + ux * side);
+      ctx.lineTo(cx + ux * r0 + uy * side, cy + uy * r0 - ux * side);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // On foot next to a vehicle or bike: which key gets you in, and where you'd sit.

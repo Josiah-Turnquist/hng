@@ -320,6 +320,13 @@ canvas.game {
   height: 100%;
   display: none;
 }
+/* Marks pointing where shots at you came from (drawn in hud.js). */
+.hud-shots {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
 .hud-dead {
   position: absolute;
   inset: 0;

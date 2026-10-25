@@ -11,6 +11,7 @@ import { LAYER_FX, SHARED_UNIFORMS, ATMOSPHERE_PARS } from './pipeline.js';
 
 const MAX_PARTICLES = 3000;
 const MAX_TRACERS = 256;
+const TRAIL_RANGE = 45; // m from the camera: faint trails behind ordinary bullets
 const MAX_DECALS = 600;
 
 // Per effects quality: particle count factor, soft edges, number of flash lights
@@ -517,12 +518,36 @@ export class Effects {
     this.world.scene.add(this.tracerMesh);
   }
 
-  // Draw glowing streaks for tracer rounds and rockets in flight.
-  updateTracers(projectiles, colorFor) {
+  // Draw glowing streaks for tracer rounds and rockets in flight, and (given
+  // trails: the camera position and whose shots to leave out) faint ones
+  // behind other bullets flying near the camera, so you can see where fire
+  // comes from. (Real ball rounds leave no trail; this is for the game.)
+  updateTracers(projectiles, colorFor, trails = null) {
     let n = 0;
     for (const p of projectiles) {
-      if (!p.tracer && !p.ammo.tracer) continue;
       if (n >= MAX_TRACERS) break;
+      if (!p.tracer && !p.ammo.tracer) {
+        if (!trails || p.owner === trails.skip || p.ammo.fragment || p.ammo.thrown) continue;
+        const d = Math.hypot(p.x - trails.x, p.y - trails.y, p.z - trails.z);
+        if (d > TRAIL_RANGE) continue;
+        const sp = p.speed || 1;
+        const len = Math.min(sp * 0.04, 30, p.distance);
+        if (len < 0.5) continue;
+        this.trA[n * 3] = p.x - (p.vx / sp) * len;
+        this.trA[n * 3 + 1] = p.y - (p.vy / sp) * len;
+        this.trA[n * 3 + 2] = p.z - (p.vz / sp) * len;
+        this.trB[n * 3] = p.x;
+        this.trB[n * 3 + 1] = p.y;
+        this.trB[n * 3 + 2] = p.z;
+        const a = 0.85 * Math.min(1, (TRAIL_RANGE - d) / 15);
+        this.trC[n * 4] = 3.2;
+        this.trC[n * 4 + 1] = 3.0;
+        this.trC[n * 4 + 2] = 2.6;
+        this.trC[n * 4 + 3] = a;
+        this.trW[n] = 0.026;
+        n++;
+        continue;
+      }
       if (p.ammo.tracerBurn && p.distance > p.ammo.tracerBurn) continue; // burned out
       const sp = p.speed;
       const len = Math.min(sp * 0.018, 12);

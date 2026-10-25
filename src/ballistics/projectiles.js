@@ -69,6 +69,9 @@ export class Projectile {
     this.px = o.x; // previous position (for tracer streaks)
     this.py = o.y;
     this.pz = o.z;
+    this.ox = o.x; // where it was fired from (the HUD's shot markers point there)
+    this.oz = o.z;
+    this.crackPlayed = false; // (projectiles are reused: each shot cracks past the player afresh)
     this.ammo = o.ammo;
     this.table = TABLES[o.ammo.drag || 'G1'];
     this.bc = o.ammo.bc;
