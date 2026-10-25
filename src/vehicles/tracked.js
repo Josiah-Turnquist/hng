@@ -175,7 +175,7 @@ export class TrackedVehicle extends Vehicle {
     }
     // (The driver lets a lever go quicker than he pulls it.)
     const back = Math.abs(lever) < Math.abs(this.steer) || lever * this.steer < 0;
-    this.steer = approach(this.steer, lever, dt * (back ? 8 : d.steering === 'clutchBrake' ? 6 : 4));
+    this.steer = approach(this.steer, lever, dt * (back ? 20 : d.steering === 'clutchBrake' ? 6 : 4));
     const st = this.steer;
     const a = Math.abs(st);
     const inner = st > 0 ? 1 : 0; // turning right: the right track is inside
@@ -218,7 +218,7 @@ export class TrackedVehicle extends Vehicle {
       // (The turns, in or out of gear, a quarter quicker than the real ones:
       // gameplay, see TURN_RATE.)
       const g = Math.max(1, Math.abs(this.gear || this.nextGear || 1));
-      const R = (d.turnRadius * (d.gears[0] / d.gears[g - 1])) / TURN_RATE;
+      const R = (d.turnRadius * (d.gears[0] / d.gears[g - 1]) ** 0.75) / TURN_RATE;
       const kmin = d.trackCenters / (2 * R);
       // In neutral: outer track forward and inner back, about 0.9 m/s each.
       diffTarget = neutralTurn ? a * 1.8 * TURN_RATE : a * 2 * kmin * vMean;
@@ -228,7 +228,7 @@ export class TrackedVehicle extends Vehicle {
       // are forced apart, up to the fixed ratio of the mechanism (applied below).
       // Fast, the driver eases the steering brake to keep the turn under about
       // half a g sideways. (Both a quarter sharper for gameplay: TURN_RATE.)
-      const R = Math.max(d.turnRadius / TURN_RATE, (vMean * vMean) / (4.4 * TURN_RATE));
+      const R = Math.max(d.turnRadius / TURN_RATE, (vMean * vMean) / (4.9 * TURN_RATE));
       diffTarget = (a * d.trackCenters * vMean) / R;
       lock = a < 0.05;
     } else {
@@ -237,9 +237,9 @@ export class TrackedVehicle extends Vehicle {
       // around it). Drivers feather the lever at speed, so the fraction is less
       // extreme when moving fast.
       // Tightest radius the driver will use: a pivot when slow, and no more than
-      // about 0.3 g sideways when moving (a quarter more for gameplay: TURN_RATE).
+      // about 0.4 g sideways when moving (a quarter more for gameplay: TURN_RATE).
       const half = d.trackCenters / 2;
-      const rMin = Math.max(half, (vMean * vMean) / (2.9 * TURN_RATE));
+      const rMin = Math.max(half, (vMean * vMean) / (3.9 * TURN_RATE));
       const kMin = (rMin - half) / (rMin + half);
       const k = 1 - a * (1 - kMin);
       const vo = this.trackSpeed[outer],

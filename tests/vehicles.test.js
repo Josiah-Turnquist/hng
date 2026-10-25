@@ -466,7 +466,8 @@ test('motorcycles cannot turn sharply at speed', () => {
     }
   });
   assert.ok(minR > 35, `turn radius at 70 km/h ${minR.toFixed(1)} m`);
-  assert.ok(maxLean < 35 * (Math.PI / 180), `lean ${((maxLean * 180) / Math.PI).toFixed(1)} deg`);
+  // (The footboards touch at about 31 degrees; for gameplay riders lean a little past that.)
+  assert.ok(maxLean < 38 * (Math.PI / 180), `lean ${((maxLean * 180) / Math.PI).toFixed(1)} deg`);
   assert.ok(!v.fallen, 'stays up on a dry road');
 });
 
@@ -655,8 +656,8 @@ test('steering answers the way it is pressed at once, and stops soon after the k
   for (const [id, speed, runOnMax] of [
     ['willys_mb', 29, 8],
     ['m4a1_sherman', 22, 14],
-    ['wla', 45, 9],
-    ['bicycle', 18, 20],
+    ['wla', 45, 12],
+    ['bicycle', 18, 24],
     ['r75_sidecar', 40, 4],
   ]) {
     const v = cruise(id, speed);

@@ -3,7 +3,7 @@
 // and tires with a Pacejka-style grip curve that depends on the ground (dry road,
 // grass, mud, sand...).
 import * as THREE from 'three';
-import { Vehicle, TURN_CIRCLE } from './vehicle.js';
+import { Vehicle, TURN_CIRCLE, TURN_GRIP, ROLL_CG } from './vehicle.js';
 import { clamp, approach } from '../core/math.js';
 
 const _v = new THREE.Vector3();
@@ -21,6 +21,8 @@ export function magic(x, B, C, E) {
 
 export class WheeledVehicle extends Vehicle {
   constructor(game, def, model, x, z, yaw) {
+    // (Gameplay: the weight sits lower than the real one, ROLL_CG in vehicle.js.)
+    def = { ...def, cg: [def.cg[0], def.cg[1] * ROLL_CG, def.cg[2]] };
     super(game, def, model, x, z, yaw);
     const r = def.wheelRadius;
     const hw = def.track / 2;
@@ -126,7 +128,7 @@ export class WheeledVehicle extends Vehicle {
         nMu++;
       }
     mu = nMu ? mu / nMu : 0.7;
-    const sat = Math.atan((d.wheelbase * 0.7 * mu * 9.81) / Math.max(this.speed * this.speed, 0.1)) + 0.03;
+    const sat = Math.atan((d.wheelbase * 0.8 * mu * TURN_GRIP * 9.81) / Math.max(this.speed * this.speed, 0.1)) + 0.05;
     const a = -Math.sign(real) * Math.min(Math.atan(Math.tan(Math.abs(real)) / TURN_CIRCLE), sat);
     let slipSum = 0;
     let spinSum = 0;
@@ -160,6 +162,7 @@ export class WheeledVehicle extends Vehicle {
       const mu = surf.mu * (this.waterDepth > 0.3 ? 0.75 : 1);
       const Fz = Math.min(w.fz, w.load * 3);
       const maxF = mu * Fz;
+      const maxFy = maxF * TURN_GRIP; // (sideways: gameplay grip, see vehicle.js)
 
       // Along the wheel: drive torque, brakes and rolling resistance.
       const perWheel = torqueOf(w);
@@ -174,20 +177,21 @@ export class WheeledVehicle extends Vehicle {
       // Across the wheel: slip angle through the tire curve. Old bias-ply tires
       // peak at about 10 degrees of slip and hold most of their grip beyond it.
       const slipAngle = Math.atan2(vLat, Math.abs(vLong) + 0.8);
-      let fy = -maxF * magic(slipAngle, 9, 1.9, 0.95);
+      let fy = -maxFy * magic(slipAngle, 9, 1.9, 0.95);
       if (Math.abs(vLong) < 2) {
         // At walking pace the slip angle is meaningless: plain sideways friction.
-        const lowF = clamp((-vLat * d.mass) / dt / 4 * 0.5, -maxF, maxF);
+        const lowF = clamp((-vLat * d.mass) / dt / 4 * 0.5, -maxFy, maxFy);
         const t = Math.abs(vLong) / 2;
         fy = lowF * (1 - t) + fy * t;
       }
-      // Friction circle: drive/brake and cornering share the same grip.
-      const total = Math.hypot(fx, fy);
+      // Friction circle (an ellipse with the extra sideways grip): drive/brake
+      // and cornering share the same grip.
+      const e = Math.hypot(fx / maxF, fy / maxFy);
       let slip = 0;
-      if (total > maxF && total > 0) {
-        slip = 1 - maxF / total;
-        fx *= maxF / total;
-        fy *= maxF / total;
+      if (e > 1) {
+        slip = 1 - 1 / e;
+        fx /= e;
+        fy /= e;
       }
       w.slip = slip;
       slipSum += slip;
