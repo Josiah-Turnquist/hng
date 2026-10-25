@@ -638,3 +638,93 @@ test('a bot in the sidecar lays the machine gun on an enemy and fires bursts', a
   assert.ok(off[Math.floor(off.length * 0.9)] < 4, `90% of rounds within ${off[Math.floor(off.length * 0.9)].toFixed(1)} degrees`);
   assert.ok(off[off.length - 1] < 8, `a round ${off[off.length - 1].toFixed(1)} degrees off`);
 });
+
+// Steering, as the player feels it. (Bikes used to swing the wrong way first
+// and run on long after the key was let go; tanks and jeeps ran on too.)
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const DEG = Math.PI / 180;
+function cruise(id, speed, { surface } = {}) {
+  const { game } = makeWorld({ size: 2048, surface });
+  const v = spawn(game, id, 0, 600, 0);
+  run(v, 1.5);
+  run(v, 30, () => v.driverInput(kmh(v) < speed ? 1 : 0, 0, false, id === 'bicycle' && kmh(v) < speed - 3));
+  return v;
+}
+
+test('steering answers the way it is pressed at once, and stops soon after the key is let go', () => {
+  for (const [id, speed, runOnMax] of [
+    ['willys_mb', 29, 8],
+    ['m4a1_sherman', 22, 14],
+    ['wla', 45, 9],
+    ['bicycle', 18, 20],
+    ['r75_sidecar', 40, 4],
+  ]) {
+    const v = cruise(id, speed);
+    const hold = () => (kmh(v) < speed ? 0.6 : 0);
+    const y0 = yawOf(v);
+    let wrongWay = 0;
+    run(v, 1.2, () => {
+      v.driverInput(hold(), 1);
+      wrongWay = Math.max(wrongWay, wrap(yawOf(v) - y0)); // (a right turn takes the yaw down)
+    });
+    const turned = -wrap(yawOf(v) - y0);
+    const y1 = yawOf(v);
+    run(v, 3, () => v.driverInput(hold(), 0));
+    const runOn = Math.abs(wrap(yawOf(v) - y1));
+    assert.ok(wrongWay < 1 * DEG, `${id} first swung ${(wrongWay / DEG).toFixed(1)} degrees the wrong way`);
+    assert.ok(turned > 10 * DEG, `${id} turned ${(turned / DEG).toFixed(1)} degrees in 1.2 s`);
+    assert.ok(runOn < runOnMax * DEG, `${id} turned on ${(runOn / DEG).toFixed(1)} degrees after the key was let go`);
+    assert.ok(!v.fallen);
+  }
+});
+
+test('holding the throttle and a turn key does not put a motorcycle or an outfit down', () => {
+  for (const [id, surface, steer] of [
+    ['wla', SURF.ROAD, 1],
+    ['m72', SURF.ROAD, -1],
+    ['r75', SURF.GRASS, 1],
+    ['wla', SURF.DIRT, -1],
+    ['wla_sidecar', SURF.ROAD, 1],
+    ['m72_sidecar', SURF.GRASS, 1],
+    ['r75_sidecar', SURF.ROAD, -1],
+  ]) {
+    const { game } = makeWorld({ size: 2048, surface });
+    const v = spawn(game, id, 0, 600, 0);
+    run(v, 1.5);
+    run(v, 3, () => v.driverInput(1, 0));
+    let turned = 0;
+    let last = yawOf(v);
+    run(v, 8, () => {
+      v.driverInput(1, steer);
+      turned += wrap(yawOf(v) - last);
+      last = yawOf(v);
+    });
+    assert.ok(!v.fallen, `${id} went down (${v.fallCause}) holding a turn`);
+    assert.ok(Math.abs(turned) > 60 * DEG, `${id} only turned ${(Math.abs(turned) / DEG).toFixed(0)} degrees in 8 s`);
+    assert.ok(kmh(v) > 15, `${id} slowed to ${kmh(v).toFixed(0)} km/h in the turn`);
+  }
+});
+
+test('clutch-brake and epicyclic tanks turn at speed; a jeep holds its turn at speed', () => {
+  for (const id of ['t34_76', 't34_85', 'panzer4_h']) {
+    const v = cruise(id, 32);
+    let s = 0,
+      n = 0;
+    run(v, 2, (t) => {
+      v.driverInput(kmh(v) < 32 ? 0.6 : 0, 1);
+      if (t > 1) {
+        s += Math.abs(v.body.angular.y);
+        n++;
+      }
+    });
+    assert.ok(s / n > 10 * DEG, `${id} turns at ${((s / n) / DEG).toFixed(1)} degrees a second at 32 km/h`);
+  }
+  // Full lock at 50 km/h: the turn settles near its first rate instead of fading.
+  const v = cruise('willys_mb', 50);
+  let peak = 0;
+  run(v, 1.5, () => {
+    v.driverInput(kmh(v) < 50 ? 0.6 : 0, 1);
+    peak = Math.max(peak, Math.abs(v.body.angular.y));
+  });
+  assert.ok(Math.abs(v.body.angular.y) > 0.7 * peak, `the turn faded from ${(peak / DEG).toFixed(0)} to ${(Math.abs(v.body.angular.y) / DEG).toFixed(0)} degrees a second`);
+});

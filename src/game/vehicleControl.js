@@ -41,6 +41,7 @@ export class VehicleController {
     this.switchTo = -1;
     this.shake = 0;
     this.camDist = 8;
+    this._heading = null; // the vehicle's heading at the last frame (third-person camera)
     this.aimPoint = new THREE.Vector3();
     this.gunPoint = new THREE.Vector3();
   }
@@ -66,6 +67,7 @@ export class VehicleController {
     this.orbit.dist = v.def.kind === 'tracked' ? 9 : v.isBike ? (v.pedal ? 4 : 4.8) : 6;
     this.camDist = this.orbit.dist;
     this.idleLook = 0;
+    this._heading = null;
     this._eyeLocal = null;
     this._bikeT = null;
     this.look.yaw = this.look.pitch = 0;
@@ -262,15 +264,22 @@ export class VehicleController {
       if (v.isBike) fov += 10;
     } else {
       // Third person: orbit around the vehicle; walls and the ground pull the camera in.
-      // Bikes: the camera doesn't roll with the lean, and swings in behind the
-      // machine when the mouse is left alone.
+      // The camera turns with the vehicle (the mouse looks round from there) and
+      // swings in behind it under way when the mouse is left alone; but a
+      // gunner's view is where his gun points, and stays on target while the
+      // hull turns under it. Bikes: the camera doesn't roll with the lean.
       const target = v.isBike
         ? _v.copy(v.body.position).add(_v3.set(0, 0.95, 0))
         : _v.copy(v.body.position).addScaledVector(up, v.def.kind === 'tracked' ? 1.9 : 1.2);
       const o = this.orbit;
-      if (v.isBike && this.idleLook > 1.2 && Math.abs(v.speed) > 3) {
-        o.yaw += wrapAngle(v.yaw - o.yaw) * (1 - Math.exp(-1.6 * dt));
-        o.pitch = damp(o.pitch, -0.14, 1.2, dt);
+      const f = _v3.set(0, 0, -1).applyQuaternion(v.body.quaternion);
+      const heading = v.isBike ? v.yaw : Math.atan2(-f.x, -f.z);
+      const follow = role !== 'gunner' && role !== 'sidecarMg';
+      if (follow && this._heading !== null) o.yaw += wrapAngle(heading - this._heading);
+      this._heading = heading;
+      if (follow && this.idleLook > 1.2 && Math.abs(v.speed) > 3) {
+        o.yaw += wrapAngle(heading - o.yaw) * (1 - Math.exp(-1.6 * dt));
+        o.pitch = damp(o.pitch, v.isBike ? -0.14 : -0.12, 1.2, dt);
       }
       const back = new THREE.Vector3(Math.sin(o.yaw) * Math.cos(o.pitch), -Math.sin(o.pitch), Math.cos(o.yaw) * Math.cos(o.pitch));
       let dist = o.dist;

@@ -5,11 +5,15 @@
 //  - The machine rolls (leans) about the line where its tires touch the ground,
 //    an inverted pendulum: gravity tips it over, the sideways push of the tires
 //    stands it up. In a steady turn the two balance: tan(lean) = v^2 / (g R).
-//  - The rider balances by steering (counter-steering), abstracted: A/D asks for
-//    a turn, and the rider works the bars so the machine rolls to the lean that
-//    turn needs, as fast as a rider can roll it in. Steering can only balance a
-//    machine that is moving: at walking pace it wobbles, and below about 1 m/s
-//    the rider puts a foot down.
+//  - The rider balances by steering, abstracted: A/D asks for a turn, and the
+//    rider rolls the machine to the lean that turn needs while the bars follow
+//    the lean. (A real rider countersteers to roll in, a swing the wrong way
+//    first; for gameplay he rolls it in by his weight, so the machine turns the
+//    way the key says at once and stops turning soon after it is let go.)
+//    Steering can only balance a machine that is moving: at walking pace it
+//    wobbles, and below about 1 m/s the rider puts a foot down.
+//  - He rides within the grip: leaned over he keeps some in hand, eases the
+//    throttle so the rear tire can hold the line, and doesn't change gear.
 //  - The tires grip by the ground (SURFACE_INFO) with a friction circle shared by
 //    braking, drive and cornering. Asking for more lean than the grip allows (on
 //    mud or grass) washes the tires out: the machine falls and slides and the
@@ -19,7 +23,9 @@
 //  - Sidecar outfits don't lean: three wheels, asymmetric. The sidecar's mass
 //    drags the outfit toward it under power and swings it away under braking;
 //    turning hard toward the sidecar lifts its wheel ("flying the chair") and
-//    can roll the outfit over onto the bike side.
+//    can roll the outfit over onto the bike side. The rider turns no harder
+//    than the outfit takes either way, brings the chair down when it lifts,
+//    and catches the rear when it slides out.
 //  - Bicycles are driven by the soldier's legs: force falls with cadence (about
 //    600 W at best), a steady cruise of 160 W, and sprints spend his stamina (the
 //    work he can do above his critical power, W').
@@ -91,6 +97,11 @@ export const LOCK_USE = 0.6 / TURN_CIRCLE;
 // alone would push him (the motorcycles get ACCEL_GAIN, vehicle.js).
 const PEDAL_GAIN = 3;
 
+// Gameplay: riders roll into a lean, and back up out of it, this many times
+// quicker than a careful rider would, so a machine answers A and D about as
+// briskly as a car and stops turning soon after the key is let go.
+const ROLL_QUICK = 2;
+
 // How far a rider overrates the grip of each ground (index = SURF id): roads,
 // dirt and cobbles look what they are; grass, fields and leaf litter are
 // slipperier than they look, so riders lean too far on them (est.).
@@ -153,6 +164,10 @@ export class Bike extends Vehicle {
     this.leanTargetRate = 0;
     this.steerTrim = 0;
     this.holdYaw = null;
+    this.holdAfterTurn = false;
+    this.leanPush = 0; // the rider's push into the lean he wants (N m)
+    this.chairLift = 0; // outfits: how far the sidecar wheel is off the ground (rad)
+    this.rigSpin = 0; // outfits: how much the rider has rolled off for a slide (0-1)
     this._gripNow = 0.7;
     this.steerG = 0; // front wheel steer angle on the ground (+ = right)
     this.u = 0;
@@ -528,6 +543,9 @@ export class Bike extends Vehicle {
     this.accel = (this.accel ?? 0) + ((this.speed - prev) / dt - (this.accel ?? 0)) * Math.min(1, dt * 2);
     if (!this.pedal && rider && !this.fallen) {
       if (this.gear === 0 && this.shiftTimer <= 0 && Math.abs(this.u) < 0.5) this._chooseRange();
+      // No gear changes leaned over in a bend (slowing there with the throttle
+      // held back is not a hill to change down for, and the jolt upsets it).
+      this.holdGear = !this.rig && Math.abs(this.lean) > 0.12;
       this._shift(dt);
     }
     if (this.pedal) this._stamina(dt);
@@ -865,12 +883,13 @@ export class Bike extends Vehicle {
     }
     // Foot down: leaning on it when stopped, the machine upright as he pushes off.
     if (this.footDown) return spring(this.footDown * 0.1 * clamp(1 - Math.abs(this.u) / 1.3, 0, 1), 11, 1);
-    // Riding: the rider moves his hips a little to help the bars (and wobbles).
+    // Riding: the push into the lean he wants (see _rider), and his hips moving
+    // a little to help the bars (and wobbles).
     const mr = MAN + 20;
     const lim = mr * G * 0.06;
     const e = this.lean - this.leanTarget;
     const slow = 1 - smoothstep(1, 4, Math.abs(this.u));
-    return clamp(-Ic * 4 * e - Ic * 1.5 * this.leanRate, -lim, lim) + this.noise * slow * mr * G * 0.035;
+    return (this.leanPush || 0) + clamp(-Ic * 4 * e - Ic * 1.5 * (this.leanRate - this.leanTargetRate), -lim, lim) + this.noise * slow * mr * G * 0.035;
   }
 
   // ------------------------------------------------------------------ the rider
@@ -884,6 +903,7 @@ export class Bike extends Vehicle {
     const kLock = Math.tan(lockG) / L;
     const steerIn = rider ? inp.steer : 0;
     this.paddle = 0;
+    this.leanPush = 0;
     // Backing up without a reverse gear: the rider walks it back with his feet.
     const noReverse = this.pedal || !d.reverse || !this.engineOn;
     const backing = rider && this.wantDir < 0 && noReverse && inp.throttle > 0.05;
@@ -900,28 +920,53 @@ export class Bike extends Vehicle {
     }
     if (this.rig) {
       // Sidecar outfit: steered like a car. The turn asked for is limited by the
-      // lock at low speed and by what the rider would dare at speed; he eases off
-      // when the chair lifts.
+      // lock at low speed and, at speed, by what the outfit takes: toward the
+      // chair a little short of where its wheel lifts, away from it well short
+      // of where the rear wheel goes light and slides (both worked out from
+      // the outfit's own loads on its wheels). He eases off when the chair
+      // lifts anyway.
       // (For gameplay a quarter tighter than the real lock and a careful rider
       // give, TURN_CIRCLE in vehicle.js; toward the chair its wheel lifting
-      // sets the limit, as before.)
-      const towardChair = steerIn * Math.sign(this.def.sidecar.track) > 0;
+      // sets the limit.)
+      const side = Math.sign(this.def.sidecar.track);
+      const towardChair = steerIn * side > 0;
       const lockR = Math.atan(Math.tan(lockG) / TURN_CIRCLE);
-      const aLim = ((d.rider?.latG ?? 0.55) * G) / (towardChair ? 1 : TURN_CIRCLE);
+      const latG = (d.rider?.latG ?? 0.55) * G;
+      const track = Math.abs(this.def.sidecar.track);
+      const hc = Math.max(0.3, this.hc);
+      const aChair = (this.wS.L * track) / (this.m * hc);
+      const aRear = (this.wR.L * (this.wF.z - this.wR.z) * track) / ((this.wF.z - this.wS.z) * this.m * hc);
+      // (And no more than the ground under it gives: grass and mud hold less.)
+      const aLim = Math.min(towardChair ? Math.min(latG, 0.95 * aChair) : Math.min(latG / TURN_CIRCLE, 0.65 * aRear), 0.75 * this._gripNow * G);
       let kappa = steerIn * Math.min(Math.tan(lockR) / L, aLim / Math.max(u * u, 0.5));
+      let spin = 0;
       // Bars left alone, he holds his line (outfits are rigged to run straight,
       // but the pull under power and braking still swings them off it first).
       if (Math.abs(steerIn) < 0.05 && Math.abs(u) > 1.5 && rider) {
         if (this.holdYaw === null) this.holdYaw = this.yaw;
         const e = wrapAngle(this.yaw - this.holdYaw);
         kappa = (1.6 * e + 0.8 * this.yawRate) / Math.max(u, 2);
-      } else this.holdYaw = null;
+      } else {
+        this.holdYaw = null;
+        // Turning, he steers by the turn he feels as well as by the bars:
+        // swinging round quicker than he asked (the rear wheel light and
+        // sliding, or the driven sidecar wheel pushing it round), he steers
+        // against it to catch it and rolls off the throttle (in _drivetrain).
+        if (rider && u > 1.5) {
+          const err = this.yawRate + u * kappa; // (yaw rate past the one asked for, + = to the left)
+          const slide = clamp((this.wR.slip - 0.25) / 0.35, 0, 1); // (the rear wheel sliding out)
+          kappa = kappa * (1 - 0.7 * slide) + (0.8 * err) / Math.max(u, 2);
+          spin = Math.max(slide, err * kappa < 0 ? clamp((Math.abs(err) - 0.15) / 0.3, 0, 1) : 0);
+        }
+      }
+      // (A rider's hand on the throttle, not a switch: quick to close, slower to open.)
+      this.rigSpin = approach(this.rigSpin || 0, spin, (spin > (this.rigSpin || 0) ? 6 : 2) * h);
       // Turning toward the sidecar unloads its wheel: he eases off as it goes
       // light and straightens up if it lifts, so the chair flies but drops back.
-      const side = Math.sign(this.def.sidecar.track);
+      const lift = -this.lean * side; // (+ = the chair off the ground)
+      this.chairLift = lift;
       if (kappa * side > 0 && this.wS) {
         const light = this.wS.N / Math.max(1, this.wS.L);
-        const lift = -this.lean * side;
         let ease = light < 0.3 ? 0.55 + 1.5 * light : 1;
         if (lift > 0.02) ease = Math.min(ease, clamp(1 - (lift - 0.02) / 0.1, 0, 1));
         kappa *= Math.min(1, ease);
@@ -935,6 +980,10 @@ export class Bike extends Vehicle {
         if (tip > 0.04) ease = Math.min(ease, clamp(1 - (tip - 0.04) / 0.1, 0, 1));
         kappa *= Math.min(1, ease);
       }
+      // The chair well up, straightening is not enough (under power the outfit
+      // pulls toward the chair): he steers away from it to bring it down, and
+      // rolls off the throttle (in _drivetrain).
+      if (lift > 0.06 && rider) kappa = Math.min(kappa * side, 0) * side - side * clamp((lift - 0.06) * 4, 0, 1) * (aLim / Math.max(u * u, 4));
       const want = u < -0.2 ? -Math.atan(L * kappa) : Math.atan(L * kappa);
       this.steerG = approach(this.steerG, clamp(want, -lockR, lockR), (d.rider?.barRate ?? 2) * h);
       this.footDown = 0;
@@ -959,19 +1008,30 @@ export class Bike extends Vehicle {
     const kLean = (G * tanLim) / Math.max(u * u, 0.25);
     let kappaD = steerIn * Math.min(kLock * LOCK_USE, kLean);
     // Bars left alone under way, he holds the line he was on (pulling away
-    // from a foot down swings the machine a little off it): a slow trim.
+    // from a foot down swings the machine a little off it): a slow trim. The
+    // line is the one he settles on coming out of a turn, not the heading he
+    // had when he let go (that would turn him back toward it on its own).
     if (steerIn === 0 && au > 4) {
-      if (this.holdYaw === null) this.holdYaw = this.yaw;
-      const e = wrapAngle(this.yaw - this.holdYaw);
-      kappaD = clamp((0.3 * e) / u, -0.05 * kLean, 0.05 * kLean);
-    } else this.holdYaw = null;
+      const settled = Math.abs(this.yawRate) < 0.05 && Math.abs(this.lean) < 0.03 && Math.abs(this.leanTarget) < 0.02;
+      if (this.holdYaw === null && (!this.holdAfterTurn || settled)) {
+        this.holdYaw = this.yaw;
+        this.holdAfterTurn = false;
+      }
+      if (this.holdYaw !== null) {
+        const e = wrapAngle(this.yaw - this.holdYaw);
+        kappaD = clamp((0.3 * e) / u, -0.05 * kLean, 0.05 * kLean);
+      }
+    } else {
+      this.holdYaw = null;
+      if (steerIn !== 0) this.holdAfterTurn = true;
+    }
     // The rider rolls in at a human rate: a smooth reference lean, limited in
     // rate and in how fast that rate changes.
     const phiWant = Math.atan((u * u * kappaD) / G);
     // (On loose ground he changes lean more gently.)
-    const rate = (d.rider?.rollRate ?? 1) * clamp(this._gripNow / 0.7, 0.6, 1);
-    const wantRate = clamp((phiWant - this.leanTarget) * 4, -rate, rate);
-    const jerk = d.rider?.rollAcc ?? 4;
+    const rate = (d.rider?.rollRate ?? 1) * ROLL_QUICK * clamp(this._gripNow / 0.7, 0.6, 1);
+    const wantRate = clamp((phiWant - this.leanTarget) * 4 * ROLL_QUICK, -rate, rate);
+    const jerk = (d.rider?.rollAcc ?? 4) * ROLL_QUICK;
     const refAcc = clamp((wantRate - this.leanTargetRate) / h, -rate * jerk, rate * jerk);
     this.leanTargetRate += refAcc * h;
     this.leanTarget += this.leanTargetRate * h;
@@ -989,8 +1049,10 @@ export class Bike extends Vehicle {
       }
     } else if (au > (this.pedal ? 1.5 : 1.8) && !backing && !this.walking && !(this.paddle && inp.throttle > 0) && this.dabT <= 0 && (Math.abs(this.lean) < 0.02 || au > 3)) this.footDown = 0; // (once he has pushed it upright)
     if (this.footDown) {
+      // (The reference picks up the machine as it is, moving, when the foot
+      // comes up: from there the push rolls it upright, not the bars.)
       this.leanTarget = this.lean;
-      this.leanTargetRate = 0;
+      this.leanTargetRate = this.leanRate;
       this.steerTrim = 0;
       // Pointing the bars where he wants to go, paddling.
       const want = u < -0.1 ? -Math.atan(L * steerIn * kLock) : Math.atan(L * steerIn * kLock);
@@ -998,16 +1060,22 @@ export class Bike extends Vehicle {
       return;
     }
     // Balance: the sideways acceleration that makes the lean follow the
-    // reference (I phi'' = m g H sin(phi) - m a H cos(phi), solved for a), then
-    // the steering that gives it at this speed. He won't ask the tires for more
-    // than he thinks they have.
+    // reference (I phi'' = m g H sin(phi) - m a H cos(phi) + push, solved for
+    // a), then the steering that gives it at this speed. He won't ask the tires
+    // for more than he thinks they have.
+    // (For gameplay he rolls the machine into the lean he wants, and back out
+    // of it, as if by his weight alone: the push, applied in _rollSupport. A
+    // real rider countersteers first, a swing the wrong way that made A and D
+    // feel backward and kept the machine turning after the key was let go; the
+    // bars now only follow the lean and catch what the push leaves over.)
     const H = Math.max(0.3, this.hc);
     const k2 = this.kRoll2 + H * H;
     const wn = d.rider?.wn ?? 3.6;
     const zeta = d.rider?.zeta ?? 1.1;
+    this.leanPush = this.Ic * refAcc;
     const accWant = refAcc - 2 * zeta * wn * (this.leanRate - this.leanTargetRate) - wn * wn * (this.lean - this.leanTarget);
     const cosL = Math.max(0.3, Math.cos(this.lean));
-    let aDes = G * Math.tan(this.lean) - ((k2 / H) * accWant) / cosL;
+    let aDes = G * Math.tan(this.lean) - ((k2 / H) * (accWant - refAcc)) / cosL;
     const grip = this._gripNow * G * 0.95;
     aDes = clamp(aDes, -grip, grip);
     // The bars: the path curvature plus the slip angles the tires need for that
@@ -1068,8 +1136,9 @@ export class Bike extends Vehicle {
     const trust = Math.min(0.72, mu + (this._misjudge ?? 0.05) * smoothstep(6, 14, Math.abs(this.u)));
     const cap = this.latCapAvg ?? 0.6 * this.m * G;
     // Below about 35 km/h he keeps more in hand. (For gameplay he dares a
-    // quarter tighter turns than a careful rider would: TURN_CIRCLE.)
-    const keep = Math.min(0.85, (0.55 + 0.2 * smoothstep(4, 10, Math.abs(this.u))) / TURN_CIRCLE);
+    // quarter tighter turns than a careful rider would, TURN_CIRCLE, but always
+    // keeps a quarter of the grip in hand to catch a wobble with.)
+    const keep = Math.min(0.75, (0.55 + 0.2 * smoothstep(4, 10, Math.abs(this.u))) / TURN_CIRCLE);
     const tanGrip = (keep * cap * (trust / Math.max(mu, 0.1))) / (this.m * G);
     let clear = d.lean.clear - 0.04;
     // Pedaling, the inside pedal comes down: less clearance on a bicycle.
@@ -1102,6 +1171,10 @@ export class Bike extends Vehicle {
       w.brake = 0;
     }
     let throttle = rider && !this.fallen && this.wantDir > 0 ? inp.throttle : 0;
+    // The sidecar flying high, or the outfit swinging round on him: off the
+    // throttle until it settles (see _rider).
+    if (this.rig && this.chairLift > 0.04) throttle *= clamp(1 - (this.chairLift - 0.04) / 0.06, 0, 1);
+    if (this.rig && this.rigSpin) throttle *= 1 - this.rigSpin;
     if (this.wantDir < 0 && rider && !this.fallen && !this.pedal && d.reverse && this.engineOn) throttle = inp.throttle; // reverse gear
     // Brakes: S works both, and he keeps the wheels turning on ground he knows
     // (front first: most of the stopping happens there, the weight moves
@@ -1142,12 +1215,28 @@ export class Bike extends Vehicle {
     const share = this.m / (this.m + rotMass);
     // (With the gameplay gain on the push: see ACCEL_GAIN in vehicle.js.)
     let F = this._gain((wheelT / R) * share);
+    // On an outfit in a turn he keeps the rear wheel from spinning, leaving it
+    // the grip the turn needs (it goes light in a turn away from the chair).
+    // (At a walk he lets it spin: that is how it gets through mud and sand.)
+    if (F > 0 && this.rig && this.occupants[0] && u > 3) {
+      const nR = Math.max(0, this.wR.N),
+        nS = Math.max(0, this.wS.N);
+      const fyR = (((this.m * Math.abs(this.ay) * (this.cz - this.wF.z)) / d.wheelbase) * nR) / Math.max(1, nR + nS);
+      const room = Math.sqrt(Math.max(0, (this._gripNow * nR) ** 2 - fyR * fyR)) + (this.rollTable[this.wR.surface] ?? 0.03) * nR;
+      F = Math.min(F, Math.max(room / Math.max(0.05, this.wR.driven), 0.4 * F));
+    }
     // Leaned over, the rider feeds the throttle in only as far as the rear
-    // tire has grip left over from the turn (as anyone who rides does).
+    // tire has grip left over from the turn (as anyone who rides does): the
+    // turn his lean asks for, which he holds, not the swing of the moment.
+    // (Wide open in a long bend, the rear tire had nothing left to hold the
+    // line with and the machine fell into the turn.)
     if (F > 0 && !this.rig && this.occupants[0]) {
-      const fyR = (this.m * Math.abs(this.ayPath) * (this.cz - this.wF.z)) / d.wheelbase;
-      const room = Math.sqrt(Math.max(0, (0.9 * this._gripNow * Math.max(0, this.wR.N)) ** 2 - fyR * fyR));
-      F = Math.min(F, Math.max(room, 0.25 * F));
+      const lean = this.footDown ? 0 : Math.abs(this.lean);
+      const ay = Math.max(Math.abs(this.ayPath), G * Math.tan(lean));
+      const fyR = (this.m * ay * (this.cz - this.wF.z)) / d.wheelbase;
+      const care = smoothstep(0.03, 0.12, lean); // (leaned over: a little more in hand)
+      const room = Math.sqrt(Math.max(0, ((0.9 - 0.05 * care) * this._gripNow * Math.max(0, this.wR.N)) ** 2 - fyR * fyR));
+      F = Math.min(F, Math.max(room, (0.25 - 0.15 * care) * F));
     }
     this.wR.drive = F * this.wR.driven;
     if (this.wS) this.wS.drive = F * this.wS.driven;

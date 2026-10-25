@@ -72,9 +72,12 @@ export class WheeledVehicle extends Vehicle {
     const d = this.def;
     const b = this.body;
     const inp = this.input;
-    // Steering: rate-limited, and drivers use less lock at speed.
+    // Steering: rate-limited, and drivers use less lock at speed. Let go, the
+    // wheel spins back to the middle (caster) quicker than it is turned.
     const speedK = 1 / (1 + Math.abs(this.speed) / 12);
-    this.steer = approach(this.steer, inp.steer * speedK, dt * 2.4);
+    const want = inp.steer * speedK;
+    const back = Math.abs(want) < Math.abs(this.steer) || want * this.steer < 0;
+    this.steer = approach(this.steer, want, dt * (back ? 6 : 2.4));
 
     // Engine and gearbox.
     const groundSpeed = this.wheelSpin * d.wheelRadius;
@@ -112,8 +115,8 @@ export class WheeledVehicle extends Vehicle {
 
     _fwd.set(0, 0, -1).applyQuaternion(b.quaternion);
     // Front wheel angle: a quarter tighter than the real lock gives (gameplay, see
-    // TURN_CIRCLE), as far as the tires can follow: at speed, past about 0.8 of
-    // their grip, more lock would only scrub them (never less than the real one).
+    // TURN_CIRCLE), as far as the tires can follow: at speed, past about 0.7 of
+    // their grip, more lock would only scrub them and the turn would fade.
     const real = this.steer * d.steerMax;
     let mu = 0,
       nMu = 0;
@@ -123,8 +126,8 @@ export class WheeledVehicle extends Vehicle {
         nMu++;
       }
     mu = nMu ? mu / nMu : 0.7;
-    const sat = Math.atan((d.wheelbase * 0.8 * mu * 9.81) / Math.max(this.speed * this.speed, 0.1)) + 0.12;
-    const a = -Math.sign(real) * Math.min(Math.atan(Math.tan(Math.abs(real)) / TURN_CIRCLE), Math.max(Math.abs(real), sat));
+    const sat = Math.atan((d.wheelbase * 0.7 * mu * 9.81) / Math.max(this.speed * this.speed, 0.1)) + 0.03;
+    const a = -Math.sign(real) * Math.min(Math.atan(Math.tan(Math.abs(real)) / TURN_CIRCLE), sat);
     let slipSum = 0;
     let spinSum = 0;
     let n = 0;

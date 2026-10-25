@@ -165,7 +165,17 @@ export class TrackedVehicle extends Vehicle {
       const target = (d.steering === 'controlledDiff' ? 1.6 : 1.1) * quick;
       throttle = clamp(((target - vo) * 1.5) / quick, 0, 0.7) * Math.abs(steer);
     }
-    this.steer = approach(this.steer, steer, dt * (d.steering === 'clutchBrake' ? 6 : 3));
+    // Levers let go while under way: the driver checks the hull's swing with a
+    // touch of the other lever, so it stops turning when the key is let go
+    // (left alone, 30 tonnes swing on well past where he wanted to be).
+    let lever = steer;
+    if (Math.abs(steer) < 0.05 && this.alive && Math.abs(this.speed) > 2) {
+      const swing = b.angular.dot(_v2.set(0, 1, 0).applyQuaternion(b.quaternion));
+      lever = clamp(swing * 4, -0.8, 0.8);
+    }
+    // (The driver lets a lever go quicker than he pulls it.)
+    const back = Math.abs(lever) < Math.abs(this.steer) || lever * this.steer < 0;
+    this.steer = approach(this.steer, lever, dt * (back ? 8 : d.steering === 'clutchBrake' ? 6 : 4));
     const st = this.steer;
     const a = Math.abs(st);
     const inner = st > 0 ? 1 : 0; // turning right: the right track is inside
@@ -216,8 +226,10 @@ export class TrackedVehicle extends Vehicle {
     } else if (d.steering === 'controlledDiff') {
       // Braking one side of the differential speeds up the other: the track speeds
       // are forced apart, up to the fixed ratio of the mechanism (applied below).
-      const kmin = (d.trackCenters * TURN_RATE) / (2 * d.turnRadius); // (gameplay: TURN_RATE)
-      diffTarget = a * 2 * kmin * vMean;
+      // Fast, the driver eases the steering brake to keep the turn under about
+      // half a g sideways. (Both a quarter sharper for gameplay: TURN_RATE.)
+      const R = Math.max(d.turnRadius / TURN_RATE, (vMean * vMean) / (4.4 * TURN_RATE));
+      diffTarget = (a * d.trackCenters * vMean) / R;
       lock = a < 0.05;
     } else {
       // Clutch-brake and epicyclic steering: the lever slows the inner track to a
@@ -233,7 +245,9 @@ export class TrackedVehicle extends Vehicle {
       const vo = this.trackSpeed[outer],
         vi = this.trackSpeed[inner];
       const over = (vi - k * vo) * Math.sign(vo || vMean || 1);
-      const steerBrake = a > 0.15 ? clamp(over * m[inner] * 25, 0, d.brakeForce * 0.5) : 0;
+      // He brakes the inner track firmly toward that fraction: a gentler hand
+      // never got a heavy tank to swing round at speed (the lever did nothing).
+      const steerBrake = a > 0.15 ? clamp(over * m[inner] * 80, 0, d.brakeForce * 0.5) : 0;
       if (d.steering === 'clutchBrake') {
         if (a < 0.15) lock = true;
         else {
@@ -264,8 +278,10 @@ export class TrackedVehicle extends Vehicle {
     _fwd.set(0, 0, -1).applyQuaternion(b.quaternion);
     const up = _v2.set(0, 1, 0).applyQuaternion(b.quaternion);
     const yawRate = Math.abs(b.angular.dot(up));
+    // (Only while steering: with the levers let go the tracks run straight, and
+    // the hull swinging on past that slides them sideways against all of it.)
     const rb = Math.min(8, Math.abs(this.speed) / Math.max(1e-3, yawRate) / d.trackCenters);
-    const nikitin = 1 + (1 / (0.925 + 0.15 * Math.max(0.5, rb)) - 1) * Math.min(1, yawRate / 0.08);
+    const nikitin = a < 0.05 ? 1 : 1 + (1 / (0.925 + 0.15 * Math.max(0.5, rb)) - 1) * Math.min(1, yawRate / 0.08);
     const ground = this.trackGround;
     const loads = this.trackLoad;
     const stiff = [0, 0];
