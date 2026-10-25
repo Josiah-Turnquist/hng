@@ -21,7 +21,7 @@ import { Casings } from '../render/casings.js';
 import { AMMO } from '../weapons/ammo.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
-import { updateVehicleEffects, charModel } from '../vehicles/effects.js';
+import { updateVehicleEffects, charModel, addHitMark } from '../vehicles/effects.js';
 import { SURFACE_INFO } from '../world/heightfield.js';
 import { MATERIALS } from '../ballistics/materials.js';
 import { updateVehicleSound } from '../vehicles/sound.js';
@@ -474,6 +474,8 @@ export class Game {
     const fx = this.effects;
     const wasAlive = v.alive;
     const res = v.onHit(info, p);
+    // Where it struck stays marked: a hole, a gouge or a scorch.
+    addHitMark(v, info, p.ammo);
     const big = p.ammo.diameter >= 0.019 || p.ammo.heat;
     fx.impact({ ...info, effect: 'sparks', energy: big ? info.energy * 0.05 : info.energy });
     if (info.kind === 'ricochet') this.audio?.play?.('ricochet', info, { volume: big ? 1 : 0.6 });
