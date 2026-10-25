@@ -369,6 +369,7 @@ export class ViewModel {
     gunRoot.quaternion.copy(cam.quaternion).multiply(finalQ);
     gunRoot.updateMatrixWorld(true);
 
+    this.emptyTube = !!ctx.emptyTube;
     this._animateParts(dt);
     gunRoot.updateMatrixWorld(true);
 
@@ -481,6 +482,8 @@ export class ViewModel {
       parts.pin.position.add(_v.set(-0.05 * k, 0.03 * k, -0.02 * k));
       parts.pin.visible = u < 0.5;
     }
+    // A launcher's rocket (or the Panzerfaust's warhead) is gone once fired.
+    for (const r of [parts.rocket, parts.warhead]) if (r) r.visible = !this.emptyTube;
     // Feed cover.
     if (parts.cover) {
       let open = 0;

@@ -473,6 +473,7 @@ export class PlayerController {
       ambient: this.ambientLevel,
       throwing: s.throwing,
       empty: w?.def.type === 'grenade' && !hasGrenade(w) && !s.throwing,
+      emptyTube: w?.def.type === 'launcher' && w.loaded === 0 && w.state !== 'reloading',
     });
     this.lastLook = [0, 0];
     this.viewmodel.camera.fov = 52;

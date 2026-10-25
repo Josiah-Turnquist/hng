@@ -195,6 +195,12 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   // Detail by distance, with a little hysteresis so it doesn't flicker.
   const d = m.root.position.distanceTo(camPos);
   setSoldierWeapon(game, s, d);
+  // A fired launcher's tube stays empty until it's reloaded.
+  const gun = s.view.guns.get(s.view.gunId);
+  if (gun && (gun.parts.rocket || gun.parts.warhead)) {
+    const empty = w?.def.type === 'launcher' && w.loaded === 0 && w.state !== 'reloading';
+    for (const r of [gun.parts.rocket, gun.parts.warhead]) if (r) r.visible = !empty;
+  }
   const [d0, d1] = lodDistances(game);
   const cur = s.view.lod;
   const h = cur === 0 ? 1.1 : 1.0;

@@ -392,7 +392,7 @@ const DEFAULTS = {
   showFps: false,
   crosshair: true, // hip-fire crosshair (hidden when aiming through the sights)
   shotMarkers: true, // marks round the middle of the screen pointing where shots came from
-  bulletTrails: true, // faint streaks behind bullets flying near you
+  bulletTrails: true, // ordinary bullets flying near you are drawn (small blurred bullets)
   grenadeWarning: true, // a mark on live grenades that land near you
   objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower

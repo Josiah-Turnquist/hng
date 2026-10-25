@@ -47,7 +47,7 @@ These are the keys the game starts with. Every one can be changed in Settings > 
 | Change seat, camera | F1 to F4, V |
 | Scoreboard | Tab |
 
-Red marks round the middle of the screen point to where a shot that hit you came from, pale ones to bullets that only just missed, and bullets flying near you leave faint trails (both can be turned off in Settings > Screen).
+Red marks round the middle of the screen point to where a shot that hit you came from, pale ones to bullets that only just missed. Projectiles look like what they are: tracer rounds are glowing slugs with a white-hot head and a short fading tail, tank shells fly with their tracer burning in the base, bazooka and Panzerschreck rockets (and the Panzerfaust's warhead) are their real models, the rockets trailing smoke, and ordinary bullets flying near you show as small blurred bullets (Settings > Screen > Bullets in flight). A fired launcher's tube is empty until you reload.
 
 Where to go: a marker floats over each point your side should take or hold next, with its name, distance and capture progress; the nearest says ATTACK or DEFEND and stays at the edge of the screen when you look away. Marks above the compass show which way the points lie, a line under the points bar says how it's going on the point you stand on ("Taking A2: 35%"), and when you respawn a hint names the point to make for (Settings > Screen > Objective markers).
 

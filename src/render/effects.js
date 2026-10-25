@@ -8,6 +8,7 @@
 // made, and how many flashes light up their surroundings.
 import * as THREE from 'three';
 import { LAYER_FX, SHARED_UNIFORMS, ATMOSPHERE_PARS } from './pipeline.js';
+import { clamp } from '../core/math.js';
 
 const MAX_PARTICLES = 3000;
 const MAX_TRACERS = 256;
@@ -131,43 +132,98 @@ void main() {
   }
 }`;
 
+// Projectiles in flight, drawn as camera-facing strips from the tail A to the
+// head B (the head is where the projectile is now), with a rounded end and room
+// round it for a glow. Shaded as a projectile seen in motion: a solid head and
+// a tail thinning and fading behind it (the blur of something moving fast).
+//   iWidth: radius of the head (m); uKind: 0 glowing tracers (added light),
+//   1 ball rounds (copper bullets, blended over the scene).
 const TRACER_VERT = /* glsl */ `
 attribute vec3 iA;
 attribute vec3 iB;
 attribute vec4 iColor;
 attribute float iWidth;
+uniform float uKind;
 varying vec4 vColor;
-varying vec2 vUv;
+varying vec2 vQ; // (along from the head, m: < 0 toward the tail; across, m)
+varying float vLen;
+varying float vR;
 varying vec3 vWorld;
 void main() {
   vColor = iColor;
-  vUv = uv;
-  // Quad along A->B, facing the camera. position.x: 0 at A, 1 at B; position.y: -0.5..0.5 across.
-  vec3 P = mix(iA, iB, position.x);
-  vec3 dir = normalize(iB - iA + 1e-6);
-  vec3 toCam = normalize(cameraPosition - P);
-  vec3 side = normalize(cross(dir, toCam));
-  float dist = length(cameraPosition - P);
-  // Keep tracers visible far away: at least ~1.5 pixels wide.
-  float w = max(iWidth, dist * 0.0012);
-  // Wider than the real streak: the glow fades out to the sides.
-  vColor.a *= min(1.0, iWidth / w * 2.0 + 0.35);
-  P += side * position.y * w;
+  vec3 dir = iB - iA;
+  float len = length(dir);
+  dir = len > 1e-5 ? dir / len : vec3(0.0, 0.0, 1.0);
+  vec3 toCam = normalize(cameraPosition - iB);
+  float dist = length(cameraPosition - iB);
+  // Seen end on (coming at you, or going away), the strip shortens to a round head.
+  vec3 dv = dir - toCam * dot(dir, toCam);
+  float dvl = length(dv);
+  vec3 camRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 axis = dvl > 1e-3 ? dv / dvl : camRight;
+  // The tail is the blur of the last moment of flight: never more than a few
+  // degrees across the view, so close by it reads as a slug, not a line.
+  float plen = min(len * dvl, dist * (uKind > 0.5 ? 0.12 : 0.2));
+  // Never thinner than a pixel or two, so they stay visible far away.
+  float r = max(iWidth, dist * (uKind > 0.5 ? 0.0016 : 0.0014));
+  float pad = r * (uKind > 0.5 ? 1.8 : 5.0); // room for the glow
+  float s = mix(-plen - pad, pad, position.x);
+  vec3 side = normalize(cross(axis, toCam));
+  vec3 P = iB + axis * s + side * position.y * 2.0 * pad;
+  vQ = vec2(s, position.y * 2.0 * pad);
+  vLen = max(plen, 1e-4);
+  vR = r;
+  // Thinner than a pixel: fainter instead.
+  vColor.a *= min(1.0, iWidth / r * 1.5 + 0.4);
   vWorld = P;
   gl_Position = projectionMatrix * viewMatrix * vec4(P, 1.0);
 }`;
 
 const TRACER_FRAG = /* glsl */ `
 ${ATMOSPHERE_PARS}
+uniform vec3 uSunLight;
+uniform vec3 uAmbient;
+uniform float uKind;
 varying vec4 vColor;
-varying vec2 vUv;
+varying vec2 vQ;
+varying float vLen;
+varying float vR;
 varying vec3 vWorld;
 void main() {
-  float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
-  float along = smoothstep(0.0, 0.25, vUv.x);
-  float a = pow(across, 1.5) * along * vColor.a;
-  a *= atmosphereAt(cameraPosition, vWorld).x;
-  gl_FragColor = vec4(vColor.rgb * a, a);
+  // 0 at the head .. 1 at the end of the tail.
+  float t = clamp(-vQ.x / vLen, 0.0, 1.0);
+  // Distance from the centre line (round at both ends).
+  float d = vQ.x > 0.0 ? length(vQ) : vQ.x < -vLen ? length(vec2(vQ.x + vLen, vQ.y)) : abs(vQ.y);
+  vec4 air = atmosphereAt(cameraPosition, vWorld);
+  if (uKind < 0.5) {
+    // Tracer: a white-hot head in a ball of coloured glow (the burning
+    // compound), the tail narrowing and fading fast behind it. Drawn over what's
+    // behind (not only added), so the colour shows against a bright sky too.
+    float rc = vR * mix(1.0, 0.3, t);
+    float fade = exp(-3.2 * t);
+    float core = (1.0 - smoothstep(rc * 0.35, rc, d)) * fade;
+    float head = exp(-dot(vQ, vQ) / (vR * vR * 5.0));
+    float tail = exp(-(d * d) / (rc * rc * 3.0)) * fade * 0.7;
+    float a = clamp(max(core, max(head * 0.95, tail)), 0.0, 1.0) * vColor.a * air.x;
+    if (a < 0.003) discard;
+    float peak = max(max(vColor.r, vColor.g), vColor.b);
+    float hot = clamp(core * 1.2 + head * head * 0.6, 0.0, 1.0);
+    vec3 col = mix(vColor.rgb * 0.35, vec3(peak) * vec3(1.0, 0.93, 0.82), hot);
+    gl_FragColor = vec4(col * a, a);
+  } else {
+    // Ball round: a small copper-coloured bullet, lit by the sun and sky, with a
+    // short blur behind it; a glint along its top, darker at the edges so it
+    // shows against grass as well as sky.
+    float rc = vR * mix(1.0, 0.45, t);
+    float body = 1.0 - smoothstep(rc * 0.6, rc, d);
+    float a = body * mix(1.0, 0.0, pow(t, 0.5)) * vColor.a;
+    if (a < 0.004) discard;
+    float glint = exp(-pow((vQ.y + vR * 0.3) / (vR * 0.28), 2.0)) * (1.0 - t);
+    float edge = smoothstep(rc * 0.2, rc * 0.9, d);
+    vec3 metal = vColor.rgb * (uAmbient * 0.9 + uSunLight * 0.3) * (1.0 - edge * 0.65) + glint * uSunLight * 0.3;
+    vec3 col = metal * air.x + air.yzw * (1.0 - air.x);
+    gl_FragColor = vec4(col, a);
+  }
 }`;
 
 // Presets: color (linear albedo, or light for additive ones), size range, growth,
@@ -186,6 +242,8 @@ const P = {
   water: { color: [0.62, 0.67, 0.7], alpha: 0.75, size: [0.1, 0.22], grow: 0.6, life: [0.6, 1.1], g: 1.0, drag: 0.6, rise: 0 },
   glass: { color: [0.7, 0.8, 0.85], alpha: 0.9, size: [0.02, 0.04], grow: 0, life: [0.5, 0.9], g: 1.0, drag: 0.3, rise: 0 },
   muzzleSmoke: { color: [0.5, 0.5, 0.48], alpha: 0.3, size: [0.08, 0.16], grow: 0.9, life: [0.9, 1.8], g: 0, drag: 3, rise: 0.15 },
+  // A rocket motor's smoke: a pale trail hanging in the air behind it.
+  rocketSmoke: { color: [0.66, 0.66, 0.64], alpha: 0.8, size: [0.26, 0.4], grow: 1.3, life: [1.8, 3.0], g: 0, drag: 2.5, rise: 0.12 },
   smoke: { color: [0.24, 0.24, 0.23], alpha: 0.7, size: [1.2, 2.2], grow: 1.2, life: [5, 9], g: 0, drag: 0.8, rise: 0.9 },
   fire: { color: [7, 2.6, 0.6], alpha: 0.9, size: [0.6, 1.1], grow: 0.4, life: [0.4, 0.8], g: 0, drag: 1.5, rise: 2.5, add: true },
   flash: { color: [30, 18, 7], alpha: 1, size: [2.5, 3.5], grow: 2, life: [0.06, 0.1], g: 0, drag: 0, rise: 0, add: true },
@@ -480,97 +538,122 @@ export class Effects {
     l.userData.t0 = time;
   }
 
-  // --- tracers -----------------------------------------------------------------
+  // --- projectiles in flight ---------------------------------------------------------
   _makeTracers() {
+    this.tracers = this._makeStrips(0);
+    this.bullets = this._makeStrips(1);
+    this.tracerMesh = this.tracers.mesh;
+  }
+
+  // Instanced strips (see TRACER_VERT): kind 0 glows (added light), kind 1 is drawn over.
+  _makeStrips(kind) {
     const geo = new THREE.InstancedBufferGeometry();
     const base = new THREE.PlaneGeometry(1, 1, 1, 1);
     base.translate(0.5, 0, 0);
     geo.index = base.index;
     geo.attributes.position = base.attributes.position;
     geo.attributes.uv = base.attributes.uv;
-    this.trA = new Float32Array(MAX_TRACERS * 3);
-    this.trB = new Float32Array(MAX_TRACERS * 3);
-    this.trC = new Float32Array(MAX_TRACERS * 4);
-    this.trW = new Float32Array(MAX_TRACERS);
-    this.aA = new THREE.InstancedBufferAttribute(this.trA, 3).setUsage(THREE.DynamicDrawUsage);
-    this.aB = new THREE.InstancedBufferAttribute(this.trB, 3).setUsage(THREE.DynamicDrawUsage);
-    this.aC = new THREE.InstancedBufferAttribute(this.trC, 4).setUsage(THREE.DynamicDrawUsage);
-    this.aW = new THREE.InstancedBufferAttribute(this.trW, 1).setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('iA', this.aA);
-    geo.setAttribute('iB', this.aB);
-    geo.setAttribute('iColor', this.aC);
-    geo.setAttribute('iWidth', this.aW);
+    const st = {
+      A: new Float32Array(MAX_TRACERS * 3),
+      B: new Float32Array(MAX_TRACERS * 3),
+      C: new Float32Array(MAX_TRACERS * 4),
+      W: new Float32Array(MAX_TRACERS),
+      n: 0,
+    };
+    st.attrs = [
+      ['iA', st.A, 3],
+      ['iB', st.B, 3],
+      ['iColor', st.C, 4],
+      ['iWidth', st.W, 1],
+    ].map(([name, arr, k]) => {
+      const a = new THREE.InstancedBufferAttribute(arr, k).setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute(name, a);
+      return a;
+    });
     geo.instanceCount = 0;
     const S = SHARED_UNIFORMS;
     const mat = new THREE.ShaderMaterial({
       vertexShader: TRACER_VERT,
       fragmentShader: TRACER_FRAG,
-      uniforms: { tSkyCube: S.tSkyCube, uFog: S.uFog, uSunDir: S.uSunDir, uSunColor: S.uSunColor, uSkyScale: S.uSkyScale },
+      uniforms: { tSkyCube: S.tSkyCube, uFog: S.uFog, uSunDir: S.uSunDir, uSunColor: S.uSunColor, uSkyScale: S.uSkyScale, uSunLight: S.uSunLight, uAmbient: S.uAmbient, uKind: { value: kind } },
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      // Tracers: colour premultiplied by cover, drawn over (light added, and what's
+      // behind partly hidden); bullets: ordinary see-through.
+      blending: kind === 0 ? THREE.CustomBlending : THREE.NormalBlending,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
       side: THREE.DoubleSide,
     });
-    this.tracerMesh = new THREE.Mesh(geo, mat);
-    this.tracerMesh.frustumCulled = false;
-    this.tracerMesh.layers.set(LAYER_FX);
-    this.tracerMesh.renderOrder = 30;
-    this.world.scene.add(this.tracerMesh);
+    st.mesh = new THREE.Mesh(geo, mat);
+    st.mesh.frustumCulled = false;
+    st.mesh.layers.set(LAYER_FX);
+    st.mesh.renderOrder = kind === 0 ? 30 : 12;
+    this.world.scene.add(st.mesh);
+    return st;
   }
 
-  // Draw glowing streaks for tracer rounds and rockets in flight, and (given
-  // trails: the camera position and whose shots to leave out) faint ones
-  // behind other bullets flying near the camera, so you can see where fire
-  // comes from. (Real ball rounds leave no trail; this is for the game.)
+  // One projectile: from the tail (x, y, z) - dir * len to the head (x, y, z).
+  _strip(st, x, y, z, ix, iy, iz, len, r, g, b, a, w) {
+    if (st.n >= MAX_TRACERS) return;
+    const n = st.n++;
+    st.A[n * 3] = x - ix * len;
+    st.A[n * 3 + 1] = y - iy * len;
+    st.A[n * 3 + 2] = z - iz * len;
+    st.B[n * 3] = x;
+    st.B[n * 3 + 1] = y;
+    st.B[n * 3 + 2] = z;
+    st.C[n * 4] = r;
+    st.C[n * 4 + 1] = g;
+    st.C[n * 4 + 2] = b;
+    st.C[n * 4 + 3] = a;
+    st.W[n] = w;
+  }
+
+  // Draw what's in flight: tracer rounds as white-hot slugs with a tinted glow
+  // and a short fading tail; a tank shell's tracer glowing at its base (the shell
+  // itself is a model, projectileView.js); and, given trails (the camera
+  // position and whose shots to leave out), ordinary bullets near the camera as
+  // small copper bullets with a little blur, so you can see fire coming past.
+  // Rockets and grenades are models (projectileView.js, thrownView.js).
   updateTracers(projectiles, colorFor, trails = null) {
-    let n = 0;
+    const T = this.tracers,
+      Bu = this.bullets;
+    T.n = 0;
+    Bu.n = 0;
     for (const p of projectiles) {
-      if (n >= MAX_TRACERS) break;
+      if (p.ammo.thrown || p.ammo.heat) continue;
+      const sp = p.speed || 1;
+      const ix = p.vx / sp,
+        iy = p.vy / sp,
+        iz = p.vz / sp;
       if (!p.tracer && !p.ammo.tracer) {
-        if (!trails || p.owner === trails.skip || p.ammo.fragment || p.ammo.thrown) continue;
+        if (!trails || p.owner === trails.skip || p.ammo.fragment) continue;
         const d = Math.hypot(p.x - trails.x, p.y - trails.y, p.z - trails.z);
         if (d > TRAIL_RANGE) continue;
-        const sp = p.speed || 1;
-        const len = Math.min(sp * 0.04, 30, p.distance);
-        if (len < 0.5) continue;
-        this.trA[n * 3] = p.x - (p.vx / sp) * len;
-        this.trA[n * 3 + 1] = p.y - (p.vy / sp) * len;
-        this.trA[n * 3 + 2] = p.z - (p.vz / sp) * len;
-        this.trB[n * 3] = p.x;
-        this.trB[n * 3 + 1] = p.y;
-        this.trB[n * 3 + 2] = p.z;
-        const a = 0.85 * Math.min(1, (TRAIL_RANGE - d) / 15);
-        this.trC[n * 4] = 3.2;
-        this.trC[n * 4 + 1] = 3.0;
-        this.trC[n * 4 + 2] = 2.6;
-        this.trC[n * 4 + 3] = a;
-        this.trW[n] = 0.026;
-        n++;
+        const len = Math.min(clamp(sp * 0.0014, 0.12, 1.4), p.distance);
+        if (len < 0.05) continue;
+        const a = Math.min(1, (TRAIL_RANGE - d) / 15);
+        this._strip(Bu, p.x, p.y, p.z, ix, iy, iz, len, 0.78, 0.5, 0.26, a, Math.max(0.005, (p.ammo.diameter || 0.008) * 1.3));
         continue;
       }
       if (p.ammo.tracerBurn && p.distance > p.ammo.tracerBurn) continue; // burned out
-      const sp = p.speed;
-      const len = Math.min(sp * 0.018, 12);
-      const ix = p.vx / (sp || 1),
-        iy = p.vy / (sp || 1),
-        iz = p.vz / (sp || 1);
-      this.trA[n * 3] = p.x - ix * len;
-      this.trA[n * 3 + 1] = p.y - iy * len;
-      this.trA[n * 3 + 2] = p.z - iz * len;
-      this.trB[n * 3] = p.x;
-      this.trB[n * 3 + 1] = p.y;
-      this.trB[n * 3 + 2] = p.z;
       const c = colorFor(p);
-      const glow = p.ammo.thrust || p.ammo.heat ? 5 : 14;
-      this.trC[n * 4] = c[0] * glow;
-      this.trC[n * 4 + 1] = c[1] * glow;
-      this.trC[n * 4 + 2] = c[2] * glow;
-      this.trC[n * 4 + 3] = Math.min(1, p.age * 30);
-      this.trW[n] = p.ammo.heat ? 0.12 : 0.035;
-      n++;
+      const fadeIn = Math.min(1, p.age * 30);
+      if (p.weapon?.vehicle && p.ammo.diameter >= 0.02) {
+        // A shell: the tracer burns in its base, half a shell length behind the middle.
+        const back = p.ammo.diameter * 2.2;
+        const len = Math.min(clamp(sp * 0.006, 1, 7), p.distance);
+        this._strip(T, p.x - ix * back, p.y - iy * back, p.z - iz * back, ix, iy, iz, len, c[0] * 14, c[1] * 14, c[2] * 14, fadeIn, p.ammo.diameter * 0.5);
+        continue;
+      }
+      const len = Math.min(clamp(sp * 0.005, 0.5, 6), p.distance);
+      this._strip(T, p.x, p.y, p.z, ix, iy, iz, len, c[0] * 12, c[1] * 12, c[2] * 12, fadeIn, 0.034);
     }
-    this.tracerMesh.geometry.instanceCount = n;
-    this.aA.needsUpdate = this.aB.needsUpdate = this.aC.needsUpdate = this.aW.needsUpdate = true;
+    for (const st of [T, Bu]) {
+      st.mesh.geometry.instanceCount = st.n;
+      for (const a of st.attrs) a.needsUpdate = true;
+    }
   }
 
   // --- bullet holes ------------------------------------------------------------------
