@@ -398,6 +398,10 @@ canvas.game {
 .hud-vehicle .vgear { font-size: 14px; align-self: flex-end; padding-bottom: 4px; color: var(--ink-dim); }
 .hud-vehicle .bar { height: 4px; background: rgba(0, 0, 0, 0.45); margin: 3px 0; }
 .hud-vehicle .fill { height: 100%; background: #c9c2a5; margin-left: auto; }
+.hud-vehicle .vwarn { color: #e0a04a; font-weight: 600; letter-spacing: 0.04em; margin: 3px 0 0; display: none; }
+.hud-vehicle .vwarn.crit { color: #ff6b52; font-size: 14px; font-weight: 700; text-transform: uppercase; text-shadow: 0 0 6px rgba(0, 0, 0, 0.8); animation: hud-crit 0.8s ease-in-out infinite alternate; }
+.hud-vehicle .hp.crit .fill { animation: hud-crit 0.8s ease-in-out infinite alternate; }
+@keyframes hud-crit { from { opacity: 1; } to { opacity: 0.35; } }
 .hud-vehicle .vmods { color: #e06450; font-weight: 600; margin: 4px 0; }
 .hud-vehicle .vgun { white-space: pre-line; font-family: var(--mono); margin-top: 6px; }
 .hud-vehicle .vseat { margin-top: 6px; color: var(--ink-dim); }

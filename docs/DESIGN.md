@@ -67,7 +67,7 @@ Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the b
 Open these through the dev server:
 
 - `debug/guns.html?gun=kar98k` (or `gun=all`; `sight=1&range=300` shows the sight picture)
-- `debug/vehicles.html?id=tiger1&armor=1`
+- `debug/vehicles.html?id=tiger1&armor=1` (`hp=0.15&marks=8` for the paint at that health and sample hit marks)
 - `debug/soldiers.html?pose=walk&cls=all` (`close=face|hands|kit|back|feet` for close-ups, `pose=bicycle` for a rider, `fp=kar98k` for the first-person arms)
 - `debug/village.html?view=aerial`
 - `debug/vegetation.html?view=lane` (or `aerial`, `forest`, `hedge`, `wheat`, `orchard`; `cam=x,y,z,yaw,pitch` for any view)

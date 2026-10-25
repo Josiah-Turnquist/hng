@@ -7,6 +7,7 @@ import { STANCE } from '../actors/body.js';
 import { damp, clamp, clamp01, DEG } from '../core/math.js';
 import { HIP_CONVERGE } from '../weapons/viewmodel.js';
 import { BattleMap } from './battleMap.js';
+import { healthStage } from '../vehicles/effects.js';
 
 const _cv = new THREE.Vector3();
 
@@ -41,6 +42,7 @@ export class Hud {
         <div class="vrow"><span class="vspeed"></span><span class="vgear"></span></div>
         <div class="bar rpm"><div class="fill"></div></div>
         <div class="bar hp"><div class="fill"></div></div>
+        <div class="vwarn"></div>
         <div class="vmods"></div>
         <div class="vgun"></div>
         <div class="bar reload"><div class="fill"></div></div>
@@ -86,6 +88,8 @@ export class Hud {
       gear: this.el('.hud-vehicle .vgear'),
       rpm: this.el('.hud-vehicle .rpm .fill'),
       hp: this.el('.hud-vehicle .hp .fill'),
+      hpBar: this.el('.hud-vehicle .hp'),
+      warn: this.el('.hud-vehicle .vwarn'),
       mods: this.el('.hud-vehicle .vmods'),
       gun: this.el('.hud-vehicle .vgun'),
       reload: this.el('.hud-vehicle .reload .fill'),
@@ -410,8 +414,22 @@ export class Hud {
       E.rpm.style.background = v.rpm > d.engine.redline * 0.95 ? '#d29a4a' : '#8a9b6a';
     }
     const hp = Math.max(0, v.hp / v.maxHp);
+    // The bar tells the same story as the smoke (see DAMAGE_STAGES): amber once
+    // the engine smokes, red when badly hurt, pulsing when almost destroyed, with
+    // a plain warning under it.
+    const stage = v.alive ? Math.min(3, healthStage(hp)) : 4;
     E.hp.style.width = `${hp * 100}%`;
-    E.hp.style.background = hp > 0.5 ? '#c9c2a5' : hp > 0.25 ? '#d29a4a' : '#c4513f';
+    E.hp.style.background = stage === 0 ? '#c9c2a5' : stage === 1 ? '#d29a4a' : '#c4513f';
+    const warn = stage === 3 ? (v.isBike ? 'Almost wrecked: get off!' : 'Almost destroyed: get out!') : stage === 2 ? 'Badly damaged' : '';
+    if (E.warn.textContent !== warn) E.warn.textContent = warn;
+    E.warn.style.display = warn ? 'block' : 'none';
+    E.warn.classList.toggle('crit', stage === 3);
+    E.hpBar.classList.toggle('crit', stage === 3);
+    // Said once in the middle of the screen too, where a driver is looking.
+    if (stage === 3 && this._warnedFor !== v) {
+      this._warnedFor = v;
+      this.flash(warn, 3);
+    }
     const m = v.modules;
     const bad = [];
     if (m.engine <= 0) bad.push('engine destroyed');

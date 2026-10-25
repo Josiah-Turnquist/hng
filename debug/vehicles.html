@@ -26,11 +26,16 @@
 //   distant version, &crank=90 turns the pedals (deg), &mg=30,10 lays the sidecar gun
 //   (traverse, elevation in deg), &lean=20 leans the machine (deg, + right), &stand=up
 //   folds the rear stand (as ridden; it is shown down, as parked)
+//   Damage: &hp=0.15 shows the paint with that share of health left (0 = the burnt-out
+//   wreck) and names the damage stage (its smoke needs the game's particles: see the
+//   info line); &marks=8 adds that many sample hits (shells and bullets in turn) where
+//   the armor would be struck, through the game's own hit marks
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
 import { VEHICLE_MODELS, buildVehicle, attachParts } from '../src/vehicles/models/index.js';
 import { VEHICLES } from '../src/vehicles/defs.js';
+import { updateDamageLook, charModel, addHitMark, markCount, healthStage } from '../src/vehicles/effects.js';
 
 const params = new URLSearchParams(location.search);
 const W = innerWidth, H = innerHeight;
@@ -114,6 +119,8 @@ function setup(id) {
   if (bikeDef) poseBike(v, bikeDef, deg);
   for (const name of (params.get('hide') || '').split(',')) if (v.parts[name]) v.parts[name].visible = false;
   if (on('open')) for (const [name, h] of Object.entries(v.meta.hinges || {})) if (v.parts[name]) v.parts[name].quaternion.setFromAxisAngle(new THREE.Vector3(...h.axis), h.open);
+  // (Before the armor and anchor helpers are added, so they keep their colors.)
+  if (params.get('hp') !== null || params.get('marks')) showDamage(v, id);
   const piv = v.meta.pivots;
   const attach = (obj, part, pos) => {
     const g = part && part !== 'body' && v.parts[part];
@@ -164,6 +171,69 @@ function setup(id) {
     }
   }
   return { scene, v, links, anchorObjs };
+}
+
+// Damage: scorched paint for &hp (charred at 0), &marks sample hits, and the stage.
+const STAGE_TEXT = ['sound', 'thin grey wisps from the engine', 'steady darker smoke', 'thick black smoke, sparks and small flames at the engine', 'destroyed'];
+function showDamage(v, id) {
+  const def = VEHICLES[id] || {};
+  const frac = Math.min(1, Math.max(0, Number(params.get('hp') ?? 1)));
+  // A stand-in for the game's vehicle, with what the damage looks need (plates and
+  // internal modules as Vehicle.setupArmor makes them, at rest).
+  const box = (h) => ({ hx: h[0], hy: h[1], hz: h[2] });
+  const plates = v.meta.armor.map((a) => ({ part: a.part || 'body', kind: a.kind || null, box: box(a.half), local: new THREE.Matrix4().compose(new THREE.Vector3(...a.center), new THREE.Quaternion().setFromEuler(new THREE.Euler(...(a.rot || [0, 0, 0]), 'XYZ')), new THREE.Vector3(1, 1, 1)) }));
+  const internals = v.meta.modules.map((m) => ({ name: m.name, part: m.part || 'body', box: box(m.half), local: new THREE.Matrix4().makeTranslation(...m.center) }));
+  const stand = { model: v, def, hp: frac, maxHp: 1, alive: frac > 0, pedal: !!def.pedal, isBike: def.kind === 'bike', plates, internals, game: null };
+  if (frac <= 0 && !def.pedal) charModel(stand);
+  else updateDamageLook(stand);
+  const n = Number(params.get('marks') || 0);
+  if (n > 0) sampleMarks(stand, n);
+  const stage = healthStage(frac);
+  info.push(`${id}: health ${Math.round(frac * 100)}%, stage ${stage}: ${def.pedal && stage > 0 && stage < 4 ? 'dirty (no smoke)' : STAGE_TEXT[stage]}${stage > 0 && stage < 4 && !def.pedal ? ' (smoke not drawn here)' : ''}${n > 0 ? `, ${markCount(stand)} marks` : ''}`);
+}
+
+// Sample hits spread over the armor plates, through the game's own hit marks: a
+// shell through, a high-explosive shell bursting outside, a glancing shell and two
+// bullets, in turn.
+function sampleMarks(stand, n) {
+  const v = stand.model;
+  v.root.updateMatrixWorld(true);
+  const plates = v.meta.armor.filter((a) => !a.kind && Math.min(...a.half) > 0);
+  if (!plates.length) return;
+  const b = v.meta.bounds;
+  const mid = new THREE.Vector3((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+  const hits = [
+    { kind: 'penetrate', ammo: { diameter: 0.075, filler: 0.02 } },
+    { kind: 'nonpen', ammo: { diameter: 0.075, explosive: { blast: 0.67 } } },
+    { kind: 'ricochet', ammo: { diameter: 0.075 } },
+    { kind: 'penetrate', ammo: { diameter: 0.00782 } },
+    { kind: 'penetrate', ammo: { diameter: 0.00782 } },
+  ];
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) {
+    const a = plates[Math.floor(rnd() * plates.length)];
+    const rot = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...(a.rot || [0, 0, 0]), 'XYZ'));
+    const axes = [0, 1, 2].map((k) => new THREE.Vector3().setFromMatrixColumn(rot, k));
+    const thin = a.half.indexOf(Math.min(...a.half));
+    // A point on the plate's outer face, in vehicle space at rest.
+    const c = new THREE.Vector3(...a.center);
+    for (let k = 0; k < 3; k++) if (k !== thin) c.addScaledVector(axes[k], (rnd() - 0.5) * 1.4 * a.half[k]);
+    const nrm = axes[thin].clone();
+    if (nrm.dot(c.clone().sub(mid)) < 0) nrm.negate();
+    c.addScaledVector(nrm, a.half[thin]);
+    const h = hits[i % hits.length];
+    const dir = h.kind === 'ricochet' ? axes[(thin + 1) % 3].clone().addScaledVector(nrm, -0.35) : nrm.clone().negate().add(new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.5));
+    dir.normalize();
+    // Then where its part stands now (turned turret, raised gun).
+    const part = a.part && a.part !== 'body' ? v.parts[a.part] : null;
+    if (part) {
+      c.sub(new THREE.Vector3(...v.meta.pivots[a.part])).applyMatrix4(part.matrixWorld);
+      nrm.transformDirection(part.matrixWorld);
+      dir.transformDirection(part.matrixWorld);
+    }
+    addHitMark(stand, { kind: h.kind, x: c.x, y: c.y, z: c.z, nx: nrm.x, ny: nrm.y, nz: nrm.z, dirX: dir.x, dirY: dir.y, dirZ: dir.z, plate: { part: a.part || 'body' } }, h.ammo);
+  }
 }
 
 // Bicycles and motorcycles: the distant version, bars, wheel, pedals, gun and lean.
