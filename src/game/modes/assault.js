@@ -96,6 +96,36 @@ export class AssaultMode {
     return team === ATT;
   }
 
+  // Where a team's fight is now (the HUD marks these): the points it can take
+  // next ('attack'), and its own the enemy can take next or is taking ('defend').
+  // Defenders aren't sent back to the attackers' access points.
+  activePoints(team) {
+    const out = [];
+    for (const p of this.points) {
+      if (p.owner !== team && this.capturable(p, team) && !(team === DEF && p.kind === 'access')) out.push({ p, role: 'attack' });
+      else if (p.owner === team && p.kind !== 'access' && (this.capturable(p, 1 - team) || Math.abs(p.c) < 0.999)) out.push({ p, role: 'defend' });
+    }
+    return out;
+  }
+
+  // The one to make for: the nearest, a point under attack first when defending.
+  suggestedPoint(team, x, z) {
+    const list = this.activePoints(team);
+    const enemy = 1 - team;
+    let best = null,
+      bestD = Infinity;
+    for (const a of list) {
+      let d = Math.hypot(a.p.x - x, a.p.z - z);
+      if (team === DEF && a.role === 'defend' && a.p.count[enemy] > 0) d *= 0.5;
+      if (team === ATT && a.role !== 'attack') d *= 1.5;
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    return best;
+  }
+
   capturable(p, team) {
     if (p.owner === team && Math.abs(p.c) >= 0.999) return false;
     if (p.kind === 'access' && team === ATT) return p.owner !== ATT;

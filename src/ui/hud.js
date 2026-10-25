@@ -340,6 +340,7 @@ export class Hud {
     this._updateCrosshair(p, dt);
     this._updateUse(p, dt);
     this._drawScope(p);
+    this._spawnHint(p);
     this._drawShots(p, dt);
   }
 
@@ -352,11 +353,12 @@ export class Hud {
       if (marks[i].t <= 0 || !p.soldier.alive) marks.splice(i, 1);
     }
     const nades = this._nearGrenades(p);
-    if (!marks.length && !nades.length && !this.shotsDrawn) return;
+    const objs = this._objectives(p);
+    if (!marks.length && !nades.length && !objs && !this.shotsDrawn) return;
     const c = this.shotsCanvas;
     const ctx = this.shotsCtx;
     ctx.clearRect(0, 0, c.width, c.height);
-    this.shotsDrawn = marks.length > 0 || nades.length > 0;
+    this.shotsDrawn = marks.length > 0 || nades.length > 0 || !!objs;
     if (!this.shotsDrawn) return;
     const f = _cv.set(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
     const camYaw = Math.atan2(-f.x, -f.z);
@@ -364,6 +366,7 @@ export class Hud {
     const cx = c.width / 2,
       cy = c.height / 2;
     const R = Math.max(70, Math.min(c.width, c.height) * 0.16);
+    if (objs) this._drawObjectives(ctx, objs, camYaw);
     if (nades.length) this._drawGrenades(ctx, nades, b, camYaw, cx, cy, R);
     ctx.lineCap = 'butt';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
@@ -394,6 +397,172 @@ export class Hud {
       ctx.closePath();
       ctx.fill();
     }
+  }
+
+  // --- where to go next ------------------------------------------------------------
+  // The points the player's side should take or hold now, and the one to make for.
+  _objectives(p) {
+    const mode = this.game.mode;
+    const s = p.soldier;
+    if (!mode?.activePoints || !mode.points || mode.over || !s.alive || !this.game.settings.get('objectiveMarkers')) return null;
+    const cp = this.game.camera.position;
+    const list = mode.activePoints(s.team);
+    if (!list.length) return null;
+    const next = mode.suggestedPoint(s.team, cp.x, cp.z);
+    // The point we're standing on, if any (for the status line).
+    const b = s.vehicle ? s.vehicle.body.position : s.body;
+    const on = mode.points.find((q) => Math.hypot(q.x - b.x, q.z - b.z) < q.radius) || null;
+    return { list, next, on, team: s.team };
+  }
+
+  // A mark over each point (and above the compass), the one to make for bigger,
+  // labelled and kept at the edge of the screen when out of view; a line under
+  // the points bar while standing on one.
+  _drawObjectives(ctx, o, camYaw) {
+    const c = this.shotsCanvas;
+    const w = c.width,
+      h = c.height;
+    const cam = this.game.camera;
+    const cp = cam.position;
+    const t = performance.now() / 1000;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = 3;
+    for (const a of o.list) {
+      const pt = a.p;
+      const main = a.p === o.next?.p;
+      const d = Math.hypot(pt.x - cp.x, pt.z - cp.z);
+      const th = shotMarkAngle(cp.x, cp.z, pt.x, pt.z, camYaw);
+      // Above the compass: which way it lies.
+      const rel = wrapAngle(th + Math.PI / 2) / DEG;
+      if (Math.abs(rel) < 72) this._pointDiamond(ctx, w / 2 + rel * 2, 7, main ? 5 : 3.5, pt, o.team, 1, false, t);
+      if (o.on === pt) continue; // standing on it: the status line instead
+      const v = _cv.set(pt.x, pt.y + 5, pt.z).project(cam);
+      let x, y, edge;
+      if (v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.9) {
+        x = (v.x * 0.5 + 0.5) * w;
+        y = (0.5 - v.y * 0.5) * h;
+      } else if (main) {
+        // Out of view: at the edge of the screen (clear of the bars at the top
+        // and the panels at the bottom), the way it lies.
+        const ux = Math.cos(th),
+          uy = Math.sin(th);
+        const ex = w / 2 - 70,
+          eyUp = h / 2 - 135,
+          eyDown = h / 2 - 125;
+        const k = Math.min(ex / Math.max(1e-3, Math.abs(ux)), (uy < 0 ? eyUp : eyDown) / Math.max(1e-3, Math.abs(uy)));
+        x = w / 2 + ux * k;
+        y = h / 2 + uy * k;
+        edge = th;
+      } else continue;
+      const r = main ? 13 : 9;
+      ctx.globalAlpha = main ? 1 : 0.75;
+      this._pointDiamond(ctx, x, y, r, pt, o.team, 1, true, t);
+      ctx.fillStyle = 'rgba(245, 240, 225, 0.95)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const dist = d < 1000 ? `${Math.round(d / (d > 100 ? 10 : 1)) * (d > 100 ? 10 : 1)} m` : `${(d / 1000).toFixed(1)} km`;
+      const role = a.role === 'attack' ? 'ATTACK' : 'DEFEND';
+      if (edge === undefined) {
+        ctx.font = `600 ${main ? 11 : 10}px sans-serif`;
+        ctx.fillText(dist, x, y + r + 9);
+        if (main) {
+          ctx.font = '700 10px sans-serif';
+          ctx.fillText(role, x, y - r - 9);
+        }
+      } else {
+        // An arrow out toward it, the words on the inner side.
+        const ux = Math.cos(edge),
+          uy = Math.sin(edge);
+        ctx.beginPath();
+        ctx.moveTo(x + ux * (r + 14), y + uy * (r + 14));
+        ctx.lineTo(x + ux * (r + 6) - uy * 5, y + uy * (r + 6) + ux * 5);
+        ctx.lineTo(x + ux * (r + 6) + uy * 5, y + uy * (r + 6) - ux * 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.font = '700 11px sans-serif';
+        const tx = x - ux * (r + 30),
+          ty = y - uy * (r + 16);
+        ctx.fillText(`${role} · ${dist}`, tx, ty);
+      }
+      ctx.globalAlpha = 1;
+    }
+    // On a point: how it's going there.
+    const on = o.on;
+    if (on) {
+      const me = o.team,
+        them = 1 - me;
+      const mine = me === 0 ? on.c : -on.c; // control: +1 ours .. -1 theirs (defenders hold +1)
+      const pct = Math.round(((mine + 1) / 2) * 100);
+      const nMe = on.count[me],
+        nThem = on.count[them];
+      const name = on.name && on.name !== on.id ? `${on.id} ${on.name}` : on.id;
+      const text = nMe && nThem ? `${name}: contested, ${nMe} against ${nThem}` : on.owner === me ? (Math.abs(on.c) < 0.999 ? `Retaking ${name}: ${pct}%` : `Holding ${name}`) : nThem && !nMe ? `${name}: enemies on it` : `Taking ${name}: ${pct}%`;
+      ctx.font = '600 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = nMe && nThem ? 'rgba(255, 214, 110, 0.95)' : 'rgba(245, 240, 225, 0.95)';
+      ctx.fillText(text, w / 2, 104);
+    }
+    ctx.restore();
+  }
+
+  // A point's diamond: its owner's color (pale while nobody holds it), pulsing
+  // while both sides are on it, with its letter and a ring for how far control
+  // has swung when it is changing hands.
+  _pointDiamond(ctx, x, y, r, pt, me, alpha, label, t) {
+    const col = pt.owner === null ? '232, 224, 200' : pt.owner === me ? '95, 149, 214' : '208, 96, 78';
+    const contested = pt.count[0] > 0 && pt.count[1] > 0;
+    const k = contested ? 0.65 + 0.35 * Math.sin(t * 8) : 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${col}, ${0.9 * k * alpha})`;
+    ctx.fill();
+    ctx.lineWidth = r > 10 ? 2 : 1.2;
+    ctx.strokeStyle = pt.kind === 'objective' ? 'rgba(255, 230, 160, 0.95)' : 'rgba(20, 20, 16, 0.85)';
+    ctx.stroke();
+    if (!label) return;
+    if (Math.abs(pt.c) < 0.999) {
+      const mine = me === 0 ? pt.c : -pt.c;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + ((mine + 1) / 2) * Math.PI * 2);
+      ctx.strokeStyle = 'rgba(95, 149, 214, 0.95)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, -Math.PI / 2 + ((mine + 1) / 2) * Math.PI * 2, Math.PI * 1.5);
+      ctx.strokeStyle = 'rgba(208, 96, 78, 0.95)';
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(16, 16, 12, 0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${r > 10 ? 11 : 9}px sans-serif`;
+    ctx.fillText(pt.id, x, y + 0.5);
+    ctx.shadowBlur = 3;
+  }
+
+  // Back in the fight: say where to go.
+  _spawnHint(p) {
+    const s = p.soldier;
+    const was = this._wasAlive;
+    this._wasAlive = s.alive;
+    if (!s.alive || was !== false) return;
+    const mode = this.game.mode;
+    const b = s.body;
+    const a = mode?.suggestedPoint?.(s.team, b.x, b.z);
+    if (!a) return;
+    const pt = a.p;
+    const d = Math.hypot(pt.x - b.x, pt.z - b.z);
+    const deg = ((Math.atan2(pt.x - b.x, -(pt.z - b.z)) / DEG) + 360) % 360;
+    const way = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
+    const name = pt.name && pt.name !== pt.id ? `${pt.id} (${pt.name})` : pt.id;
+    this.hint(`Next: ${a.role === 'attack' ? 'take' : 'hold'} ${name}, ${Math.round(d / 10) * 10} m ${way}.`, 7);
   }
 
   // Live grenades within 12 m (your own once it has had time to get away from you).

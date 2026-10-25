@@ -394,6 +394,7 @@ const DEFAULTS = {
   shotMarkers: true, // marks round the middle of the screen pointing where shots came from
   bulletTrails: true, // faint streaks behind bullets flying near you
   grenadeWarning: true, // a mark on live grenades that land near you
+  objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
   bindings: {}, // the player's key changes: { action: [codes] } (see input.js)
   units: 'metric',

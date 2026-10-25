@@ -28,6 +28,26 @@ function coverCase() {
   return null;
 }
 
+test('the points to make for: attackers the next point of each line, defenders those under threat', () => {
+  const att = g.mode.activePoints(1 - DEF);
+  const def = g.mode.activePoints(DEF);
+  // At the start the attackers hold the access points (A1..E1): the second point of every line is next.
+  assert.deepEqual(att.map((a) => `${a.role} ${a.p.id}`).sort(), ['attack A2', 'attack B2', 'attack C2', 'attack D2', 'attack E2']);
+  assert.deepEqual(def.map((a) => `${a.role} ${a.p.id}`).sort(), ['defend A2', 'defend B2', 'defend C2', 'defend D2', 'defend E2']);
+  // The one to make for is the nearest.
+  const c2 = g.mode.byId.C2;
+  assert.equal(g.mode.suggestedPoint(1 - DEF, c2.x + 20, c2.z).p.id, 'C2');
+  // Taken: the next one along the line becomes the attackers' target, and the defenders' to retake.
+  const b2 = g.mode.byId.B2;
+  const keep = { owner: b2.owner, c: b2.c };
+  b2.owner = 1 - DEF;
+  b2.c = -1;
+  assert.ok(g.mode.activePoints(1 - DEF).some((a) => a.p.id === 'B3' && a.role === 'attack'));
+  assert.ok(g.mode.activePoints(DEF).some((a) => a.p.id === 'B2' && a.role === 'attack'));
+  assert.ok(g.mode.activePoints(DEF).some((a) => a.p.id === 'B3' && a.role === 'defend'));
+  Object.assign(b2, keep);
+});
+
 test('cover hides a soldier from the enemy when he is down and lets him see out when he is up', () => {
   let n = 0;
   for (const p of g.mode.points.filter((q) => q.kind !== 'access'))

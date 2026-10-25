@@ -49,6 +49,8 @@ These are the keys the game starts with. Every one can be changed in Settings > 
 
 Red marks round the middle of the screen point to where a shot that hit you came from, pale ones to bullets that only just missed, and bullets flying near you leave faint trails (both can be turned off in Settings > Screen).
 
+Where to go: a marker floats over each point your side should take or hold next, with its name, distance and capture progress; the nearest says ATTACK or DEFEND and stays at the edge of the screen when you look away. Marks above the compass show which way the points lie, a line under the points bar says how it's going on the point you stand on ("Taking A2: 35%"), and when you respawn a hint names the point to make for (Settings > Screen > Objective markers).
+
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
 
 ## What is simulated
