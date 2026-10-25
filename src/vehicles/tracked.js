@@ -461,7 +461,9 @@ export class TrackedVehicle extends Vehicle {
   setSightRange(r) {
     const [mn, mx, step] = this.def.gun.sight.ranges;
     this.sightRange = clamp(Math.round(r / step) * step, mn, mx);
-    const shell = SHELLS[this.loaded || this.nextAmmo];
+    // (Out of every kind of shell: zero for the first kind, ready for a resupply.)
+    const shell = SHELLS[this.loaded || this.nextAmmo || this.ammoTypes[0]];
+    if (!shell) return;
     const key = `${shell.id}:${this.sightRange}`;
     if (!this._zeroCache.has(key)) {
       const atm = this.world.atmosphere;

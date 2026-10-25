@@ -242,6 +242,29 @@ export class AssaultMode {
       .sort((a, b) => this._frontScore(b, team) - this._frontScore(a, team));
   }
 
+  // Where a bot comes back: one of its side's points at the front, in the part of
+  // the line with the fewest of its side about (so every line gets its
+  // reinforcements, not only the first ones on the list), now and then one
+  // further back.
+  _botSpawnPoint(s, pts) {
+    const g = this.game;
+    const score = (p) => this._frontScore(p, s.team);
+    const best = Math.max(...pts.map(score));
+    let options = pts.filter((p) => score(p) === best);
+    if (pts.length > options.length && Math.random() < 0.15) options = pts;
+    let pick = options[0],
+      fewest = Infinity;
+    for (const p of options) {
+      let n = Math.random() * 1.5;
+      for (const o of g.soldiers) if (o.alive && o.team === s.team && Math.hypot(o.body.x - p.x, o.body.z - p.z) < 150) n++;
+      if (n < fewest) {
+        fewest = n;
+        pick = p;
+      }
+    }
+    return pick;
+  }
+
   // Prefer points near the fighting.
   _frontScore(p, team) {
     const enemy = 1 - team;
@@ -305,6 +328,7 @@ export class AssaultMode {
       s.brain.target = null;
       s.brain.aware.clear();
       s.brain.goal = null;
+      s.brain.newLife?.();
     }
   }
 
@@ -382,7 +406,7 @@ export class AssaultMode {
         // Tanks come in only at access points (attackers) and objectives (defenders).
         if (s.tankCrew) pts = pts.filter((p) => p.kind === (s.team === ATT ? 'access' : 'objective'));
         if (!pts.length) continue;
-        const p = pts[(Math.random() * Math.min(2, pts.length)) | 0];
+        const p = this._botSpawnPoint(s, pts);
         this.spawnSoldier(s, p);
         s.respawnT = s.tankCrew ? 40 : null;
         if (s.tankCrew) {

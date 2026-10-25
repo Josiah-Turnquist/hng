@@ -48,6 +48,29 @@ test('the points to make for: attackers the next point of each line, defenders t
   Object.assign(b2, keep);
 });
 
+test('the dead come back all along the front, where their side is thinnest', () => {
+  const ATT = 1 - DEF;
+  const keep = g.soldiers.map((s) => ({ s, alive: s.alive, x: s.body.x, z: s.body.z }));
+  for (const s of g.soldiers) s.alive = false;
+  const bot = g.soldiers.find((s) => s.brain && s.team === ATT);
+  const pts = g.mode._spawnPoints(ATT);
+  const seen = new Set();
+  for (let i = 0; i < 80; i++) seen.add(g.mode._botSpawnPoint(bot, pts).id);
+  for (const id of ['A1', 'B1', 'C1', 'D1', 'E1']) assert.ok(seen.has(id), `someone comes back at ${id} (${[...seen]})`);
+  // Plenty of his side already at A1: he comes back somewhere else.
+  const a1 = g.mode.byId.A1;
+  const crowd = g.soldiers.filter((s) => s.team === ATT && s !== bot).slice(0, 4);
+  for (const s of crowd) {
+    s.alive = true;
+    s.body.x = a1.x;
+    s.body.z = a1.z;
+  }
+  let atA1 = 0;
+  for (let i = 0; i < 80; i++) if (g.mode._botSpawnPoint(bot, pts).id === 'A1') atA1++;
+  assert.ok(atA1 < 8, `came back at the crowded point ${atA1} times in 80`);
+  for (const k of keep) Object.assign(k.s, { alive: k.alive }) && Object.assign(k.s.body, { x: k.x, z: k.z });
+});
+
 test('cover hides a soldier from the enemy when he is down and lets him see out when he is up', () => {
   let n = 0;
   for (const p of g.mode.points.filter((q) => q.kind !== 'access'))

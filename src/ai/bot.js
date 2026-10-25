@@ -76,6 +76,23 @@ export class BotBrain {
     return t === 'launcher' || t === 'atRifle';
   }
 
+  // Back from the dead: forget where we were fighting, hiding and looking.
+  newLife() {
+    this.cover = null;
+    this.watch = null;
+    this.hunt = null;
+    this.heard = null;
+    this.ride = null;
+    this.throwAt = null;
+    this.treatT = 0;
+    this.peek.up = false;
+    this.peek.until = 0;
+    this.lastSeen.clear();
+    this.coverT = 0;
+    this.stuckT = 0;
+    this.unstickT = 0;
+  }
+
   get enemies() {
     return this.game.soldiers.filter((o) => o.alive && o.team !== this.s.team);
   }

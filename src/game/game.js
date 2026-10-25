@@ -217,19 +217,36 @@ export class Game {
     if (this.paused) return;
     this.time += dt;
     this.navBudget = 1;
-    this.player.update(dt);
-    for (const v of this.vehicles) v.step(dt);
+    this._guard(this.player.soldier, () => this.player.update(dt));
+    for (const v of this.vehicles) this._guard(v, () => v.step(dt));
     for (const s of this.soldiers) {
       if (s.isPlayer) continue;
-      if (s.alive && s.brain) s.brain.update(dt);
-      s.update(dt);
+      this._guard(s, () => {
+        if (s.alive && s.brain) s.brain.update(dt);
+        s.update(dt);
+      });
       if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
     }
     this._playerDeploy(dt);
     this._footsteps();
     this._runOver();
     this.projectiles.update(dt);
-    this.mode.update?.(dt);
+    this._guard(this.mode, () => this.mode.update?.(dt));
+  }
+
+  // A bug in one soldier, vehicle or rule shouldn't stop the whole battle (an
+  // error thrown every step would freeze it): report it once and go on. Headless
+  // (tests, tuning) errors still stop everything, so they get noticed.
+  _guard(who, fn) {
+    if (this.headless) return fn();
+    try {
+      fn();
+    } catch (e) {
+      if (!who._updateError) {
+        who._updateError = true;
+        console.error(`Update failed for ${who.name || who.def?.id || who.constructor?.name || 'something'}; carrying on without it`, e);
+      }
+    }
   }
 
   // A bot's shot: from the eye along its aim, with the weapon's own accuracy and
