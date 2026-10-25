@@ -88,6 +88,7 @@ export class Projectile {
     this.ignoreTarget = null;
     this.startSpeed = Math.hypot(o.vx, o.vy, o.vz);
     this.fuse = o.fuse ?? 0; // for timed/impact-fused explosives
+    this.resting = false; // a thrown thing come to rest (its fuse still burns)
     this.userData = o.userData ?? null;
     return this;
   }
@@ -170,6 +171,13 @@ export class ProjectileSystem {
     p.px = p.x;
     p.py = p.y;
     p.pz = p.z;
+    if (p.resting) {
+      // Lying still: only the fuse to burn.
+      p.age += dt;
+      if (p.ammo.fuseTime && p.age >= p.ammo.fuseTime) this._expire(p, 'fuse');
+      else if (p.age > (p.ammo.maxAge || 10)) this._expire(p, 'age');
+      return;
+    }
     let remaining = dt;
     let guard = 0;
     while (remaining > 1e-7 && p.alive && guard++ < 32) {
@@ -301,8 +309,17 @@ export class ProjectileSystem {
       target: hit.box?.owner ?? null,
       detonate: false,
     };
-    if (this._explosive(p, info)) return;
+    // (Hand grenades bounce and go off on their fuse, not on contact; leaves
+    // only slow them.)
+    if (p.ammo.thrown && mat.soft) {
+      p.vx *= 0.75;
+      p.vy *= 0.75;
+      p.vz *= 0.75;
+      p.ignoreBox = hit.box;
+      return;
+    }
     if (p.ammo.thrown) return this._bounce(p, hit, info);
+    if (this._explosive(p, info)) return;
 
     if (Math.random() < ricochetChance(grazing, mat, speed) * (p.ammo.ricochetMult ?? 1)) {
       // Glance off: reflect, lose speed, pick up random deflection and start tumbling.
@@ -494,11 +511,13 @@ export class ProjectileSystem {
     p.tumble = Math.max(p.tumble, 2);
   }
 
-  // Grenades and other thrown things bounce and roll.
+  // Grenades and other thrown things bounce and roll: lively off stone, steel
+  // and wood floors, dead on soft ground (they dig in a little).
   _bounce(p, hit, info) {
     const vn = p.vx * hit.nx + p.vy * hit.ny + p.vz * hit.nz;
-    const restitution = 0.3;
-    const friction = 0.55;
+    const hard = info.mat ? info.mat.hard || info.material === 'wood' || info.material === 'plank' : false;
+    const restitution = hard ? 0.35 : 0.2;
+    const friction = hard ? 0.6 : 0.35;
     // Split into normal and tangential parts.
     const tx = p.vx - vn * hit.nx,
       ty = p.vy - vn * hit.ny,
@@ -514,6 +533,9 @@ export class ProjectileSystem {
     if (p.speed < 0.4 && hit.ny > 0.5) {
       // Resting on the ground: stop moving but keep the fuse burning.
       p.vx = p.vy = p.vz = 0;
+      p.x -= hit.nx * 0.03;
+      p.y -= hit.ny * 0.03;
+      p.z -= hit.nz * 0.03;
       p.resting = true;
     }
   }

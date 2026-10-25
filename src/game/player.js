@@ -5,6 +5,7 @@ import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
 import { VehicleController } from './vehicleControl.js';
 import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
+import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
@@ -35,9 +36,8 @@ export class PlayerController {
     this.ambientLevel = 1;
     this.lastLook = [0, 0];
     this.switchTo = -1;
-    this.grenadeCook = 0;
-    this.cooking = false;
-    this.pendingThrow = false;
+    this.lastWeapon = -1; // to go back to after throwing the last grenade
+    this.backAfterThrow = false;
     this.toggleCrouchState = false;
     this.camShake = 0;
     this.eye = new THREE.Vector3();
@@ -109,6 +109,7 @@ export class PlayerController {
     const s = this.soldier;
     const w = s.weapons[index];
     if (!w) return;
+    if (index !== s.current) this.lastWeapon = s.current;
     s.current = index;
     this.viewmodel.setWeapon(w.def, this.game.world.atmosphere);
     this.viewmodel.setZero(w.zeroIndex);
@@ -198,30 +199,21 @@ export class PlayerController {
     }
     if (input.hit('bandage')) s.startBandage();
 
-    // Trigger.
+    // Trigger. A grenade: press to pull the pin and draw back (holding cooks
+    // it), let go to throw (throwing.js).
     if (w && w.def.type === 'grenade') {
-      if (input.hit('fire') && this._hasGrenade()) {
-        this.cooking = true;
-        this.grenadeCook = 0;
-      }
-      if (this.cooking && input.up('fire')) {
-        this.cooking = false;
-        this.pendingThrow = true;
-      }
+      if (input.hit('fire') && !s.throwing && startThrow(s, w)) this.backAfterThrow = true;
+      if (s.throwing && !input.is('fire')) releaseThrow(s, lookAim);
       w.setTrigger(false);
     } else if (w) {
       w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
   }
 
-  _hasGrenade() {
-    const w = this.soldier.weapons[2];
-    return w && (w.chambered || w.spareMags?.length > 0);
-  }
-
   _requestSwitch(i) {
     const s = this.soldier;
-    if (i === s.current || !s.weapons[i]) return;
+    // (Not with a grenade's pin pulled.)
+    if (i === s.current || !s.weapons[i] || s.throwing) return;
     const cur = s.weapon;
     if (cur?.state === 'reloading') cur.cancelReload();
     cur?.setTrigger(false);
@@ -244,11 +236,10 @@ export class PlayerController {
     const w = s.weapon;
     if (!w) return;
 
-    // Grenade cooking and throwing.
-    if (this.cooking) this.grenadeCook += dt;
-    if (this.pendingThrow) {
-      this.pendingThrow = false;
-      this._throwGrenade(w);
+    // Thrown the last grenade: back to the gun you had before.
+    if (this.backAfterThrow && !s.throwing) {
+      this.backAfterThrow = false;
+      if (w.def.type === 'grenade' && !hasGrenade(w)) this._requestSwitch(this.lastWeapon >= 0 && s.weapons[this.lastWeapon] ? this.lastWeapon : 0);
     }
 
     const shots = w.update(dt);
@@ -363,41 +354,6 @@ export class PlayerController {
     const right = new THREE.Vector3().crossVectors(dir, up).normalize();
     const up2 = new THREE.Vector3().crossVectors(right, dir).normalize();
     dir.addScaledVector(right, gaussRandom(0, sigma)).addScaledVector(up2, gaussRandom(0, sigma)).normalize();
-  }
-
-  _throwGrenade(w) {
-    const g = this.game;
-    const s = this.soldier;
-    if (!this._hasGrenade()) return;
-    if (w.chambered) w.chambered = false;
-    else w.spareMags.pop();
-    // Throw from just in front of the eye, slightly upward.
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const dir = fwd.clone();
-    dir.y += 0.18;
-    dir.normalize();
-    const speed = w.def.throwSpeed * (s.body.stance === STANCE.PRONE ? 0.55 : s.body.stance === STANCE.CROUCH ? 0.85 : 1);
-    const start = this.eye.clone().addScaledVector(fwd, 0.4);
-    const ammo = w.ammo;
-    const p = g.projectiles.fire({
-      x: start.x,
-      y: start.y,
-      z: start.z,
-      vx: dir.x * speed + s.body.vx,
-      vy: dir.y * speed + s.body.vy,
-      vz: dir.z * speed + s.body.vz,
-      ammo,
-      owner: s,
-      weapon: w.def,
-    });
-    // The fuse was already burning while the grenade was held.
-    p.age = Math.min(ammo.fuseTime - 0.5, this.grenadeCook);
-    g.audio?.play('weaponHandling', null, { volume: 0.5 });
-    // Reload the hand with the next grenade.
-    if (!w.chambered && w.spareMags.length) {
-      w.spareMags.pop();
-      w.chambered = true;
-    }
   }
 
   // Per-frame visuals: camera, sway, viewmodel.
@@ -515,6 +471,8 @@ export class PlayerController {
       sunIntensity: sky.sun.intensity,
       light: this.lightLevel,
       ambient: this.ambientLevel,
+      throwing: s.throwing,
+      empty: w?.def.type === 'grenade' && !hasGrenade(w) && !s.throwing,
     });
     this.lastLook = [0, 0];
     this.viewmodel.camera.fov = 52;

@@ -13,6 +13,7 @@ import { makeGunMaterials } from './models/kit.js';
 import { Sighting } from './sighting.js';
 import { damp, clamp } from '../core/math.js';
 import { FirstPersonArms } from '../actors/soldierFP.js';
+import { WINDUP, SWING, FOLLOW } from '../game/throwing.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -59,6 +60,22 @@ const POSES = {
   launcher: { hip: [0.17, -0.13, 0.04], dir: [0, 0.05, 0.06], sprint: [0.12, -0.2, 0.0] },
   grenade: { hip: [0.16, -0.2, -0.3], dir: [0.006, 0.008, 0.06], sprint: [0.12, -0.26, -0.22] },
 };
+// Throwing a grenade, in camera space: [x, y, z (m), pitch, yaw, roll (rad)].
+const THROW = {
+  back: [0.17, -0.03, -0.25, 0.9, -0.25, 0.45], // drawn back beside the head
+  out: [0.1, 0.06, -0.42, -0.6, 0.05, 0.1], // letting go, ahead and a little up
+  down: [0.02, -0.45, -0.38, -1.2, 0.1, -0.2], // follow-through, out of view
+};
+const smooth = (x) => x * x * (3 - 2 * x);
+
+// Set p, q to the throwing pose a..b at u (a may be the carry pose { p, q }).
+function throwPose(a, b, u, p, q) {
+  const ap = a.p || _v3.fromArray(a),
+    aq = a.q || _q3.setFromEuler(_e.set(a[3], a[4], a[5]));
+  p.copy(ap).lerp(_v2.fromArray(b), u);
+  q.copy(aq).slerp(_q2.setFromEuler(_e.set(b[3], b[4], b[5])), u);
+}
+
 // From the hip, shots leave the muzzle toward the center of view this far ahead
 // (the shooter points the gun at what he looks at); aimed shots follow the bore.
 export const HIP_CONVERGE = 25;
@@ -288,6 +305,28 @@ export class ViewModel {
       hip.q.slerp(_q2.premultiply(hipQ), this.sprint * 0.9);
     }
 
+    // Throwing a grenade (throwing.js): drawn back as the pin comes out (and
+    // held there while it cooks), swung over and let go, then the arm follows
+    // through and the next grenade comes up from below. None left: hand down.
+    const th = this.kind === 'grenade' ? ctx.throwing : null;
+    this.throwState = th;
+    if (th) {
+      const carry = { p: hip.p.clone(), q: hip.q.clone() };
+      if (th.phase === 'windup') {
+        throwPose(carry, THROW.back, smooth(Math.min(1, th.t / WINDUP)), hip.p, hip.q);
+        // Holding it cooked: a little unsteady.
+        if (th.t > WINDUP) hip.p.y += Math.sin(th.t * 9) * 0.003;
+      } else if (th.phase === 'swing') throwPose(THROW.back, THROW.out, Math.min(1, th.t / SWING) ** 2, hip.p, hip.q);
+      else throwPose(THROW.out, THROW.down, 1 - (1 - Math.min(1, th.t / FOLLOW)) ** 2, hip.p, hip.q);
+      this._threw = th.phase === 'follow';
+    } else if (this._threw) {
+      // Thrown: the next one comes up from below.
+      this._threw = false;
+      this.swap = 0;
+    }
+    if (this.kind === 'grenade' && ctx.empty) this.swap = 0;
+    this.gun.root.visible = !(th?.phase === 'follow' || (this.kind === 'grenade' && ctx.empty));
+
     // Reload / bolt motions tilt the gun to show the action.
     const act = this.action;
     let tiltTarget = 0;
@@ -434,6 +473,14 @@ export class ViewModel {
       parts.clip.position.y += up;
       parts.clip.visible = this.clipVisible !== false || act?.name === 'clipIn' || act?.name === 'boltRelease' || act?.name === 'settle';
     }
+    // A grenade's pin: drawn out with the ring as the left hand pulls it, then gone.
+    if (parts.pin) {
+      const th = this.throwState;
+      const u = th ? (th.phase === 'windup' ? Math.min(1, th.t / WINDUP) : 1) : 0;
+      const k = smooth(clamp((u - 0.25) / 0.2, 0, 1));
+      parts.pin.position.add(_v.set(-0.05 * k, 0.03 * k, -0.02 * k));
+      parts.pin.visible = u < 0.5;
+    }
     // Feed cover.
     if (parts.cover) {
       let open = 0;
@@ -493,6 +540,17 @@ export class ViewModel {
     }
     // Without a support grip the left hand cups the right (a point below it).
     if (!left && !anchors.gripL) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
+    // Throwing: the left hand pulls the pin, then drops away out of sight.
+    const th = this.throwState;
+    let leftWorld = null;
+    if (th) {
+      const grip = anchors.gripR || new THREE.Vector3();
+      const cup = toWorld(left || grip);
+      const pin = toWorld(anchors.pin || grip.clone().add(new THREE.Vector3(-0.025, 0.06, 0)));
+      const low = cam.position.clone().addScaledVector(camRight, -0.12).addScaledVector(camUp, -0.45).addScaledVector(camFwd, 0.3);
+      const u = th.phase === 'windup' ? Math.min(1, th.t / WINDUP) : 1;
+      leftWorld = u < 0.45 ? cup.lerp(pin, smooth(u / 0.45)) : pin.lerp(low, smooth(Math.min(1, (u - 0.45) / 0.4)));
+    }
     const G = (this._gunXf ||= { q: new THREE.Quaternion(), p: new THREE.Vector3() });
     G.q.copy(gunRoot.quaternion);
     G.p.copy(gunRoot.position);
@@ -503,7 +561,9 @@ export class ViewModel {
     ]) {
       const S = shoulder(sgn);
       const pole = new THREE.Vector3().addScaledVector(camRight, sgn * 0.3).addScaledVector(camUp, -0.5);
-      if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
+      if (sgn < 0 && leftWorld) arms.place(sgn, S, G, { mode: 'point', point: leftWorld, pole, curl: pinch });
+      else if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
+      else if (sgn > 0 && th?.phase === 'follow') arms.place(sgn, S, G, { mode: 'grip', pole, curl: [0.2, 0.15, 0.25] }); // let go: hand open
       else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? [1, 0.55, 0.82] : [0.95, 0.9, 0.45] });
     }
   }

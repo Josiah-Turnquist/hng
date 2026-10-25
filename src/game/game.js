@@ -15,6 +15,7 @@ import { RangeMode } from './modes/range.js';
 import { AssaultMode, ATT, DEF } from './modes/assault.js';
 import { NavGrid } from '../ai/navgrid.js';
 import { attachSoldierModel, updateSoldierView } from './soldierView.js';
+import { ThrownView } from './thrownView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
 import { AMMO } from '../weapons/ammo.js';
@@ -670,6 +671,7 @@ export class Game {
     const camPos = this.camera.position;
     const fp = this.cameraMode === 'first';
     for (const s of this.soldiers) updateSoldierView(this, s, frameDt, camPos, fp);
+    (this.thrownView ||= new ThrownView(this)).update(frameDt, camPos);
     for (const v of this.vehicles) {
       updateVehicleEffects(this, v, frameDt);
       if (this.audio) updateVehicleSound(this, v, frameDt);

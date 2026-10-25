@@ -6,6 +6,7 @@
 import { SoldierModel } from '../actors/soldierModel.js';
 import { buildGun, gunLodForDistance, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
+import { throwActionT } from './throwing.js';
 
 const KIND = {
   rifle: 'rifle',
@@ -26,6 +27,15 @@ const KIND = {
 const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
 
 const gunMats = new WeakMap();
+
+// The materials for guns seen in the world (shared by every soldier's guns and
+// thrown grenades).
+export function worldGunMaterials(game) {
+  const tex = game.world.textures;
+  let mats = gunMats.get(tex);
+  if (!mats) gunMats.set(tex, (mats = makeGunMaterials(tex)));
+  return mats;
+}
 
 export function attachSoldierModel(game, s) {
   const tex = game.world.textures;
@@ -82,10 +92,7 @@ export function setSoldierWeapon(game, s, dist = 0) {
   s.view.gunLod = lod;
   let gun = s.view.guns.get(key);
   if (!gun) {
-    const tex = game.world.textures;
-    let mats = gunMats.get(tex);
-    if (!mats) gunMats.set(tex, (mats = makeGunMaterials(tex)));
-    gun = buildGun(id, mats, { lod });
+    gun = buildGun(id, worldGunMaterials(game), { lod });
     game.world.shadows.prepare(gun.root);
     s.view.guns.set(key, gun);
   }
@@ -160,9 +167,9 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
     st.actionT = Math.min(1, s.actionT / (s.action === 'bandage' ? 3.2 : 4.5));
   } else if (v && s.seat === 0 && !st.ride) {
     st.action = 'use';
-  } else if (s.throwT > 0) {
+  } else if (s.throwing) {
     st.action = 'throw';
-    st.actionT = 1 - s.throwT / 0.8;
+    st.actionT = throwActionT(s.throwing);
   } else if (w?.sequence) {
     st.action = w.sequence.kind === 'cycle' ? 'bolt' : 'reload';
     const steps = w.sequence.steps;

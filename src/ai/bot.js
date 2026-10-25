@@ -3,15 +3,26 @@
 // movement), react, lay its sights on you with a human aiming error that shrinks
 // as it tracks, allow for drop and lead at range, and manage its weapon (bolt,
 // bursts, reloads). It moves along paths from the navigation grid to the point
-// its side is fighting over, and crouches or goes prone when engaging.
+// its side is fighting over.
+//
+// It fights like an infantryman (tactics.js): it makes for cover when a fight
+// starts and shoots from it, popping up or leaning out and ducking back down
+// (lower and longer under heavy fire), reloads and bandages from behind it,
+// lobs a grenade at an enemy who has gone to ground close by, keeps its eyes
+// on where an enemy disappeared and, attacking, goes to look for him. It calls
+// out what it sees to comrades nearby. Fireteams of three come at an objective
+// from different sides; holding a point, a bot takes a post facing the enemy.
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { clamp, gaussRandom, wrapAngle, DEG, G } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { findRide } from './riderBot.js';
+import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt } from './tactics.js';
+import { grenadeOf, startThrow, releasePoint, throwSpeed } from '../game/throwing.js';
 
 const _hit = new RayHit();
 const _eye = { x: 0, y: 0, z: 0 };
+const _rp = { x: 0, y: 0, z: 0 };
 const _v = new THREE.Vector3();
 
 export const SKILL = {
@@ -45,6 +56,18 @@ export class BotBrain {
     this.lookPitch = 0;
     this.strafe = 0;
     this.strafeT = 0;
+    this.cover = null; // where we fight from: { x, y, z, low, high, lean } (tactics.js)
+    this.coverT = 0; // next time to look for cover
+    this.coverCheckT = 0;
+    this.peek = { up: false, until: 0 }; // up: showing ourselves to shoot
+    this.boundT = 6 + Math.random() * 8; // moving up: how long to fire from each cover
+    this.watch = null; // a post held on an objective, facing the enemy
+    this.hunt = null; // where an enemy we lost sight of was: { e, x, y, z, t, go }
+    this.heard = null; // a comrade's callout: { x, z, t }
+    this.nadeT = 8 + Math.random() * 12; // no grenade before this
+    this.throwAt = null; // where a grenade we're throwing should land
+    this.treatT = 0; // stopping to treat a wound until then
+    this.engagedAt = 0; // when we picked the current target
   }
 
   // Carrying a bazooka, Panzerschreck, Panzerfaust or anti-tank rifle.
@@ -140,10 +163,12 @@ export class BotBrain {
     // Pick the target: the most threatening spotted enemy we can see.
     let best = null,
       bestScore = -Infinity;
+    const ducked = this.cover && this._atCover();
     for (const [e, a] of this.aware) {
       if (!e.alive || a < 1) continue;
       const ls = this.lastSeen.get(e);
-      if (!ls?.visible) continue;
+      // (Ducked behind cover we can't see him, but we know he's there.)
+      if (!ls?.visible && !(ducked && e === this.target && this.game.time - (ls?.t ?? -99) < 4)) continue;
       const ti = tinfo(e, _ti);
       const d = Math.hypot(ti.x - b.x, ti.z - b.z);
       // With an anti-tank weapon, vehicles in range come first; without, only men.
@@ -155,6 +180,7 @@ export class BotBrain {
       }
     }
     if (best !== this.target) {
+      const prev = this.target;
       this.target = best;
       if (best) {
         const r = this.skill.reaction;
@@ -165,6 +191,13 @@ export class BotBrain {
         const e0 = (this.skill.aim * (0.6 + d / 120)) * DEG;
         this.err.yaw = gaussRandom(0, e0 * 2.2);
         this.err.pitch = gaussRandom(0, e0 * 1.6);
+        this.hunt = null;
+        this.engagedAt = this.game.time;
+        if (!best.isVehicle) callout(this.game, s, best);
+      } else if (prev?.alive && !prev.isVehicle) {
+        // Lost sight of him: remember where he was.
+        const ls = this.lastSeen.get(prev);
+        if (ls) this.hunt = { e: prev, x: ls.x, y: ls.y, z: ls.z, t: this.game.time, go: false };
       }
     }
     for (const [e] of this.aware) if (!e.alive) this.aware.delete(e);
@@ -174,45 +207,337 @@ export class BotBrain {
   _decide() {
     const s = this.s;
     const b = s.body;
-    const mode = this.game.mode;
+    const g = this.game;
+    const mode = g.mode;
     const goal = mode.botGoal?.(this) || null;
     if (goal && (!this.goal || goal.id !== this.goal.id)) {
       this.goal = goal;
       this.path = null;
       this.wander = null;
+      this.watch = null;
     }
     // A long way to go: take a bicycle or motorcycle if there's one at hand.
     if (!this.target && this.goal && !s.vehicle && !this.ride) this.ride = findRide(this);
-    // Reload behind whatever cover we have when there's a lull.
+    this._treat();
+    // Reload behind whatever cover we have when there's a lull, or ducked down in it.
     const w = s.weapon;
-    if (w && w.state === 'ready') {
+    const ducked = this.cover && this._atCover() && !this.peek.up;
+    if (w && w.state === 'ready' && !s.throwing) {
       if (w.loaded === 0 && w.canReload()) w.startReload();
-      else if (!this.target && w.loaded < w.def.capacity * 0.4 && w.canReload() && this.game.time - (s.lastShotTime ?? -99) > 2) w.startReload();
+      else if ((!this.target || ducked) && w.loaded < w.def.capacity * (ducked ? 0.6 : 0.4) && w.canReload() && g.time - (s.lastShotTime ?? -99) > (ducked ? 0.5 : 2)) w.startReload();
     }
-    // Stance: crouch when fighting at range, prone with machine guns or under heavy fire.
+    this._grenade();
     if (this.target) {
-      const ti = tinfo(this.target, _ti);
-      const d = Math.hypot(ti.x - b.x, ti.z - b.z);
-      const lmg = w?.def.type === 'lmg' || w?.def.proneOrBipodOnly;
-      const want = (lmg && d > 40) || (d > 140 && Math.random() < 0.5) ? STANCE.PRONE : d > 25 ? STANCE.CROUCH : STANCE.STAND;
-      if (b.targetStance !== want && Math.random() < 0.5) b.setStance(want);
-    } else if (b.targetStance !== STANCE.STAND && (!this.goal || !this._inGoal())) b.setStance(STANCE.STAND);
-    // Path to the goal (or a spot inside it).
-    if (this.goal && !this.target) {
-      if (this._inGoal()) {
-        if (!this.wander || this.game.time > this.wanderT) {
-          const r = this.goal.radius * 0.7;
-          const a = Math.random() * Math.PI * 2,
-            rr = Math.sqrt(Math.random()) * r;
-          this.wander = { x: this.goal.x + Math.cos(a) * rr, z: this.goal.z + Math.sin(a) * rr };
-          this.wanderT = this.game.time + 6 + Math.random() * 10;
-          this._plan(this.wander.x, this.wander.z);
+      this._fight();
+      return;
+    }
+    // Lost sight of an enemy: watch where he was, then (attacking) go and look.
+    if (this.hunt && this._hunt()) return;
+    // A comrade called out an enemy: look that way for a moment.
+    if (this.heard && g.time - this.heard.t < 3) this.lookYaw = Math.atan2(-(this.heard.x - b.x), -(this.heard.z - b.z));
+    this.cover = null;
+    if (!this.goal) {
+      if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
+      return;
+    }
+    if (this._inGoal()) {
+      this._hold();
+      return;
+    }
+    this.watch = null;
+    if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
+    if (!this.path || g.time > this.pathT) this._approach();
+  }
+
+  // Fighting a target: from cover if there's any near, popping up (or leaning
+  // out) to shoot and ducking back down; in the open, low. Moving up on an
+  // objective, fire and move: shoot from cover a while, then dash to cover
+  // further forward (one of a fireteam at a time); an enemy far off doesn't
+  // stop the advance.
+  _fight() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    const t = this.target;
+    const w = s.weapon;
+    const ti = tinfo(t, _ti);
+    const d = Math.hypot(ti.x - b.x, ti.z - b.z);
+    const pushing = !!this.goal && !this._inGoal();
+    const threat = { x: ti.x, y: ti.y + ti.h * 0.92, z: ti.z };
+    if (!t.isVehicle && d < (pushing ? 90 : 300)) {
+      // A post we were holding is our cover, if it hides us from him.
+      if (!this.cover && this.watch && !this.watch.open && Math.hypot(this.watch.x - b.x, this.watch.z - b.z) < 1.5 && coverHolds(g, this.watch, threat)) this.cover = this.watch;
+      // Still good, now that he may have moved?
+      if (this.cover && g.time > this.coverCheckT) {
+        this.coverCheckT = g.time + 1.5 + Math.random();
+        if (!coverHolds(g, this.cover, threat)) {
+          this.cover = null;
+          this.coverT = 0;
         }
-      } else if (!this.path || this.game.time > this.pathT) {
-        const a = Math.random() * Math.PI * 2,
-          rr = Math.sqrt(Math.random()) * this.goal.radius * 0.6;
-        this._plan(this.goal.x + Math.cos(a) * rr, this.goal.z + Math.sin(a) * rr);
       }
+      if (!this.cover && g.time > this.coverT && d > 7) {
+        this.coverT = g.time + 2 + Math.random() * 1.5;
+        const spot = findCover(g, s, threat, { radius: d < 30 ? 9 : 15, taken: this._taken() });
+        if (spot) this._takeCover(spot);
+      }
+    } else if (this.cover && pushing && !this._atCover()) this.cover = null;
+    if (this.cover && this._atCover()) {
+      const p = this.peek;
+      const sup = s.suppression || 0;
+      this.cover.since ??= g.time;
+      // Moving up: after a while here, on to cover further forward (or along
+      // the way if there's none), unless pinned down or a mate is on the move.
+      if (pushing && g.time - this.cover.since > this.boundT && sup < 0.5 && !this._mateMoving()) {
+        this.boundT = 6 + Math.random() * 8;
+        const spot = t.isVehicle ? null : findCover(g, s, threat, { radius: 18, toward: this.goal, taken: this._taken() });
+        if (spot) this._takeCover(spot);
+        else {
+          this.cover = null;
+          this.coverT = g.time + 4 + Math.random() * 3;
+          this._approach();
+        }
+        if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
+        return;
+      }
+      if (g.time > p.until) {
+        p.up = !p.up;
+        p.until = g.time + (p.up ? 1.5 + Math.random() * 2 - sup : 0.8 + Math.random() * 1.2 + sup * 2.5);
+        // Coming up, it takes a moment to find him in the sights again.
+        if (p.up) this.reactT = Math.max(this.reactT, 0.15 + Math.random() * 0.2);
+      }
+      // Heavy fire, a reload or a bandage: stay down.
+      if (sup > 0.75 || (w && w.state === 'reloading') || s.action) p.up = false;
+      b.setStance(p.up ? this.cover.high : this.cover.low);
+      return;
+    }
+    if (this.cover) {
+      // Running for it.
+      if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
+      return;
+    }
+    // Moving up with no cover to make for: on along the way.
+    if (pushing && (!this.path || this.pathI >= this.path.length || g.time > this.pathT)) this._approach();
+    // No cover at hand: crouch or lie down where we are, flat under heavy fire.
+    const lmg = w?.def.type === 'lmg' || w?.def.proneOrBipodOnly;
+    let want = (lmg && d > 40) || (d > 140 && Math.random() < 0.5) ? STANCE.PRONE : d > 25 ? STANCE.CROUCH : STANCE.STAND;
+    if ((s.suppression || 0) > 0.6 && d > 15) want = STANCE.PRONE;
+    if (b.targetStance !== want && Math.random() < 0.5) b.setStance(want);
+  }
+
+  // Where we lost sight of an enemy: watch the spot for a few seconds; then,
+  // attacking (or with no point to hold), go there (crouched, close in) to find him.
+  // True while it's what we're doing.
+  _hunt() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    const h = this.hunt;
+    const age = g.time - h.t;
+    if (!h.e.alive || age > 25 || (h.go && Math.hypot(h.x - b.x, h.z - b.z) < 3)) {
+      this.hunt = null;
+      return false;
+    }
+    this.lookYaw = Math.atan2(-(h.x - b.x), -(h.z - b.z));
+    this.lookPitch = 0;
+    if (this.cover && this._atCover()) b.setStance(this.cover.high);
+    if (age < 4) return true;
+    const attacking = g.mode?.attacking?.(s.team) || !this.goal;
+    if (!attacking) {
+      this.hunt = null;
+      return false;
+    }
+    if (!h.go) {
+      h.go = true;
+      this.cover = null;
+      this._plan(h.x, h.z);
+    }
+    if (b.targetStance !== STANCE.CROUCH && Math.hypot(h.x - b.x, h.z - b.z) < 25) b.setStance(STANCE.CROUCH);
+    return true;
+  }
+
+  // On the objective with nobody to shoot: take a post in cover facing the way
+  // the enemy will come, and watch from it (a spot in the open if there's none).
+  _hold() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    const goal = this.goal;
+    if (!this.watch || g.time > this.watch.until) {
+      const dir = this._frontDir();
+      const front = { x: b.x + dir.x * 70, y: b.y + 1.6, z: b.z + dir.z * 70 };
+      const spot = findCover(g, s, front, { radius: Math.min(14, goal.radius * 0.8), tries: 6, taken: this._taken() });
+      const yaw = Math.atan2(-dir.x, -dir.z);
+      if (spot && Math.hypot(spot.x - goal.x, spot.z - goal.z) < goal.radius * 0.85) this.watch = { ...spot, yaw, until: g.time + 25 + Math.random() * 30 };
+      else {
+        const a = Math.random() * Math.PI * 2,
+          rr = Math.sqrt(Math.random()) * goal.radius * 0.7;
+        this.watch = { x: goal.x + Math.cos(a) * rr, y: b.y, z: goal.z + Math.sin(a) * rr, low: STANCE.CROUCH, high: STANCE.CROUCH, lean: 0, yaw, open: true, until: g.time + 6 + Math.random() * 10 };
+      }
+      this._plan(this.watch.x, this.watch.z);
+    }
+    const wt = this.watch;
+    if (Math.hypot(wt.x - b.x, wt.z - b.z) < 1.2) {
+      // Look out over the ground in front, now a little this way, now that.
+      this.lookYaw = wt.yaw + Math.sin(g.time * 0.35 + s.id) * 0.5;
+      if (b.targetStance !== wt.high) b.setStance(wt.high);
+    } else if (b.targetStance !== STANCE.STAND && Math.random() < 0.3) b.setStance(STANCE.STAND);
+  }
+
+  // The way to the enemy: toward the middle of their side.
+  _frontDir() {
+    let x = 0,
+      z = 0,
+      n = 0;
+    for (const o of this.game.soldiers)
+      if (o.alive && o.team !== this.s.team) {
+        x += o.body.x;
+        z += o.body.z;
+        n++;
+      }
+    const b = this.s.body;
+    if (!n) return { x: -Math.sin(this.s.yaw), z: -Math.cos(this.s.yaw) };
+    const dx = x / n - b.x,
+      dz = z / n - b.z;
+    const d = Math.hypot(dx, dz) || 1;
+    return { x: dx / d, z: dz / d };
+  }
+
+  // Off to the objective. Attacking, each fireteam comes at it from its own
+  // side (left, straight in or right) until it's close.
+  _approach() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    const goal = this.goal;
+    const d = Math.hypot(goal.x - b.x, goal.z - b.z) || 1;
+    const a = Math.random() * Math.PI * 2,
+      rr = Math.sqrt(Math.random()) * goal.radius * 0.6;
+    let tx = goal.x + Math.cos(a) * rr,
+      tz = goal.z + Math.sin(a) * rr;
+    const side = fireteam(g, s).side;
+    if (side && g.mode?.attacking?.(s.team) && d > goal.radius + 70) {
+      const ux = (goal.x - b.x) / d,
+        uz = (goal.z - b.z) / d;
+      const off = goal.radius + 35;
+      tx = goal.x - ux * goal.radius - uz * side * off;
+      tz = goal.z - uz * goal.radius + ux * side * off;
+    }
+    this._plan(tx, tz);
+  }
+
+  _takeCover(spot) {
+    const g = this.game;
+    const b = this.s.body;
+    this.cover = spot;
+    this.peek.up = false;
+    this.peek.until = 0;
+    if (g.nav?.lineWalkable(b.x, b.z, spot.x, spot.z) ?? true) {
+      this.path = [{ x: spot.x, z: spot.z }];
+      this.pathI = 0;
+      this.pathT = g.time + 8;
+    } else this._plan(spot.x, spot.z);
+  }
+
+  // A fireteam mate close by running to cover (we hold and cover him).
+  _mateMoving() {
+    const b = this.s.body;
+    for (const o of fireteam(this.game, this.s).mates) {
+      const br = o.brain;
+      if (o === this.s || !o.alive || !br?.cover || br._atCover()) continue;
+      if (Math.hypot(o.body.x - b.x, o.body.z - b.z) < 50) return true;
+    }
+    return false;
+  }
+
+  // Cover and posts comrades close by are using.
+  _taken() {
+    const out = [];
+    const b = this.s.body;
+    for (const o of this.game.soldiers) {
+      const br = o.brain;
+      if (o === this.s || !br || !o.alive || o.team !== this.s.team) continue;
+      for (const c of [br.cover, br.watch]) if (c && Math.hypot(c.x - b.x, c.z - b.z) < 30) out.push(c);
+    }
+    return out;
+  }
+
+  _atCover() {
+    const c = this.cover;
+    return !!c && Math.hypot(c.x - this.s.body.x, c.z - this.s.body.z) < 1.0;
+  }
+
+  // Bleeding, or badly hurt in a lull: bandage or first aid (keeping still),
+  // from behind cover if the fight is still on, or lying flat if the enemy is
+  // well off; bleeding out fast, whatever the risk.
+  _treat() {
+    const s = this.s;
+    if (s.action || s.vehicle || s.throwing) return;
+    const b = s.body;
+    const t = this.target;
+    const seen = t && this.lastSeen.get(t)?.visible;
+    const ducked = this.cover && this._atCover() && !this.peek.up;
+    if (s.bleed > 0) {
+      const ti = t ? tinfo(t, _ti) : null;
+      const d = ti ? Math.hypot(ti.x - b.x, ti.z - b.z) : Infinity;
+      const urgent = s.health < 40 || s.bleed * 25 > s.health; // dead within ~25 s
+      if (!seen || ducked || (urgent && d > 40) || s.health < 20) {
+        if (seen && !ducked && d > 40 && b.targetStance !== STANCE.PRONE) b.setStance(STANCE.PRONE);
+        this._startTreat();
+      }
+    } else if (s.health < 45 && !t && this.game.time - s.lastHitTime > 4) this._startTreat();
+  }
+
+  // Stop, then treat (on the move it would be interrupted at once).
+  _startTreat() {
+    if (this.s.body.moving < 0.6) {
+      this.treatT = 0;
+      this.s.startBandage();
+    } else this.treatT = this.game.time + 0.8;
+  }
+
+  // An enemy 9 to 28 m away who has gone to ground (seen in the last few
+  // seconds), or who we've been trading shots with for a while behind cover,
+  // with no comrade near him: lob a grenade at him.
+  _grenade() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    if (g.time < this.nadeT || s.vehicle || s.action || s.throwing) return;
+    const w = grenadeOf(s);
+    if (!w) return;
+    b.eyePosition(_eye);
+    for (const [e, a] of this.aware) {
+      if (!e.alive || e.isVehicle || e.vehicle || a < 0.8) continue;
+      const ls = this.lastSeen.get(e);
+      if (!ls || g.time - ls.t > 6) continue;
+      // In sight: only one we've been fighting a while who keeps low behind something.
+      if (ls.visible && !(e === this.target && g.time - this.engagedAt > 5 && hiddenAt(g.world.collision, _eye, e.body.x, e.body.y, e.body.z, STANCE.CROUCH))) continue;
+      const d = Math.hypot(ls.x - b.x, ls.z - b.z);
+      if (d < 9 || d > 28) continue;
+      if (g.soldiers.some((o) => o.alive && o.team === s.team && Math.hypot(o.body.x - ls.x, o.body.z - ls.z) < 8)) continue;
+      // A lob that drops in there, a little short for the roll (too far from
+      // where we lie: don't).
+      const roll = Math.min(1.5, d * 0.06) / d;
+      const spot = { x: ls.x - (ls.x - b.x) * roll, y: ls.y, z: ls.z - (ls.z - b.z) * roll };
+      const v = throwSpeed(s, w);
+      const angle = 0.55 + Math.random() * 0.25;
+      const lob = grenadeLob(releasePoint(s, _rp), spot, v, angle);
+      if (!lob) continue;
+      this.nadeT = g.time + 18 + Math.random() * 14;
+      this.throwAt = spot;
+      // Cook it so he has no time to throw it back or run (not too long: we're exposed).
+      const cook = clamp(w.ammo.fuseTime - lob.t - 0.9 - Math.random() * 0.8, 0, 1.2);
+      // Off by a metre or two, more for the less skilled and the further.
+      const err = (0.5 + d * 0.05) * this.skill.aim * 0.7;
+      startThrow(s, w, {
+        cook,
+        aim: (t) => {
+          const p = releasePoint(t, { x: 0, y: 0, z: 0 });
+          const l = grenadeLob(p, { x: spot.x + gaussRandom(0, err), y: spot.y, z: spot.z + gaussRandom(0, err) }, v, angle) || lob;
+          return { x: p.x, y: p.y, z: p.z, vx: l.vx, vy: l.vy, vz: l.vz };
+        },
+      });
+      return;
     }
   }
 
@@ -252,9 +577,17 @@ export class BotBrain {
     it.sprint = false;
     it.walk = false;
     it.jump = false;
+    it.leanL = it.leanR = false;
+    // Treating a wound (moving would undo it), about to, or throwing a grenade: keep still.
+    if (s.action || this.game.time < this.treatT || (s.throwing && s.throwing.phase !== 'follow')) return;
+    // Up behind a corner (fighting or watching): lean out past it.
+    const post = this.cover && this._atCover() ? (this.target ? (this.peek.up ? this.cover : null) : this.cover) : this.watch && !this.target && Math.hypot(this.watch.x - b.x, this.watch.z - b.z) < 1.2 ? this.watch : null;
+    if (post?.lean > 0) it.leanR = true;
+    else if (post?.lean < 0) it.leanL = true;
     let wx = 0,
       wz = 0;
     const engaging = this.target && this.reactT <= 0;
+    const toCover = this.cover && !this._atCover();
     if (this.path && this.pathI < this.path.length) {
       const p = this.path[this.pathI];
       const dx = p.x - b.x,
@@ -262,6 +595,18 @@ export class BotBrain {
       const d = Math.hypot(dx, dz);
       if (d < (p.door ? 0.6 : 1.4) || (this.pathI < this.path.length - 1 && d < 2.5 && this._passed(p))) this.pathI++;
       else {
+        wx = dx / d;
+        wz = dz / d;
+      }
+    }
+    // The last metre or two to a cover spot or a post: straight onto it (the
+    // path counts as done a little short).
+    const spot = toCover ? this.cover : !this.target && this.watch ? this.watch : null;
+    if (spot && (!this.path || this.pathI >= this.path.length)) {
+      const dx = spot.x - b.x,
+        dz = spot.z - b.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.35 && d < 4) {
         wx = dx / d;
         wz = dz / d;
       }
@@ -302,9 +647,13 @@ export class BotBrain {
       wx = this.unstickX;
       wz = this.unstickZ;
     }
-    // While shooting: stop (rifles) or creep, sidestepping now and then.
+    // While shooting: stop (rifles) or creep, sidestepping now and then (not
+    // on the way to cover, nor in it).
     let speed = 1;
-    if (engaging) {
+    if (engaging && this.cover) {
+      if (!toCover) speed = 0;
+      this.strafe = 0;
+    } else if (engaging) {
       const auto = s.weapon && (s.weapon.mode === 'auto' || s.weapon.mode === 'slow');
       const ti = tinfo(this.target, _ti);
       const d = Math.hypot(ti.x - b.x, ti.z - b.z);
@@ -331,7 +680,8 @@ export class BotBrain {
     it.mx = clamp(side, -1, 1);
     // Run when there's ground to cover and nobody to shoot.
     const farToGo = this.goal && !this._inGoal() && Math.hypot(this.goal.x - b.x, this.goal.z - b.z) > 40;
-    it.sprint = !this.target && farToGo && fwd > 0.7 && b.stamina > 30 && !b.staminaLock;
+    const coverRun = toCover && Math.hypot(this.cover.x - b.x, this.cover.z - b.z) > 3;
+    it.sprint = ((!this.target && farToGo && !this.hunt) || coverRun) && fwd > 0.7 && b.stamina > 20 && !b.staminaLock;
     // Stuck? Try to hop, then pick a new path.
     const moved = Math.hypot(b.x - this.lastPos.x, b.z - this.lastPos.z);
     if (len > 0.5 && speed > 0 && moved < 0.25 * dt) this.stuckT += dt;
@@ -377,7 +727,12 @@ export class BotBrain {
     let wantYaw = this.lookYaw,
       wantPitch = this.lookPitch;
     let pull = false;
-    if (t && t.alive) {
+    if (s.throwing && this.throwAt) {
+      // Throwing: face where it should land.
+      wantYaw = Math.atan2(-(this.throwAt.x - b.x), -(this.throwAt.z - b.z));
+      wantPitch = 0.25;
+      s.aiming = false;
+    } else if (t && t.alive) {
       if (this.reactT > 0) this.reactT -= dt;
       b.eyePosition(_eye);
       const ti = tinfo(t, _ti);
@@ -413,7 +768,11 @@ export class BotBrain {
       const off = Math.hypot(e.yaw, e.pitch);
       this.holdFire -= dt;
       if (this.reactT <= 0 && off < size * 1.6 + 0.004 && this.holdFire <= 0 && w && w.state === 'ready' && w.loaded > 0) {
-        if (!this._friendlyInLine(ti, d)) pull = true;
+        // Not ducked behind cover, nor on the run to it (unless close with an automatic).
+        const autoW = w.mode === 'auto' || w.mode === 'slow';
+        const ducked = this.cover && this._atCover() && !this.peek.up;
+        const running = this.cover && !this._atCover() && !(autoW && d < 25);
+        if (!ducked && !running && !this._friendlyInLine(ti, d)) pull = true;
       }
       s.aiming = d > 12 && w?.def.type !== 'lmg';
     } else {

@@ -2185,7 +2185,9 @@ export function mk2_grenade(b) {
   ];
   ribbon(b, { pts: spoon, width: 0.0112, thick: 0.001, face: (p, T) => [-T[1], T[0], 0], mat: 'olive' });
   for (const sz of [-1, 1]) b.box({ x: 0.0086, y: 0.0572, z: sz * 0.0061, w: 0.0052, h: 0.0092, d: 0.001, mat: 'olive', r: 0.0003 }); // spoon side flanges
-  // Split pin through the flanges and the fuze, pull ring standing beside the fuze.
+  // Split pin through the flanges and the fuze, pull ring standing beside the
+  // fuze (a part of its own: it comes out when the pin is pulled).
+  b.part('pin', [0.0085, 0.0658, -0.0136]);
   b.cylAxis({ axis: 'z', x: 0.0082, y: 0.0556, z: -0.0022, len: 0.0218, r: 0.0008, mat: 'steelBright', seg: 8 });
   const ring = [];
   for (let k = 0; k < 16; k++) {
@@ -2193,6 +2195,7 @@ export function mk2_grenade(b) {
     ring.push([0.0085 + Math.sin(a) * 0.0102, 0.0658 - Math.cos(a) * 0.0102, -0.0136]);
   }
   bar(b, { pts: ring, r: 0.00095, closed: true, mat: 'steelBright', seg: 8 });
+  b.body();
 
   b.anchor('gripR', 0.012, 0.0, 0.0);
   b.anchor('gripL', 0.0085, 0.0658, -0.0136); // pull ring

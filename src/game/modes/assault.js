@@ -91,6 +91,11 @@ export class AssaultMode {
   }
 
   // Can `team` capture this point now (next to a point it holds, not already its own)?
+  // Is this team the one attacking (bots on it go looking for enemies they lose sight of)?
+  attacking(team) {
+    return team === ATT;
+  }
+
   capturable(p, team) {
     if (p.owner === team && Math.abs(p.c) >= 0.999) return false;
     if (p.kind === 'access' && team === ATT) return p.owner !== ATT;

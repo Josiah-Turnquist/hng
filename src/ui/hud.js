@@ -347,18 +347,20 @@ export class Hud {
       marks[i].t -= dt;
       if (marks[i].t <= 0 || !p.soldier.alive) marks.splice(i, 1);
     }
-    if (!marks.length && !this.shotsDrawn) return;
+    const nades = this._nearGrenades(p);
+    if (!marks.length && !nades.length && !this.shotsDrawn) return;
     const c = this.shotsCanvas;
     const ctx = this.shotsCtx;
     ctx.clearRect(0, 0, c.width, c.height);
-    this.shotsDrawn = marks.length > 0;
-    if (!marks.length) return;
+    this.shotsDrawn = marks.length > 0 || nades.length > 0;
+    if (!this.shotsDrawn) return;
     const f = _cv.set(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
     const camYaw = Math.atan2(-f.x, -f.z);
     const b = p.soldier.body;
     const cx = c.width / 2,
       cy = c.height / 2;
     const R = Math.max(70, Math.min(c.width, c.height) * 0.16);
+    if (nades.length) this._drawGrenades(ctx, nades, b, camYaw, cx, cy, R);
     ctx.lineCap = 'butt';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
     ctx.shadowBlur = 4;
@@ -387,6 +389,73 @@ export class Hud {
       ctx.lineTo(cx + ux * r0 + uy * side, cy + uy * r0 - ux * side);
       ctx.closePath();
       ctx.fill();
+    }
+  }
+
+  // Live grenades within 12 m (your own once it has had time to get away from you).
+  _nearGrenades(p) {
+    const out = (this._nades ||= []);
+    out.length = 0;
+    const s = p.soldier;
+    if (!s.alive || !this.game.settings.get('grenadeWarning')) return out;
+    const b = s.body;
+    for (const q of this.game.projectiles.active) {
+      if (!q.ammo.thrown || !q.alive || (q.owner === s && q.age < 1.2 && !q.resting)) continue;
+      const d = Math.hypot(q.x - b.x, q.z - b.z);
+      if (d < 12 && Math.abs(q.y - b.y) < 5) out.push({ q, d, lethal: d < (q.ammo.explosive?.radius ?? 6) });
+    }
+    return out;
+  }
+
+  // A grenade mark on each: on the grenade if it's in view, else at the edge of
+  // the ring pointing to it. Red and blinking when it can hurt you.
+  _drawGrenades(ctx, nades, b, camYaw, cx, cy, R) {
+    const cam = this.game.camera;
+    const c = this.shotsCanvas;
+    const blink = 0.65 + 0.35 * Math.sin(performance.now() / 90);
+    for (const { q, d, lethal } of nades) {
+      const v = _cv.set(q.x, q.y + 0.15, q.z).project(cam);
+      let x, y, edge;
+      if (v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95) {
+        x = (v.x * 0.5 + 0.5) * c.width;
+        y = (0.5 - v.y * 0.5) * c.height - 18;
+      } else {
+        const th = shotMarkAngle(b.x, b.z, q.x, q.z, camYaw);
+        x = cx + Math.cos(th) * (R + 26);
+        y = cy + Math.sin(th) * (R + 26);
+        edge = th;
+      }
+      const col = lethal ? `rgba(226, 52, 34, ${blink})` : 'rgba(255, 236, 190, 0.9)';
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = col;
+      ctx.strokeStyle = col;
+      // The grenade: a round body, the fuze and lever on top, the ring beside.
+      ctx.beginPath();
+      ctx.arc(0, 2, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(-3, -8, 6, 5);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(6, -8, 3, 0, Math.PI * 2);
+      ctx.stroke();
+      if (edge !== undefined) {
+        // Pointing out toward it.
+        const ux = Math.cos(edge),
+          uy = Math.sin(edge);
+        ctx.beginPath();
+        ctx.moveTo(ux * 20, uy * 20);
+        ctx.lineTo(ux * 13 - uy * 5, uy * 13 + ux * 5);
+        ctx.lineTo(ux * 13 + uy * 5, uy * 13 - ux * 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.font = '600 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(d)} m`, 0, 22);
+      ctx.restore();
     }
   }
 

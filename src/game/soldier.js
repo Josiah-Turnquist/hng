@@ -11,6 +11,7 @@ import { Body, STANCE } from '../actors/body.js';
 import { Weapon } from '../weapons/weapon.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { clamp } from '../core/math.js';
+import { updateThrow } from './throwing.js';
 
 export const ZONES = {
   head: 4.0,
@@ -68,8 +69,10 @@ export class Soldier {
     this.yaw = 0;
     this.pitch = 0;
     this.aiming = false;
-    this.action = null; // bandage, throw...
+    this.action = null; // bandage, first aid
     this.actionT = 0;
+    this.throwing = null; // a grenade throw under way (throwing.js)
+    this.lastThrowTime = -100;
     this.kills = 0;
     this.deaths = 0;
     this.score = 0;
@@ -104,6 +107,7 @@ export class Soldier {
   update(dt) {
     if (!this.alive) {
       this.deathTime += dt;
+      if (this.throwing) updateThrow(this.game, this, dt);
       return;
     }
     const intent = this.intent;
@@ -127,14 +131,17 @@ export class Soldier {
       this.health = Math.min(this.healCap, this.health + 2.5 * dt);
     }
 
-    // Actions that take time (bandaging, first aid).
+    // Actions that take time (bandaging, first aid). The bandage or kit is used
+    // up only once it's done: moving interrupts treatment, and you keep it.
     if (this.action) {
       this.actionT += dt;
       if (this.action === 'bandage' && this.actionT >= 3.2) {
+        this.bandages = Math.max(0, this.bandages - 1);
         this.bleed = 0;
         this.health = Math.min(100, this.health + 8);
         this.action = null;
       } else if (this.action === 'firstaid' && this.actionT >= 4.5) {
+        this.firstAid = Math.max(0, this.firstAid - 1);
         this.bleed = 0;
         this.health = Math.min(100, Math.max(this.health, 80));
         this.body.legWound *= 0.5;
@@ -145,19 +152,18 @@ export class Soldier {
       if (this.action && this.body.moving > 1.2) this.action = null;
     }
 
+    updateThrow(this.game, this, dt);
     for (const w of this.weapons) if (w && w !== this.weapon) w.update(0);
   }
 
   startBandage() {
     if (!this.alive || this.action || this.bleed <= 0 && this.health > 90) return false;
     if (this.bleed > 0 && this.bandages > 0) {
-      this.bandages--;
       this.action = 'bandage';
       this.actionT = 0;
       return true;
     }
     if (this.firstAid > 0 && this.health < 80) {
-      this.firstAid--;
       this.action = 'firstaid';
       this.actionT = 0;
       return true;
