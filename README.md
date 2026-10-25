@@ -98,7 +98,7 @@ docs/                 design notes and research
 
 ## Notes and limits
 
-- Single player against bots; there is no network play.
+- Single player against bots for now; [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) is the plan for online play (Railway and Neon), with bots filling the empty places.
 - The browser needs WebGL 2. The graphics quality is picked for your computer the first time the game starts; Settings (also in the Esc menu during a battle) has the Low, Medium, High and Ultra presets and every option on its own (render resolution, edge smoothing, shadows, contact shadows, glow, sun rays, view distance, trees, grass, textures, effects, focus when aiming, motion blur), can show the frame rate, and turns the hip-fire crosshair on or off. On a slow computer try Low, or lower the render resolution and shadows first.
 - Some values are estimates where no published figure was found; they are marked "est." in the data files. See `docs/RESEARCH.md` for sources.
 
