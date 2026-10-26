@@ -12,7 +12,7 @@ import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
 import { buildDownloadedGarand, downloadedGarandState, loadDownloadedGarand } from './models/downloaded.js';
 import { Sighting } from './sighting.js';
-import { damp, clamp } from '../core/math.js';
+import { damp, clamp, approach } from '../core/math.js';
 import { FirstPersonArms } from '../actors/soldierFP.js';
 import { WINDUP, SWING, FOLLOW } from '../game/throwing.js';
 
@@ -142,7 +142,8 @@ export class ViewModel {
     this._makeFlash();
 
     // Motion state.
-    this.aim = 0; // 0 hip .. 1 aimed
+    this.aim = 0; // 0 hip .. 1 aimed (eased)
+    this.aimT = 0; // how far the sights have come up, in time (0 .. 1)
     this.sprint = 0;
     this.swap = 1; // 0 = lowered out of view (weapon switching), 1 = up
     this.kickBack = new Spring(260, 22);
@@ -247,6 +248,16 @@ export class ViewModel {
   setZero(index) {
     this.zeroIndex = index;
     if (this.sighting) this.sighting.setRangeIndex(index);
+    if (this.fpArmsGun === this.gun) this.fpArms.setView(this._peepView());
+  }
+
+  // What the eye sees through a peep sight (an aperture close to the eye): for
+  // the arms, so the support hand's fingers keep out of it. Gun space. (Every
+  // hole is taken as the Garand's, 3 mm in radius, the widest we have.)
+  _peepView() {
+    const s = this.sighting;
+    if (!s || s.kind !== 'aperture' || s.eyeRelief > 0.12) return null;
+    return { eye: s.eye.clone(), dir: s.losDir.clone(), slope: 0.003 / s.eyeRelief };
   }
 
   // Start a named animation step (from Weapon events): reload steps, bolt cycling.
@@ -286,9 +297,13 @@ export class ViewModel {
     const def = this.def;
     const poses = POSES[this.kind];
     const mass = def.mass;
-    // Heavier guns come up to the eye more slowly.
-    const adsSpeed = 1 / (0.16 + mass * 0.025);
-    this.aim = damp(this.aim, ctx.aiming ? 1 : 0, adsSpeed * 2.2, dt);
+    // Raising the sights takes a set time, longer for heavier guns (a Garand 0.35
+    // s), eased in and out, and ends exactly on the sight line. (An endless ease
+    // toward it left the gun a hair short for most of a second, and a peep sight
+    // 8 cm from the eye shows a millimeter as a ring well off center.)
+    const adsTime = 1.3 * (0.16 + mass * 0.025);
+    this.aimT = approach(this.aimT, ctx.aiming ? 1 : 0, dt / adsTime);
+    this.aim = this.aimT * this.aimT * (3 - 2 * this.aimT);
     this.sprint = damp(this.sprint, ctx.sprinting ? 1 : 0, 7, dt);
     this.swap = Math.min(1, this.swap + dt * 3.2);
     this.blocked = damp(this.blocked, ctx.blocked ? 1 : 0, 10, dt);
@@ -544,6 +559,7 @@ export class ViewModel {
     const arms = this.fpArms;
     if (this.fpArmsGun !== this.gun) {
       arms.setWeapon(this.gun, this.kind);
+      arms.setView(this._peepView());
       this.fpArmsGun = this.gun;
     }
     const set = (side) => (side < 0 && arms.info?.leftGrip === 'fore' ? ARMS.fore : ARMS[side]);

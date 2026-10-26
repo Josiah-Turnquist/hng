@@ -2,6 +2,7 @@
 // and the ragdoll, without a renderer.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { SoldierModel, raycastHitboxes, rayCapsule, HITBOX_PARTS } from '../src/actors/soldierModel.js';
 import { buildGun } from '../src/weapons/models/index.js';
@@ -361,6 +362,13 @@ test('first person: on long guns the fingers close on the wood, not through it',
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
   const { inProfile } = await import('../src/actors/soldierFP.js');
   const { FINGER_BONES, HAND_JOINTS } = await import('../src/actors/soldierRig.js');
+  const { loadDownloadedGarand } = await import('../src/weapons/models/downloaded.js');
+  // The downloaded Garand too (the game's default), read from its file.
+  const file = readFileSync(new URL('../assets/models/m1_garand_rookieray.glb', import.meta.url));
+  const fetch0 = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) });
+  assert.ok(await loadDownloadedGarand(['m1_garand_rookieray.glb']), 'the downloaded Garand');
+  globalThis.fetch = fetch0;
   const vm = new ViewModel({ get: () => ({ map: null, normalMap: null, ormMap: null, world: 1 }) }, 'US', null);
   const cam = new THREE.PerspectiveCamera(52, 16 / 9, 0.01, 30);
   cam.position.set(0, 1.6, 0);
@@ -369,25 +377,38 @@ test('first person: on long guns the fingers close on the wood, not through it',
   const atm = new Atmosphere(0, 15);
   const arms = vm.fpArms;
   let checked = 0;
-  for (const id of ['m1_garand', 'm1903', 'm1_carbine', 'bar_m1918a2', 'kar98k', 'gewehr43', 'mosin_9130', 'svt40']) {
+  for (const gun of ['m1_garand', 'm1_garand:download', 'm1903', 'm1_carbine', 'bar_m1918a2', 'kar98k', 'gewehr43', 'mosin_9130', 'svt40']) {
+    const [id, model = 'code'] = gun.split(':');
+    vm.garandModel = model;
     vm.setWeapon(WEAPONS[id], atm);
+    assert.equal(vm.variant, model, `${gun}: the model`);
     for (let i = 0; i < 90; i++) vm.update(1 / 60, cam, base);
     const toGun = new THREE.Matrix4().copy(vm.gun.root.matrixWorld).invert();
     // The left fingertips stay outside the fore-end's outline (the reported fault:
     // closed round a circle, they came out through the top of the handguard).
     const P = arms.profiles.L;
-    assert.ok(P, `${id}: the fore-end's outline`);
+    assert.ok(P, `${gun}: the fore-end's outline`);
+    // With a peep sight close to the eye (the Garand's) the left fingers also keep
+    // out of what the eye sees through it (the reported fault: a fingertip in the
+    // lower right of the peep).
+    const V = arms.view;
+    if (id === 'm1_garand') assert.ok(V, `${gun}: the peep's view for the arms`);
     for (const name of ['index', 'middle', 'ring', 'pinky']) {
       const [, b2] = FINGER_BONES[-1][name];
       const J = HAND_JOINTS[name];
       const bone = arms.bones[b2];
       const tip = new THREE.Vector3(-(J[3][0] - J[1][0]), J[3][1] - J[1][1], J[3][2] - J[1][2]).applyQuaternion(bone.quaternion).add(bone.position).applyMatrix4(toGun);
-      assert.ok(!inProfile(P, tip, 0.003), `${id}: the left ${name} fingertip is in the wood`);
+      assert.ok(!inProfile(P, tip, 0.003), `${gun}: the left ${name} fingertip is in the wood`);
+      if (V) {
+        const rel = tip.clone().sub(V.eye);
+        const along = rel.dot(V.dir);
+        assert.ok(rel.addScaledVector(V.dir, -along).length() > along * V.slope + 0.004, `${gun}: the left ${name} fingertip shows through the peep`);
+      }
       checked++;
     }
-    // And no finger is opened far from its pose (a base knuckle keeps at least half its bend).
+    // And no finger is opened far from its pose: each keeps most of its bend, so it still wraps the wood.
     for (const cut of arms.cuts.values())
-      for (const [name, [a1, , , A1]] of Object.entries(cut)) assert.ok(a1 >= 0.5 * A1, `${id}: the ${name} finger opened from ${A1.toFixed(2)} to ${a1.toFixed(2)} rad`);
+      for (const [name, [a1, a2, , A1, A2]] of Object.entries(cut)) assert.ok(a1 + a2 >= 0.6 * (A1 + A2), `${gun}: the ${name} finger opened from ${(A1 + A2).toFixed(2)} to ${(a1 + a2).toFixed(2)} rad in all`);
   }
-  assert.equal(checked, 32);
+  assert.equal(checked, 36);
 });

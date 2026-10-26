@@ -375,6 +375,14 @@ export class FirstPersonArms {
     this._occ(null);
   }
 
+  // What the eye sees through a peep sight close to it, in gun space: a cone
+  // from the eye along the line of sight, widening by slope (the hole's radius
+  // over its distance from the eye); null for other sights.
+  setView(view) {
+    this.view = view;
+    this.cuts?.clear();
+  }
+
   // The outlines the fingers close on (holdProfile), where the circle the hand
   // is posed round is a poor fit: a long gun's fore-end (a handguard over the
   // barrel makes it taller than it is wide) in the left hand, and the wrist of
@@ -395,15 +403,13 @@ export class FirstPersonArms {
     return P;
   }
 
-  // Fingers closed round a hold the way a hand closes on something: each
-  // finger bends at its base knuckle until its first bone meets the gun's real
-  // outline (holdProfile; sinking no more than SINK into it: a finger pressed a
-  // little into a grip hides itself, one pushed further comes out through the
-  // wood), then at its middle knuckle until the rest of it does, by
-  // as much more as the base knuckle fell short (up to a full curl). Where the
-  // hand's pose leaves them clear of the gun they stay as posed. For a given
-  // hold the hand always sits the same way on the gun, so this is worked out
-  // once per hold and kept. (The right index stays on the trigger.)
+  // Fingers kept off the gun's real outline (holdProfile): a finger the hand's
+  // pose puts into the wood (more than SINK: a finger pressed a little into a
+  // grip hides itself, one pushed further comes out through the wood) takes
+  // instead the bend of its two knuckles nearest to that pose which keeps it
+  // out, so it ends against the wood. For a given hold the hand always sits
+  // the same way on the gun, so this is worked out once per hold and kept.
+  // (The right index stays on the trigger.)
   _clearFingers(side, H, G, key) {
     const P = side > 0 ? this.profiles?.R : this.profiles?.L;
     if (!P || !key || !this.pose.fingers) return;
@@ -416,6 +422,11 @@ export class FirstPersonArms {
         if (side > 0 && name === 'index') continue;
         const [A1, A2, sp] = this.pose.fingers[name];
         const margin = FINGER_R[name] - SINK;
+        // The left fingers also keep out of what the eye sees through a peep
+        // sight (setView), with their flesh: a fingertip at the top of a fore-end
+        // that runs just under the line of sight would show in it.
+        const V = side < 0 ? this.view : null,
+          fr = FINGER_R[name] * 0.8;
         // Whether the first bone (part 0), or the rest (part 1), is clear of the gun with the knuckles bent a1, a2.
         const clear = (a1, a2, part) => {
           fingerRotations(side, a1, a2, sp, _fq1, _fq2);
@@ -423,23 +434,37 @@ export class FirstPersonArms {
           const k = _fk.copy(OFFSET[FINGER_BONES[side][name][0]]);
           const m = _fm.copy(OFFSET[FINGER_BONES[side][name][1]]).applyQuaternion(_fq1).add(k);
           const t = _ft.copy(TIP[`${side}${name}`]).applyQuaternion(_fq2).add(m);
-          for (const [a, b, w] of SAMPLES(k, m, t, part)) if (inProfile(P, toGun(_fw.copy(a).lerp(b, w)), margin)) return false;
+          for (const [a, b, w] of SAMPLES(k, m, t, part)) {
+            const g = toGun(_fw.copy(a).lerp(b, w));
+            if (inProfile(P, g, margin)) return false;
+            if (V) {
+              const rel = _pq.copy(g).sub(V.eye);
+              const along = rel.dot(V.dir);
+              if (along > 0 && rel.addScaledVector(V.dir, -along).length() < along * V.slope + fr) return false;
+            }
+          }
           return true;
         };
-        // The most a knuckle bends, up to hi, before its bones meet the gun (hi if they never do).
-        const close = (hi, test) => {
-          if (test(hi) || !test(0)) return hi;
-          let lo = 0;
-          for (let i = 0; i < 7; i++) {
-            const mid = (lo + hi) / 2;
-            if (test(mid)) lo = mid;
-            else hi = mid;
+        // As posed if that is clear; else the clear bend of the two knuckles
+        // nearest to it (so the finger ends against the wood, or just out of the
+        // sight picture), looked for on a grid of bends. Left as posed when no
+        // bend is clear.
+        if (clear(A1, A2, 0) && clear(A1, A2, 1)) continue;
+        let best = null,
+          bestD = Infinity;
+        for (let i = 0; i <= 12; i++) {
+          const a1 = (A1 * i) / 12;
+          if (!clear(a1, 0, 0)) continue; // (the first bone does not depend on the middle knuckle)
+          for (let j = 0; j <= 18; j++) {
+            const a2 = (2.3 * j) / 18;
+            const d = Math.abs(a1 - A1) + 0.7 * Math.abs(a2 - A2);
+            if (d < bestD && clear(a1, a2, 1)) {
+              bestD = d;
+              best = [a1, a2];
+            }
           }
-          return lo;
-        };
-        const a1 = close(A1, (a) => clear(a, A2, 0));
-        const a2 = close(Math.min(2.3, A2 + (A1 - a1)), (a) => clear(a1, a, 1));
-        if (a1 !== A1 || a2 !== A2) cut[name] = [a1, a2, sp, A1, A2]; // (and as posed, for the tests)
+        }
+        if (best) cut[name] = [best[0], best[1], sp, A1, A2]; // (and as posed, for the tests)
       }
       this.cuts.set(key, cut);
     }
