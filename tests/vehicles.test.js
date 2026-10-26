@@ -17,6 +17,7 @@ import { buildVehicle } from '../src/vehicles/models/index.js';
 import { VEHICLES } from '../src/vehicles/defs.js';
 import { TrackedVehicle } from '../src/vehicles/tracked.js';
 import { PlayerController } from '../src/game/player.js';
+import { BikeStands } from '../src/vehicles/bikeSpots.js';
 
 const kmh = (v) => v.speed * 3.6;
 const yawOf = (v) => {
@@ -1030,6 +1031,39 @@ test('a sidecar outfit parked across a hillside pulls away, its chair uphill or 
       const r = pullAway(id, SURF.DRY_GRASS, { slopePct: 10, yaw });
       assert.ok(r.kmh > 30 && r.moved > 40 && !r.v.fallen, `${id}, ${side} on a 10 % hillside: ${r.kmh.toFixed(1)} km/h, ${r.moved.toFixed(0)} m in 10 s`);
     }
+});
+
+test('motorcycles are parked with room to ride off: not nose to a tree, a jeep or another machine', () => {
+  // On the town map 6 of the 14 motorcycles had something solid within 6 m
+  // ahead (one outfit a parked jeep 2.7 m in front), and pressing W went nowhere.
+  const { game, collision } = makeWorld();
+  game.spawnVehicle = (id, x, z, yaw) => spawn(game, id, x, z, yaw, { empty: true });
+  const stands = new BikeStands(game);
+  const tree = new Box(0, 51, -4, 0.4, 1, 0.4, 0, 'wood');
+  collision.add(tree);
+  // (A row of them, as at a spawn point: each must keep clear of the others' way.)
+  const parked = ['wla', 'wla_sidecar', 'wla', 'r75_sidecar'].map((id) => stands.park(id, 0, 0, 0, { r0: 0, r1: 20 }));
+  // The lane each one rides off along: from the far side of the motorcycle to
+  // the far side of its chair, 6 m on from its front.
+  const lane = (v) => (v.rig ? [-0.45, v.def.sidecar.track + 0.45] : [-v.def.dims[0] / 2, v.def.dims[0] / 2]);
+  for (const v of parked) {
+    assert.ok(v, 'parked');
+    const [x0, x1] = lane(v);
+    const things = [{ p: new THREE.Vector3(tree.cx, 51, tree.cz), r: 0.4, what: 'the tree' }];
+    // (The others by their wheels: front, back and the chair's.)
+    for (const o of parked) {
+      if (o === v) continue;
+      const L = o.def.dims[2];
+      const pts = [new THREE.Vector3(0, 0.5, -L / 2), new THREE.Vector3(0, 0.5, L / 2)];
+      if (o.rig) pts.push(new THREE.Vector3(o.def.sidecar.track, 0.5, o.def.sidecar.z));
+      for (const q of pts) things.push({ p: o._modelToWorld(q, new THREE.Vector3()), r: 0.45, what: `the ${o.def.id}` });
+    }
+    for (const t of things) {
+      const m = v.worldToModel(t.p, new THREE.Vector3());
+      const ahead = -m.z - v.def.dims[2] / 2;
+      assert.ok(!(ahead > -t.r && ahead < 6 + t.r && m.x > x0 - t.r && m.x < x1 + t.r), `${v.def.id} parked with ${t.what} ${ahead.toFixed(1)} m ahead`);
+    }
+  }
 });
 
 test('getting on beside a machine (F) puts a lone player on the saddle; the sidecar only when the saddle is taken', () => {

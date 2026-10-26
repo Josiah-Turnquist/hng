@@ -50,6 +50,30 @@ export class BikeStands {
     if (coll.raycast(cx, y + 1.2, cz, 0, 1, 0, 12, _hit, FLAG_SOLID | FLAG_WALKABLE, false)) return false;
     // Not on top of another parked machine.
     for (const s of this.spots) if ((s.x - x) ** 2 + (s.z - z) ** 2 < (Math.max(L, 1.6) * 0.75) ** 2) return false;
+    // A motorcycle has room to ride off: nothing solid (a tree, a wall, a
+    // parked jeep or another machine) in its first 6 m. Parked nose to a tree
+    // or to the next machine, it went nowhere when the rider pressed W (6 of
+    // the 14 on the town map had something within 6 m ahead).
+    const lane = halfWidth(d);
+    if (!d.pedal) {
+      for (let k = L / 2 + 0.5; k <= L / 2 + 6; k += 1) {
+        const px = cx + fx * k,
+          pz = cz + fz * k;
+        const py = hf.getHeight(px, pz);
+        if (coll.query(px - lane, py + 0.2, pz - lane, px + lane, py + 1.2, pz + lane, _boxes, FLAG_SOLID).length) return false;
+        for (const s of this.spots) if ((s.cx - px) ** 2 + (s.cz - pz) ** 2 < (lane + halfWidth(VEHICLES[s.id])) ** 2) return false;
+      }
+    }
+    // Nor in the way of a motorcycle already parked.
+    for (const s of this.spots) {
+      const sd = VEHICLES[s.id];
+      if (sd.pedal) continue;
+      const sfx = -Math.sin(s.yaw),
+        sfz = -Math.cos(s.yaw);
+      const along = (cx - s.cx) * sfx + (cz - s.cz) * sfz,
+        across = Math.abs((cx - s.cx) * -sfz + (cz - s.cz) * sfx);
+      if (along > 0 && along < sd.dims[2] / 2 + 6 + lane && across < lane + halfWidth(sd) + 0.3) return false;
+    }
     return true;
   }
 
@@ -96,7 +120,9 @@ export class BikeStands {
     const g = this.game;
     const v = g.spawnVehicle(id, x, z, yaw);
     v.team = team;
-    this.spots.push({ id, x, z, yaw, team, v, deadT: 0, idleT: 0 });
+    // (The middle of the machine: an outfit's is off to the side of its chair.)
+    const off = VEHICLES[id].sidecar ? VEHICLES[id].sidecar.track / 2 : 0;
+    this.spots.push({ id, x, z, cx: x + Math.cos(yaw) * off, cz: z - Math.sin(yaw) * off, yaw, team, v, deadT: 0, idleT: 0 });
     return v;
   }
 
@@ -202,6 +228,12 @@ export function placeAssaultBikes(mode, stands) {
     if (used.some((u) => (u.x - d.x) ** 2 + (u.z - d.z) ** 2 < 28 * 28)) continue;
     if (stands.byDoor(d)) used.push(d);
   }
+}
+
+// Half the width of a machine, about its middle (an outfit from the far side
+// of the motorcycle to the far side of its chair).
+function halfWidth(d) {
+  return d.sidecar ? (d.sidecar.track + 0.9) / 2 : d.dims[0] / 2;
 }
 
 // A stable pseudo-random order for doors (the same village every time).
