@@ -20,7 +20,7 @@ Then open http://localhost:8000 in Chrome, Edge or Firefox. The menus follow the
 
 In battle, click the game to capture the mouse; **Esc** releases it and opens the menu. When you fall in an Assault, the deploy map shows your points and how long until you can deploy at each: click one (or use the lean keys) and **Deploy**.
 
-To make a single HTML file you can open without a server: `npm run build` (writes `dist/hng.html`, plus `dist/hng-page.html`, the same game without the outer page tags, for sites that add their own, such as a claude.ai artifact). The downloaded Garand model is copied to `dist/assets/` beside them; it loads only when the game is served from a web server (opened straight from the file, you keep the made-in-code Garand).
+To make a single HTML file you can open without a server: `npm run build` (writes `dist/hng.html`, plus `dist/hng-page.html`, the same game without the outer page tags, for sites that add their own, such as a claude.ai artifact). The downloaded Garand model is copied to `dist/assets/` beside them (also as base64 text, for hosts that will not serve `.glb` files); it loads only when the game is served from a web server (opened straight from the file, you keep the made-in-code Garand).
 
 ### Battlefields
 

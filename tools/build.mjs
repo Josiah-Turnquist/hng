@@ -2,9 +2,10 @@
 // all code, three.js and styles inline. Everything else (models, textures,
 // sounds) is generated in the browser, so nothing else is needed, except for
 // the optional downloaded M1 Garand (assets/models, see models/downloaded.js),
-// which is copied to dist/assets beside the page.
+// which is copied to dist/assets beside the page (with a base64 text copy of
+// each .glb, for hosts that will not serve .glb files).
 import { build } from 'esbuild';
-import { readFileSync, mkdirSync, writeFileSync, cpSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync, cpSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -44,4 +45,7 @@ const out = resolve(root, 'dist/hng.html');
 writeFileSync(out, html);
 writeFileSync(resolve(root, 'dist/hng-page.html'), fragment);
 cpSync(resolve(root, 'assets'), resolve(root, 'dist/assets'), { recursive: true });
+for (const f of readdirSync(resolve(root, 'assets/models')).filter((n) => n.endsWith('.glb'))) {
+  writeFileSync(resolve(root, 'dist/assets/models', `${f}.b64.txt`), readFileSync(resolve(root, 'assets/models', f)).toString('base64'));
+}
 console.log(`wrote ${out} (${(html.length / 1e6).toFixed(2)} MB)`);

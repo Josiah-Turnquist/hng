@@ -28,8 +28,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// Where the file is, next to the game page.
-export const DOWNLOADED_GARAND_URL = 'assets/models/m1_garand_rookieray.glb';
+// Where the file is, next to the game page: the .glb itself or, for hosts that
+// will not serve .glb files (a claude.ai artifact), the same bytes as base64
+// text (written by the build). Tried in turn.
+export const DOWNLOADED_GARAND_URLS = ['assets/models/m1_garand_rookieray.glb', 'assets/models/m1_garand_rookieray.glb.b64.txt'];
 
 // Our point = S * (model point - C), the model point in its scene as loaded.
 const S = 0.817;
@@ -67,26 +69,34 @@ export function downloadedGarandState() {
 }
 
 // Start loading (once). Resolves to the fitted model, or null if it failed.
-export function loadDownloadedGarand(url = DOWNLOADED_GARAND_URL) {
+export function loadDownloadedGarand(urls = DOWNLOADED_GARAND_URLS) {
   if (pending) return pending;
   state = 'loading';
-  pending = fetch(url)
-    .then((r) => {
-      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-      return r.arrayBuffer();
-    })
-    .then(parseDownloadedGarand)
-    .then((p) => {
-      proto = p;
-      state = 'ready';
-      return p;
-    })
-    .catch((e) => {
-      state = 'failed';
-      console.warn(`The downloaded M1 Garand could not be loaded from ${url}: ${e?.message || e}`);
-      return null;
-    });
+  pending = (async () => {
+    const why = [];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        proto = await parseDownloadedGarand(url.endsWith('.txt') ? fromBase64(await r.text()) : await r.arrayBuffer());
+        state = 'ready';
+        return proto;
+      } catch (e) {
+        why.push(`${url}: ${e?.message || e}`);
+      }
+    }
+    state = 'failed';
+    console.warn(`The downloaded M1 Garand could not be loaded (${why.join('; ')})`);
+    return null;
+  })();
   return pending;
+}
+
+function fromBase64(text) {
+  const s = atob(text.replace(/\s+/g, ''));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out.buffer;
 }
 
 // A copy of the loaded rifle ({ root, parts, anchors, meta }, as buildGun gives),
