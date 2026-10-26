@@ -396,7 +396,8 @@ const DEFAULTS = {
   grenadeWarning: true, // a mark on live grenades that land near you
   objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
-  garandModel: 'code', // the M1 Garand in your hands: 'code' (made in code) or 'download' (the downloaded model)
+  garandModel: 'download', // the M1 Garand in your hands: 'download' (the downloaded model) or 'code' (made in code)
+  garandDefaultSet: true, // (settings saved before the downloaded Garand became the default lack this)
   bindings: {}, // the player's key changes: { action: [codes] } (see input.js)
   units: 'metric',
   holdToCrouch: false,
@@ -427,6 +428,13 @@ export class Settings {
       v.graphics = this._presetOptions(d.preset);
       v.autoQuality = true;
       v.gpu = d.gpu;
+      this._save();
+    }
+    // The downloaded Garand became the default: settings saved before then (which
+    // may hold the made-in-code one from comparing the two) switch to it once.
+    if (!v.garandDefaultSet) {
+      v.garandModel = 'download';
+      v.garandDefaultSet = true;
       this._save();
     }
     // Options added since the settings were saved take the preset's value.

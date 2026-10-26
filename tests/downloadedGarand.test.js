@@ -28,8 +28,9 @@ const cast = (p, d, far = 1) => {
 test('the moving parts are there, and nothing lies round the rifle', () => {
   for (const n of ['body', 'rearSight', 'bolt', 'opRod', 'clip']) assert.ok(parts[n]?.children.length, `part ${n}`);
   const b = new THREE.Box3().setFromObject(root);
-  // Muzzle to butt, at the size of a real Garand between the sights.
-  assert.ok(Math.abs(b.min.z - anchors.muzzle.z) < 0.002 && b.max.z < 0.29, `${b.min.z} to ${b.max.z}`);
+  // Muzzle to butt: the size of a real Garand between the sights, and its 13.1 in
+  // (332 mm) from the trigger (at z = 0) to the butt plate.
+  assert.ok(Math.abs(b.min.z - anchors.muzzle.z) < 0.002 && Math.abs(b.max.z - 0.332) < 0.002, `${b.min.z} to ${b.max.z}`);
   // (The loose rounds, cases and spent clip lay up to 15 cm off to the side.)
   assert.ok(b.min.x > -0.04 && b.max.x < 0.04, `sideways ${b.min.x} to ${b.max.x}`);
   assert.ok(b.min.y > -0.2 && b.max.y < 0.04, `up and down ${b.min.y} to ${b.max.y}`);

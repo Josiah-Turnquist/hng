@@ -489,15 +489,15 @@ function screenPage(body, view) {
     choiceRow(
       'M1 Garand model',
       [
-        ['code', 'Made in code'],
         ['download', 'Downloaded'],
+        ['code', 'Made in code'],
       ],
       st.get('garandModel'),
       (v) => {
         st.set('garandModel', v);
         view.render();
       },
-      'Which model the M1 Garand in your hands uses (other soldiers keep the made-in-code one). Downloaded: "Realistic M1 Garand" by Raymond (rookieray) on Sketchfab, under the CC BY 4.0 license, sized to a real Garand, with the loose rounds and cases round it left out and its peep hole widened like ours. It loads the first time you pick it.' +
+      'Which model the M1 Garand in your hands uses (other soldiers keep the made-in-code one). Downloaded: "Realistic M1 Garand" by Raymond (rookieray) on Sketchfab, under the CC BY 4.0 license, sized to a real Garand (its butt drawn out to the real length), with the loose rounds and cases round it left out and its peep hole widened like ours. It loads the first time it is needed; until then you have the made-in-code one.' +
         (failed ? ' It could not be loaded here, so you have the made-in-code one.' : ''),
     ),
   );

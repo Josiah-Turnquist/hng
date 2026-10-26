@@ -1,6 +1,6 @@
 # HNG: a WWII combined-arms shooter in the browser
 
-An unofficial fan recreation of **Heroes & Generals** (Reto-Moto, 2016 to 2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. The one exception is optional: a downloaded M1 Garand model you can pick for the rifle in your hands (see Credits).
+An unofficial fan recreation of **Heroes & Generals** (Reto-Moto, 2016 to 2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. The one exception is the M1 Garand in your hands, a downloaded model (see Credits); the made-in-code one is a setting away.
 
 ## Play
 
@@ -101,11 +101,11 @@ docs/                 design notes and research
 ## Notes and limits
 
 - Single player against bots for now; [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) is the plan for online play (Railway and Neon), with bots filling the empty places.
-- The browser needs WebGL 2. The graphics quality is picked for your computer the first time the game starts; Settings (also in the Esc menu during a battle) has the Low, Medium, High and Ultra presets and every option on its own (render resolution, edge smoothing, shadows, contact shadows, glow, sun rays, view distance, trees, grass, textures, effects, focus when aiming, motion blur), can show the frame rate, turns the hip-fire crosshair on or off, and picks which M1 Garand model you hold (made in code, or the downloaded one). On a slow computer try Low, or lower the render resolution and shadows first.
+- The browser needs WebGL 2. The graphics quality is picked for your computer the first time the game starts; Settings (also in the Esc menu during a battle) has the Low, Medium, High and Ultra presets and every option on its own (render resolution, edge smoothing, shadows, contact shadows, glow, sun rays, view distance, trees, grass, textures, effects, focus when aiming, motion blur), can show the frame rate, turns the hip-fire crosshair on or off, and picks which M1 Garand model you hold (the downloaded one, or the one made in code). On a slow computer try Low, or lower the render resolution and shadows first.
 - Some values are estimates where no published figure was found; they are marked "est." in the data files. See `docs/RESEARCH.md` for sources.
 
 ## Credits
 
-- **"Realistic M1 Garand"** by Raymond ([rookieray](https://sketchfab.com/rookieray)), from [Sketchfab](https://sketchfab.com/3d-models/realistic-m1-garand-8d639aed01a94c8bb6e8cb58070a71f3), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It is an option for the M1 Garand in your hands (Settings, Screen: "M1 Garand model"). The file in `assets/models/` is as downloaded; as it loads, `src/weapons/models/downloaded.js` resizes it to a real Garand's sight spacing, leaves out the loose rounds, cases and spent clip shown round it, seats its clip, makes its rear sight a separate sliding part with a wider peep hole, and puts its textures on directly.
+- **"Realistic M1 Garand"** by Raymond ([rookieray](https://sketchfab.com/rookieray)), from [Sketchfab](https://sketchfab.com/3d-models/realistic-m1-garand-8d639aed01a94c8bb6e8cb58070a71f3), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It is the M1 Garand in your hands (Settings, Screen: "M1 Garand model" switches to the made-in-code one). The file in `assets/models/` is as downloaded; as it loads, `src/weapons/models/downloaded.js` resizes it to a real Garand's sight spacing, draws its butt out to a real Garand's length from the trigger, leaves out the loose rounds, cases and spent clip shown round it, seats its clip, makes its rear sight a separate sliding part with a wider peep hole, and puts its textures on directly.
 
 Heroes & Generals was made by Reto-Moto. This project is an unofficial tribute and uses none of its assets.

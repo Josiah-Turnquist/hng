@@ -8,9 +8,13 @@
 //
 // Fitted to the conventions of our own gun models (kit.js: meters, bore along
 // Z at x = y = 0, muzzle toward -Z, trigger at z = 0) and to the game:
-//  * Size: its sights are as far apart as a real Garand's (709 mm). As drawn
-//    it is 22% bigger than that, and at the right size its stock comes out
-//    about 5 cm short of a real one.
+//  * Size: its sights are as far apart as a real Garand's (709 mm, 27.9 in;
+//    as drawn it is 22% bigger than that). At that size its stock comes out 5
+//    cm short, so the butt behind the grip is drawn out (the wood's grain runs
+//    along it) to a real Garand's 332 mm (13.1 in) from the trigger to the
+//    butt plate. It then measures 1080 mm (42.5 in) overall against the real
+//    1107 mm: its trigger sits 5 cm further forward under the receiver than a
+//    real one's, which no stretching can put right.
 //  * The rounds, empty cases and spent clip set out round the rifle for its
 //    loading animation are left out, and the clip goes where that animation
 //    seats it in the magazine (its top round is in the chamber).
@@ -43,6 +47,9 @@ const CLIP_SEATED = [0.1038, -0.1101, 0];
 // The peep hole (our space): its center, the hole's and the disc's radii as
 // drawn, and as we make them.
 const HOLE = { c: [0, 0.0233, -0.0021], r: 0.0011, R: 0.0044, r2: 0.003, R2: 0.0064 };
+// The butt drawn out: from z0 (behind the grip), more and more over ramp, so
+// its end comes to end (our space; the trigger is at z = 0).
+const BUTT = { z0: 0.045, ramp: 0.08, end: 0.332 };
 // The aperture's stem reaches this much deeper into the sight base, so no gap
 // opens under it when the sight is raised (by up to 15 mm, at 1200 yards).
 const STEM = 0.016;
@@ -56,7 +63,7 @@ const ANCHORS = {
   trigger: [0, -0.077, 0],
   gripR: [0, -0.08, 0.076],
   gripL: [0, -0.039, -0.36], // under the fore-end
-  shoulder: [0, -0.1, 0.279], // the butt plate
+  shoulder: [0, -0.1, BUTT.end - 0.003], // the butt plate
 };
 // (Its wrist is thicker than ours: the right hand closes round 2.3 cm, not 1.9.)
 const META = { sight: 'aperture', sightKind: 'slide', boltThrow: 0.0624, opRodThrow: 0.0947, gripRadius: 0.023, downloaded: true };
@@ -141,6 +148,7 @@ function fit(gltf, mat) {
     else geos[PARTS[n.name]].push(geo);
   });
   if (!main) throw new Error('no rifle body (Garand001) in the model');
+  lengthenButt(main);
   // The rear sight: the piece of the body round the peep hole.
   const [rest, sight] = splitPiece(main, [HOLE.c[0], HOLE.c[1] + HOLE.r, HOLE.c[2]]);
   geos.body.unshift(rest);
@@ -176,6 +184,42 @@ function fit(gltf, mat) {
   const meta = { ...META };
   root.userData = { anchors, parts, meta };
   return { root, parts, anchors, meta };
+}
+
+// Draw the butt out along the bore (z) behind BUTT.z0, gently at first (over
+// BUTT.ramp) and then evenly, so its end comes to BUTT.end. Normals and
+// tangents follow the stretch.
+function lengthenButt(geo) {
+  const { z0, ramp } = BUTT;
+  const pos = geo.attributes.position;
+  let zb = -Infinity;
+  for (let i = 0; i < pos.count; i++) zb = Math.max(zb, pos.getZ(i));
+  // How much is added up to u = (z - z0) / ramp, per unit of extra stretch (the
+  // integral of a smoothstep, then straight on).
+  const S = (u) => (u <= 0 ? 0 : u < 1 ? u * u * u - (u * u * u * u) / 2 : 0.5 + (u - 1));
+  const s = (u) => (u <= 0 ? 0 : u < 1 ? u * u * (3 - 2 * u) : 1);
+  const k = (BUTT.end - zb) / (ramp * S((zb - z0) / ramp)); // extra stretch beyond the ramp
+  const nor = geo.attributes.normal,
+    tan = geo.attributes.tangent;
+  const n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i);
+    if (z <= z0) continue;
+    const u = (z - z0) / ramp;
+    pos.setZ(i, z + k * ramp * S(u));
+    const f = 1 + k * s(u); // the stretch here (dz'/dz)
+    if (nor) {
+      n.fromBufferAttribute(nor, i);
+      n.z /= f;
+      n.normalize();
+      nor.setXYZ(i, n.x, n.y, n.z);
+    }
+    if (tan) {
+      n.set(tan.getX(i), tan.getY(i), tan.getZ(i) * f).normalize();
+      tan.setXYZ(i, n.x, n.y, n.z);
+    }
+  }
+  pos.needsUpdate = true;
 }
 
 // Split off the connected piece of an indexed geometry that has the vertex

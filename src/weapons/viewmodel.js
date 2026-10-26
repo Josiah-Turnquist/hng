@@ -77,6 +77,22 @@ function throwPose(a, b, u, p, q) {
   q.copy(aq).slerp(_q2.setFromEuler(_e.set(b[3], b[4], b[5])), u);
 }
 
+// The arms, from the eye (camera space: right, up, forward; m): where each
+// shoulder is, and which way its elbow bends (right, up, forward). Shoulders sit
+// low and slightly behind the eye, so the upper arms stay mostly out of view
+// and the forearms reach up to the gun; the left one is turned forward (est. 12
+// cm ahead of the right: a bladed stance). On a long gun's fore-end (fore) the
+// support shoulder is further forward (20 cm) and lower, its elbow bent back
+// and out to the side and kept just below the view, so the forearm comes in
+// from the lower left along the line of the hand: the wrist bends back about
+// 25 degrees as it cups the wood. (With the elbow under it, the forearm came
+// straight up from below the view and the wrist bent back 70, its limit.)
+export const ARMS = {
+  [1]: { shoulder: [0.16, -0.34, -0.02], pole: [0.3, -0.5] },
+  [-1]: { shoulder: [-0.15, -0.33, 0.1], pole: [-0.3, -0.5] },
+  fore: { shoulder: [-0.15, -0.44, 0.18], pole: [-0.6, -0.2, -0.6] },
+};
+
 // From the hip, shots leave the muzzle toward the center of view this far ahead
 // (the shooter points the gun at what he looks at); aimed shots follow the bore.
 export const HIP_CONVERGE = 25;
@@ -525,21 +541,16 @@ export class ViewModel {
     const camRight = _v2.set(1, 0, 0).applyQuaternion(cam.quaternion).clone();
     const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-    // Shoulders sit low and slightly behind the eye, so the upper arms stay
-    // mostly out of view and the forearms reach up to the gun. The stance is
-    // bladed: the left shoulder turned forward and in (est. 12 cm ahead of the
-    // right), so the support arm reaches a long fore-end with its elbow bent.
-    const shoulder = (side) =>
-      cam.position
-        .clone()
-        .addScaledVector(camRight, side * (side > 0 ? 0.16 : 0.15))
-        .addScaledVector(camUp, side > 0 ? -0.34 : -0.33)
-        .addScaledVector(camFwd, side > 0 ? -0.02 : 0.1);
     const arms = this.fpArms;
     if (this.fpArmsGun !== this.gun) {
       arms.setWeapon(this.gun, this.kind);
       this.fpArmsGun = this.gun;
     }
+    const set = (side) => (side < 0 && arms.info?.leftGrip === 'fore' ? ARMS.fore : ARMS[side]);
+    const shoulder = (side) => {
+      const [x, y, z] = set(side).shoulder;
+      return cam.position.clone().addScaledVector(camRight, x).addScaledVector(camUp, y).addScaledVector(camFwd, z);
+    };
     // By default both hands hold their grips (as the third-person soldier
     // does); during reloads they go to the magazine, clip guide or bolt.
     let right = null,
@@ -589,7 +600,8 @@ export class ViewModel {
       [left, -1],
     ]) {
       const S = shoulder(sgn);
-      const pole = new THREE.Vector3().addScaledVector(camRight, sgn * 0.3).addScaledVector(camUp, -0.5);
+      const [pr, pu, pf = 0] = set(sgn).pole;
+      const pole = new THREE.Vector3().addScaledVector(camRight, pr).addScaledVector(camUp, pu).addScaledVector(camFwd, pf);
       if (sgn < 0 && leftWorld) arms.place(sgn, S, G, { mode: 'point', point: leftWorld, pole, curl: pinch });
       else if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
       else if (sgn > 0 && th?.phase === 'follow') arms.place(sgn, S, G, { mode: 'grip', pole, curl: [0.2, 0.15, 0.25] }); // let go: hand open

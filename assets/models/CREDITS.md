@@ -9,7 +9,8 @@ License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
 
 The file is kept as it was downloaded. The game changes it as it loads
 (src/weapons/models/downloaded.js): it is resized so its sights are as far
-apart as a real Garand's, the loose rounds, empty cases and spent clip set out
+apart as a real Garand's, its butt is drawn out to a real Garand's length from
+the trigger, the loose rounds, empty cases and spent clip set out
 round the rifle are left out, its clip is seated in the magazine, its rear
 sight becomes a separate part that slides up for range and its peep hole is
 widened, and its texture images are applied directly.
