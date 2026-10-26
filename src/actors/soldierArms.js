@@ -117,6 +117,7 @@ export function weaponInfo(gun, kind) {
     gun,
     kind,
     gripRadius,
+    gripAxis: g, // the grip's slope through gripR (gun space: down and back)
     foreRadius,
     leftGrip,
     straightPull: !a.boltHandle,

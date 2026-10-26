@@ -9,7 +9,9 @@ const PI = Math.PI;
 const R3006 = { caseLen: 0.0634, oal: 0.0846, rRim: 0.006, rNeck: 0.0044, rBullet: 0.0039, shoulder: 0.82 };
 
 // M1 Garand: .30-06 gas-operated semi-automatic fed by an 8-round en-bloc clip.
-// 1103 mm long, 610 mm barrel, 709 mm sight radius at the 100 yd setting (FM 23-5).
+// 1107 mm (43.6 in) long, 610 mm (24 in) barrel, 709 mm (27.9 in) sight radius at
+// the 100 yd setting (FM 23-5), 332 mm (13.1 in) from the trigger to the butt
+// plate (as issue rifles measure, 13 to 13.25 in).
 // Aperture rear sight on the receiver heel (elevation knob left, windage knob
 // right), protected blade front sight on the gas cylinder at the muzzle, bayonet
 // lug under it, operating rod along the right side, walnut stock with a
@@ -23,6 +25,7 @@ export function m1_garand(b) {
     FZ = -0.763; // front sight blade top
   const RS = 0.029,
     RZ = -0.054; // rear aperture
+  const BUTT = 0.3198; // where the wood ends (the butt plate's steel to 11 mm behind)
 
   // --- Barrel: 29 mm over the chamber tapering to 15.7 mm at the gas cylinder (est.).
   lathe(b, {
@@ -87,7 +90,7 @@ export function m1_garand(b) {
   const stk = stock(b, {
     mat: W,
     z0: -0.574,
-    z1: 0.3155,
+    z1: BUTT,
     top: [
       [-0.574, -0.0035],
       [-0.25, -0.0035],
@@ -98,7 +101,7 @@ export function m1_garand(b) {
       [0.012, 0.0035],
       [0.06, 0.0005],
       [0.18, -0.016],
-      [0.3155, -0.0325],
+      [BUTT, -0.0325],
     ],
     bottom: [
       [-0.574, -0.0312],
@@ -114,7 +117,7 @@ export function m1_garand(b) {
       [0.108, -0.0975],
       [0.13, -0.0985],
       [0.22, -0.1355],
-      [0.3155, -0.169],
+      [BUTT, -0.169],
     ],
     width: [
       [-0.574, 0.0322],
@@ -126,7 +129,7 @@ export function m1_garand(b) {
       [0.07, 0.0355],
       [0.14, 0.0385],
       [0.25, 0.0432],
-      [0.3155, 0.0438],
+      [BUTT, 0.0438],
     ],
     n: [
       [-0.5, 2.6],
@@ -173,17 +176,17 @@ export function m1_garand(b) {
       [-0.016, 0.012],
     ],
   });
-  buttPlate(b, stk, { z0: 0.3125, z1: 0.3265, mat: P, screws: [-0.045, -0.156] });
+  buttPlate(b, stk, { z0: BUTT - 0.003, z1: BUTT + 0.011, mat: P, screws: [-0.045, -0.156] });
   if (b.detail(0)) {
     // Trap door in the butt plate: outline groove and hinge pin.
-    const zb = 0.3268;
+    const zb = BUTT + 0.0113;
     for (const [y0, y1, w] of [
       [-0.122, -0.06, 0.0012],
       [-0.122, -0.06, 0.0012],
     ])
       for (const s of [-1, 1]) b.box({ x: s * 0.0118, y: (y0 + y1) / 2, z: zb, w, h: y1 - y0, d: 0.0008, mat: 'black', r: 0 });
-    for (const y of [-0.122, -0.06]) b.box({ x: 0, y, z: 0.3268, w: 0.0248, h: 0.0012, d: 0.0008, mat: 'black', r: 0 });
-    b.cylAxis({ axis: 'x', x: 0, y: -0.058, z: 0.3272, len: 0.022, r: 0.0016, mat: P, seg: 10 });
+    for (const y of [-0.122, -0.06]) b.box({ x: 0, y, z: zb, w: 0.0248, h: 0.0012, d: 0.0008, mat: 'black', r: 0 });
+    b.cylAxis({ axis: 'x', x: 0, y: -0.058, z: zb + 0.0004, len: 0.022, r: 0.0016, mat: P, seg: 10 });
   }
   // Stock ferrule and front swivel, rear swivel under the butt.
   band(b, { z0: -0.576, z1: -0.562, y0: -0.0335, y1: -0.0012, w: 0.0334, n: 2.8, thick: 0.0014, mat: P });
@@ -316,7 +319,7 @@ export function m1_garand(b) {
   b.anchor('gripR', 0, -0.075, 0.076);
   b.anchor('trigger', 0, -0.072, 0.0);
   b.anchor('gripL', 0, -0.031, -0.36);
-  b.anchor('shoulder', 0, -0.1, 0.324);
+  b.anchor('shoulder', 0, -0.1, BUTT + 0.0085);
   b.meta.boltThrow = 0.092;
 }
 

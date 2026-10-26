@@ -10,7 +10,7 @@
 //   arms.setWeapon(gun, kind);   // a buildGun() result
 //   arms.place(side, shoulder, gunXf | null, { point, mode, pole });
 import * as THREE from 'three';
-import { B, BIND, BONE_NAMES, BONE_COUNT, OFFSET, LEN, FINGER_BONES, Pose, frameRotation, poseHand, quatFromAxes, PALM_X } from './soldierRig.js';
+import { B, BIND, BONE_NAMES, BONE_COUNT, OFFSET, LEN, FINGER_BONES, HAND_JOINTS, Pose, frameRotation, poseHand, quatFromAxes, PALM_X } from './soldierRig.js';
 import { SkinBuilder } from './soldierGeo.js';
 import { soldierMaterial } from './soldierMaterials.js';
 import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';
@@ -106,6 +106,152 @@ function foreSection(root, info) {
   const r = Math.min(0.04, Math.max(0.012, (w * w + h * h) / (2 * h)));
   return { c: new THREE.Vector3((l.x + rr.x) / 2, bottom.y + r, L.z), r, axis: new THREE.Vector3(0, 0, -1) };
 }
+
+// What the fingers close on: the gun's outline round a hold (the wrist of the
+// stock or the pistol grip in the right hand, the fore-end in the left), as
+// cross sections along the held part. Each section is the gun sliced across,
+// and for each of N directions out from the held part's middle line, the
+// farthest surface met (so hollows between parts count as filled). The hand is
+// posed round a circle; a fore-end with a handguard over the barrel is taller
+// than that, and fingers closed round the circle would come out through the
+// top of the wood. Measured once per gun.
+const PROFILE_N = 48;
+const _pp = new THREE.Vector3(),
+  _pq = new THREE.Vector3();
+// The triangles of the gun's meshes (gun space; not the sling) near a stretch of
+// line from a - axis * half to a + axis * half.
+function holdTriangles(root, info, a, axis, half, reach = 0.1) {
+  root.updateMatrixWorld(true);
+  const sling = info.parts?.sling;
+  const lo = new THREE.Vector3().copy(a).addScaledVector(axis, -half);
+  const hi = new THREE.Vector3().copy(a).addScaledVector(axis, half);
+  const box = new THREE.Box3().setFromPoints([lo, hi]).expandByScalar(reach);
+  const Mi = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const M = new THREE.Matrix4();
+  const out = [];
+  const tri = new THREE.Box3();
+  const p = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  root.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    for (let q = o; q; q = q.parent) if (q === sling) return;
+    M.multiplyMatrices(Mi, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    const idx = o.geometry.index;
+    const n = idx ? idx.count : pos.count;
+    for (let t = 0; t < n; t += 3) {
+      for (let k = 0; k < 3; k++) p[k].fromBufferAttribute(pos, idx ? idx.getX(t + k) : t + k).applyMatrix4(M);
+      if (!box.intersectsBox(tri.setFromPoints(p))) continue;
+      for (let k = 0; k < 3; k++) out.push(p[k].x, p[k].y, p[k].z);
+    }
+  });
+  return out;
+}
+// { c, axis, u, v, ts, r: [section][direction] } for a part held along axis
+// through c (gun space), over c +- axis * half.
+function holdProfile(tris, c, axis, half, sections = 5) {
+  const u = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(u.dot(axis)) > 0.9) u.set(0, 1, 0);
+  u.addScaledVector(axis, -u.dot(axis)).normalize();
+  const v = new THREE.Vector3().crossVectors(axis, u);
+  const ts = [],
+    r = [];
+  const d = [0, 0, 0];
+  for (let s = 0; s < sections; s++) {
+    const t = -half + (2 * half * s) / (sections - 1);
+    const o = _pp.copy(c).addScaledVector(axis, t);
+    // Slice: the segments where the plane through o cuts the triangles (2D, u v).
+    const segs = [];
+    for (let i = 0; i < tris.length; i += 9) {
+      for (let k = 0; k < 3; k++) d[k] = (tris[i + 3 * k] - o.x) * axis.x + (tris[i + 3 * k + 1] - o.y) * axis.y + (tris[i + 3 * k + 2] - o.z) * axis.z;
+      if ((d[0] > 0 && d[1] > 0 && d[2] > 0) || (d[0] < 0 && d[1] < 0 && d[2] < 0)) continue;
+      const cut = [];
+      for (let k = 0; k < 3; k++) {
+        const k2 = (k + 1) % 3;
+        if ((d[k] <= 0 && d[k2] > 0) || (d[k] > 0 && d[k2] <= 0)) {
+          const w = d[k] / (d[k] - d[k2]);
+          _pq.set(tris[i + 3 * k], tris[i + 3 * k + 1], tris[i + 3 * k + 2]);
+          _pq.x += (tris[i + 3 * k2] - _pq.x) * w;
+          _pq.y += (tris[i + 3 * k2 + 1] - _pq.y) * w;
+          _pq.z += (tris[i + 3 * k2 + 2] - _pq.z) * w;
+          _pq.sub(o);
+          cut.push(_pq.dot(u), _pq.dot(v));
+        }
+      }
+      if (cut.length === 4) segs.push(cut);
+    }
+    // The farthest crossing along each direction.
+    const row = new Float32Array(PROFILE_N);
+    for (let k = 0; k < PROFILE_N; k++) {
+      const a = (k / PROFILE_N) * Math.PI * 2;
+      const dx = Math.cos(a),
+        dy = Math.sin(a);
+      for (const [ax, ay, bx, by] of segs) {
+        const ex = bx - ax,
+          ey = by - ay;
+        const den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-12) continue;
+        const dist = (ax * ey - ay * ex) / den,
+          w = (ax * dy - ay * dx) / den;
+        if (w >= 0 && w <= 1 && dist > 0 && dist > row[k]) row[k] = dist;
+      }
+    }
+    ts.push(t);
+    r.push(row);
+  }
+  return { c: c.clone(), axis: axis.clone().normalize(), u, v, ts, r };
+}
+// Whether p (gun space) comes within margin of the outline (or inside it).
+function inProfile(P, p, margin) {
+  const rel = _pp.copy(p).sub(P.c);
+  const t = rel.dot(P.axis);
+  const ts = P.ts;
+  if (t < ts[0] - margin || t > ts[ts.length - 1] + margin) return false;
+  const x = rel.dot(P.u),
+    y = rel.dot(P.v);
+  const f = (Math.atan2(y, x) / (Math.PI * 2) + 1) * PROFILE_N;
+  const k0 = Math.floor(f) % PROFILE_N,
+    k1 = (k0 + 1) % PROFILE_N,
+    wk = f - Math.floor(f);
+  let s = 0;
+  while (s < ts.length - 2 && t > ts[s + 1]) s++;
+  const ws = Math.min(1, Math.max(0, (t - ts[s]) / (ts[s + 1] - ts[s])));
+  const at = (row) => {
+    const a = row[k0],
+      b = row[k1];
+    return a && b ? a + (b - a) * wk : Math.max(a, b);
+  };
+  const R0 = at(P.r[s]),
+    R1 = at(P.r[s + 1]);
+  const R = R0 && R1 ? R0 + (R1 - R0) * ws : Math.max(R0, R1);
+  return R > 0 && Math.hypot(x, y) < R + margin;
+}
+// A finger's joints in the hand's frame: knuckle offset, the second bone's
+// offset from it, and the tip from the second bone; finger half thickness.
+const FINGER_R = { index: 0.0088, middle: 0.009, ring: 0.0086, pinky: 0.0078 };
+const TIP = {};
+for (const side of [-1, 1])
+  for (const f of Object.keys(FINGER_R)) {
+    const J = HAND_JOINTS[f];
+    TIP[`${side}${f}`] = new THREE.Vector3(side * (J[3][0] - J[1][0]), J[3][1] - J[1][1], J[3][2] - J[1][2]);
+  }
+// Where a finger is tested: halfway along its first bone, the middle knuckle,
+// and three points out along the rest to the tip ([from, to, fraction]).
+const SAMPLES = (k, m, t) => [
+  [k, m, 0.5],
+  [k, m, 1],
+  [m, t, 0.35],
+  [m, t, 0.7],
+  [m, t, 1],
+];
+const PROFILES = new WeakMap(); // gun root -> { R, L } (FirstPersonArms._profiles)
+const _fq1 = new THREE.Quaternion(),
+  _fq2 = new THREE.Quaternion(),
+  _fk = new THREE.Vector3(),
+  _fm = new THREE.Vector3(),
+  _ft = new THREE.Vector3(),
+  _fw = new THREE.Vector3(),
+  _fGi = new THREE.Quaternion(),
+  _qId = new THREE.Quaternion();
 
 // Two-bone arm IK for the first-person arms: the elbow for wrist W, bending
 // toward pole. When W is out of the arm's reach (or too close), the shoulder,
@@ -218,7 +364,73 @@ export class FirstPersonArms {
   setWeapon(gun, kind) {
     this.info = gun ? weaponInfo(gun, kind) : null;
     this.fore = this.info?.anchors.gripL ? foreSection(gun.root || gun, this.info) : null;
+    this.profiles = gun ? this._profiles(gun.root || gun) : null;
+    this.cuts = new Map(); // how far each finger may close, per hold (_clearFingers)
     this._occ(null);
+  }
+
+  // The outlines the fingers close on (holdProfile): round the right hand's
+  // grip, along the grip's slope, and round the left hand's fore-end. Once per gun.
+  _profiles(root) {
+    let P = PROFILES.get(root);
+    if (P) return P;
+    const info = this.info;
+    const g = info.gripAxis;
+    P = { R: holdProfile(holdTriangles(root, info, info.anchors.gripR, g, 0.05), info.anchors.gripR, g, 0.05), L: null };
+    if (this.fore) P.L = holdProfile(holdTriangles(root, info, this.fore.c, this.fore.axis, 0.06), this.fore.c, this.fore.axis, 0.06);
+    PROFILES.set(root, P);
+    return P;
+  }
+
+  // Fingers closed round a hold no further than the gun's real outline lets
+  // them: each finger's bend is cut back until its joints and tip stay a
+  // finger's half thickness off the wood (less 2 mm, as flesh gives). For a
+  // given hold the hand always sits the same way on the gun, so the cut is
+  // worked out once per hold and kept. (The right index stays on the trigger.)
+  _clearFingers(side, H, G, key) {
+    const P = side > 0 ? this.profiles?.R : this.profiles?.L;
+    if (!P || !key) return;
+    let cut = this.cuts.get(key);
+    if (!cut) {
+      cut = {};
+      _fGi.copy(G.q).invert();
+      const toGun = (p) => p.applyQuaternion(H.q).add(H.p).sub(G.p).applyQuaternion(_fGi);
+      for (const name of Object.keys(FINGER_R)) {
+        if (side > 0 && name === 'index') continue;
+        const [b1, b2] = FINGER_BONES[side][name];
+        const margin = FINGER_R[name] - 0.002;
+        const clear = (s) => {
+          _fq1.copy(_qId).slerp(this.pose.q[b1], s);
+          _fq2.copy(_qId).slerp(this.pose.q[b2], s).premultiply(_fq1);
+          const k = _fk.copy(OFFSET[b1]);
+          const m = _fm.copy(OFFSET[b2]).applyQuaternion(_fq1).add(k);
+          const t = _ft.copy(TIP[`${side}${name}`]).applyQuaternion(_fq2).add(m);
+          for (const [a, b, w] of SAMPLES(k, m, t)) if (inProfile(P, toGun(_fw.copy(a).lerp(b, w)), margin)) return false;
+          return true;
+        };
+        let s = 1;
+        if (!clear(1) && clear(0)) {
+          let lo = 0,
+            hi = 1;
+          for (let i = 0; i < 7; i++) {
+            const mid = (lo + hi) / 2;
+            if (clear(mid)) lo = mid;
+            else hi = mid;
+          }
+          s = lo;
+        }
+        cut[name] = s;
+      }
+      this.cuts.set(key, cut);
+    }
+    for (const name in cut) {
+      const s = cut[name];
+      if (s >= 1) continue;
+      for (const b of FINGER_BONES[side][name]) {
+        _fq1.copy(this.pose.q[b]);
+        this.pose.q[b].copy(_qId).slerp(_fq1, s);
+      }
+    }
   }
 
   // The gun's occluding capsules for the arms' shading (soldierMaterial, first
@@ -308,6 +520,7 @@ export class FirstPersonArms {
           H.q.copy(G.q).multiply(_hq);
           H.p.copy(W);
           tilt = Math.tan(al);
+          this._holdKey = ti * 8 + ai;
         }
       }
     return tilt;
@@ -370,6 +583,7 @@ export class FirstPersonArms {
     if (fore) c = [Math.max(c[0], 0.95), Math.max(c[1], 0.92), 1];
     const wrap = target.mode === 'grip' && info ? (side > 0 ? info.gripRadius : fore ? this.fore.r : info.leftGrip === 'vertical' ? 0.017 : info.foreRadius) : 0;
     poseHand(this.pose, side, c[0], c[1], c[2], 0, wrap, fore ? { cy: FORE_Y, cup: FORE_CUP, tilt, thumbAlong: true } : undefined);
+    if (target.mode === 'grip' && info && G && (side > 0 || fore)) this._clearFingers(side, H, G, `${side > 0 ? 'R' : `L${this._holdKey}`}|${c.join(',')}`);
     for (const name of ['thumb', 'index', 'middle', 'ring', 'pinky']) {
       const [b1, b2] = FINGER_BONES[side][name];
       const q1 = _q.copy(H.q).multiply(this.pose.q[b1]);

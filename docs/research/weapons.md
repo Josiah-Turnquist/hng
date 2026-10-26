@@ -73,6 +73,7 @@ Searches found no evidence that H&G had shotguns, the Gewehr 41, the AVT-40 or t
 | Overall length | 43.6 in (1,107 mm conv.) per FM 23-5; 43.5 in per Wikipedia **[C]** | FM 23-5 ch.1; Wikipedia |
 | Barrel length | 24 in (610 mm) | FM 23-5 ch.1 |
 | Sight radius | 27.9 in (709 mm conv.) at the 100 yd setting | FM 23-5 ch.1; TM 9-1005-222-12 |
+| Trigger to butt plate | 13 to 13.25 in (330 to 337 mm conv.), measured from the front of the trigger on issue rifles **[U]** (sellers' measurements, not a specification) | https://lsbauctions.com/?p=112504 ; https://lsbauctions.com/wwii-winchester-m1-garand-us-30-06-cmp-rack-grade-rifle-dec-1941-cr/ |
 | Rear sight | Adjustable aperture (peep). Elevation drum graduated 100 to 1,200 yd, even ranges marked. 1 MOA per click for elevation and windage on standard sights (National Match: ½ MOA). Receiver windage marks are 4 MOA each. | https://yarchive.net/gun/rifle/garand_sight.html ; https://www.americanrifleman.org/content/from-flush-nut-to-t105-the-evolution-of-the-m1-garand-rear-sight-assembly/ ; https://www.fulton-armory.com/how-do-i-sight-in-my-m1-garand-or-m1a-m14-type-rifle/ |
 | Click travel | Windage 16 clicks left or right of centre; elevation 0 to 72 clicks | https://www.biggerhammer.net/manuals/garand/sighting.htm |
 | Battle sight | Excerpt reads "300-yard zero, less two clicks" **[U]** (wording unclear) | https://www.biggerhammer.net/manuals/garand/sighting.htm |

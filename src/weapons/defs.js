@@ -37,7 +37,7 @@ export const WEAPONS = {
     ammo: '30-06 M2',
     mv: 853,
     mass: 4.31,
-    length: 1.1,
+    length: 1.107,
     modes: ['semi'],
     rpm: 480,
     feed: 'enbloc',

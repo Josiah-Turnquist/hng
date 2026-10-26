@@ -58,7 +58,8 @@ const ANCHORS = {
   gripL: [0, -0.039, -0.36], // under the fore-end
   shoulder: [0, -0.1, 0.279], // the butt plate
 };
-const META = { sight: 'aperture', sightKind: 'slide', boltThrow: 0.0624, opRodThrow: 0.0947, downloaded: true };
+// (Its wrist is thicker than ours: the right hand closes round 2.3 cm, not 1.9.)
+const META = { sight: 'aperture', sightKind: 'slide', boltThrow: 0.0624, opRodThrow: 0.0947, gripRadius: 0.023, downloaded: true };
 
 let state = 'idle'; // 'loading' | 'ready' | 'failed'
 let pending = null;
