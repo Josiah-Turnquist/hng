@@ -890,7 +890,8 @@ export class BotBrain {
       const hd = Math.hypot(dx, dz);
       wantYaw = Math.atan2(-dx, -dz);
       // The rifle is zeroed (about 100-300 m); hold over by the extra drop.
-      const zero = w ? w.zeroRange : 100;
+      // (US sights are graduated in yards.)
+      const zero = w ? w.zeroRange * (w.def.sight.unit === 'yd' ? 0.9144 : 1) : 100;
       const drop = (a) => 0.5 * G * (a / (mv * 0.88)) ** 2;
       const hold = Math.max(-0.02, (drop(hd) - (drop(zero) * hd) / Math.max(zero, 1)) / Math.max(hd, 1));
       wantPitch = Math.atan2(dy, hd) + hold;
