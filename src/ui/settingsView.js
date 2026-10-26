@@ -8,6 +8,7 @@
 //   view.back();         // up a level (at the top: onExit, if given); false if nowhere to go
 import { GRAPHICS_OPTIONS, GRAPHICS_PRESETS } from '../core/settings.js';
 import { ACTIONS, RESERVED, clash, mergeBindings, bindingChanges, keyName } from '../core/input.js';
+import { downloadedGarandState } from '../weapons/models/downloaded.js';
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -482,6 +483,24 @@ function screenPage(body, view) {
   body.appendChild(toggleRow(view, 'objectiveMarkers', 'Objective markers', 'A mark over each point your side should take or hold next, with its name and how far it is; the nearest says ATTACK or DEFEND and stays at the edge of the screen when it is out of view. Marks over the compass show which way they lie.'));
   body.appendChild(toggleRow(view, 'grenadeWarning', 'Grenade warning', 'A grenade mark on live grenades that land near you (they are easy to lose in long grass), red when you are close enough to be hurt. Out of sight, the mark sits at the edge of the ring pointing to it.'));
   body.appendChild(toggleRow(view, 'showFps', 'Show frame rate', 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));
+  const st = view.app.settings;
+  const failed = st.get('garandModel') === 'download' && downloadedGarandState() === 'failed';
+  body.appendChild(
+    choiceRow(
+      'M1 Garand model',
+      [
+        ['code', 'Made in code'],
+        ['download', 'Downloaded'],
+      ],
+      st.get('garandModel'),
+      (v) => {
+        st.set('garandModel', v);
+        view.render();
+      },
+      'Which model the M1 Garand in your hands uses (other soldiers keep the made-in-code one). Downloaded: "Realistic M1 Garand" by Raymond (rookieray) on Sketchfab, under the CC BY 4.0 license, sized to a real Garand, with the loose rounds and cases round it left out and its peep hole widened like ours. It loads the first time you pick it.' +
+        (failed ? ' It could not be loaded here, so you have the made-in-code one.' : ''),
+    ),
+  );
 }
 
 // A short name for the graphics card from the browser's description of it.

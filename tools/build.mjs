@@ -1,8 +1,10 @@
 // Builds the whole game into one self-contained HTML file (dist/hng.html):
 // all code, three.js and styles inline. Everything else (models, textures,
-// sounds) is generated in the browser, so nothing else is needed.
+// sounds) is generated in the browser, so nothing else is needed, except for
+// the optional downloaded M1 Garand (assets/models, see models/downloaded.js),
+// which is copied to dist/assets beside the page.
 import { build } from 'esbuild';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync, cpSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -41,4 +43,5 @@ mkdirSync(resolve(root, 'dist'), { recursive: true });
 const out = resolve(root, 'dist/hng.html');
 writeFileSync(out, html);
 writeFileSync(resolve(root, 'dist/hng-page.html'), fragment);
+cpSync(resolve(root, 'assets'), resolve(root, 'dist/assets'), { recursive: true });
 console.log(`wrote ${out} (${(html.length / 1e6).toFixed(2)} MB)`);

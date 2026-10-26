@@ -501,6 +501,7 @@ export class PlayerController {
 
     const sky = this.game.world.sky;
     this.viewmodel.visible = !this.scoped && s.alive && this.game.cameraMode === 'first';
+    this.viewmodel.garandModel = this.settings.get('garandModel');
     this.viewmodel.update(dt, cam, {
       aiming: s.aiming,
       sprinting: b.sprinting,

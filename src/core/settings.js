@@ -396,6 +396,7 @@ const DEFAULTS = {
   grenadeWarning: true, // a mark on live grenades that land near you
   objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
+  garandModel: 'code', // the M1 Garand in your hands: 'code' (made in code) or 'download' (the downloaded model)
   bindings: {}, // the player's key changes: { action: [codes] } (see input.js)
   units: 'metric',
   holdToCrouch: false,

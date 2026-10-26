@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
+import { buildDownloadedGarand, downloadedGarandState, loadDownloadedGarand } from './models/downloaded.js';
 import { Sighting } from './sighting.js';
 import { damp, clamp } from '../core/math.js';
 import { FirstPersonArms } from '../actors/soldierFP.js';
@@ -118,6 +119,8 @@ export class ViewModel {
     this.gun = null;
     this.def = null;
     this.sighting = null;
+    this.garandModel = 'code'; // the M1 Garand drawn: 'code' (ours) or 'download' (models/downloaded.js)
+    this.variant = 'code'; // the one drawn now
     this.faction = faction;
     this._makeArms(faction);
     this._makeFlash();
@@ -177,19 +180,32 @@ export class ViewModel {
     this.root.add(g);
   }
 
+  // Which model a weapon is drawn with: the downloaded M1 Garand when it is
+  // chosen and has loaded (it starts loading when first wanted), else ours.
+  _variant(def) {
+    if (!def || this.garandModel !== 'download') return 'code';
+    if ((MODELS[def.model] ? def.model : fallbackModel(def)) !== 'm1_garand') return 'code';
+    if (downloadedGarandState() === 'idle') loadDownloadedGarand();
+    return downloadedGarandState() === 'ready' ? 'download' : 'code';
+  }
+
   // Build (or reuse) the gun model for a weapon.
   setWeapon(def, atm) {
-    if (this.def === def) return;
+    const variant = this._variant(def);
+    if (this.def === def && this.variant === variant) return;
     if (this.gun) this.root.remove(this.gun.root);
     this.def = def;
+    this.atm = atm;
+    this.variant = variant;
     if (!def) {
       this.gun = null;
       return;
     }
-    let entry = this.cache.get(def.id);
+    const key = variant === 'code' ? def.id : `${def.id}:${variant}`;
+    let entry = this.cache.get(key);
     if (!entry) {
       const modelId = MODELS[def.model] ? def.model : fallbackModel(def);
-      const gun = buildGun(modelId, this.mats);
+      const gun = variant === 'download' ? buildDownloadedGarand() : buildGun(modelId, this.mats);
       gun.root.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = false;
@@ -202,7 +218,7 @@ export class ViewModel {
       const rest = {};
       for (const [n, p] of Object.entries(gun.parts)) rest[n] = { p: p.position.clone(), q: p.quaternion.clone() };
       entry = { gun, sighting, rest };
-      this.cache.set(def.id, entry);
+      this.cache.set(key, entry);
     }
     this.gun = entry.gun;
     this.sighting = entry.sighting;
@@ -213,6 +229,7 @@ export class ViewModel {
   }
 
   setZero(index) {
+    this.zeroIndex = index;
     if (this.sighting) this.sighting.setRangeIndex(index);
   }
 
@@ -244,6 +261,11 @@ export class ViewModel {
   // Main per-frame update. cam = world camera (already positioned).
   // ctx: { aiming, sprinting, speed, onGround, stance, lookDelta: [dyaw, dpitch], sway: {yaw, pitch}, blockedDist, light }
   update(dt, cam, ctx) {
+    // The other Garand chosen (or just loaded): swap it in, as for a weapon change.
+    if (this.def && this._variant(this.def) !== this.variant) {
+      this.setWeapon(this.def, this.atm);
+      this.setZero(this.zeroIndex ?? 0);
+    }
     if (!this.gun) return;
     const def = this.def;
     const poses = POSES[this.kind];
@@ -457,6 +479,8 @@ export class ViewModel {
       if (this.flashT > -0.03 && !lift) back = Math.max(back, clamp(1 - (0.05 - this.flashT) / 0.06, 0, 1) * 0.85);
       if (lift) parts.bolt.rotateZ(lift * r); // handle swings up (counterclockwise seen from behind)
       parts.bolt.position.z += throwD * back;
+      // An operating rod drawn as a part of its own goes with it, as far as it travels.
+      if (parts.opRod) parts.opRod.position.z += (meta.opRodThrow ?? throwD) * back;
     }
     // Magazine out and in.
     if (parts.mag) {
@@ -533,10 +557,11 @@ export class ViewModel {
         right = top.clone().add(new THREE.Vector3(0.01, 0.04 + Math.sin(u * Math.PI) * 0.03, 0.01));
       } else if ((n.startsWith('bolt') || n === 'charge') && (anchors.boltHandle || anchors.chargingHandle)) {
         right = (anchors.boltHandle || anchors.chargingHandle).clone();
-        if (this.gun.parts.bolt) {
-          // Follow the moving bolt: anchor relative to the bolt's rest pivot,
-          // then through the bolt's current transform.
-          right.sub(this.rest.bolt.p).applyMatrix4(this.gun.parts.bolt.matrix);
+        const handle = this.gun.parts.opRod || this.gun.parts.bolt;
+        if (handle) {
+          // Follow the moving handle (on the bolt, or the operating rod): anchor
+          // relative to the part's rest pivot, then through its current transform.
+          right.sub(this.rest[handle.name].p).applyMatrix4(handle.matrix);
         }
       } else if ((n === 'coverOpen' || n === 'coverClose') && anchors.coverHinge) {
         left = anchors.coverHinge.clone().add(new THREE.Vector3(0, 0.02, -0.06));
