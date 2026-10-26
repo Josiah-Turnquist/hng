@@ -253,6 +253,7 @@ export class ViewModel {
 
   // Aim with the iron sights (on) or the scope, where a rifle has both.
   setIrons(on) {
+    this.ironsOn = !!on;
     const e = this.entry;
     if (!e) return;
     const next = on && e.irons ? e.irons : e.sighting;
@@ -316,6 +317,7 @@ export class ViewModel {
     // The other Garand chosen (or just loaded): swap it in, as for a weapon change.
     if (this.def && this._variant(this.def) !== this.variant) {
       this.setWeapon(this.def, this.atm);
+      this.setIrons(this.ironsOn);
       this.setZero(this.zeroIndex ?? 0);
     }
     if (!this.gun) return;

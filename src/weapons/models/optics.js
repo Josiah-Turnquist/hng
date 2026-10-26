@@ -8,7 +8,7 @@
 // objective lens): sighting.js looks along the line between them. Profiles are
 // [radius, z] from the eye end forward; z0 is the eyepiece lens. Sizes est.
 // from photos where scopes.js gives no length.
-import { lathe, tube } from './parts.js';
+import { lathe, tube, place } from './parts.js';
 import { knurledKnob, screw, plateXYz } from './shapes.js';
 import { GunBuilder } from './kit.js';
 
@@ -202,10 +202,12 @@ export function pem(b, { y, zEye, mat = 'steelDark' }) {
 // receiver's left wall, and where the receiver is along the rifle):
 //   dz   how far the receiver sits behind ours (the rear sight's z minus ours)
 //   wall the left wall's outer face (x) and the top of the wall (y)
-//   pad  the cheek pad: the stock's left face (x) and its middle (y)
+//   pad  the cheek pad, from z0 to z1 under the comb (its top there: top0,
+//        top1), h high, against the stock's left face (x at its middle, which
+//        leans in toward the comb by tilt). Measured on each model.
 export const M1C_FIT = {
-  code: { dz: 0, wall: [-0.0156, 0.0062], pad: [-0.0182, -0.032] },
-  download: { dz: 0.052, wall: [-0.013, 0.004], pad: [-0.0182, -0.034] },
+  code: { dz: 0, wall: [-0.0156, 0.0062], pad: { z0: 0.075, z1: 0.255, top0: -0.0075, top1: -0.0305, h: 0.04, x: -0.0168, tilt: -0.2 } },
+  download: { dz: 0.052, wall: [-0.013, 0.004], pad: { z0: 0.11, z1: 0.27, top0: -0.039, top1: -0.0415, h: 0.03, x: -0.0158, tilt: -0.1 } },
 };
 // The scope's axis: left of the bore and above it (est. from photos).
 const M1C_SCOPE = { x: -0.033, y: 0.046, zEye: -0.058 };
@@ -235,10 +237,32 @@ export function m1cMount(b, fit = M1C_FIT.code) {
   b.span({ z0: z0 + 0.016, z1: z1 - 0.016, y0: sy - r - 0.009, y1: sy - r - 0.0045, w: 0.0072, x: sx - 0.0035, mat: P, r: 0.0012 });
   // Quick-release lever on the outside of the front arm.
   b.box({ x: sx - 0.011, y: sy - r - 0.006, z: z0 + 0.016, w: 0.0035, h: 0.006, d: 0.026, mat: P, r: 0.0012 });
-  // Leather cheek pad on the left of the butt.
-  const [px, py] = fit.pad;
-  b.box({ x: px - 0.0035, y: py, z: 0.16, w: 0.007, h: 0.036, d: 0.15, mat: 'leather', r: 0.003 });
-  if (b.detail(0)) for (let i = 0; i < 6; i++) b.box({ x: px - 0.0071, y: py - 0.012, z: 0.105 + i * 0.022, w: 0.0008, h: 0.0035, d: 0.006, mat: 'leatherBlack', r: 0 }); // lacing
+  // Leather cheek pad on the left of the butt, its top along the comb, laced
+  // along its lower edge.
+  const pd = fit.pad;
+  const ym = (pd.top0 + pd.top1) / 2 - pd.h / 2;
+  const outline = GunBuilder.smooth(
+    [
+      [pd.z0, pd.top0 - ym],
+      [(pd.z0 + pd.z1) / 2, (pd.top0 + pd.top1) / 2 - ym],
+      [pd.z1, pd.top1 - ym],
+      [pd.z1 + 0.006, pd.top1 - pd.h * 0.55 - ym],
+      [pd.z1 - 0.012, pd.top1 - pd.h - ym],
+      [pd.z0 + 0.012, pd.top0 - pd.h - ym],
+      [pd.z0 - 0.006, pd.top0 - pd.h * 0.45 - ym],
+    ],
+    3,
+  );
+  place(b, { pos: [pd.x - 0.0026, ym, 0], rot: [0, 0, pd.tilt] }, () => {
+    b.extrude({ points: outline, width: 0.0052, mat: 'leather', bevel: 0.0018 });
+    if (b.detail(0)) {
+      for (let i = 0; i < 7; i++) {
+        const z = pd.z0 + 0.02 + ((pd.z1 - pd.z0 - 0.04) * i) / 6;
+        const top = pd.top0 + ((pd.top1 - pd.top0) * (z - pd.z0)) / (pd.z1 - pd.z0);
+        b.box({ x: -0.0027, y: top - pd.h + 0.006 - ym, z, w: 0.0008, h: 0.004, d: 0.005, mat: 'leatherBlack', r: 0 }); // lacing
+      }
+    }
+  });
   return alaskan(b, { x: sx, y: sy, zEye });
 }
 
