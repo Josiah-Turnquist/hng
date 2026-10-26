@@ -11,6 +11,11 @@ import { Box } from '../src/physics/collision.js';
 import { SHELLS } from '../src/vehicles/defs.js';
 import { armorPenetrationMM, effectiveArmorMM } from '../src/ballistics/materials.js';
 import { SURF } from '../src/world/heightfield.js';
+import { Game } from '../src/game/game.js';
+import { ProjectileSystem } from '../src/ballistics/projectiles.js';
+import { buildVehicle } from '../src/vehicles/models/index.js';
+import { VEHICLES } from '../src/vehicles/defs.js';
+import { TrackedVehicle } from '../src/vehicles/tracked.js';
 
 const kmh = (v) => v.speed * 3.6;
 const yawOf = (v) => {
@@ -253,6 +258,77 @@ test('main gun fires the right shell at the right speed and reloads', () => {
   assert.ok(v.fireMain(null), 'reloaded');
 });
 
+test('a tank\'s own shells never hurt it or its crew at the muzzle: on a wall just in front, or fired out over its own hull', () => {
+  // The real Sherman (its muzzle and armor where the model puts them) in a
+  // game with real shells, blasts and fragments; the crew stand-ins count
+  // their injuries.
+  const { game: base, world, collision } = makeWorld();
+  const g = Object.create(Game.prototype);
+  const noop = () => {};
+  Object.assign(g, base, { headless: true, mode: {}, effects: { impact: noop, spawn: noop, muzzle: noop, explosion: noop, bulletHole: noop, flashLight: noop } });
+  g.hud = { flash: noop, hitMarker: noop, killFeed: noop, shotFrom: noop, damage: noop };
+  g.projectiles = new ProjectileSystem({ world: collision, atmosphere: world.atmosphere, dynamicRaycast: (...a) => g._raycastDynamic(...a) });
+  g.projectiles.onImpact = (p, info) => g._onImpact(p, info);
+  g.projectiles.onExpire = (p, why) => g._onExpire(p, why);
+  const textures = { standard: () => new THREE.MeshStandardMaterial(), get: () => ({}) };
+  const def = { ...VEHICLES.m4a1_sherman, id: 'm4a1_sherman' };
+  const v = new TrackedVehicle(g, def, buildVehicle('m4a1_sherman', textures), 0, 0, 0);
+  g.vehicles.push(v);
+  const crew = [rider(), rider()];
+  crew.forEach((m, i) => {
+    Object.assign(m, { team: 1, seat: -1, vehicle: null });
+    v.enter(m, i);
+    g.soldiers.push(m);
+  });
+  g.player = { soldier: crew[0], eye: { x: 0, y: -100, z: 0 } };
+  run(v, 1);
+  const shoot = (shell, setup) => {
+    v.hp = v.maxHp;
+    v.loaded = shell;
+    v.reloadT = 0;
+    const wall = setup();
+    v.syncModel(0);
+    assert.ok(v.fireMain(crew[0]), 'fired');
+    for (let i = 0; i < 120; i++) g.projectiles.update(1 / 120);
+    if (wall) collision.remove(wall);
+    return { lost: v.maxHp - v.hp, hurt: crew.map((m) => m.hurt || 0) };
+  };
+  // A brick wall square to the bore, its face `d` m beyond the muzzle (or
+  // round it, the barrel through a hole in it).
+  const wallAt = (d) => () => {
+    v.turretYaw = v.gunElev = 0;
+    v.syncModel(0);
+    const m = v.muzzleWorld(new THREE.Vector3()),
+      dir = v.boreDir(new THREE.Vector3());
+    const box = new Box(m.x + dir.x * (d + 0.25), m.y, m.z + dir.z * (d + 0.25), 3, 2, 0.25, Math.atan2(-dir.x, -dir.z), 'brick');
+    collision.add(box);
+    return box;
+  };
+  for (const shell of ['M48 HE', 'M61 APC'])
+    for (const d of [-0.3, 0.5, 2]) {
+      const r = shoot(shell, wallAt(d));
+      assert.ok(r.lost === 0 && r.hurt.every((h) => h === 0), `${shell} on a wall ${d} m from the muzzle: the tank lost ${r.lost.toFixed(1)}, the crew took ${r.hurt}`);
+    }
+  // Turret over the engine deck and the gun down: the shell leaves from out
+  // over the hull and bursts on the ground just behind it.
+  const r = shoot('M48 HE', () => {
+    v.turretYaw = Math.PI;
+    v.gunElev = -10 * (Math.PI / 180);
+    v.aim.yaw = Math.PI;
+    v.aim.pitch = v.gunElev;
+    return null;
+  });
+  assert.ok(r.lost === 0 && r.hurt.every((h) => h === 0), `fired over the engine deck: the tank lost ${r.lost.toFixed(1)}, the crew took ${r.hurt}`);
+  // Another tank's shell bursting on that wall still hurts it.
+  const hp = v.hp;
+  const w = wallAt(0.5)();
+  const m = v.muzzleWorld(new THREE.Vector3());
+  g.projectiles.fire({ x: m.x, y: m.y, z: m.z - 10, vx: 0, vy: 0, vz: 460, ammo: SHELLS['M48 HE'], owner: null });
+  for (let i = 0; i < 60; i++) g.projectiles.update(1 / 120);
+  collision.remove(w);
+  assert.ok(v.hp < hp, 'a shell from elsewhere bursting there damages it');
+});
+
 test('armor: historical match-ups come out right', () => {
   const deg = Math.PI / 180;
   const pen = (id, v) => armorPenetrationMM(SHELLS[id], v);
@@ -385,6 +461,44 @@ test('bicycle: three times the pick-up of the plain figures (gameplay), the same
     sprint = pick(true, 20);
   assert.ok(cruise > 3.2 && cruise < 5.5, `0-15 km/h at a steady effort in ${cruise.toFixed(2)} s`);
   assert.ok(sprint > 1.8 && sprint < 3.2, `0-20 km/h sprinting in ${sprint.toFixed(2)} s`);
+});
+
+test('bicycle: holding W gets it going on grass, leaf litter and crops too (most of a battlefield), and up a grassy hill', () => {
+  // With the real figures his steady 160 W gave 9 km/h on grass and 5 on a
+  // ploughed field, slower than a soldier jogs (13 km/h), and nothing at all in
+  // mud or sand (his legs could not push it off against them).
+  const ride = (surface, seconds, slopeDeg = 0) => {
+    const { game } = makeWorld({ size: 2048, surface, slopeDeg });
+    const v = spawn(game, 'bicycle', 0, 600, 0);
+    run(v, 1);
+    let t15 = null;
+    run(v, seconds, (t) => {
+      v.driverInput(1, 0);
+      if (t15 === null && kmh(v) >= 15) t15 = t;
+    });
+    return { v, t15 };
+  };
+  const grass = ride(SURF.GRASS, 20);
+  assert.ok(grass.t15 !== null && grass.t15 < 5, `0-15 km/h on grass in ${grass.t15?.toFixed(1)} s`);
+  assert.ok(kmh(grass.v) > 16 && kmh(grass.v) < 21, `cruising on grass at ${kmh(grass.v).toFixed(1)} km/h`);
+  // He works harder there, but no harder than he can keep up (his stamina
+  // stays near full).
+  const pd = grass.v.def.pedal;
+  assert.ok(grass.v.power > pd.cruise + 30 && grass.v.power < pd.cp + 2, `on grass at ${grass.v.power.toFixed(0)} W`);
+  assert.ok(grass.v.occupants[0].body.stamina > 95, `stamina ${grass.v.occupants[0].body.stamina.toFixed(0)}`);
+  for (const [name, lo, hi] of [
+    ['FOREST', 14.5, 19],
+    ['WHEAT', 14, 18],
+    ['FIELD', 11.5, 16],
+    ['MUD', 7, 12.5],
+    ['SAND', 6, 11],
+  ]) {
+    const { v } = ride(SURF[name], 15);
+    assert.ok(kmh(v) > lo && kmh(v) < hi, `${name.toLowerCase()}: ${kmh(v).toFixed(1)} km/h, want ${lo}-${hi}`);
+  }
+  // A 6 % grassy hill: he rides up it at a jog, not walking it.
+  const hill = ride(SURF.GRASS, 12, (Math.atan(0.06) * 180) / Math.PI);
+  assert.ok(!hill.v.walking && !hill.v.fallen && kmh(hill.v) > 6 && kmh(hill.v) < 11, `6 % on grass: ${kmh(hill.v).toFixed(1)} km/h`);
 });
 
 test('parked machines stand upright on their stands, also with a wheel up on a kerb; outfits sit with the ground', () => {
@@ -535,6 +649,120 @@ test('too much lean on grass puts a motorcycle down and hurts the rider', () => 
   assert.ok(v.fallen, 'it went down');
   assert.ok(!v.occupants[0], 'the rider was thrown off');
   assert.ok(man.hurt > 5, `the rider got hurt (${(man.hurt || 0).toFixed(0)})`);
+});
+
+// Drive into a brick wall at a set speed, head-on or at an angle; the people
+// aboard are stand-ins that count their injuries. Returns the share of the
+// vehicle's strength lost and what each of them took.
+function intoWall(id, kmhAt, angleDeg = 0) {
+  const { game, collision } = makeWorld({ size: 2048 });
+  const v = spawn(game, id, 0, 800, 0);
+  const people = [v.occupants[0]];
+  for (let i = 1; i < v.seats.length; i++) {
+    const r = rider();
+    if (v.enter(r, i)) people.push(r);
+  }
+  run(v, 1);
+  for (let t = 0; t < 40 && kmh(v) < kmhAt; t += 1 / 120) {
+    v.driverInput(1, 0);
+    v.step(1 / 120);
+  }
+  const p = v.body.position;
+  collision.add(new Box(p.x, 52, p.z - v.def.dims[2] / 2 - 5, 30, 2.5, 1, (angleDeg * Math.PI) / 180, 'brick'));
+  const hp = v.hp;
+  let hit = false;
+  run(v, 4, () => {
+    hit ||= v.lastImpact > 1;
+    v.driverInput(hit ? 0 : kmh(v) < kmhAt ? 1 : 0.2, 0);
+  });
+  return { v, lost: (hp - Math.max(0, v.hp)) / v.maxHp, hurt: people.map((m) => m.hurt || 0) };
+}
+
+test('crashes: bumping a wall is nothing, 60 km/h into one hurts, 80 km/h and more kills', () => {
+  // A crash used to be charged on every step of the simulation while the
+  // vehicle stopped, and a vehicle wrecked that way killed everybody in it: a
+  // jeep lost half its strength at 40 km/h, and at 60 km/h it and its crew
+  // were gone.
+  const slow = intoWall('willys_mb', 25);
+  assert.ok(slow.lost < 0.01 && slow.hurt.every((h) => h === 0), `25 km/h: jeep lost ${(slow.lost * 100).toFixed(0)} %, crew hurt ${slow.hurt}`);
+  const bump = intoWall('willys_mb', 40);
+  assert.ok(bump.lost < 0.1 && bump.hurt.every((h) => h < 10), `40 km/h: jeep lost ${(bump.lost * 100).toFixed(0)} %, crew hurt ${bump.hurt.map(Math.round)}`);
+  const hard = intoWall('willys_mb', 60);
+  assert.ok(hard.v.alive && hard.lost < 0.6, `60 km/h: jeep lost ${(hard.lost * 100).toFixed(0)} %`);
+  assert.ok(hard.hurt.every((h) => h > 20 && h < 70), `60 km/h: crew hurt ${hard.hurt.map(Math.round)}, but alive`);
+  const glance = intoWall('willys_mb', 60, 60);
+  assert.ok(glance.lost < 0.05 && glance.hurt.every((h) => h < 5), `scraping a wall at 60 km/h: jeep lost ${(glance.lost * 100).toFixed(0)} %, crew hurt ${glance.hurt.map(Math.round)}`);
+  const fast = intoWall('willys_mb', 90);
+  assert.ok(fast.hurt.every((h) => h >= 100), `90 km/h: crew hurt ${fast.hurt.map(Math.round)}`);
+  // A tank flat out into a wall: a dent; the crew are braced inside.
+  const tank = intoWall('m4a1_sherman', 37);
+  assert.ok(tank.lost < 0.1 && tank.hurt.every((h) => h === 0), `Sherman at 37 km/h: lost ${(tank.lost * 100).toFixed(0)} %, crew hurt ${tank.hurt}`);
+  // Motorcycles: off over the bars, hurt by how hard he hits the wall.
+  const moto = intoWall('wla', 40);
+  assert.ok(moto.v.fallen && moto.hurt[0] < 10, `WLA at 40 km/h: rider hurt ${moto.hurt[0].toFixed(0)}`);
+  const motoFast = intoWall('wla', 100);
+  assert.ok(motoFast.hurt[0] >= 100, `WLA at 100 km/h: rider hurt ${motoFast.hurt[0].toFixed(0)}`);
+  const outfit = intoWall('r75_sidecar', 50);
+  assert.ok(outfit.hurt.every((h) => h > 5 && h < 30), `R 75 outfit at 50 km/h: hurt ${outfit.hurt.map(Math.round)}`);
+});
+
+test('falling or jumping off a motorcycle at an ordinary speed hurts a little; at full speed it can kill', () => {
+  const at = (kmhAt, fn) => {
+    const { game } = makeWorld({ size: 2048 });
+    const v = spawn(game, 'wla', 0, 800, 0);
+    const man = v.occupants[0];
+    run(v, 1);
+    for (let t = 0; t < 40 && kmh(v) < kmhAt; t += 1 / 120) {
+      v.driverInput(1, 0);
+      v.step(1 / 120);
+    }
+    fn(v, man);
+    run(v, 1, () => v.driverInput(0, 0));
+    return man.hurt || 0;
+  };
+  const fall = (k) => at(k, (v) => v._fall(1, 'slide'));
+  const jump = (k) => at(k, (v, man) => v.exit(man));
+  assert.ok(fall(25) < 1, `down at 25 km/h: hurt ${fall(25).toFixed(1)}`);
+  assert.ok(fall(45) < 15, `down at 45 km/h: hurt ${fall(45).toFixed(1)}`);
+  assert.ok(jump(50) < 20, `off at 50 km/h: hurt ${jump(50).toFixed(1)}`);
+  assert.ok(fall(100) >= 100, `down at 100 km/h: hurt ${fall(100).toFixed(1)}`);
+});
+
+test('a rider who gets off or is thrown off is not run down by his own machine as it goes on', () => {
+  for (const [id, how] of [
+    ['wla', 'off'],
+    ['wla', 'thrown'],
+    ['r75_sidecar', 'off'],
+    ['willys_mb', 'off'],
+  ]) {
+    const { game } = makeWorld({ size: 2048 });
+    const g = Object.create(Game.prototype);
+    const noop = () => {};
+    Object.assign(g, game, { effects: { spawn: noop, flashLight: noop, explosion: noop }, hud: { killFeed: noop, flash: noop, hitMarker: noop } });
+    const v = spawn(g, id, 0, 800, 0);
+    const man = v.occupants[0];
+    Object.assign(man, { team: 1 });
+    g.soldiers.push(man);
+    run(v, 1);
+    for (let t = 0; t < 30 && kmh(v) < 60; t += 1 / 120) {
+      v.driverInput(1, 0);
+      v.step(1 / 120);
+    }
+    // Somebody standing in the road ahead is still run down.
+    const p = v.body.position;
+    const other = { ...rider(), team: 0, body: { x: p.x, y: 50, z: p.z - 25, vx: 0, vz: 0 } };
+    g.soldiers.push(other);
+    if (how === 'off') v.exit(man);
+    else v._fall(1, 'slide');
+    const jump = man.hurt || 0;
+    for (let t = 0; t < 2; t += 1 / 120) {
+      v.step(1 / 120);
+      g.time += 1 / 120;
+      g._runOver();
+    }
+    assert.equal(man.hurt || 0, jump, `${id}, ${how} at 60 km/h: hurt ${jump.toFixed(0)} getting off, ${((man.hurt || 0) - jump).toFixed(0)} more by his own machine`);
+    if (how === 'off' && id === 'wla') assert.ok(other.hurt > 0, `${id} still runs down someone in its way`);
+  }
 });
 
 test('parked machines go to sleep on their stands; riders sit where riderPose says', () => {

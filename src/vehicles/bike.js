@@ -32,7 +32,7 @@
 // The heading, position and speeds follow a single-track (bicycle) model with
 // tire slip; pitch and heave come from the wheel springs. Units: SI.
 import * as THREE from 'three';
-import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP } from './vehicle.js';
+import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP, CRASH_SAFE, crashDamage, crashInjury, fallInjury } from './vehicle.js';
 import { STAMINA_POOL, STAMINA_REGEN } from '../actors/body.js';
 import { MountedGun } from './tracked.js';
 import { magic } from './wheeled.js';
@@ -97,6 +97,15 @@ export const LOCK_USE = 0.6 / TURN_CIRCLE;
 // alone would push him (the motorcycles get ACCEL_GAIN, vehicle.js).
 const PEDAL_GAIN = 3;
 
+// Gameplay: what soft ground (grass, leaf litter, crops, fields, mud, sand)
+// adds to a bicycle's rolling resistance over a hard road's is cut to this
+// share. With the real figures his steady 160 W, which gives 18 km/h on a road,
+// gave 9 km/h on grass and 5 on a ploughed field (slower than a soldier jogs),
+// in mud or sand his legs could not get it rolling at all, and nine tenths of
+// a battlefield is soft ground. (He also works harder there: see _legs.)
+const SOFT_ROLL = 0.4;
+const HARD_ROLL = ROLL.bicycle[8]; // (a road)
+
 // Gameplay: riders roll into a lean, and back up out of it, this many times
 // quicker than a careful rider would, so a machine answers A and D about as
 // briskly as a car and stops turning soon after the key is let go.
@@ -148,6 +157,7 @@ export class Bike extends Vehicle {
       this.wS.driven = sc.driven || 0;
     }
     this.rollTable = ROLL[def.tire] || ROLL.motorcycle;
+    if (this.pedal) this.rollTable = this.rollTable.map((c) => (c > HARD_ROLL ? HARD_ROLL + (c - HARD_ROLL) * SOFT_ROLL : c));
     this.wheelInertia = this.wheels.length * 0.6 * (this.pedal ? 1.6 : 9) * def.wheelRadius * def.wheelRadius;
 
     // Collision spheres (model space) against walls and vehicles.
@@ -451,6 +461,12 @@ export class Bike extends Vehicle {
 
   // Force needed to keep going (for the gear choice): hill, tires and air.
   _resistance() {
+    const v = Math.abs(this.speed);
+    return this.m * G * (Math.max(0, Math.sin(Math.atan(this._grade()))) + this._rolling()) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+  }
+
+  // Rolling resistance coefficient of the ground under the wheels.
+  _rolling() {
     let crr = 0,
       n = 0;
     for (const w of this.wheels)
@@ -458,9 +474,7 @@ export class Bike extends Vehicle {
         crr += this.rollTable[w.surface] ?? 0.03;
         n++;
       }
-    crr = n ? crr / n : 0.03;
-    const v = Math.abs(this.speed);
-    return this.m * G * (Math.max(0, Math.sin(Math.atan(this._grade()))) + crr) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+    return n ? crr / n : 0.03;
   }
 
   // The ground's rise per meter along the heading, under the wheels (not the
@@ -560,7 +574,7 @@ export class Bike extends Vehicle {
     if (this.mg) this._mgStep(dt);
     this._sync();
     if (this.proxies) this.updateProxies();
-    if (this.lastImpact > 6 && !this.fallen) this.damage((this.lastImpact - 6) * 12, null, 'crash');
+    if (this.lastImpact > CRASH_SAFE && !this.fallen) this.damage(crashDamage(this.lastImpact, this.maxHp), null, 'crash');
     for (const o of this.occupants) if (o) this._seatOccupant(o);
     // Parked and settled: stop simulating until something disturbs it.
     const still = Math.hypot(this.vx, this.vz) < 0.03 && Math.abs(this.yawRate) < 0.02 && Math.abs(this.leanRate) < 0.03 && Math.abs(this.vy) < 0.05 && Math.abs(this.pitchRate) < 0.03;
@@ -1255,10 +1269,10 @@ export class Bike extends Vehicle {
   }
 
   // Pedaling: the force the legs can put on the pedals falls with cadence
-  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W (more up a hill),
-  // sprinting he gives all he has, which spends W' (his stamina) above his
-  // critical power. Climbing, he stands on the pedals when sitting won't turn
-  // the cranks, and where even that won't do he walks it up.
+  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W (more up a hill
+  // or on soft ground), sprinting he gives all he has, which spends W' (his
+  // stamina) above his critical power. Climbing, he stands on the pedals when
+  // sitting won't turn the cranks, and where even that won't do he walks it up.
   _legs(h, u, throttle) {
     const pd = this.def.pedal;
     const R = this.def.wheelRadius;
@@ -1269,9 +1283,12 @@ export class Bike extends Vehicle {
     const rider = this.occupants[0];
     const spent = rider?.body?.staminaLock || this.wBal < this.wMax * 0.02;
     // Up a hill he works harder than on the flat, up to his critical power, and
-    // out of the saddle he pushes harder on the pedals.
+    // out of the saddle he pushes harder on the pedals. On soft ground he works
+    // as much harder as it takes to keep up the pace he rides at on a road
+    // (within the same limit).
     const grade = Math.max(0, this._grade());
-    const steady = pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1);
+    const soft = (this.m * G * Math.max(0, this._rolling() - HARD_ROLL) * this._pace()) / pd.efficiency;
+    const steady = Math.min(pd.cp, pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1) + soft);
     const fSeat = pd.F0 * fall * toWheel; // the most force at the tire at this cadence
     const fMax = grade > 0.02 ? (pd.F0stand ?? pd.F0) * fall * toWheel : fSeat;
     let F = 0;
@@ -1321,6 +1338,23 @@ export class Bike extends Vehicle {
     this.gear = 1;
   }
 
+  // The speed his steady effort gives on a level road (m/s, about 5).
+  _pace() {
+    if (this._paceV) return this._paceV;
+    const pd = this.def.pedal;
+    const P = pd.cruise * pd.efficiency;
+    const roll = this.nominalMass * G * HARD_ROLL,
+      air = 0.5 * 1.2 * (this.def.cda ?? 0.8);
+    let lo = 0,
+      hi = 20;
+    for (let i = 0; i < 40; i++) {
+      const v = (lo + hi) / 2;
+      if ((roll + air * v * v) * v > P) hi = v;
+      else lo = v;
+    }
+    return (this._paceV = lo);
+  }
+
   // W' balance: work above critical power drains it; below, it comes back. (As
   // on foot, the reserve is STAMINA_POOL times the plain figure and comes back
   // STAMINA_REGEN times as fast: see the soldier's body.)
@@ -1360,7 +1394,8 @@ export class Bike extends Vehicle {
   }
 
   // Down it goes: the machine slides on its side and everybody aboard is thrown.
-  _fall(side, cause) {
+  // impact: how fast it closed on whatever it hit (m/s), if it hit something.
+  _fall(side, cause, impact = 0) {
     if (this.fallen) return;
     const sp = Math.hypot(this.vx, this.vz);
     this.fallen = side || -1;
@@ -1373,14 +1408,14 @@ export class Bike extends Vehicle {
     this.lastCrash = this.game.time ?? 0;
     for (let i = 0; i < this.occupants.length; i++) {
       const o = this.occupants[i];
-      if (o) this._throw(o, sp, cause);
+      if (o) this._throw(o, sp, cause, impact);
     }
     // The machine takes a beating too.
     if (sp > 4) this.damage((sp - 4) * (sp - 4) * (this.pedal ? 1.2 : 2.5), null, 'crash');
   }
 
-  // Throw a rider off: hurt by how fast he hits the ground.
-  _throw(o, speed, cause) {
+  // Throw a rider off: hurt by how fast he hits the ground, or what he hit.
+  _throw(o, speed, cause, impact = 0) {
     const v = this.body.velocity;
     if (!this.exit(o, true)) return;
     const b = o.body;
@@ -1389,7 +1424,7 @@ export class Bike extends Vehicle {
       b.vz = v.z * 0.7;
       b.vy = Math.min(3, speed * 0.15);
     }
-    const hurt = Math.max(0, speed - 3.5) ** 2 * 0.32;
+    const hurt = Math.max(fallInjury(speed), crashInjury(impact));
     if (hurt > 0.5 && o.damage) o.damage(hurt, { kind: 'fall', part: 'legs', vehicle: this, weapon: { name: `${this.def.name} crash` } });
     if (o.isPlayer) this.game.hud?.flash?.(cause === 'rollover' ? 'Rolled over!' : 'Thrown off!', 1.5);
   }
@@ -1503,8 +1538,8 @@ export class Bike extends Vehicle {
     // A hard knock: solo machines go down, outfits just take the damage.
     const crashAt = this.pedal ? 3.2 : 4.2;
     if (impact > crashAt && !this.fallen) {
-      if (!this.rig) this._fall(this.lean >= 0 ? 1 : -1, impactOther ? 'vehicle' : 'wall');
-      else for (const o of this.occupants) if (o && impact > 7 && o.damage) o.damage((impact - 6) ** 2 * 0.6, { kind: 'fall', vehicle: this, weapon: { name: `${this.def.name} crash` } });
+      if (!this.rig) this._fall(this.lean >= 0 ? 1 : -1, impactOther ? 'vehicle' : 'wall', impact);
+      else for (const o of this.occupants) if (o && crashInjury(impact) > 0.5 && o.damage) o.damage(crashInjury(impact), { kind: 'crash', vehicle: this, weapon: { name: `${this.def.name} crash` } });
     }
     if (impactOther && impact > 2 && !impactOther.isBike) {
       // Run down by something big: a bicycle under a tank is scrap.
@@ -1719,6 +1754,8 @@ export class Bike extends Vehicle {
     this.occupants[i] = null;
     soldier.vehicle = null;
     soldier.seat = -1;
+    soldier.leftVehicle = this;
+    soldier.leftAt = this.game.time ?? 0;
     if (b) {
       b.x = x;
       b.z = z;
@@ -1741,7 +1778,7 @@ export class Bike extends Vehicle {
       } else this.onStand = false;
       if (!thrown && speed > 3 && soldier.damage) {
         // Jumping off a moving machine hurts.
-        const hurt = Math.max(0, speed - 3) ** 2 * 0.3;
+        const hurt = fallInjury(speed);
         if (hurt > 0.5) soldier.damage(hurt, { kind: 'fall', part: 'legs', vehicle: this });
       }
     }
@@ -1967,7 +2004,8 @@ export class Bike extends Vehicle {
     for (const o of this.occupants.slice()) {
       if (!o) continue;
       this.exit(o, true);
-      if (o.alive && o.damage) o.damage(cause === 'fire' ? 10 : 20, { kind: 'vehicle', attacker, vehicle: this });
+      // (Wrecked in a crash, he has had his knocks already.)
+      if (o.alive && o.damage && cause !== 'crash') o.damage(cause === 'fire' ? 10 : 20, { kind: 'vehicle', attacker, vehicle: this });
     }
     if (!this.rig && !this.fallen) this._fall(this.lean >= 0 ? 1 : -1, 'wreck');
     this.game.onVehicleDestroyed?.(this, attacker, cause);

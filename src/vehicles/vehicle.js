@@ -91,6 +91,29 @@ export const TURN_RATE = 1.25;
 export const TURN_GRIP = 1.45;
 export const ROLL_CG = 0.6;
 
+// Crashes, by the speed (m/s) at which the vehicle closes on what it hits (a
+// wall, a tree, another vehicle, the ground after a jump). Up to 8 m/s (about
+// 30 km/h, and a 3 m drop) a knock does no harm; past that the damage grows
+// with the square of the speed (the energy): into a wall at 40 km/h a jeep
+// loses a twentieth of its strength, at 60 km/h two fifths, and at 80 km/h it
+// is wrecked. The people in an open vehicle or on a motorcycle are hurt from
+// 9 m/s: a little at 45 km/h, half their health at 60 km/h; at 80 km/h it
+// kills them.
+export const CRASH_SAFE = 8;
+export function crashDamage(speed, maxHp) {
+  return maxHp * 0.005 * Math.max(0, speed - CRASH_SAFE) ** 2;
+}
+export function crashInjury(speed) {
+  return 0.8 * Math.max(0, speed - 9) ** 2;
+}
+// Thrown off (or jumping off) a machine moving at `speed`: a slide along the
+// ground, gentler than hitting a wall. Nothing at a trot, a few points at
+// 40 km/h, a third of his health at 60 km/h; at a motorcycle's full speed it
+// kills.
+export function fallInjury(speed) {
+  return 0.22 * Math.max(0, speed - 5) ** 2;
+}
+
 export class Vehicle {
   constructor(game, def, model, x, z, yaw) {
     this.id = nextVehicleId++;
@@ -357,7 +380,8 @@ export class Vehicle {
     }
     b.applyForce(_f, p);
     if (other) other.body.applyForce(_f.negate(), p);
-    this.lastImpact = Math.max(this.lastImpact, Math.abs(vn));
+    // (How fast it was closing in: the spring pushing it back out again is no knock.)
+    if (vn < 0) this.lastImpact = Math.max(this.lastImpact, -vn);
     if (sample) sample.touching = true;
   }
 
@@ -582,9 +606,23 @@ export class Vehicle {
       for (const p of this.proxies) p.box.enabled = true;
       this.updateProxies();
     }
-    // Hard knocks hurt the vehicle (and whoever is inside).
-    if (this.lastImpact > 6) this.damage((this.lastImpact - 6) * 25, null, 'crash');
+    this._knock(this.lastImpact, dt);
     for (const o of this.occupants) if (o) this._seatOccupant(o);
+  }
+
+  // Hard knocks hurt the vehicle and (in the open, not inside a tank) whoever
+  // is aboard: once for each knock, by its hardest moment (a crash goes on for
+  // several steps while the vehicle stops; charged step by step, a jeep that
+  // ran into a wall at 60 km/h used to be wrecked and its crew killed).
+  _knock(speed, dt) {
+    const peak = Math.max(0, (this.knockPeak || 0) - 20 * dt);
+    this.knockPeak = Math.max(peak, speed);
+    if (speed <= Math.max(peak, CRASH_SAFE)) return;
+    const hurt = crashInjury(speed) - crashInjury(peak);
+    if (hurt > 0.5 && this.def.kind !== 'tracked') {
+      for (const o of this.occupants) if (o?.alive && o.damage) o.damage(hurt, { kind: 'crash', vehicle: this, weapon: { name: `${this.def.name} crash` } });
+    }
+    this.damage(crashDamage(speed, this.maxHp) - crashDamage(peak, this.maxHp), null, 'crash');
   }
 
   // Surface grip and rolling resistance under a wheel.
@@ -692,6 +730,8 @@ export class Vehicle {
     this.occupants[i] = null;
     soldier.vehicle = null;
     soldier.seat = -1;
+    soldier.leftVehicle = this;
+    soldier.leftAt = this.game.time ?? 0;
     const sb = soldier.body;
     sb.x = placed.x;
     sb.y = placed.y + 0.05;
@@ -1022,7 +1062,14 @@ export class Vehicle {
     this.engineOn = false;
     this.fire = Math.max(this.fire, 60);
     this.destroyCause = cause;
-    for (const o of this.occupants) if (o && o.alive) o.damage(1000, { kind: 'vehicle', attacker, vehicle: this });
+    for (const o of this.occupants.slice()) {
+      if (!o || !o.alive) continue;
+      // Wrecked in a crash, the people aboard have had their knocks (_knock):
+      // they climb out of it. Anything else that wrecks it kills them.
+      if (cause === 'crash' && this.exit(o)) {
+        if (o === this.game.player?.soldier) this.game.player.exitedVehicle?.(this);
+      } else o.damage(1000, { kind: 'vehicle', attacker, vehicle: this });
+    }
     this.game.onVehicleDestroyed?.(this, attacker, cause);
   }
 }
