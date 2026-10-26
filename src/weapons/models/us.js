@@ -61,10 +61,11 @@ export function m1_garand(b) {
   lathe(b, { mat: P, y: -0.0172, seg: 20, profile: [[0, MZ - 0.0012], [0.0058, MZ - 0.0012], [0.0072, MZ + 0.0002], [0.0072, GZ0 + 0.001], [0.0, GZ0 + 0.001]] }); // lock screw
   if (b.detail(0)) b.box({ x: 0, y: -0.0172, z: MZ - 0.0006, w: 0.011, h: 0.0016, d: 0.0018, mat: 'black', r: 0 });
   b.span({ z0: -0.768, z1: -0.746, y0: -0.0325, y1: -0.025, w: 0.009, mat: P, r: 0.0012 }); // bayonet lug
-  // Front sight: seat on the gas cylinder, two protecting ears, flat-topped blade.
+  // Front sight: seat on the gas cylinder, two protecting ears, flat-topped blade
+  // 0.077 in (1.96 mm) wide.
   b.span({ z0: -0.7705, z1: -0.7555, y0: 0.0085, y1: 0.0152, w: 0.0168, mat: P, r: 0.0015 });
   for (const s of [-1, 1]) b.extrude({ points: S([[-0.7702, 0.014], [-0.7558, 0.014], [-0.7575, 0.0302], [-0.7685, 0.0306]], 2), width: 0.0021, x: s * 0.0068, mat: P, bevel: 0.0004 });
-  plateXYz(b, { outline: [[-0.0011, 0.0148], [0.0011, 0.0148], [0.0011, FS], [-0.0011, FS]], z0: FZ - 0.003, z1: FZ + 0.003, mat: P, bevel: 0.0002 });
+  plateXYz(b, { outline: [[-0.00098, 0.0148], [0.00098, 0.0148], [0.00098, FS], [-0.00098, FS]], z0: FZ - 0.003, z1: FZ + 0.003, mat: P, bevel: 0.0002 });
   if (b.detail(0)) screw(b, { at: [0.0084, 0.0118, -0.763], axis: 'x', r: 0.0018, mat: P, slot: 1.57 }); // front sight screw
   b.anchor('frontSight', 0, FS, FZ);
 

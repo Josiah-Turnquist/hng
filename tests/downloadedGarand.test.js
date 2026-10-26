@@ -47,6 +47,22 @@ test('the peep hole is opened up to 6 mm across', () => {
   assert.ok(r > 0.0028 && r < 0.0032, `hole radius ${r}`);
 });
 
+test("the front sight's blade is as wide as a real one's (0.077 in), between its ears", () => {
+  // Across from the gaps between the blade and the ears, a millimeter under its
+  // top (and a millimeter ahead of its ridge, clear of the edges of the faces).
+  const f = anchors.frontSight;
+  const y = f.y - 0.001,
+    z = f.z + 0.001;
+  const right = cast([0.002, y, z], [-1, 0, 0], 0.01);
+  const left = cast([-0.002, y, z], [1, 0, 0], 0.01);
+  assert.ok(right !== null && left !== null, `blade met ${right}, ${left}`);
+  const w = 0.004 - right - left;
+  assert.ok(Math.abs(w - 0.00196) < 0.0001, `blade ${w * 1000} mm wide`);
+  // The ears beside it, 2.7 mm out to either side.
+  const ears = [cast([0.002, y, z], [1, 0, 0], 0.01), cast([-0.002, y, z], [-1, 0, 0], 0.01)];
+  assert.ok(ears.every((d) => d !== null && Math.abs(d - 0.0007) < 0.0003), `the ears ${ears} m beyond the gaps`);
+});
+
 test('through the rear sight the front sight is in clear view, at every range setting', () => {
   const s = new Sighting(gun, WEAPONS.m1_garand, new Atmosphere(0, 15));
   assert.equal(s.sightKind, 'slide');

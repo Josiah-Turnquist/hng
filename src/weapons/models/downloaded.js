@@ -21,6 +21,8 @@
 //  * The rear sight is cut out of the body as a part of its own, so it slides
 //    up for longer ranges as ours does, and its peep hole is opened up to the
 //    size of ours (6 mm across; drawn 2.2 mm), the disc round it grown to match.
+//  * The front sight's blade is made as wide as a real one's, 0.077 in (1.96
+//    mm; drawn 0.94 mm, too thin to show when aiming).
 //  * The bolt and the operating rod move, each with its own travel (from the
 //    model's animation).
 //  * Grips, trigger, shoulder, muzzle and sights are measured on the model.
@@ -53,6 +55,10 @@ const BUTT = { z0: 0.045, ramp: 0.08, end: 0.332 };
 // The aperture's stem reaches this much deeper into the sight base, so no gap
 // opens under it when the sight is raised (by up to 15 mm, at 1200 yards).
 const STEM = 0.016;
+// The front sight's blade (our space): its width as drawn and as we make it,
+// and a box round it and the foot it stands on (inside the ears, which stand
+// 2.7 mm to either side).
+const BLADE = { w: 0.00094, w2: 0.00196, half: 0.0012, y0: 0.019, y1: 0.0236, z0: -0.7182, z1: -0.7063 };
 const ANCHORS = {
   muzzle: [0, 0, -0.7476],
   frontSight: [0, 0.0232, -0.7123], // top of the blade (the ears beside it stand 2 mm higher)
@@ -149,6 +155,7 @@ function fit(gltf, mat) {
   });
   if (!main) throw new Error('no rifle body (Garand001) in the model');
   lengthenButt(main);
+  widenBlade(main);
   // The rear sight: the piece of the body round the peep hole.
   const [rest, sight] = splitPiece(main, [HOLE.c[0], HOLE.c[1] + HOLE.r, HOLE.c[2]]);
   geos.body.unshift(rest);
@@ -216,6 +223,34 @@ function lengthenButt(geo) {
     }
     if (tan) {
       n.set(tan.getX(i), tan.getY(i), tan.getZ(i) * f).normalize();
+      tan.setXYZ(i, n.x, n.y, n.z);
+    }
+  }
+  pos.needsUpdate = true;
+}
+
+// Widen the front sight's blade, and the foot it stands on, sideways about the
+// bore's line to BLADE.w2. Normals and tangents follow.
+function widenBlade(geo) {
+  const k = BLADE.w2 / BLADE.w;
+  const pos = geo.attributes.position,
+    nor = geo.attributes.normal,
+    tan = geo.attributes.tangent;
+  const n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i),
+      y = pos.getY(i),
+      z = pos.getZ(i);
+    if (Math.abs(x) > BLADE.half || y < BLADE.y0 || y > BLADE.y1 || z < BLADE.z0 || z > BLADE.z1) continue;
+    pos.setX(i, x * k);
+    if (nor) {
+      n.fromBufferAttribute(nor, i);
+      n.x /= k;
+      n.normalize();
+      nor.setXYZ(i, n.x, n.y, n.z);
+    }
+    if (tan) {
+      n.set(tan.getX(i) * k, tan.getY(i), tan.getZ(i)).normalize();
       tan.setXYZ(i, n.x, n.y, n.z);
     }
   }
