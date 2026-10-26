@@ -765,6 +765,50 @@ test('a rider who gets off or is thrown off is not run down by his own machine a
   }
 });
 
+test('running into a parked bicycle or jeep does not hurt; one driving into you does', () => {
+  for (const id of ['bicycle', 'willys_mb']) {
+    const { game } = makeWorld({ size: 2048 });
+    const g = Object.create(Game.prototype);
+    const noop = () => {};
+    Object.assign(g, game, { effects: { spawn: noop, flashLight: noop, explosion: noop }, hud: { killFeed: noop, flash: noop, hitMarker: noop } });
+    const v = spawn(g, id, 0, 800, 0, { empty: true });
+    run(v, 2);
+    const p = v.body.position;
+    // A sprint (6 m/s) straight into its side.
+    const man = { ...rider(), team: 0, body: { x: p.x + 2, y: p.y, z: p.z, vx: -6, vz: 0 } };
+    g.soldiers.push(man);
+    for (let t = 0; t < 0.6; t += 1 / 120) {
+      man.body.x += man.body.vx / 120;
+      man.body.vx = Math.min(man.body.vx, -6) || -6;
+      g.time += 1 / 120;
+      g._runOver();
+    }
+    assert.equal(man.hurt || 0, 0, `${id}: hurt ${(man.hurt || 0).toFixed(0)} running into it parked`);
+  }
+  // A jeep driven at about 30 km/h into a man standing in the road.
+  const { game } = makeWorld({ size: 2048 });
+  const g = Object.create(Game.prototype);
+  const noop = () => {};
+  Object.assign(g, game, { effects: { spawn: noop, flashLight: noop, explosion: noop }, hud: { killFeed: noop, flash: noop, hitMarker: noop } });
+  const v = spawn(g, 'willys_mb', 0, 800, 0);
+  run(v, 1);
+  for (let t = 0; t < 20 && kmh(v) < 30; t += 1 / 120) {
+    v.driverInput(1, 0);
+    v.step(1 / 120);
+  }
+  const p = v.body.position;
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(v.body.quaternion);
+  const other = { ...rider(), team: 0, body: { x: p.x + fwd.x * 6, y: p.y, z: p.z + fwd.z * 6, vx: 0, vz: 0 } };
+  g.soldiers.push(other);
+  for (let t = 0; t < 1.5 && !other.hurt; t += 1 / 120) {
+    v.driverInput(1, 0);
+    v.step(1 / 120);
+    g.time += 1 / 120;
+    g._runOver();
+  }
+  assert.ok(other.hurt > 20, `run down at 30 km/h: hurt ${(other.hurt || 0).toFixed(0)}`);
+});
+
 test('parked machines go to sleep on their stands; riders sit where riderPose says', () => {
   const { game } = makeWorld();
   const v = spawn(game, 'r75', 0, 0, 0, { empty: true });

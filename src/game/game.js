@@ -407,16 +407,18 @@ export class Game {
         const ox = W / 2 + r - Math.abs(p.x),
           oz = L / 2 + r - Math.abs(p.z);
         if (ox <= 0 || oz <= 0) continue;
-        // Relative speed of the vehicle where it touches the soldier.
+        // Out of the hull sideways (or ahead), toward him.
+        const side = ox < oz ? new THREE.Vector3(Math.sign(p.x) || 1, 0, 0) : new THREE.Vector3(0, 0, Math.sign(p.z) || 1);
+        side.applyQuaternion(b.quaternion);
+        // How fast the vehicle itself drives into him there, less how fast he is
+        // getting out of its way. (His own running into it does not count: it
+        // made a sprint into a parked bicycle or jeep cost 20 to 70 health.)
         const vel = b.pointVelocity(new THREE.Vector3(sb.x, sb.y + 0.5, sb.z), new THREE.Vector3());
-        const rel = Math.hypot(vel.x - sb.vx, vel.z - sb.vz);
+        const rel = vel.x * side.x + vel.z * side.z - Math.max(0, sb.vx * side.x + sb.vz * side.z);
         if (rel > 2.2) {
           const dmg = 2 * rel * rel * Math.pow(v.def.mass / 1000, 0.3);
           s.damage(dmg, { kind: 'vehicle', attacker: v.driver || v.lastDriver, vehicle: v, weapon: { name: v.def.name } });
         }
-        // Push out sideways (or ahead) of the hull.
-        const side = ox < oz ? new THREE.Vector3(Math.sign(p.x) || 1, 0, 0) : new THREE.Vector3(0, 0, Math.sign(p.z) || 1);
-        side.applyQuaternion(b.quaternion);
         const push = Math.min(ox, oz) + 0.02;
         sb.x += side.x * push;
         sb.z += side.z * push;
