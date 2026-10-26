@@ -85,3 +85,30 @@ test('a preset saved by an older version follows the preset as it is now', () =>
     else globalThis.localStorage = old;
   }
 });
+
+test('focus when aiming is off unless the player turns it on', () => {
+  for (const [name, p] of Object.entries(GRAPHICS_PRESETS)) assert.equal(p.depthOfField, false, name);
+});
+
+test('settings saved before a default changed take the new default once, then keep later choices', () => {
+  const saved = new Map();
+  const old = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
+  try {
+    // Saved with the made-in-code Garand and focus when aiming on (once on in High).
+    saved.set('hng.settings.v1', JSON.stringify({ quality: 'custom', graphics: { ...GRAPHICS_PRESETS.high, bloom: false, depthOfField: true }, garandModel: 'code' }));
+    const s = new Settings();
+    assert.equal(s.get('garandModel'), 'download');
+    assert.equal(s.graphics.depthOfField, false);
+    assert.equal(s.graphics.bloom, false, "the player's other changes stay");
+    // Chosen again afterwards, they stay.
+    s.set('garandModel', 'code');
+    s.setGraphics('depthOfField', true);
+    const t = new Settings();
+    assert.equal(t.get('garandModel'), 'code');
+    assert.equal(t.graphics.depthOfField, true);
+  } finally {
+    if (old === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = old;
+  }
+});

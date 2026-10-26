@@ -246,7 +246,7 @@ export const GRAPHICS_PRESETS = {
     grassDistance: 70,
     textureQuality: 'medium',
     effects: 'high',
-    depthOfField: true,
+    depthOfField: false,
     motionBlur: false,
     maxPixelRatio: 1.5,
     terrainLod: 1.4,
@@ -266,7 +266,7 @@ export const GRAPHICS_PRESETS = {
     grassDistance: 90,
     textureQuality: 'high',
     effects: 'high',
-    depthOfField: true,
+    depthOfField: false,
     motionBlur: false,
     maxPixelRatio: 2,
     terrainLod: 2,
@@ -397,7 +397,10 @@ const DEFAULTS = {
   objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
   garandModel: 'download', // the M1 Garand in your hands: 'download' (the downloaded model) or 'code' (made in code)
-  garandDefaultSet: true, // (settings saved before the downloaded Garand became the default lack this)
+  // One-time changes to settings saved by older versions (see the constructor):
+  // new settings, and those already changed, have these marks.
+  garandDefaultSet: true, // the downloaded Garand became the default
+  aimFocusOff: true, // focus when aiming became off in every preset
   bindings: {}, // the player's key changes: { action: [codes] } (see input.js)
   units: 'metric',
   holdToCrouch: false,
@@ -410,9 +413,11 @@ export class Settings {
   constructor() {
     this.values = { ...DEFAULTS };
     this.listeners = [];
+    let saved = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) Object.assign(this.values, JSON.parse(raw));
+      if (raw) saved = JSON.parse(raw);
+      if (saved) Object.assign(this.values, saved);
     } catch {
       // Storage can be unavailable (private mode, sandboxed page). Defaults are fine.
     }
@@ -430,12 +435,15 @@ export class Settings {
       v.gpu = d.gpu;
       this._save();
     }
-    // The downloaded Garand became the default: settings saved before then (which
-    // may hold the made-in-code one from comparing the two) switch to it once.
-    if (!v.garandDefaultSet) {
-      v.garandModel = 'download';
-      v.garandDefaultSet = true;
-      this._save();
+    // One-time changes to settings saved before them (which lack their marks; the
+    // marks then saved from DEFAULTS keep the player's later choices).
+    if (saved) {
+      // The downloaded Garand became the default (settings saved before then may
+      // hold the made-in-code one from comparing the two).
+      if (!saved.garandDefaultSet) v.garandModel = 'download';
+      // Focus when aiming became off by default (High and Ultra had it on).
+      if (!saved.aimFocusOff) v.graphics.depthOfField = false;
+      if (!saved.garandDefaultSet || !saved.aimFocusOff) this._save();
     }
     // Options added since the settings were saved take the preset's value.
     const base = GRAPHICS_PRESETS[v.quality] || GRAPHICS_PRESETS.high;
