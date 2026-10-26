@@ -396,6 +396,7 @@ const DEFAULTS = {
   grenadeWarning: true, // a mark on live grenades that land near you
   objectiveMarkers: true, // marks over the points to take or hold next
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
+  botDifficulty: 'normal', // the bots on both sides: 'easy', 'normal' or 'hard' (bot.js DIFFICULTY)
   garandModel: 'download', // the M1 Garand in your hands: 'download' (the downloaded model) or 'code' (made in code)
   // One-time changes to settings saved by older versions (see the constructor):
   // new settings, and those already changed, have these marks.
