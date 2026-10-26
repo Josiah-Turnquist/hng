@@ -212,7 +212,9 @@ export class AssaultMode {
     const loadout = this._botLoadout(faction, cls, i);
     const names = NAMES[faction] || NAMES.US;
     const s = new Soldier(g, { faction, cls, loadout, team, name: names[i % names.length], x: 0, z: 0 });
-    s.brain = new BotBrain(g, s, { skill: i % 5 === 0 ? 'veteran' : i % 3 === 0 ? 'recruit' : 'regular' });
+    // His place in his side's mix of veterans, regulars and recruits (which the
+    // bot difficulty setting sets): spread evenly over the side.
+    s.brain = new BotBrain(g, s, { rank: (i * 0.618034 + 0.05) % 1 });
     s.alive = false;
     s.deathTime = 100;
     s.respawnT = 1 + Math.random() * 6;

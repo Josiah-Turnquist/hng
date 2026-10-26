@@ -107,8 +107,9 @@ export class CollisionWorld {
   }
 
   add(box) {
-    // Leaves never hide what's behind them completely: they are partial cover
-    // that makes someone slower to spot (foliageAlong), not a wall to sight.
+    // Leaves are not a wall to sight: they are measured along a sight line
+    // instead (foliageAlong). Thin leaves only make someone slower to spot; the
+    // bots treat a thick bush or hedge (box.dense) as hiding him (bot.js).
     if (box.material === 'foliage' && box.flags & FLAG_SIGHT) box.flags = (box.flags & ~FLAG_SIGHT) | FLAG_FOLIAGE;
     this.boxes.push(box);
     this._insert(box);
@@ -301,8 +302,11 @@ export class CollisionWorld {
   }
 
   // How many meters of leaves (FLAG_FOLIAGE boxes) the straight line from a to b
-  // passes through: hedges, bushes and the crowns of trees in the way.
-  foliageAlong(ax, ay, az, bx, by, bz) {
+  // passes through: hedges, bushes and the crowns of trees in the way. With out,
+  // out.dense is how many of those meters are in thick bushes and hedges
+  // (boxes marked dense), which nobody sees through.
+  foliageAlong(ax, ay, az, bx, by, bz, out = null) {
+    if (out) out.dense = 0;
     const dx0 = bx - ax,
       dy0 = by - ay,
       dz0 = bz - az;
@@ -337,7 +341,11 @@ export class CollisionWorld {
           const b = cell[i];
           if (b.stamp === stamp || !b.enabled || !(b.flags & FLAG_FOLIAGE)) continue;
           b.stamp = stamp;
-          if (CollisionWorld.rayBox(b, ax, ay, az, dx, dy, dz, len, tmpHit)) total += Math.max(0, Math.min(tmpHit.tExit, len) - Math.max(tmpHit.t, 0));
+          if (CollisionWorld.rayBox(b, ax, ay, az, dx, dy, dz, len, tmpHit)) {
+            const m = Math.max(0, Math.min(tmpHit.tExit, len) - Math.max(tmpHit.t, 0));
+            total += m;
+            if (out && b.dense) out.dense += m;
+          }
         }
       } else if ((gx < 0 && stepX < 0) || (gz < 0 && stepZ < 0) || (gx >= n && stepX > 0) || (gz >= n && stepZ > 0)) break;
       if (tMaxX < tMaxZ) {

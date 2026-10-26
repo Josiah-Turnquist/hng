@@ -107,7 +107,8 @@ export function buildFarm(B, farm, ctx) {
     const hs = f.sub(bs * 7.5, 0, 9.5, 0);
     hs.geometry('hay', new THREE.SphereGeometry(1, 12, 7, 0, TAU, 0, Math.PI / 2), mat4(0, 0, 0, 0, 0, 0, 2.2, 3.0, 2.2), {});
     hs.geometry('hay', new THREE.CylinderGeometry(2.2, 2.0, 1.2, 12, 1, true), mat4(0, -0.55, 0), {});
-    hs.collider(0, 1.2, 0, 1.6, 1.4, 1.6, null, 'foliage', FLAG_SOLID | FLAG_BULLET | FLAG_SIGHT, true);
+    // (Hay slows bullets like leaves, and hides a man as completely as a thick hedge.)
+    hs.collider(0, 1.2, 0, 1.6, 1.4, 1.6, null, 'foliage', FLAG_SOLID | FLAG_BULLET | FLAG_SIGHT, true).dense = true;
     f.cover(bs * 7.5 - 2.6, 0, 9.5, 1, 0, 'high');
     // Manure heap.
     rubblePile(f, -bs * 7, 0, -6.5, 1.8, 1.3, 0.8, { seed: r.int(0, 1e6), color: rgb(0.45, 0.35, 0.25), palette: ['hay'], blocks: 6 });

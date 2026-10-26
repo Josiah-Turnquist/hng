@@ -6,11 +6,29 @@
 //   coverHolds(game, spot, threat)    // is that spot still hidden from the threat?
 //   fireteam(game, s)                 // { index, side, leader } of s's fireteam
 //   callout(game, s, enemy)           // tell comrades close by where an enemy is
+//   leavesBetween(coll, a.., b..)     // meters of leaves on a sight line; do they hide b?
 //   grenadeLob(hand, target, vmax)    // launch velocity for a lob, or null
 import { STANCE } from '../actors/body.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 
 const _hit = new RayHit();
+const _leaves = { dense: 0 };
+
+// Thick bushes and hedges hide a man completely beyond a few meters (as they do
+// on screen): this many meters of them on a sight line (CollisionWorld.foliageAlong,
+// dense) and the line is blocked, unless it is shorter than SEE_THROUGH_LEAVES.
+// Less than that (the edge of a bush), or thinner leaves, only slow spotting.
+export const THICK_LEAVES = 0.5;
+export const SEE_THROUGH_LEAVES = 10;
+
+// Meters of leaves from a to b ({ total, dense }) and whether they hide b.
+export function leavesBetween(coll, ax, ay, az, bx, by, bz, out = { total: 0, dense: 0, hides: false }) {
+  out.total = coll.foliageAlong(ax, ay, az, bx, by, bz, _leaves);
+  out.dense = _leaves.dense;
+  out.hides = out.dense >= THICK_LEAVES && Math.hypot(bx - ax, by - ay, bz - az) > SEE_THROUGH_LEAVES;
+  return out;
+}
+const _lb = { total: 0, dense: 0, hides: false };
 
 // Eye height by stance (stand, crouch, prone) and the heights an enemy would
 // see of a soldier: head and chest (body.js STANCE_INFO).
@@ -21,15 +39,16 @@ const BODY = [
   [0.32, 0.18],
 ];
 
-// Nothing solid on the line from a to b (leaves don't count: they hide a man
-// only partly, see the bots' spotting).
+// Nothing solid on the line from a to b, nor a thick bush or hedge (thinner
+// leaves don't count: they hide a man only partly, see the bots' spotting).
 function clear(coll, ax, ay, az, bx, by, bz) {
   const dx = bx - ax,
     dy = by - ay,
     dz = bz - az;
   const len = Math.hypot(dx, dy, dz);
   if (len < 0.4) return true;
-  return !coll.raycast(ax, ay, az, dx / len, dy / len, dz / len, len - 0.3, _hit, FLAG_SIGHT, true);
+  if (coll.raycast(ax, ay, az, dx / len, dy / len, dz / len, len - 0.3, _hit, FLAG_SIGHT, true)) return false;
+  return len <= SEE_THROUGH_LEAVES || !leavesBetween(coll, ax, ay, az, bx, by, bz, _lb).hides;
 }
 
 // Hidden from the eye e (head and chest both out of sight) at (x, y, z) in a stance.
@@ -190,8 +209,9 @@ export function fireteam(game, s) {
 
 // Seen an enemy: comrades within earshot learn where (they still have to see
 // him themselves to shoot, but they turn that way and pick him out sooner).
-export function callout(game, s, enemy, range = 60) {
-  const p = enemy.isVehicle ? enemy.body.position : enemy.body;
+export function callout(game, s, enemy, range = 60, at = null) {
+  // (Where the caller saw him, or thinks he is.)
+  const p = at || (enemy.isVehicle ? enemy.body.position : enemy.body);
   for (const o of game.soldiers) {
     const br = o.brain;
     if (o === s || !o.alive || o.team !== s.team || !br?.aware || o.vehicle) continue;

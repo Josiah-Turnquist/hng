@@ -1,10 +1,12 @@
-// Leaves are partial cover: they never block sight outright (people behind a
-// bush or a hedge must not vanish), but sight lines through them are measured so
-// the bots are slower to spot someone behind them. Earth banks still block.
+// Leaves are never a wall in the collision world: sight lines through them are
+// measured instead. Thin leaves (tree crowns) make the bots slower to spot
+// someone behind them; thick bushes and hedges, which nobody can see through on
+// the screen either, hide him beyond a few meters. Earth banks block.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle } from './helpers/battle.js';
 import { FLAG_SIGHT, FLAG_FOLIAGE, FLAG_SOLID } from '../src/physics/collision.js';
+import { leavesBetween } from '../src/ai/tactics.js';
 
 const g = await makeBattle({ perSide: 2 });
 const coll = g.world.collision;
@@ -50,6 +52,33 @@ test('a hedge is about a meter of leaves to look through, above a solid bank', (
     if (!coll.lineOfSight(p[0], p[1], p[2], q[0], q[1], q[2])) blocked++;
   }
   assert.ok(blocked >= 35, `the bank blocked only ${blocked} of 40 low sight lines`);
+});
+
+test('bushes and hedges are thick (they hide a man beyond a few meters), tree crowns thin', () => {
+  const leafy = coll.boxes.filter((b) => b.flags & FLAG_FOLIAGE);
+  const hedges = leafy.filter((b) => b.flags & FLAG_SOLID);
+  assert.ok(hedges.length > 50 && hedges.every((b) => b.dense), 'hedges (and haystacks) are thick');
+  // Bushes stand on the ground; crowns are high up and wide.
+  const bushes = leafy.filter((b) => !(b.flags & FLAG_SOLID) && b.dense);
+  assert.ok(bushes.length > 1000, `${bushes.length} bushes`);
+  const crowns = leafy.filter((b) => !b.dense);
+  assert.ok(crowns.length > 200, `${crowns.length} tree crowns`);
+  // Across a hedge: hidden from a bot 20 m off, not from one 6 m off.
+  let tested = 0;
+  for (const b of hedges.filter((h) => Math.max(h.hx, h.hz) > 3).slice(0, 60)) {
+    const y = b.cy + b.hy * 0.4;
+    const thin = b.hx < b.hz ? b.ax : b.az;
+    const r = Math.min(b.hx, b.hz);
+    const at = (k) => [b.cx + thin[0] * k, y, b.cz + thin[2] * k];
+    const far = at(20),
+      near = at(5),
+      man = at(-r - 0.8);
+    if (!coll.lineOfSight(...far, ...man) || !coll.lineOfSight(...near, ...man)) continue;
+    assert.ok(leavesBetween(coll, ...far, ...man).hides, 'seen through a hedge from 20 m');
+    assert.ok(!leavesBetween(coll, ...near, ...man).hides, 'hidden behind a hedge from 6 m');
+    tested++;
+  }
+  assert.ok(tested >= 10, `only ${tested} hedges had a clean view`);
 });
 
 test('open ground has no leaves in the way', () => {
