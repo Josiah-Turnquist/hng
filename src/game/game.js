@@ -703,6 +703,9 @@ export class Game {
       if (a.team !== s.team) {
         a.kills++;
         a.score += 5;
+        // The kill mark for the player however he killed (run over, blown up,
+        // bled out), not only by a bullet.
+        if (a === this.player?.soldier) this.hud?.hitMarker(2);
       } else a.score -= 10;
     } else if (a === s) s.score -= 1;
     this.hud?.killFeed(a, s, cause);

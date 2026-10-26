@@ -75,3 +75,28 @@ test('coming back in, a soldier has his own loadout again, not what he picked up
   assert.deepEqual(me.weapons.map((w) => w.def.id), ['m1_garand', 'm1911a1', 'mk2_grenade']);
   assert.equal(me.weapons[2], grenades, 'what was his own all along is left as it was');
 });
+
+test('kills by running over, by fire, or by bleeding out later count for whoever caused them', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { Soldier } = await import('../src/game/soldier.js');
+  let marks = 0;
+  const game = { time: 0, player: null, hud: { hitMarker: (k) => k === 2 && marks++, killFeed() {} } };
+  game.onDeath = (s, cause) => Game.prototype.onDeath.call(game, s, cause);
+  const man = (team, name) => Object.assign(Object.create(Soldier.prototype), { game, team, name, alive: true, health: 100, kills: 0, deaths: 0, score: 0, weapons: [], vehicle: null, bleed: 0 });
+  const me = man(0, 'You');
+  game.player = { soldier: me };
+  // Run over: the driver gets the kill and the kill mark.
+  const a = man(1, 'A');
+  a.damage(150, { kind: 'vehicle', attacker: me, weapon: { name: 'Willys MB' } });
+  assert.equal(me.kills, 1);
+  assert.equal(marks, 1);
+  // Wounded, then bled out half a minute later: still his kill.
+  const b = man(1, 'B');
+  b.damage(40, { kind: 'bullet', attacker: me, weapon: { name: 'M1 Garand' } });
+  game.time = 30;
+  b.health = 0;
+  b.bleedOut();
+  assert.equal(me.kills, 2);
+  assert.equal(marks, 2);
+  assert.equal(me.score, 10);
+});

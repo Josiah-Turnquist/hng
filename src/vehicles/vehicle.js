@@ -684,6 +684,7 @@ export class Vehicle {
     if (seat === 0) {
       this.engineOn = this.modules.engine > 0;
       this.gear = 0;
+      this.lastDriver = soldier; // (a vehicle that rolls on after he jumps out is still his)
     }
     return true;
   }

@@ -127,7 +127,7 @@ export class Soldier {
     // Wounds.
     if (this.bleed > 0) {
       this.health -= this.bleed * dt;
-      if (this.health <= 0) this.die({ kind: 'bleeding' });
+      if (this.health <= 0) this.bleedOut();
     } else if (this.game.time - this.lastHitTime > 8 && this.health < this.healCap) {
       this.health = Math.min(this.healCap, this.health + 2.5 * dt);
     }
@@ -194,8 +194,22 @@ export class Soldier {
     return dmg;
   }
 
+  // Dead of his wounds: the kill of the enemy who wounded him, if that was
+  // within the last minute.
+  bleedOut() {
+    const his = this.game.time - (this.woundedT ?? -99) < 60;
+    this.die({ kind: 'bleeding', ...(his ? { attacker: this.woundedBy, weapon: this.woundedWith } : {}) });
+  }
+
   damage(amount, cause) {
     if (!this.alive) return;
+    // Who last hurt him, for a death by bleeding later.
+    const a = cause?.attacker;
+    if (a && a !== this && a.team !== this.team) {
+      this.woundedBy = a;
+      this.woundedWith = cause.weapon;
+      this.woundedT = this.game.time;
+    }
     this.health -= amount;
     this.lastHitTime = this.game.time;
     this.game.onDamage?.(this, amount, cause);
