@@ -10,7 +10,7 @@
 //   arms.setWeapon(gun, kind);   // a buildGun() result
 //   arms.place(side, shoulder, gunXf | null, { point, mode, pole });
 import * as THREE from 'three';
-import { B, BIND, BONE_NAMES, BONE_COUNT, OFFSET, LEN, FINGER_BONES, HAND_JOINTS, Pose, frameRotation, poseHand, quatFromAxes, PALM_X } from './soldierRig.js';
+import { B, BIND, BONE_NAMES, BONE_COUNT, OFFSET, LEN, FINGER_BONES, HAND_JOINTS, Pose, fingerRotations, frameRotation, poseHand, quatFromAxes, PALM_X } from './soldierRig.js';
 import { SkinBuilder } from './soldierGeo.js';
 import { soldierMaterial } from './soldierMaterials.js';
 import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';
@@ -111,10 +111,11 @@ function foreSection(root, info) {
 // stock or the pistol grip in the right hand, the fore-end in the left), as
 // cross sections along the held part. Each section is the gun sliced across,
 // and for each of N directions out from the held part's middle line, the
-// farthest surface met (so hollows between parts count as filled). The hand is
-// posed round a circle; a fore-end with a handguard over the barrel is taller
-// than that, and fingers closed round the circle would come out through the
-// top of the wood. Measured once per gun.
+// farthest surface met within reach (so hollows between parts count as filled,
+// but not the trigger guard, a drum magazine or a slide further off). The hand
+// is posed round a circle; a fore-end with a handguard over the barrel is
+// taller than that, and fingers closed round the circle would come out through
+// the top of the wood. Measured once per gun.
 const PROFILE_N = 48;
 const _pp = new THREE.Vector3(),
   _pq = new THREE.Vector3();
@@ -147,8 +148,8 @@ function holdTriangles(root, info, a, axis, half, reach = 0.1) {
   return out;
 }
 // { c, axis, u, v, ts, r: [section][direction] } for a part held along axis
-// through c (gun space), over c +- axis * half.
-function holdProfile(tris, c, axis, half, sections = 5) {
+// through c (gun space), over c +- axis * half, out to reach from it.
+function holdProfile(tris, c, axis, half, reach, sections = 5) {
   const u = new THREE.Vector3(1, 0, 0);
   if (Math.abs(u.dot(axis)) > 0.9) u.set(0, 1, 0);
   u.addScaledVector(axis, -u.dot(axis)).normalize();
@@ -192,7 +193,7 @@ function holdProfile(tris, c, axis, half, sections = 5) {
         if (Math.abs(den) < 1e-12) continue;
         const dist = (ax * ey - ay * ex) / den,
           w = (ax * dy - ay * dx) / den;
-        if (w >= 0 && w <= 1 && dist > 0 && dist > row[k]) row[k] = dist;
+        if (w >= 0 && w <= 1 && dist > row[k] && dist <= reach) row[k] = dist;
       }
     }
     ts.push(t);
@@ -228,21 +229,27 @@ function inProfile(P, p, margin) {
 // A finger's joints in the hand's frame: knuckle offset, the second bone's
 // offset from it, and the tip from the second bone; finger half thickness.
 const FINGER_R = { index: 0.0088, middle: 0.009, ring: 0.0086, pinky: 0.0078 };
+const SINK = 0.0045; // how far a finger's flesh may sink into the gun (m)
 const TIP = {};
 for (const side of [-1, 1])
   for (const f of Object.keys(FINGER_R)) {
     const J = HAND_JOINTS[f];
     TIP[`${side}${f}`] = new THREE.Vector3(side * (J[3][0] - J[1][0]), J[3][1] - J[1][1], J[3][2] - J[1][2]);
   }
-// Where a finger is tested: halfway along its first bone, the middle knuckle,
-// and three points out along the rest to the tip ([from, to, fraction]).
-const SAMPLES = (k, m, t) => [
-  [k, m, 0.5],
-  [k, m, 1],
-  [m, t, 0.35],
-  [m, t, 0.7],
-  [m, t, 1],
-];
+// Where a finger is tested ([from, to, fraction]): on its first bone (part 0)
+// halfway along and at the middle knuckle; on the rest (part 1) three points
+// out to the tip.
+const SAMPLES = (k, m, t, part) =>
+  part === 0
+    ? [
+        [k, m, 0.5],
+        [k, m, 1],
+      ]
+    : [
+        [m, t, 0.35],
+        [m, t, 0.7],
+        [m, t, 1],
+      ];
 const PROFILES = new WeakMap(); // gun root -> { R, L } (FirstPersonArms._profiles)
 const _fq1 = new THREE.Quaternion(),
   _fq2 = new THREE.Quaternion(),
@@ -250,8 +257,7 @@ const _fq1 = new THREE.Quaternion(),
   _fm = new THREE.Vector3(),
   _ft = new THREE.Vector3(),
   _fw = new THREE.Vector3(),
-  _fGi = new THREE.Quaternion(),
-  _qId = new THREE.Quaternion();
+  _fGi = new THREE.Quaternion();
 
 // Two-bone arm IK for the first-person arms: the elbow for wrist W, bending
 // toward pole. When W is out of the arm's reach (or too close), the shoulder,
@@ -369,27 +375,38 @@ export class FirstPersonArms {
     this._occ(null);
   }
 
-  // The outlines the fingers close on (holdProfile): round the right hand's
-  // grip, along the grip's slope, and round the left hand's fore-end. Once per gun.
+  // The outlines the fingers close on (holdProfile), where the circle the hand
+  // is posed round is a poor fit: a long gun's fore-end (a handguard over the
+  // barrel makes it taller than it is wide) in the left hand, and the wrist of
+  // its stock (sloped well back, 0.7 rad or more from upright) in the right. A
+  // pistol grip or a magazine is near enough round, and fingers pressed a
+  // little into it hide themselves. Once per gun.
   _profiles(root) {
     let P = PROFILES.get(root);
     if (P) return P;
     const info = this.info;
     const g = info.gripAxis;
-    P = { R: holdProfile(holdTriangles(root, info, info.anchors.gripR, g, 0.05), info.anchors.gripR, g, 0.05), L: null };
-    if (this.fore) P.L = holdProfile(holdTriangles(root, info, this.fore.c, this.fore.axis, 0.06), this.fore.c, this.fore.axis, 0.06);
+    P = { R: null, L: null };
+    // (Out to 4.5 cm round the wrist, 5 cm round the fore-end with its handguard.)
+    if (g.z >= Math.sin(0.7)) P.R = holdProfile(holdTriangles(root, info, info.anchors.gripR, g, 0.05), info.anchors.gripR, g, 0.05, 0.045);
+    const F = this.fore;
+    if (F && info.leftGrip === 'fore' && Math.abs(F.axis.z) > 0.9) P.L = holdProfile(holdTriangles(root, info, F.c, F.axis, 0.06), F.c, F.axis, 0.06, 0.05);
     PROFILES.set(root, P);
     return P;
   }
 
-  // Fingers closed round a hold no further than the gun's real outline lets
-  // them: each finger's bend is cut back until its joints and tip stay a
-  // finger's half thickness off the wood (less 2 mm, as flesh gives). For a
-  // given hold the hand always sits the same way on the gun, so the cut is
-  // worked out once per hold and kept. (The right index stays on the trigger.)
+  // Fingers closed round a hold the way a hand closes on something: each
+  // finger bends at its base knuckle until its first bone meets the gun's real
+  // outline (holdProfile; sinking no more than SINK into it: a finger pressed a
+  // little into a grip hides itself, one pushed further comes out through the
+  // wood), then at its middle knuckle until the rest of it does, by
+  // as much more as the base knuckle fell short (up to a full curl). Where the
+  // hand's pose leaves them clear of the gun they stay as posed. For a given
+  // hold the hand always sits the same way on the gun, so this is worked out
+  // once per hold and kept. (The right index stays on the trigger.)
   _clearFingers(side, H, G, key) {
     const P = side > 0 ? this.profiles?.R : this.profiles?.L;
-    if (!P || !key) return;
+    if (!P || !key || !this.pose.fingers) return;
     let cut = this.cuts.get(key);
     if (!cut) {
       cut = {};
@@ -397,39 +414,38 @@ export class FirstPersonArms {
       const toGun = (p) => p.applyQuaternion(H.q).add(H.p).sub(G.p).applyQuaternion(_fGi);
       for (const name of Object.keys(FINGER_R)) {
         if (side > 0 && name === 'index') continue;
-        const [b1, b2] = FINGER_BONES[side][name];
-        const margin = FINGER_R[name] - 0.002;
-        const clear = (s) => {
-          _fq1.copy(_qId).slerp(this.pose.q[b1], s);
-          _fq2.copy(_qId).slerp(this.pose.q[b2], s).premultiply(_fq1);
-          const k = _fk.copy(OFFSET[b1]);
-          const m = _fm.copy(OFFSET[b2]).applyQuaternion(_fq1).add(k);
+        const [A1, A2, sp] = this.pose.fingers[name];
+        const margin = FINGER_R[name] - SINK;
+        // Whether the first bone (part 0), or the rest (part 1), is clear of the gun with the knuckles bent a1, a2.
+        const clear = (a1, a2, part) => {
+          fingerRotations(side, a1, a2, sp, _fq1, _fq2);
+          _fq2.premultiply(_fq1);
+          const k = _fk.copy(OFFSET[FINGER_BONES[side][name][0]]);
+          const m = _fm.copy(OFFSET[FINGER_BONES[side][name][1]]).applyQuaternion(_fq1).add(k);
           const t = _ft.copy(TIP[`${side}${name}`]).applyQuaternion(_fq2).add(m);
-          for (const [a, b, w] of SAMPLES(k, m, t)) if (inProfile(P, toGun(_fw.copy(a).lerp(b, w)), margin)) return false;
+          for (const [a, b, w] of SAMPLES(k, m, t, part)) if (inProfile(P, toGun(_fw.copy(a).lerp(b, w)), margin)) return false;
           return true;
         };
-        let s = 1;
-        if (!clear(1) && clear(0)) {
-          let lo = 0,
-            hi = 1;
+        // The most a knuckle bends, up to hi, before its bones meet the gun (hi if they never do).
+        const close = (hi, test) => {
+          if (test(hi) || !test(0)) return hi;
+          let lo = 0;
           for (let i = 0; i < 7; i++) {
             const mid = (lo + hi) / 2;
-            if (clear(mid)) lo = mid;
+            if (test(mid)) lo = mid;
             else hi = mid;
           }
-          s = lo;
-        }
-        cut[name] = s;
+          return lo;
+        };
+        const a1 = close(A1, (a) => clear(a, A2, 0));
+        const a2 = close(Math.min(2.3, A2 + (A1 - a1)), (a) => clear(a1, a, 1));
+        if (a1 !== A1 || a2 !== A2) cut[name] = [a1, a2, sp, A1, A2]; // (and as posed, for the tests)
       }
       this.cuts.set(key, cut);
     }
     for (const name in cut) {
-      const s = cut[name];
-      if (s >= 1) continue;
-      for (const b of FINGER_BONES[side][name]) {
-        _fq1.copy(this.pose.q[b]);
-        this.pose.q[b].copy(_qId).slerp(_fq1, s);
-      }
+      const [b1, b2] = FINGER_BONES[side][name];
+      fingerRotations(side, cut[name][0], cut[name][1], cut[name][2], this.pose.q[b1], this.pose.q[b2]);
     }
   }
 
@@ -608,4 +624,4 @@ export class FirstPersonArms {
     this.root.removeFromParent();
   }
 }
-export { BONE_COUNT };
+export { BONE_COUNT, inProfile };

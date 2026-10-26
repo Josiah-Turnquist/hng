@@ -352,3 +352,42 @@ test('first person: with every gun the hands stay on the forearms and on their h
   }
   assert.ok(n > 400, `checked ${n} poses`);
 });
+
+test('first person: on long guns the fingers close on the wood, not through it', async () => {
+  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => ({ addColorStop() {}, data: new Uint8ClampedArray(16) })), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+  const { ViewModel } = await import('../src/weapons/viewmodel.js');
+  const { WEAPONS } = await import('../src/weapons/defs.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const { inProfile } = await import('../src/actors/soldierFP.js');
+  const { FINGER_BONES, HAND_JOINTS } = await import('../src/actors/soldierRig.js');
+  const vm = new ViewModel({ get: () => ({ map: null, normalMap: null, ormMap: null, world: 1 }) }, 'US', null);
+  const cam = new THREE.PerspectiveCamera(52, 16 / 9, 0.01, 30);
+  cam.position.set(0, 1.6, 0);
+  cam.updateMatrixWorld();
+  const base = { aiming: false, sprinting: false, speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, light: 1, sunDir: new THREE.Vector3(0.4, 0.8, 0.3).normalize(), sunColor: new THREE.Color(1, 1, 1), sunIntensity: 3, ambient: 1 };
+  const atm = new Atmosphere(0, 15);
+  const arms = vm.fpArms;
+  let checked = 0;
+  for (const id of ['m1_garand', 'm1903', 'm1_carbine', 'bar_m1918a2', 'kar98k', 'gewehr43', 'mosin_9130', 'svt40']) {
+    vm.setWeapon(WEAPONS[id], atm);
+    for (let i = 0; i < 90; i++) vm.update(1 / 60, cam, base);
+    const toGun = new THREE.Matrix4().copy(vm.gun.root.matrixWorld).invert();
+    // The left fingertips stay outside the fore-end's outline (the reported fault:
+    // closed round a circle, they came out through the top of the handguard).
+    const P = arms.profiles.L;
+    assert.ok(P, `${id}: the fore-end's outline`);
+    for (const name of ['index', 'middle', 'ring', 'pinky']) {
+      const [, b2] = FINGER_BONES[-1][name];
+      const J = HAND_JOINTS[name];
+      const bone = arms.bones[b2];
+      const tip = new THREE.Vector3(-(J[3][0] - J[1][0]), J[3][1] - J[1][1], J[3][2] - J[1][2]).applyQuaternion(bone.quaternion).add(bone.position).applyMatrix4(toGun);
+      assert.ok(!inProfile(P, tip, 0.003), `${id}: the left ${name} fingertip is in the wood`);
+      checked++;
+    }
+    // And no finger is opened far from its pose (a base knuckle keeps at least half its bend).
+    for (const cut of arms.cuts.values())
+      for (const [name, [a1, , , A1]] of Object.entries(cut)) assert.ok(a1 >= 0.5 * A1, `${id}: the ${name} finger opened from ${A1.toFixed(2)} to ${a1.toFixed(2)} rad`);
+  }
+  assert.equal(checked, 32);
+});

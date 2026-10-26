@@ -229,6 +229,16 @@ function wrapAngles(name, r, cy = -0.083, cup = 0) {
   return (WRAP[key] = [Math.min(1.75, p1.a), Math.min(2.3, p2.a - p1.a)]);
 }
 
+// A finger's two bones bent a1 at the base knuckle and a2 at the middle one
+// (rad, toward the palm about the knuckle line, z), the first also spread by sp
+// (about the palm normal, x).
+export function fingerRotations(side, a1, a2, sp, q1, q2) {
+  _hq.setFromAxisAngle(handAxis(side, 0, 0, 1, _ha), -a1);
+  _hq2.setFromAxisAngle(handAxis(side, 1, 0, 0, _ha), sp);
+  q1.multiplyQuaternions(_hq2, _hq);
+  q2.setFromAxisAngle(handAxis(side, 0, 0, 1, _ha), -a2);
+}
+
 // wrap: radius of a grip the fingers close round (overrides curl, which then
 // scales how firmly: 1 = fully closed on it). opts (for a fore-end lying in the
 // palm): cy and cup (see wrapAngles), tilt: the slope of the cylinder across the
@@ -247,13 +257,10 @@ export function poseHand(pose, side, curl = 0.3, index = curl, thumb = curl, spr
       cc = Math.min(1, c);
     }
     const [b1, b2] = fb[name];
-    // Flexion about the knuckle line (z), toward the palm.
-    _hq.setFromAxisAngle(handAxis(side, 0, 0, 1, _ha), -cc * a1);
-    // Spread (abduction) about the palm normal (x).
     const sp = SPREAD[name] * (spread + 0.3 * (1 - cc));
-    _hq2.setFromAxisAngle(handAxis(side, 1, 0, 0, _ha), sp);
-    pose.q[b1].multiplyQuaternions(_hq2, _hq);
-    pose.q[b2].setFromAxisAngle(handAxis(side, 0, 0, 1, _ha), -cc * a2);
+    fingerRotations(side, cc * a1, cc * a2, sp, pose.q[b1], pose.q[b2]);
+    // (Kept for closing the fingers on a gun's real outline: soldierFP.js.)
+    (pose.fingers ||= {})[name] = [cc * a1, cc * a2, sp];
   }
   // Thumb: reaches its tip by a small two-bone solve to a point over the
   // fingers' middle joints on the far side of the grip (or of the fist).
