@@ -32,7 +32,7 @@
 // The heading, position and speeds follow a single-track (bicycle) model with
 // tire slip; pitch and heave come from the wheel springs. Units: SI.
 import * as THREE from 'three';
-import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP } from './vehicle.js';
+import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP, CRASH_SAFE, crashDamage, crashInjury, fallInjury } from './vehicle.js';
 import { STAMINA_POOL, STAMINA_REGEN } from '../actors/body.js';
 import { MountedGun } from './tracked.js';
 import { magic } from './wheeled.js';
@@ -574,7 +574,7 @@ export class Bike extends Vehicle {
     if (this.mg) this._mgStep(dt);
     this._sync();
     if (this.proxies) this.updateProxies();
-    if (this.lastImpact > 6 && !this.fallen) this.damage((this.lastImpact - 6) * 12, null, 'crash');
+    if (this.lastImpact > CRASH_SAFE && !this.fallen) this.damage(crashDamage(this.lastImpact, this.maxHp), null, 'crash');
     for (const o of this.occupants) if (o) this._seatOccupant(o);
     // Parked and settled: stop simulating until something disturbs it.
     const still = Math.hypot(this.vx, this.vz) < 0.03 && Math.abs(this.yawRate) < 0.02 && Math.abs(this.leanRate) < 0.03 && Math.abs(this.vy) < 0.05 && Math.abs(this.pitchRate) < 0.03;
@@ -1394,7 +1394,8 @@ export class Bike extends Vehicle {
   }
 
   // Down it goes: the machine slides on its side and everybody aboard is thrown.
-  _fall(side, cause) {
+  // impact: how fast it closed on whatever it hit (m/s), if it hit something.
+  _fall(side, cause, impact = 0) {
     if (this.fallen) return;
     const sp = Math.hypot(this.vx, this.vz);
     this.fallen = side || -1;
@@ -1407,14 +1408,14 @@ export class Bike extends Vehicle {
     this.lastCrash = this.game.time ?? 0;
     for (let i = 0; i < this.occupants.length; i++) {
       const o = this.occupants[i];
-      if (o) this._throw(o, sp, cause);
+      if (o) this._throw(o, sp, cause, impact);
     }
     // The machine takes a beating too.
     if (sp > 4) this.damage((sp - 4) * (sp - 4) * (this.pedal ? 1.2 : 2.5), null, 'crash');
   }
 
-  // Throw a rider off: hurt by how fast he hits the ground.
-  _throw(o, speed, cause) {
+  // Throw a rider off: hurt by how fast he hits the ground, or what he hit.
+  _throw(o, speed, cause, impact = 0) {
     const v = this.body.velocity;
     if (!this.exit(o, true)) return;
     const b = o.body;
@@ -1423,7 +1424,7 @@ export class Bike extends Vehicle {
       b.vz = v.z * 0.7;
       b.vy = Math.min(3, speed * 0.15);
     }
-    const hurt = Math.max(0, speed - 3.5) ** 2 * 0.32;
+    const hurt = Math.max(fallInjury(speed), crashInjury(impact));
     if (hurt > 0.5 && o.damage) o.damage(hurt, { kind: 'fall', part: 'legs', vehicle: this, weapon: { name: `${this.def.name} crash` } });
     if (o.isPlayer) this.game.hud?.flash?.(cause === 'rollover' ? 'Rolled over!' : 'Thrown off!', 1.5);
   }
@@ -1537,8 +1538,8 @@ export class Bike extends Vehicle {
     // A hard knock: solo machines go down, outfits just take the damage.
     const crashAt = this.pedal ? 3.2 : 4.2;
     if (impact > crashAt && !this.fallen) {
-      if (!this.rig) this._fall(this.lean >= 0 ? 1 : -1, impactOther ? 'vehicle' : 'wall');
-      else for (const o of this.occupants) if (o && impact > 7 && o.damage) o.damage((impact - 6) ** 2 * 0.6, { kind: 'fall', vehicle: this, weapon: { name: `${this.def.name} crash` } });
+      if (!this.rig) this._fall(this.lean >= 0 ? 1 : -1, impactOther ? 'vehicle' : 'wall', impact);
+      else for (const o of this.occupants) if (o && crashInjury(impact) > 0.5 && o.damage) o.damage(crashInjury(impact), { kind: 'crash', vehicle: this, weapon: { name: `${this.def.name} crash` } });
     }
     if (impactOther && impact > 2 && !impactOther.isBike) {
       // Run down by something big: a bicycle under a tank is scrap.
@@ -1753,6 +1754,8 @@ export class Bike extends Vehicle {
     this.occupants[i] = null;
     soldier.vehicle = null;
     soldier.seat = -1;
+    soldier.leftVehicle = this;
+    soldier.leftAt = this.game.time ?? 0;
     if (b) {
       b.x = x;
       b.z = z;
@@ -1775,7 +1778,7 @@ export class Bike extends Vehicle {
       } else this.onStand = false;
       if (!thrown && speed > 3 && soldier.damage) {
         // Jumping off a moving machine hurts.
-        const hurt = Math.max(0, speed - 3) ** 2 * 0.3;
+        const hurt = fallInjury(speed);
         if (hurt > 0.5) soldier.damage(hurt, { kind: 'fall', part: 'legs', vehicle: this });
       }
     }
@@ -2001,7 +2004,8 @@ export class Bike extends Vehicle {
     for (const o of this.occupants.slice()) {
       if (!o) continue;
       this.exit(o, true);
-      if (o.alive && o.damage) o.damage(cause === 'fire' ? 10 : 20, { kind: 'vehicle', attacker, vehicle: this });
+      // (Wrecked in a crash, he has had his knocks already.)
+      if (o.alive && o.damage && cause !== 'crash') o.damage(cause === 'fire' ? 10 : 20, { kind: 'vehicle', attacker, vehicle: this });
     }
     if (!this.rig && !this.fallen) this._fall(this.lean >= 0 ? 1 : -1, 'wreck');
     this.game.onVehicleDestroyed?.(this, attacker, cause);

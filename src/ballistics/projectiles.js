@@ -86,6 +86,7 @@ export class Projectile {
     this.hits = 0;
     this.ignoreBox = null;
     this.ignoreTarget = null;
+    this.ignoreVehicle = null; // the vehicle that fired it, passed over near the muzzle (the game sets it)
     this.startSpeed = Math.hypot(o.vx, o.vy, o.vz);
     this.fuse = o.fuse ?? 0; // for timed/impact-fused explosives
     this.resting = false; // a thrown thing come to rest (its fuse still burns)

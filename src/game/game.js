@@ -30,6 +30,10 @@ import { MATERIALS } from '../ballistics/materials.js';
 import { updateVehicleSound } from '../vehicles/sound.js';
 import { clamp } from '../core/math.js';
 
+// A tank's own shells pass over it for their first 40 m of flight (they leave
+// from a muzzle out over its own hull, and may burst on a wall just in front).
+const OWN_GUN_CLEAR = 40;
+
 export class Game {
   constructor(app, opts) {
     this.app = app;
@@ -386,6 +390,9 @@ export class Game {
       const reach = Math.hypot(W, L) / 2 + 0.6;
       for (const s of this.soldiers) {
         if (!s.alive || s.vehicle) continue;
+        // (Not by the vehicle he has just got off, or been thrown from: he
+        // lands beside it as it goes on, and it used to run him down.)
+        if (s.leftVehicle === v && this.time - s.leftAt < 1.5) continue;
         const sb = s.body;
         const dx = sb.x - b.position.x,
           dz = sb.z - b.position.z;
@@ -418,7 +425,7 @@ export class Game {
   _raycastDynamic(ox, oy, oz, dx, dy, dz, max, p) {
     let best = this._raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p);
     for (const v of this.vehicles) {
-      if (v === p.ignoreTarget || (v === p.ignoreVehicle && p.distance < 40)) continue;
+      if (v === p.ignoreTarget || (v === p.ignoreVehicle && p.distance < OWN_GUN_CLEAR)) continue;
       const hit = v.raycastArmor(ox, oy, oz, dx, dy, dz, best ? best.t : max);
       if (hit && (!best || hit.t < best.t)) best = hit;
     }
@@ -626,9 +633,15 @@ export class Game {
     const ex = p.ammo.explosive;
     this.effects.explosion(x, y, z, 0.6 + Math.sqrt(ex.blast) * 1.2);
     this.audio?.explosion(ex.blast > 0.3 ? 'shellExplosion' : 'grenadeExplosion', x, y, z);
+    // A shell bursting close in front of the gun that fired it (on a wall the
+    // gun was laid against): it spares the vehicle that fired it, as the shell
+    // itself does (see _raycastDynamic).
+    const own = p.ignoreVehicle && p.distance < OWN_GUN_CLEAR ? p.ignoreVehicle : null;
     // Blast: falls off quickly with distance; cover between blocks it.
     for (const s of this.soldiers) {
       if (!s.alive) continue;
+      // (Tank crews are behind armor: the blast reaches them through the tank.)
+      if (s.vehicle?.def.kind === 'tracked') continue;
       const dx = s.body.x - x,
         dy = s.body.y + 1 - y,
         dz = s.body.z - z;
@@ -641,7 +654,7 @@ export class Game {
     }
     // Vehicles: blast against thin-skinned ones, tracks of tanks close by.
     for (const v of this.vehicles) {
-      if (!v.alive || v === skipVehicle) continue;
+      if (!v.alive || v === skipVehicle || v === own) continue;
       const vp = v.body.position;
       const d = Math.max(0.5, Math.hypot(vp.x - x, vp.y - y, vp.z - z) - Math.hypot(...v.def.dims) / 4);
       if (d > ex.radius * 1.5) continue;
@@ -659,7 +672,8 @@ export class Game {
         dy = Math.abs(u) * 0.8 + 0.05,
         dz = r * Math.sin(th);
       const v = 900 + Math.random() * 600;
-      this.projectiles.fire({ x, y: y + 0.15, z, vx: dx * v, vy: dy * v, vz: dz * v, ammo: frag, owner: p.owner, weapon: p.weapon });
+      const f = this.projectiles.fire({ x, y: y + 0.15, z, vx: dx * v, vy: dy * v, vz: dz * v, ammo: frag, owner: p.owner, weapon: p.weapon });
+      f.ignoreVehicle = own;
     }
   }
 
