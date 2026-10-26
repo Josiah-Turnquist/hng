@@ -313,7 +313,8 @@ export class Hud {
       } else {
         this.loadedEl.textContent = `${w.loaded}`;
         const unit = d.feed === 'stripper' ? 'clips' : d.feed === 'enbloc' ? 'clips' : d.feed === 'belt' ? 'belts' : d.feed === 'drum' ? 'drums' : d.feed === 'pan' ? 'pans' : d.feed === 'single' ? 'rounds' : d.feed === 'gate' ? 'rounds' : d.feed === 'moon' ? 'clips' : 'mags';
-        this.reserveEl.textContent = ` / ${w.reserveUnits} ${unit}`;
+        // (A scope over the clip guide: the rounds go in one by one, so count rounds.)
+        this.reserveEl.textContent = d.clipsBlocked ? ` / ${w.reserveRounds} rounds` : ` / ${w.reserveUnits} ${unit}`;
         const mode = w.mode === 'bolt' ? 'bolt action' : w.mode === 'slow' ? 'auto (slow)' : w.mode;
         const status = w.state === 'reloading' ? ' · reloading' : w.needsCycle ? ' · work bolt' : w.loaded === 0 ? ' · empty' : '';
         const heat = w.heat > 120 ? ' · barrel hot' : '';
