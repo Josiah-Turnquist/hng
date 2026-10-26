@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
 import { buildDownloadedGarand, downloadedGarandState, loadDownloadedGarand } from './models/downloaded.js';
+import { fitScopeToDownloadedGarand } from './models/optics.js';
 import { Sighting } from './sighting.js';
 import { damp, clamp, approach } from '../core/math.js';
 import { FirstPersonArms } from '../actors/soldierFP.js';
@@ -197,11 +198,12 @@ export class ViewModel {
     this.root.add(g);
   }
 
-  // Which model a weapon is drawn with: the downloaded M1 Garand when it is
-  // chosen and has loaded (it starts loading when first wanted), else ours.
+  // Which model a weapon is drawn with: the downloaded M1 Garand (also as the
+  // M1C, with the scope mounted on it) when it is chosen and has loaded (it
+  // starts loading when first wanted), else ours.
   _variant(def) {
     if (!def || this.garandModel !== 'download') return 'code';
-    if ((MODELS[def.model] ? def.model : fallbackModel(def)) !== 'm1_garand') return 'code';
+    if ((MODELS[def.model] ? def.model : fallbackModel(def)) !== 'm1_garand' && def.base !== 'm1_garand') return 'code';
     if (downloadedGarandState() === 'idle') loadDownloadedGarand();
     return downloadedGarandState() === 'ready' ? 'download' : 'code';
   }
@@ -222,7 +224,8 @@ export class ViewModel {
     let entry = this.cache.get(key);
     if (!entry) {
       const modelId = MODELS[def.model] ? def.model : fallbackModel(def);
-      const gun = variant === 'download' ? buildDownloadedGarand() : buildGun(modelId, this.mats);
+      let gun = variant === 'download' ? buildDownloadedGarand() : buildGun(modelId, this.mats);
+      if (variant === 'download' && def.scope) gun = fitScopeToDownloadedGarand(gun, this.mats);
       gun.root.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = false;
@@ -231,18 +234,33 @@ export class ViewModel {
         }
       });
       const sighting = new Sighting(gun, def, atm);
+      // A scoped rifle whose iron sights stay usable: their own line of sight.
+      const irons = def.irons ? new Sighting(gun, { ...def, sight: def.irons, scope: null }, atm) : null;
       // Remember the rest transform of every animated part.
       const rest = {};
       for (const [n, p] of Object.entries(gun.parts)) rest[n] = { p: p.position.clone(), q: p.quaternion.clone() };
-      entry = { gun, sighting, rest };
+      entry = { gun, sighting, irons, rest };
       this.cache.set(key, entry);
     }
+    this.entry = entry;
     this.gun = entry.gun;
     this.sighting = entry.sighting;
     this.rest = entry.rest;
     this.root.add(this.gun.root);
     this.kind = poseKind(def);
     this.swap = 0;
+  }
+
+  // Aim with the iron sights (on) or the scope, where a rifle has both.
+  setIrons(on) {
+    this.ironsOn = !!on;
+    const e = this.entry;
+    if (!e) return;
+    const next = on && e.irons ? e.irons : e.sighting;
+    // Changing over while aiming: the head comes off one sight onto the other.
+    if (next !== this.sighting) this.aimT = Math.min(this.aimT, 0.4);
+    this.sighting = next;
+    if (this.fpArmsGun === this.gun) this.fpArms.setView(this._peepView());
   }
 
   setZero(index) {
@@ -299,6 +317,7 @@ export class ViewModel {
     // The other Garand chosen (or just loaded): swap it in, as for a weapon change.
     if (this.def && this._variant(this.def) !== this.variant) {
       this.setWeapon(this.def, this.atm);
+      this.setIrons(this.ironsOn);
       this.setZero(this.zeroIndex ?? 0);
     }
     if (!this.gun) return;

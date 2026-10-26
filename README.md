@@ -38,7 +38,7 @@ These are the keys the game starts with. Every one can be changed in Settings > 
 | Lean | Q / E |
 | Aim through the sights (hold, or press once in Settings > Controls), fire | Right mouse or `, left mouse |
 | Sight range up / down | Mouse wheel while aiming, or Page Up / Page Down |
-| Reload or work the bolt, fire mode | R, B (or middle mouse) |
+| Reload or work the bolt; fire mode, or scope and iron sights on a scoped rifle that keeps them | R; B (or middle mouse) |
 | Weapons, grenade, bandage | 1 2 3, G, X |
 | Get in or out of a vehicle (walk up to it; a prompt shows when you can) | F |
 | Drive | W / S (S brakes, then reverses), A / D, Space handbrake (jeeps). The camera turns with a jeep or bike and swings in behind it when you leave the mouse alone; in a tank it stays where you aim the gun |
@@ -56,6 +56,24 @@ Who not to shoot: a green dot floats over the head of everyone on your side, thr
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
 
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
+
+### Scopes
+
+A rifle can carry a scope, but only one its army really put on that rifle in the war, in the mount it really used. On the Heroes screen, a rifle that took scopes shows a Scope choice under it (None, and each real option with a line on what it changes); the soldier keeps your choice. Scopes are for Recon soldiers, as in the original game, with two exceptions from history: infantrymen may fit the Kar 98k's small ZF 41 (a marksman's sight for ordinary riflemen), and paratroopers the FG 42's scope (the FG 42 was theirs alone). Bot scouts carry their army's scoped rifles in turn.
+
+| Army | Rifle and scope | What it changes |
+|---|---|---|
+| US | M1903A4, Weaver M73B1 2.75x | Loads one round at a time (the scope sits over the action); no iron sights |
+| US | M1903A1, Unertl 8x (Marine Corps) | One round at a time; the scope slides forward with each shot and is pulled back by hand |
+| US | M1C Garand, M81 (crosshair) or M82 (post) 2.5x | Offset to the left: clips load from the top, iron sights still usable |
+| Germany | Kar 98k, Zielvier 4x on the high turret mount (ZF 39) | One round at a time; the iron sights show through a gap under the mount |
+| Germany | Kar 98k, ZF 41 1.5x | Mounted ahead of the action: clips still load, iron sights usable, long eye relief |
+| Germany | Gewehr 43, ZF 4 4x | Magazines as before; the iron sights are covered |
+| Germany | FG 42, ZFG 42 4x | Magazines as before; the iron sights fold down under it |
+| USSR | Mosin-Nagant, PU 3.5x or PEM 4x | One round at a time; bent bolt handle |
+| USSR | SVT-40, PU 3.5x on a high bracket | Magazines as before; the iron sights show under it |
+
+Through the scope you see its real magnification, field of view and reticle. The mouse wheel while aiming (or Page Up / Page Down) sets its range: meters on the German and Soviet range drums, yards for the US scopes (their knobs clicked in minutes of angle, which the sniper set from his range table). The bullet lands where the reticle sits at the set range. The scope and mount add their weight, so the rifle comes up a little slower and sways a little more. Where the iron sights stay usable, the fire mode key (B) switches between scope and irons, each with its own range setting. Sources and what was left out: `docs/research/weapons.md`, section 9.
 
 ## What is simulated
 

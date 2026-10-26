@@ -8,7 +8,7 @@
 //   Progression: the player's level, each soldier's rank and record, the ranks.
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
-import { FACTIONS, WEAPONS, weaponsFor } from '../weapons/defs.js';
+import { FACTIONS, WEAPONS, baseOf, weaponFamilies, scopeChoices } from '../weapons/defs.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
@@ -59,6 +59,7 @@ function weaponStats(w) {
   const parts = [am?.name || w.ammo, `${Math.round(w.mv)} m/s`];
   if (w.rpm && w.modes.some((m) => m === 'auto')) parts.push(`${w.rpm} rounds/min`);
   if (w.capacity > 1) parts.push(`${w.capacity} rounds`);
+  if (w.scope) parts.push(`${w.scope.mag}x scope`);
   parts.push(`${w.mass.toFixed(1)} kg`);
   return parts.join(' · ');
 }
@@ -245,8 +246,15 @@ export function showFrontEnd(app) {
           ['equipment', 'Equipment'],
         ];
         slots.forEach(([slot, label], i) => {
-          const options = weaponsFor(s.faction, s.cls, slot);
+          // One card for each rifle; its scopes are chosen under it.
+          const options = weaponFamilies(s.faction, s.cls, slot);
           const cur = WEAPONS[s.loadout[i]];
+          const pickWeapon = (id) => {
+            s.loadout[i] = id;
+            save();
+            if (i === 0) preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: id });
+            loadout(s, 'weapons');
+          };
           const box = el('div', 'slot');
           box.appendChild(el('div', 'slot-label', `${label}<span>${options.length > 1 ? `${options.length} to choose from` : ''}</span>`));
           const card = weaponCard(cur, true);
@@ -255,13 +263,9 @@ export function showFrontEnd(app) {
             const pick = el('div', 'slot-pick');
             pick.hidden = true;
             for (const w of options) {
-              const c = weaponCard(w, w.id === cur.id);
-              c.addEventListener('click', () => {
-                s.loadout[i] = w.id;
-                save();
-                if (i === 0) preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: w.id });
-                loadout(s, 'weapons');
-              });
+              const c = weaponCard(w, w === baseOf(cur));
+              // Another rifle: plain if this soldier may carry it plain, else its first scope.
+              c.addEventListener('click', () => pickWeapon(w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0].id));
               pick.appendChild(c);
             }
             card.classList.add('opens');
@@ -272,6 +276,22 @@ export function showFrontEnd(app) {
               pick.hidden = !open;
             });
             box.appendChild(pick);
+          }
+          // Its scopes: none (where the plain rifle is allowed) and the ones
+          // really fitted to it, each with what it changes.
+          const scopes = scopeChoices(cur, s.cls);
+          if (scopes.some((c) => c.scope)) {
+            const sc = el('div', 'scope-pick');
+            sc.appendChild(el('div', 'slot-label', `Scope<span>${scopes.length > 1 ? `${scopes.length} to choose from` : ''}</span>`));
+            for (const c of scopes) {
+              const b = el('button', `scope-opt${c.id === cur.id ? ' on' : ''}`);
+              b.appendChild(el('b')).textContent = c.scope ? c.scope.name : 'None';
+              b.appendChild(el('small')).textContent = c.note;
+              if (c.def.fitting) b.title = c.def.fitting.mount;
+              b.addEventListener('click', () => c.id !== cur.id && pickWeapon(c.id));
+              sc.appendChild(b);
+            }
+            box.appendChild(sc);
           }
           body.appendChild(box);
         });

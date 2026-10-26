@@ -3,6 +3,7 @@
 import { GunBuilder } from './kit.js';
 import { place, circle, slot, boxMag, guard, trigger, plateXY, lathe, tube, cartridge, swivel, taperZ, path, loft, arcTube } from './parts.js';
 import { stock, band, plateXYz, bar, screw, buttPlate, arch, stockSection, sectionLoft, crisp, stations, superellipse, knurledKnob, sweepGrip, serrations, perfTube, sling, stamp, ribbon, latheY, ringLoft, smoothstep } from './shapes.js';
+import { zf41, zf4, ring } from './optics.js';
 
 const S = GunBuilder.smooth;
 const PI = Math.PI;
@@ -417,17 +418,23 @@ const R792 = { caseLen: 0.0569, oal: 0.0805, rRim: 0.00595, rNeck: 0.0045, rBull
 
 // Karabiner 98k with the Zeiss ZF 39 4x scope on the high turret mount
 // (Turmmontage): turret base on the receiver ring, lever-locked rear base on the
-// bridge. The iron sights stay usable under the scope.
+// bridge. The iron sights stay usable under the scope: both bases are open
+// below (a tunnel 10 mm wide over the receiver) so the eye sees the rear notch
+// and the front sight through them.
 export function kar98k_zf39(b) {
   kar98k(b);
   const P = 'steel';
   const yc = 0.0525; // scope axis height over the bore
+  const T = 0.0052, // the tunnel's half width and its top
+    TY = 0.0345;
   // Front turret base on the receiver ring, rear base on the bridge (behind the
-  // clip guide) with its locking lever.
-  b.cylAxis({ axis: 'y', x: 0, y: 0.0208, z: -0.204, len: 0.0085, r: 0.0128, mat: P, seg: 24 });
-  b.extrude({ points: path([[-0.2155, 0.0245, 1], [-0.1925, 0.0245, 1], [-0.196, yc - 0.0105, 1], [-0.212, yc - 0.0105, 1]]), width: 0.0158, mat: P, bevel: 0.0015 });
-  b.span({ z0: -0.091, z1: -0.0715, y0: 0.0158, y1: 0.0262, w: 0.0232, mat: P, r: 0.002 });
-  b.extrude({ points: path([[-0.0895, 0.0255, 1], [-0.0735, 0.0255, 1], [-0.0745, yc - 0.0105, 1], [-0.0885, yc - 0.0105, 1]]), width: 0.0152, mat: P, bevel: 0.0015 });
+  // clip guide) with its locking lever: two cheeks each, a bridge over the tunnel.
+  for (const s of [-1, 1]) {
+    b.span({ z0: -0.2125, z1: -0.1955, y0: 0.0158, y1: TY + 0.001, w: 0.0128 - T, x: s * (T + 0.0128) / 2, mat: P, r: 0.0015 });
+    b.span({ z0: -0.091, z1: -0.0715, y0: 0.0158, y1: TY + 0.001, w: 0.0116 - T, x: s * (T + 0.0116) / 2, mat: P, r: 0.0015 });
+  }
+  b.extrude({ points: path([[-0.2155, TY, 1], [-0.1925, TY, 1], [-0.196, yc - 0.0105, 1], [-0.212, yc - 0.0105, 1]]), width: 0.0158, mat: P, bevel: 0.0015 });
+  b.extrude({ points: path([[-0.0895, TY, 1], [-0.0735, TY, 1], [-0.0745, yc - 0.0105, 1], [-0.0885, yc - 0.0105, 1]]), width: 0.0152, mat: P, bevel: 0.0015 });
   b.box({ x: 0.0145, y: 0.0262, z: -0.0805, w: 0.004, h: 0.005, d: 0.028, mat: P, r: 0.0012 }); // locking lever
   if (b.detail(0)) for (const z of [-0.087, -0.076]) screw(b, { at: [-0.0118, 0.021, z], axis: '-x', r: 0.0018, mat: P, slot: 0.3 });
   for (const z of [-0.204, -0.081]) tube(b, { y: yc, z0: z - 0.0085, z1: z + 0.0085, rIn: 0.0131, rOut: 0.0158, mat: P, seg: 28 });
@@ -461,6 +468,26 @@ export function kar98k_zf39(b) {
   b.anchor('scopeFront', 0, yc, -0.2453);
   b.meta.sight = 'scope';
   b.meta.scopeMag = 4;
+}
+
+// Karabiner 98k with the ZF 41 1.5x: a dovetail rail on the left of the rear
+// sight base, a clamp mount reaching up and over to the scope above the rear
+// sight, well ahead of the action, so stripper clips still go in and the eye
+// (about 30 cm back) still sees the rear notch under it. Mount sizes est.
+export function kar98k_zf41(b) {
+  kar98k(b);
+  const P = 'steel';
+  const yc = 0.0412;
+  const r = 0.0098;
+  b.span({ z0: -0.345, z1: -0.272, y0: -0.0045, y1: 0.0115, w: 0.0062, x: -0.0172, mat: P, r: 0.0008 }); // rail
+  b.span({ z0: -0.343, z1: -0.274, y0: -0.0065, y1: 0.0135, w: 0.0052, x: -0.0228, mat: P, r: 0.0012 }); // clamp
+  b.box({ x: -0.0262, y: 0.003, z: -0.3, w: 0.0035, h: 0.006, d: 0.024, mat: P, r: 0.001 }); // clamp lever
+  const arm = [[-0.0254, 0.0105], [-0.0146, 0.0105], [-0.0146, 0.0262], [-0.0062, yc - r - 0.0016], [-0.0062, yc - r + 0.001], [-0.0254, yc - r + 0.001]];
+  for (const z of [-0.32, -0.279]) {
+    plateXYz(b, { outline: arm, z0: z - 0.0065, z1: z + 0.0065, mat: P, bevel: 0.0006 });
+    ring(b, { y: yc, z, r, w: 0.013, t: 0.0026, mat: P });
+  }
+  zf41(b, { y: yc, zEye: -0.215 });
 }
 
 // Gewehr 43: 7.92x57 gas-operated semi-automatic (Walther gas system: piston above
@@ -682,6 +709,25 @@ export function gewehr43(b) {
   b.anchor('shoulder', 0, -0.1, 0.327);
   b.meta.sight = 'notch';
   b.meta.boltThrow = 0.09;
+}
+
+// Gewehr 43 with the ZF 4: the mount clamps the dovetail rail on the right of
+// the receiver and its saddle reaches over the receiver (clear of the bolt
+// carrier) to two rings, the scope centered above the action and over the
+// line of the iron sights. Mount sizes est.
+export function gewehr43_zf4(b) {
+  gewehr43(b);
+  const P = 'steel';
+  const yc = 0.0625;
+  b.span({ z0: -0.236, z1: -0.124, y0: -0.0065, y1: 0.0165, w: 0.0062, x: 0.0232, mat: P, r: 0.0012 }); // clamp on the rail
+  b.box({ x: 0.0275, y: 0.004, z: -0.18, w: 0.0035, h: 0.007, d: 0.034, mat: P, r: 0.0012 }); // locking lever
+  const saddle = [[0.0263, 0.0105], [0.0263, 0.0352], [0.0128, 0.0482], [-0.0105, 0.0482], [-0.0105, 0.0412], [0.0201, 0.0302], [0.0201, 0.0105]];
+  for (const z of [-0.19, -0.13]) {
+    plateXYz(b, { outline: saddle, z0: z - 0.009, z1: z + 0.009, mat: P, bevel: 0.0008 });
+    ring(b, { y: yc, z, r: 0.013, w: 0.016, t: 0.0032, mat: P });
+  }
+  b.span({ z0: -0.182, z1: -0.138, y0: 0.0412, y1: 0.0482, w: 0.012, x: 0.004, mat: P, r: 0.0015 });
+  zf4(b, { y: yc, zEye: 0.0 });
 }
 
 // MP 40: 9 mm open-bolt SMG, 833 mm long with the stock unfolded, 630 mm folded,
@@ -1472,16 +1518,19 @@ export function mg34(b) {
 // barrel. Muzzle brake, folding front post and diopter rear sight high above the
 // straight-line stock, sharply raked grip, pressed-steel butt, bipod at the gas
 // block, stowed spike bayonet, stamped handguard with vents, 20-round magazine on
-// the LEFT. Phosphated. Dimensions est. from photos.
-export function fg42(b) {
+// the LEFT. Phosphated. Dimensions est. from photos. v.scope: the ZFG 42 in
+// its clamp rings on the rail on top of the receiver, both iron sights folded
+// down under it.
+function fallschirmjaegergewehr(b, v = {}) {
   const P = 'phosphate';
   lathe(b, { mat: P, seg: 24, profile: [[0, -0.2], [0.0118, -0.2], [0.011, -0.3], [0.0098, -0.45], [0.0092, -0.585], [0, -0.585]] });
   // Muzzle brake with slots.
   lathe(b, { mat: P, seg: 24, profile: [[0.006, -0.635], [0.0115, -0.635], [0.0128, -0.63], [0.0128, -0.59], [0.0105, -0.585], [0.006, -0.585]] });
   if (b.detail(1)) for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) b.box({ x: sx * 0.0122, y: 0, z: -0.627 + i * 0.0105, w: 0.002, h: 0.012, d: 0.005, mat: 'black', r: 0.0006 });
-  // Folding front post on a tall base behind the brake.
+  // Folding front post on a tall base behind the brake (laid back flat under a scope).
   b.span({ z0: -0.582, z1: -0.566, y0: 0.006, y1: 0.03, w: 0.0142, mat: P, r: 0.002 });
-  plateXYz(b, { outline: [[-0.0014, 0.028], [0.0014, 0.028], [0.0012, 0.056], [0.0003, 0.0585], [-0.0003, 0.0585], [-0.0012, 0.056]], z0: -0.5765, z1: -0.5715, mat: P, bevel: 0.0003 });
+  if (v.scope) b.span({ z0: -0.5765, z1: -0.546, y0: 0.0295, y1: 0.0335, w: 0.0026, mat: P, r: 0.0005 });
+  else plateXYz(b, { outline: [[-0.0014, 0.028], [0.0014, 0.028], [0.0012, 0.056], [0.0003, 0.0585], [-0.0003, 0.0585], [-0.0012, 0.056]], z0: -0.5765, z1: -0.5715, mat: P, bevel: 0.0003 });
   for (const sx of [-1, 1]) b.extrude({ points: S([[-0.58, 0.028], [-0.568, 0.028], [-0.57, 0.06], [-0.578, 0.06]], 2), width: 0.0018, x: sx * 0.0058, mat: P, bevel: 0.0003 });
   b.anchor('frontSight', 0, 0.0585, -0.574);
   // Gas block and cylinder under the barrel, stowed spike bayonet.
@@ -1500,9 +1549,22 @@ export function fg42(b) {
   b.span({ z0: 0.06, z1: 0.112, y0: 0.022, y1: 0.036, w: 0.0202, mat: P, r: 0.002 });
   for (const sx of [-1, 1]) b.extrude({ points: S([[0.07, 0.034], [0.108, 0.034], [0.108, 0.062], [0.096, 0.066], [0.084, 0.066]], 2), width: 0.0025, x: sx * 0.0092, mat: P, bevel: 0.0004 });
   b.part('rearSight', [0, 0.0585, 0.09]);
-  plateXYz(b, { outline: superellipse(0, 0.049, 0.013, 0.03, 4, b.detail(1) ? 24 : 8), holes: [circle(0, 0.0585, 0.0014, b.detail(1) ? 14 : 6)], z0: 0.0885, z1: 0.0915, mat: P, bevel: 0.0003 });
+  if (v.scope) b.span({ z0: 0.062, z1: 0.093, y0: 0.0362, y1: 0.0392, w: 0.0128, mat: P, r: 0.0008 }); // folded forward
+  else plateXYz(b, { outline: superellipse(0, 0.049, 0.013, 0.03, 4, b.detail(1) ? 24 : 8), holes: [circle(0, 0.0585, 0.0014, b.detail(1) ? 14 : 6)], z0: 0.0885, z1: 0.0915, mat: P, bevel: 0.0003 });
   b.anchor('rearSight', 0, 0.0585, 0.09);
   b.body();
+  if (v.scope) {
+    // Dovetail rail on the receiver, two clamp rings with locking levers, the scope.
+    const yc = 0.067;
+    b.span({ z0: -0.175, z1: -0.02, y0: 0.0235, y1: 0.0285, w: 0.0142, mat: P, r: 0.0008 });
+    for (const z of [-0.155, -0.045]) {
+      b.span({ z0: z - 0.009, z1: z + 0.009, y0: 0.027, y1: 0.032, w: 0.022, mat: P, r: 0.0012 });
+      b.span({ z0: z - 0.006, z1: z + 0.006, y0: 0.031, y1: yc - 0.014, w: 0.012, mat: P, r: 0.0015 });
+      ring(b, { y: yc, z, r: 0.013, w: 0.014, t: 0.0026, mat: P });
+      b.box({ x: 0.0135, y: 0.03, z, w: 0.004, h: 0.005, d: 0.022, mat: P, r: 0.001 }); // lever
+    }
+    zf4(b, { y: yc, zEye: 0.058 });
+  }
   b.meta.sightKind = 'slide';
   // Sharply raked grip, trigger guard, trigger.
   b.span({ z0: -0.045, z1: 0.07, y0: -0.044, y1: -0.03, w: 0.0262, mat: P, r: 0.003 });
@@ -1572,9 +1634,17 @@ export function fg42(b) {
   b.anchor('gripL', 0, -0.03, -0.27);
   b.anchor('shoulder', 0, -0.045, 0.344);
   b.meta.gripRake = 0.85; // grip axis from vertical (rad)
-  b.meta.sight = 'aperture';
+  b.meta.sight = v.scope ? 'scope' : 'aperture';
   b.meta.boltThrow = 0.1;
   b.meta.openBolt = true;
+}
+
+export function fg42(b) {
+  fallschirmjaegergewehr(b);
+}
+
+export function fg42_zfg42(b) {
+  fallschirmjaegergewehr(b, { scope: true });
 }
 
 // Walther P38: 9 mm double-action pistol, 216 mm long, 125 mm barrel exposed on top

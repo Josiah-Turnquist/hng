@@ -181,7 +181,7 @@ export class RangeMode {
         ['Flight time', `${fly.toFixed(3)} s`],
         ['Speed', `${v.toFixed(0)} m/s`],
         ['Energy', `${e.toFixed(0)} J`],
-        ['Sight set', `${this.game.player.soldier.weapon.zeroRange} ${this.game.player.soldier.weapon.def.sight.unit}`],
+        ['Sight set', `${this.game.player.soldier.weapon.zeroRange} ${this.game.player.soldier.weapon.sight.unit}`],
       ]);
     } else if (o?.gong) {
       this.game.audio?.impact('steel', info.x, info.y, info.z, e * 3);

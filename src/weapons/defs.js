@@ -18,7 +18,14 @@
 //   accuracy mechanical accuracy in MOA (minutes of angle) with service ammunition
 //   hipError typical pointing error when firing from the hip (degrees)
 //   mass     empty weight (kg); loadedMass is computed
+//
+// Scoped rifles are made from a rifle and a scope in scopes.js (FITTINGS), with
+//   base     the rifle it is built on (its id)
+//   scope    { name, mag, reticle, fieldDeg, eyeRelief } of the scope
+//   irons    the rifle's own sight, when it can still be used beside the scope
+//   clipsBlocked  the scope covers the clip guide: loaded one round at a time
 import { AMMO } from './ammo.js';
+import { FITTINGS, scopedWeapon } from './scopes.js';
 
 const range = (a, b, step) => {
   const out = [];
@@ -146,33 +153,6 @@ export const WEAPONS = {
     recoil: { rise: 1.15, side: 0.3 },
     sound: 'rifle',
     info: 'Accurate bolt-action rifle with a long sight radius. Loaded with 5-round stripper clips.',
-  },
-  m1903a4: {
-    name: 'M1903A4 (scoped)',
-    faction: 'US',
-    type: 'sniper',
-    slot: 'primary',
-    classes: ['recon'],
-    model: 'm1903a4',
-    ammo: '30-06 M2',
-    mv: 853,
-    mass: 4.2,
-    length: 1.1,
-    modes: ['bolt'],
-    rpm: 60,
-    feed: 'stripper',
-    capacity: 5,
-    reserve: 10,
-    holdOpen: true,
-    bolt: { cycle: 1.4 },
-    reload: { boltOpen: 0.45, clip: 2.4, round: 0.75, boltClose: 0.5 },
-    sight: { kind: 'scope', unit: 'm', ranges: range(100, 800, 50), zero: 200 },
-    scope: { name: 'M73B1 (Weaver 330C)', mag: 2.5, reticle: 'crosshair', fieldDeg: 6.5 },
-    accuracy: 1.8,
-    hipError: 4,
-    recoil: { rise: 1.15, side: 0.3 },
-    sound: 'rifle',
-    info: 'Sniper Springfield with a 2.5x Weaver scope. Single rounds load faster than clips with the scope in the way.',
   },
   thompson_m1a1: {
     name: 'Thompson M1A1',
@@ -410,32 +390,6 @@ export const WEAPONS = {
     recoil: { rise: 1.25, side: 0.3 },
     sound: 'rifle',
     info: 'The German standard rifle. Powerful 7.92 mm rounds and a tangent rear sight from 100 to 2000 m.',
-  },
-  kar98k_zf39: {
-    name: 'Kar 98k ZF39 (scoped)',
-    faction: 'GE',
-    type: 'sniper',
-    slot: 'primary',
-    classes: ['recon'],
-    ammo: '792 sS',
-    mv: 760,
-    mass: 4.6,
-    length: 1.11,
-    modes: ['bolt'],
-    rpm: 60,
-    feed: 'stripper',
-    capacity: 5,
-    reserve: 10,
-    holdOpen: true,
-    bolt: { cycle: 1.45 },
-    reload: { boltOpen: 0.5, clip: 2.6, round: 0.75, boltClose: 0.55 },
-    sight: { kind: 'scope', unit: 'm', ranges: range(100, 800, 50), zero: 200 },
-    scope: { name: 'Zielvierer ZF39', mag: 4, reticle: 'german1', fieldDeg: 6 },
-    accuracy: 2,
-    hipError: 4,
-    recoil: { rise: 1.25, side: 0.3 },
-    sound: 'rifle',
-    info: 'Selected accurate Kar 98k with a 4x ZF39 scope. The scope blocks stripper clips, so it loads round by round.',
   },
   gewehr43: {
     name: 'Gewehr 43',
@@ -769,31 +723,6 @@ export const WEAPONS = {
     sound: 'rifle',
     info: 'Long, rugged Soviet bolt-action rifle with a hooded front post. Fast 7.62x54R light ball.',
   },
-  mosin_pu: {
-    name: 'Mosin-Nagant PU (scoped)',
-    faction: 'SU',
-    type: 'sniper',
-    slot: 'primary',
-    classes: ['recon'],
-    ammo: '762x54R L',
-    mv: 865,
-    mass: 4.6,
-    length: 1.232,
-    modes: ['bolt'],
-    rpm: 60,
-    feed: 'stripper',
-    capacity: 5,
-    reserve: 10,
-    bolt: { cycle: 1.5 },
-    reload: { boltOpen: 0.5, clip: 2.6, round: 0.75, boltClose: 0.55 },
-    sight: { kind: 'scope', unit: 'm', ranges: range(100, 800, 50), zero: 200 },
-    scope: { name: 'PU', mag: 3.5, reticle: 'soviet', fieldDeg: 4.5 },
-    accuracy: 2,
-    hipError: 4,
-    recoil: { rise: 1.2, side: 0.3 },
-    sound: 'rifle',
-    info: 'Sniper Mosin with the 3.5x PU scope on a side mount and a bent-down bolt handle.',
-  },
   svt40: {
     name: 'SVT-40',
     faction: 'SU',
@@ -1028,6 +957,9 @@ export const WEAPONS = {
   },
 };
 
+// Every rifle and scope fitting (scopes.js) is a weapon of its own.
+for (const id of Object.keys(FITTINGS)) WEAPONS[id] = scopedWeapon(id, WEAPONS[FITTINGS[id].rifle]);
+
 // Fill in derived values once.
 for (const [id, w] of Object.entries(WEAPONS)) {
   w.id = id;
@@ -1054,6 +986,36 @@ export const FACTIONS = {
 
 export function weaponsFor(faction, cls, slot) {
   return Object.values(WEAPONS).filter((w) => w.faction === faction && w.classes.includes(cls) && w.slot === slot);
+}
+
+// The rifle a weapon is built on (itself, for a gun without a scope).
+export function baseOf(def) {
+  return def.base ? WEAPONS[def.base] : def;
+}
+
+// The guns to choose from in a slot, one for each rifle: a rifle shows when a
+// soldier of this class may carry it plain or with any of its scopes.
+export function weaponFamilies(faction, cls, slot) {
+  const out = [];
+  for (const w of weaponsFor(faction, cls, slot)) {
+    const b = baseOf(w);
+    if (!out.includes(b)) out.push(b);
+  }
+  return out;
+}
+
+// The scope choices for a rifle (any member of its family) and class:
+// [{ id, def, scope, note }], with "no scope" first (scope null) when the plain
+// rifle may be carried.
+export function scopeChoices(def, cls) {
+  const b = baseOf(def);
+  const out = [];
+  if (b.classes.includes(cls)) out.push({ id: b.id, def: b, scope: null, note: 'Iron sights only.' });
+  for (const [id, f] of Object.entries(FITTINGS)) {
+    const w = WEAPONS[id];
+    if (f.rifle === b.id && w.classes.includes(cls)) out.push({ id, def: w, scope: w.scope, note: f.note });
+  }
+  return out;
 }
 
 // Default loadouts per faction and class (primary, sidearm, equipment).

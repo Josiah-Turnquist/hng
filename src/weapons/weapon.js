@@ -12,6 +12,11 @@
 //  * M1 Garand: the en-bloc clip ejects with a ping after the last shot; you can
 //    eject a part-used clip, but those rounds are lost.
 //  * revolvers: Nagant loads round by round through the gate; M1917 uses half-moon clips.
+//  * a scope over the action covers the clip guide (def.clipsBlocked): every
+//    round is pushed in on its own, even into an empty magazine.
+//
+// A scoped rifle whose iron sights stay usable (def.irons) aims with one or the
+// other (toggleSights); each keeps its own range setting.
 import { getAmmo } from './ammo.js';
 
 export class Weapon {
@@ -32,6 +37,8 @@ export class Weapon {
     this.shotsFired = 0;
     this.heat = 0;
     this.zeroIndex = Math.max(0, def.sight.ranges.indexOf(def.sight.zero));
+    this.useIrons = false; // a scoped rifle aiming with its iron sights
+    this.otherZero = def.irons ? Math.max(0, def.irons.ranges.indexOf(def.irons.zero)) : 0; // the other sight's setting
     this.needsCycle = false; // bolt action: fired, bolt not yet worked
     this.boltBack = false; // open-bolt guns: bolt held back, ready to fire
     this.boltLocked = false; // closed-bolt guns: bolt held open on an empty magazine
@@ -46,8 +53,27 @@ export class Weapon {
     return this.mode === 'bolt';
   }
 
+  // The sight in use: the scope (or the only sight), or the iron sights.
+  get sight() {
+    return this.useIrons ? this.def.irons : this.def.sight;
+  }
+
+  // The scope in use, or null (no scope, or aiming with the iron sights).
+  get scope() {
+    return this.useIrons ? null : this.def.scope || null;
+  }
+
   get zeroRange() {
-    return this.def.sight.ranges[this.zeroIndex];
+    return this.sight.ranges[this.zeroIndex];
+  }
+
+  // Scope or iron sights, where both can be used.
+  toggleSights() {
+    if (!this.def.irons) return false;
+    this.useIrons = !this.useIrons;
+    [this.zeroIndex, this.otherZero] = [this.otherZero, this.zeroIndex];
+    this.events.push({ type: 'sights', irons: this.useIrons });
+    return true;
   }
 
   // Start fully loaded.
@@ -114,7 +140,7 @@ export class Weapon {
   }
 
   changeZero(dir) {
-    const n = this.def.sight.ranges.length;
+    const n = this.sight.ranges.length;
     const i = Math.max(0, Math.min(n - 1, this.zeroIndex + dir));
     if (i === this.zeroIndex) return false;
     this.zeroIndex = i;
@@ -152,10 +178,11 @@ export class Weapon {
     const r = d.reload;
     const steps = [];
     if (d.feed === 'stripper') {
-      // Clip when the magazine is empty and we have a full clip; otherwise single rounds.
+      // Clip when the magazine is empty and we have a full clip (and no scope
+      // over the clip guide); otherwise single rounds.
       steps.push({ name: 'boltOpen', t: r.boltOpen, end: () => this._openBolt() });
       const room = d.capacity - this.mag;
-      if (room >= d.capacity && this.clips > 0) {
+      if (room >= d.capacity && this.clips > 0 && !d.clipsBlocked) {
         steps.push({ name: 'clip', t: r.clip, end: () => this._loadClip() });
       } else {
         for (let i = 0; i < room; i++) steps.push({ name: 'round', t: r.round, single: true, end: () => this._loadRound() });
@@ -240,6 +267,9 @@ export class Weapon {
         { name: 'boltDown', t: c * 0.2, end: () => (this.needsCycle = false) },
       ],
     };
+    // A target scope without a return spring slides forward in its mounts with
+    // each shot and is pulled back by hand before the next.
+    if (this.def.scopeReturn) this.sequence.steps.push({ name: 'scopeBack', t: this.def.scopeReturn });
     this.stepIndex = 0;
     this.stepT = 0;
     this.state = 'cycling';
