@@ -387,6 +387,44 @@ test('bicycle: three times the pick-up of the plain figures (gameplay), the same
   assert.ok(sprint > 1.8 && sprint < 3.2, `0-20 km/h sprinting in ${sprint.toFixed(2)} s`);
 });
 
+test('bicycle: holding W gets it going on grass, leaf litter and crops too (most of a battlefield), and up a grassy hill', () => {
+  // With the real figures his steady 160 W gave 9 km/h on grass and 5 on a
+  // ploughed field, slower than a soldier jogs (13 km/h), and nothing at all in
+  // mud or sand (his legs could not push it off against them).
+  const ride = (surface, seconds, slopeDeg = 0) => {
+    const { game } = makeWorld({ size: 2048, surface, slopeDeg });
+    const v = spawn(game, 'bicycle', 0, 600, 0);
+    run(v, 1);
+    let t15 = null;
+    run(v, seconds, (t) => {
+      v.driverInput(1, 0);
+      if (t15 === null && kmh(v) >= 15) t15 = t;
+    });
+    return { v, t15 };
+  };
+  const grass = ride(SURF.GRASS, 20);
+  assert.ok(grass.t15 !== null && grass.t15 < 5, `0-15 km/h on grass in ${grass.t15?.toFixed(1)} s`);
+  assert.ok(kmh(grass.v) > 16 && kmh(grass.v) < 21, `cruising on grass at ${kmh(grass.v).toFixed(1)} km/h`);
+  // He works harder there, but no harder than he can keep up (his stamina
+  // stays near full).
+  const pd = grass.v.def.pedal;
+  assert.ok(grass.v.power > pd.cruise + 30 && grass.v.power < pd.cp + 2, `on grass at ${grass.v.power.toFixed(0)} W`);
+  assert.ok(grass.v.occupants[0].body.stamina > 95, `stamina ${grass.v.occupants[0].body.stamina.toFixed(0)}`);
+  for (const [name, lo, hi] of [
+    ['FOREST', 14.5, 19],
+    ['WHEAT', 14, 18],
+    ['FIELD', 11.5, 16],
+    ['MUD', 7, 12.5],
+    ['SAND', 6, 11],
+  ]) {
+    const { v } = ride(SURF[name], 15);
+    assert.ok(kmh(v) > lo && kmh(v) < hi, `${name.toLowerCase()}: ${kmh(v).toFixed(1)} km/h, want ${lo}-${hi}`);
+  }
+  // A 6 % grassy hill: he rides up it at a jog, not walking it.
+  const hill = ride(SURF.GRASS, 12, (Math.atan(0.06) * 180) / Math.PI);
+  assert.ok(!hill.v.walking && !hill.v.fallen && kmh(hill.v) > 6 && kmh(hill.v) < 11, `6 % on grass: ${kmh(hill.v).toFixed(1)} km/h`);
+});
+
 test('parked machines stand upright on their stands, also with a wheel up on a kerb; outfits sit with the ground', () => {
   // A stone kerb 10 cm high under the rear wheel (it used to throw the machine in the air).
   for (const id of ['bicycle', 'wla']) {

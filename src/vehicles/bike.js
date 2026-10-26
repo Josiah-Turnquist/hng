@@ -97,6 +97,15 @@ export const LOCK_USE = 0.6 / TURN_CIRCLE;
 // alone would push him (the motorcycles get ACCEL_GAIN, vehicle.js).
 const PEDAL_GAIN = 3;
 
+// Gameplay: what soft ground (grass, leaf litter, crops, fields, mud, sand)
+// adds to a bicycle's rolling resistance over a hard road's is cut to this
+// share. With the real figures his steady 160 W, which gives 18 km/h on a road,
+// gave 9 km/h on grass and 5 on a ploughed field (slower than a soldier jogs),
+// in mud or sand his legs could not get it rolling at all, and nine tenths of
+// a battlefield is soft ground. (He also works harder there: see _legs.)
+const SOFT_ROLL = 0.4;
+const HARD_ROLL = ROLL.bicycle[8]; // (a road)
+
 // Gameplay: riders roll into a lean, and back up out of it, this many times
 // quicker than a careful rider would, so a machine answers A and D about as
 // briskly as a car and stops turning soon after the key is let go.
@@ -148,6 +157,7 @@ export class Bike extends Vehicle {
       this.wS.driven = sc.driven || 0;
     }
     this.rollTable = ROLL[def.tire] || ROLL.motorcycle;
+    if (this.pedal) this.rollTable = this.rollTable.map((c) => (c > HARD_ROLL ? HARD_ROLL + (c - HARD_ROLL) * SOFT_ROLL : c));
     this.wheelInertia = this.wheels.length * 0.6 * (this.pedal ? 1.6 : 9) * def.wheelRadius * def.wheelRadius;
 
     // Collision spheres (model space) against walls and vehicles.
@@ -451,6 +461,12 @@ export class Bike extends Vehicle {
 
   // Force needed to keep going (for the gear choice): hill, tires and air.
   _resistance() {
+    const v = Math.abs(this.speed);
+    return this.m * G * (Math.max(0, Math.sin(Math.atan(this._grade()))) + this._rolling()) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+  }
+
+  // Rolling resistance coefficient of the ground under the wheels.
+  _rolling() {
     let crr = 0,
       n = 0;
     for (const w of this.wheels)
@@ -458,9 +474,7 @@ export class Bike extends Vehicle {
         crr += this.rollTable[w.surface] ?? 0.03;
         n++;
       }
-    crr = n ? crr / n : 0.03;
-    const v = Math.abs(this.speed);
-    return this.m * G * (Math.max(0, Math.sin(Math.atan(this._grade()))) + crr) + 0.5 * 1.2 * (this.def.cda ?? 0.8) * v * v;
+    return n ? crr / n : 0.03;
   }
 
   // The ground's rise per meter along the heading, under the wheels (not the
@@ -1255,10 +1269,10 @@ export class Bike extends Vehicle {
   }
 
   // Pedaling: the force the legs can put on the pedals falls with cadence
-  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W (more up a hill),
-  // sprinting he gives all he has, which spends W' (his stamina) above his
-  // critical power. Climbing, he stands on the pedals when sitting won't turn
-  // the cranks, and where even that won't do he walks it up.
+  // (F = F0 (1 - c / c0)); cruising he keeps to a steady 160 W (more up a hill
+  // or on soft ground), sprinting he gives all he has, which spends W' (his
+  // stamina) above his critical power. Climbing, he stands on the pedals when
+  // sitting won't turn the cranks, and where even that won't do he walks it up.
   _legs(h, u, throttle) {
     const pd = this.def.pedal;
     const R = this.def.wheelRadius;
@@ -1269,9 +1283,12 @@ export class Bike extends Vehicle {
     const rider = this.occupants[0];
     const spent = rider?.body?.staminaLock || this.wBal < this.wMax * 0.02;
     // Up a hill he works harder than on the flat, up to his critical power, and
-    // out of the saddle he pushes harder on the pedals.
+    // out of the saddle he pushes harder on the pedals. On soft ground he works
+    // as much harder as it takes to keep up the pace he rides at on a road
+    // (within the same limit).
     const grade = Math.max(0, this._grade());
-    const steady = pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1);
+    const soft = (this.m * G * Math.max(0, this._rolling() - HARD_ROLL) * this._pace()) / pd.efficiency;
+    const steady = Math.min(pd.cp, pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1) + soft);
     const fSeat = pd.F0 * fall * toWheel; // the most force at the tire at this cadence
     const fMax = grade > 0.02 ? (pd.F0stand ?? pd.F0) * fall * toWheel : fSeat;
     let F = 0;
@@ -1319,6 +1336,23 @@ export class Bike extends Vehicle {
     this.load = clamp(P / 600, 0, 1);
     this.rpm = this.cadence;
     this.gear = 1;
+  }
+
+  // The speed his steady effort gives on a level road (m/s, about 5).
+  _pace() {
+    if (this._paceV) return this._paceV;
+    const pd = this.def.pedal;
+    const P = pd.cruise * pd.efficiency;
+    const roll = this.nominalMass * G * HARD_ROLL,
+      air = 0.5 * 1.2 * (this.def.cda ?? 0.8);
+    let lo = 0,
+      hi = 20;
+    for (let i = 0; i < 40; i++) {
+      const v = (lo + hi) / 2;
+      if ((roll + air * v * v) * v > P) hi = v;
+      else lo = v;
+    }
+    return (this._paceV = lo);
   }
 
   // W' balance: work above critical power drains it; below, it comes back. (As
