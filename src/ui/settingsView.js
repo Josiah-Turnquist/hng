@@ -1,5 +1,5 @@
 // Settings in pages: a first page of sections (Graphics, Controls, Sound,
-// Screen), each opening a page of its own; Graphics and Controls have pages
+// Screen, Gameplay), each opening a page of its own; Graphics and Controls have pages
 // below them. A trail at the top shows where you are; Back (or Esc) goes up a
 // level. The main menu and the pause menu both show it.
 //
@@ -34,7 +34,14 @@ const PAGES = {
   keys: { title: 'Keys', render: keysPage },
   sound: { title: 'Sound', render: soundPage },
   screen: { title: 'Screen', render: screenPage },
+  gameplay: { title: 'Gameplay', render: gameplayPage },
 };
+
+const DIFFICULTIES = [
+  ['easy', 'Easy'],
+  ['normal', 'Normal'],
+  ['hard', 'Hard'],
+];
 for (const g of GROUPS) PAGES[`gfx:${g.name}`] = { title: g.name, render: (body, view) => groupPage(body, view, g) };
 
 export class SettingsView {
@@ -279,6 +286,8 @@ function homePage(body, view) {
   body.appendChild(link(view, 'controls', `See and change every key. Aim: ${keysOf(b, 'aim')}${st.get('aimToggle') ? ' (press once)' : ''}`));
   body.appendChild(link(view, 'sound', `Volume ${Math.round((st.get('masterVolume') ?? 0.8) * 100)}%`));
   body.appendChild(link(view, 'screen', `Field of view ${st.get('fov')}°, crosshair ${st.get('crosshair') ? 'on' : 'off'}`));
+  const diff = DIFFICULTIES.find(([k]) => k === st.get('botDifficulty'))?.[1] || 'Normal';
+  body.appendChild(link(view, 'gameplay', `Bots: ${diff}`));
 }
 
 function graphicsPage(body, view) {
@@ -500,6 +509,22 @@ function screenPage(body, view) {
       },
       'Which model the M1 Garand in your hands uses (other soldiers keep the made-in-code one). Downloaded: "Realistic M1 Garand" by Raymond (rookieray) on Sketchfab, under the CC BY 4.0 license, sized to a real Garand (its butt drawn out to the real length), with the loose rounds and cases round it left out and its peep hole widened like ours. It loads the first time it is needed; until then you have the made-in-code one.' +
         (failed ? ' It could not be loaded here, so you have the made-in-code one.' : ''),
+    ),
+  );
+}
+
+function gameplayPage(body, view) {
+  const st = view.app.settings;
+  body.appendChild(
+    choiceRow(
+      'Bots',
+      DIFFICULTIES,
+      st.get('botDifficulty') || 'normal',
+      (v) => {
+        st.set('botDifficulty', v);
+        view.render();
+      },
+      'How good the computer soldiers on both sides are: Easy ones are slower to react and shoot wider, Hard ones have more veterans and react a little faster. It applies at once, in a battle too.',
     ),
   );
 }

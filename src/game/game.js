@@ -483,6 +483,8 @@ export class Game {
         if (p.owner === this.player.soldier && dmg > 0) this.hud.hitMarker(info.target.alive ? 1 : 2);
         // Hit: the HUD points to where the shot came from.
         if (info.target === this.player.soldier && dmg > 0) this.hud?.shotFrom?.(p.ox, p.oz, 'hit', dmg / 40);
+        // A bot hit knows someone is shooting at him (and may answer from further off).
+        if (p.owner && p.owner.team !== info.target.team) info.target.brain?.shotAt?.(p.owner);
       }
       return;
     }
@@ -629,7 +631,10 @@ export class Game {
       const miss = Math.hypot(x0 + sx * t - b.x, y0 + sy * t - ey, z0 + sz * t - b.z);
       if (miss > 4) continue;
       s.suppression = Math.min(1, (s.suppression || 0) + (1 - miss / 4) * 0.25);
-      if (p.owner) s.brain.aware.set(p.owner, Math.min(1.2, (s.brain.aware.get(p.owner) || 0) + 0.35));
+      if (p.owner) {
+        if (s.brain.shotAt) s.brain.shotAt(p.owner);
+        else s.brain.aware.set(p.owner, Math.min(1.2, (s.brain.aware.get(p.owner) || 0) + 0.35));
+      }
       if (!s.brain.target) s.brain.lookYaw = Math.atan2(sx, sz);
     }
   }

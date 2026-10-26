@@ -5,12 +5,15 @@
 //                slow bullets a little ('foliage'); crowns inside the woods are
 //                skipped (the trunks and the undergrowth are cover enough there, and
 //                it keeps the box count down)
-//   bushes       partial cover, bullets pass through slowly ('foliage'), not solid
+//   bushes       bullets pass through slowly ('foliage'), not solid; low bushes
+//                and the undergrowth in the woods too (they hide a man crouching)
 //   hedges       an earth bank ('soil': stops bullets and sight, solid) under a
-//                dense hedge ('foliage': solid, partial cover, bullets get through)
-// Leaves are never a wall to sight: the collision world turns their FLAG_SIGHT
-// into FLAG_FOLIAGE, and the bots measure how much foliage is in the way
-// (CollisionWorld.foliageAlong) to slow down spotting someone behind it.
+//                dense hedge ('foliage': solid, bullets get through)
+// Leaves are never a wall in the collision world: it turns their FLAG_SIGHT into
+// FLAG_FOLIAGE, and the bots measure how much foliage is in the way
+// (CollisionWorld.foliageAlong). Bushes and hedges are drawn so thick that nobody
+// can see through them (box.dense): beyond a few meters they hide a man from the
+// bots as from the player. Tree crowns are thinner: they only slow spotting.
 import { Box, FLAG_DEFAULT, FLAG_SOLID, FLAG_BULLET, FLAG_SIGHT } from '../../physics/collision.js';
 import { ROLE, isBush } from './placement.js';
 import { HEDGE } from './treeGeometry.js';
@@ -38,12 +41,12 @@ export function addVegetationColliders(collision, { plants, info, pieces, def })
     const c = Math.cos(yaw),
       sn = Math.sin(yaw);
     if (isBush(v)) {
-      // Undergrowth inside the woods: the trunks around it already block the view.
-      if (P.role[i] === ROLE.under) continue;
+      // (Knee-high ones hide nothing worth a box.)
       const h = vi.top * s * sy;
-      if (h < 1.7) continue;
+      if (h < 0.9) continue;
       const hw = vi.R[0] * 0.72 * s * sw;
-      collision.add(new Box(x, y + h * 0.45, z, hw, h * 0.45, hw, yaw, 'foliage', FLAG_SIGHT | FLAG_BULLET));
+      const box = collision.add(new Box(x, y + h * 0.45, z, hw, h * 0.45, hw, yaw, 'foliage', FLAG_SIGHT | FLAG_BULLET));
+      box.dense = true;
       stats.bushes++;
       continue;
     }
@@ -108,7 +111,8 @@ export function addVegetationColliders(collision, { plants, info, pieces, def })
     const top = (HEDGE.coreBottom + HEDGE.coreH + 0.15) * p.hs + (p.lo + p.hi) / 2;
     const bot = bankTop - 0.05;
     if (top > bot + 0.3) {
-      collision.add(new Box(p.cx, p.cy + (top + bot) / 2, p.cz, hx, (top - bot) / 2, 0.68 * p.ws, p.yaw, 'foliage', FLAG_SOLID | FLAG_SIGHT | FLAG_BULLET, 0, p.roll));
+      const box = collision.add(new Box(p.cx, p.cy + (top + bot) / 2, p.cz, hx, (top - bot) / 2, 0.68 * p.ws, p.yaw, 'foliage', FLAG_SOLID | FLAG_SIGHT | FLAG_BULLET, 0, p.roll));
+      box.dense = true;
       stats.hedgeTops++;
     }
   }

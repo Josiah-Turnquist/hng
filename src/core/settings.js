@@ -397,6 +397,7 @@ const DEFAULTS = {
   objectiveMarkers: true, // marks over the points to take or hold next
   allyMarkers: true, // a green dot over each teammate's head
   aimToggle: false, // aim: hold the key (false) or press once to raise the sights, again to lower
+  botDifficulty: 'normal', // the bots on both sides: 'easy', 'normal' or 'hard' (bot.js DIFFICULTY)
   garandModel: 'download', // the M1 Garand in your hands: 'download' (the downloaded model) or 'code' (made in code)
   // One-time changes to settings saved by older versions (see the constructor):
   // new settings, and those already changed, have these marks.
