@@ -71,6 +71,34 @@ test('the dead come back all along the front, where their side is thinnest', () 
   for (const k of keep) Object.assign(k.s, { alive: k.alive }) && Object.assign(k.s.body, { x: k.x, z: k.z });
 });
 
+test('defenders come back where the attack presses, and only enemies on a point close it', () => {
+  const ATT = 1 - DEF;
+  const keep = g.soldiers.map((s) => ({ s, alive: s.alive, x: s.body.x, z: s.body.z }));
+  const keepT = g.mode.points.map((p) => [...p.threat]);
+  for (const s of g.soldiers) s.alive = false;
+  const bot = g.soldiers.find((s) => s.brain && s.team === DEF);
+  // Five attackers 50 m short of C2: it stays open for the defenders, and they go there.
+  const c2 = g.mode.byId.C2;
+  const pushing = g.soldiers.filter((s) => s.team === ATT).slice(0, 5);
+  for (const s of pushing) {
+    s.alive = true;
+    s.body.x = c2.x + 50;
+    s.body.z = c2.z;
+  }
+  g.mode.update(0);
+  const pts = g.mode._spawnPoints(DEF);
+  assert.ok(pts.some((p) => p.id === 'C2'), `C2 open with the enemy 50 m off (${pts.map((p) => p.id)})`);
+  let atC2 = 0;
+  for (let i = 0; i < 40; i++) if (g.mode._botSpawnPoint(bot, pts).id === 'C2') atC2++;
+  assert.ok(atC2 > 30, `came back at the pressed point ${atC2} times in 40`);
+  // One of them on the point: closed.
+  pushing[0].body.x = c2.x;
+  g.mode.update(0);
+  assert.ok(!g.mode._spawnPoints(DEF).some((p) => p.id === 'C2'), 'C2 closed with an enemy on it');
+  for (const k of keep) Object.assign(k.s, { alive: k.alive }) && Object.assign(k.s.body, { x: k.x, z: k.z });
+  g.mode.points.forEach((p, i) => (p.threat = keepT[i]));
+});
+
 test('cover hides a soldier from the enemy when he is down and lets him see out when he is up', () => {
   let n = 0;
   for (const p of g.mode.points.filter((q) => q.kind !== 'access'))

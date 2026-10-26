@@ -64,7 +64,7 @@ export class AssaultMode {
     p.links = [];
     p.c = p.owner === DEF ? 1 : -1; // control: +1 defenders .. -1 attackers
     p.count = [0, 0];
-    p.threat = [-99, -99]; // last time enemies of each team were near
+    p.threat = [-99, -99]; // last time enemies of each team were on it (see update)
     this.points.push(p);
     this.byId[p.id] = p;
   }
@@ -243,26 +243,37 @@ export class AssaultMode {
   }
 
   // Where a bot comes back: one of its side's points at the front, in the part of
-  // the line with the fewest of its side about (so every line gets its
-  // reinforcements, not only the first ones on the list), now and then one
-  // further back.
+  // the line where its side is most outnumbered (so reinforcements go where the
+  // enemy is pushing, not evenly along the line), now and then one further back.
   _botSpawnPoint(s, pts) {
-    const g = this.game;
     const score = (p) => this._frontScore(p, s.team);
     const best = Math.max(...pts.map(score));
     let options = pts.filter((p) => score(p) === best);
     if (pts.length > options.length && Math.random() < 0.15) options = pts;
     let pick = options[0],
-      fewest = Infinity;
+      most = -Infinity;
     for (const p of options) {
-      let n = Math.random() * 1.5;
-      for (const o of g.soldiers) if (o.alive && o.team === s.team && Math.hypot(o.body.x - p.x, o.body.z - p.z) < 150) n++;
-      if (n < fewest) {
-        fewest = n;
+      const n = this._shortOf(p, s.team, 150) + Math.random() * 1.5;
+      if (n > most) {
+        most = n;
         pick = p;
       }
     }
     return pick;
+  }
+
+  // How far a side is outnumbered round a point: the enemies within r, less its
+  // own soldiers there or on their way there (a point's attackers count double
+  // as they close in on it).
+  _shortOf(p, team, r = 120) {
+    let n = 0;
+    for (const o of this.game.soldiers) {
+      if (!o.alive) continue;
+      const d = Math.hypot(o.body.x - p.x, o.body.z - p.z);
+      if (o.team !== team) n += d < r ? 1 : 0;
+      else if (d < r || o.brain?.goal?.id === p.id) n -= 1;
+    }
+    return n;
   }
 
   // Prefer points near the fighting.
@@ -360,8 +371,14 @@ export class AssaultMode {
     const dmin = Math.min(...options.map((p) => Math.hypot(p.x - b.x, p.z - b.z)));
     options = options.filter((p) => Math.hypot(p.x - b.x, p.z - b.z) < dmin + 300 || (team === DEF && !vehicle && p.kind === 'objective'));
     const spread = vehicle ? 0 : 0.6;
+    // Where our side is outnumbered draws men in (each man short there counts
+    // for about as much as being 150 m nearer), so a push on one part of the
+    // line meets reinforcements instead of the few who happened to be there.
     const pick = options
-      .map((p) => ({ p, w: 1 / (1 + Math.hypot(p.x - b.x, p.z - b.z) / 150) + (((brain.s.id * 13 + p.id.charCodeAt(0)) % 7) / 7) * spread + (p.kind === 'objective' && !vehicle ? 0.3 : 0) }))
+      .map((p) => ({
+        p,
+        w: 1 / (1 + Math.hypot(p.x - b.x, p.z - b.z) / 150) + (((brain.s.id * 13 + p.id.charCodeAt(0)) % 7) / 7) * spread + (p.kind === 'objective' && !vehicle ? 0.3 : 0) + (vehicle ? 0 : 0.25 * Math.max(0, this._shortOf(p, team) + (brain.goal?.id === p.id ? 1 : 0))),
+      }))
       .sort((a, c) => c.w - a.w)[0].p;
     return { id: pick.id, x: pick.x, z: pick.z, radius: pick.radius };
   }
@@ -384,7 +401,11 @@ export class AssaultMode {
           dz = s.body.z - p.z;
         const d2 = dx * dx + dz * dz;
         if (d2 < p.radius * p.radius) p.count[s.team]++;
-        if (d2 < 80 * 80) p.threat[1 - s.team] = g.time;
+        // Enemies on (or right at) a point close it for coming back in. (Closing
+        // every point with an enemy within 80 m shut the defenders out of
+        // wherever the attack pressed, while the attackers came back behind it.)
+        const close = Math.max(30, p.radius * 1.5);
+        if (d2 < close * close) p.threat[1 - s.team] = g.time;
       }
     }
     for (const p of this.points) this._capture(p, dt);
