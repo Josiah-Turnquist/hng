@@ -321,6 +321,7 @@ export class AssaultMode {
     s.gunDropped = false;
     s.yaw = this._facing(p);
     b.yaw = s.yaw;
+    s.rearm();
     s.resupply();
     for (const w of s.weapons) w?.fill();
     s.current = 0;

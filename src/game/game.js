@@ -329,6 +329,7 @@ export class Game {
         this.mode.spawnSoldier(s, o.point);
         this.player.look.yaw = s.yaw;
         this.player.look.pitch = 0;
+        s.current = -1; // (his gun may be a new one: see Soldier.rearm)
         this.player._equip(0);
         if (s.cls === 'tanker') this._deployInTank(s);
         this.hud.deployScreen?.(null);
@@ -349,8 +350,11 @@ export class Game {
         s.health = 100;
         s.bleed = 0;
         s.deathTime = 0;
+        s.rearm();
         s.resupply();
         for (const w of s.weapons) w?.fill();
+        s.current = -1;
+        this.player._equip(0);
         this.player.look.yaw = sp.yaw;
       }
     } else this.hud.setDeploy('No point to deploy at');

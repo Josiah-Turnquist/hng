@@ -60,3 +60,18 @@ test('weapons on the ground go after two minutes', () => {
   pickups.update();
   assert.equal(pickups.list.length, 0);
 });
+
+test('coming back in, a soldier has his own loadout again, not what he picked up', async () => {
+  const { Soldier } = await import('../src/game/soldier.js');
+  const { pickups, soldier } = setup();
+  const me = soldier(0, 0, ['m1_garand', 'm1911a1', 'mk2_grenade']);
+  me.loadout = ['m1_garand', 'm1911a1', 'mk2_grenade'];
+  me._updateLoad = () => {};
+  const grenades = me.weapons[2];
+  pickups.take(me, pickups.put(new Weapon(WEAPONS.mp40), 0, 0));
+  pickups.take(me, pickups.put(new Weapon(WEAPONS.p38), 0, 0));
+  assert.deepEqual(me.weapons.map((w) => w.def.id), ['mp40', 'p38', 'mk2_grenade']);
+  Soldier.prototype.rearm.call(me);
+  assert.deepEqual(me.weapons.map((w) => w.def.id), ['m1_garand', 'm1911a1', 'mk2_grenade']);
+  assert.equal(me.weapons[2], grenades, 'what was his own all along is left as it was');
+});

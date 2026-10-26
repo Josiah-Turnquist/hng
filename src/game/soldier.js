@@ -55,6 +55,7 @@ export class Soldier {
     this.seat = -1;
     const y = game.world.hf.getHeight(x, z);
     this.body = new Body(game.world.collision, x, y, z);
+    this.loadout = loadout.slice(); // the weapons he set out with (ids): he has them again each time he comes back
     this.weapons = loadout.map((id) => (id ? new Weapon(WEAPONS[id]) : null));
     this.current = 0;
     this.health = 100;
@@ -228,6 +229,15 @@ export class Soldier {
   resupply() {
     for (const w of this.weapons) w?.resupply();
     this.bandages = Math.max(this.bandages, 2);
+  }
+
+  // Coming back in: the weapons of his loadout again, in place of any he picked
+  // up (those stay with the life they were picked up in).
+  rearm() {
+    this.loadout.forEach((id, i) => {
+      if (this.weapons[i]?.def.id !== (id || undefined)) this.weapons[i] = id ? new Weapon(WEAPONS[id]) : null;
+    });
+    this._updateLoad();
   }
 
   // Support for weapon stability: bipod down on the ground / prone.
