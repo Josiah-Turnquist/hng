@@ -269,6 +269,14 @@ export class ViewModel {
     this.action = null;
   }
 
+  // Knocked by a hit (k: about 0.25 for a graze to 1.3 for a heavy hit): one
+  // jerk of the gun that springs back, up to about half a rifle's recoil.
+  jolt(k) {
+    this.kickPitch.v += (0.4 + Math.random() * 0.3) * k;
+    this.kickYaw.v += (Math.random() - 0.5) * 0.6 * k;
+    this.kickRoll.v += (Math.random() - 0.5) * 0.8 * k;
+  }
+
   // Called for every shot: physical recoil impulse (N s) drives the kick.
   shot(impulse, def, supported) {
     const k = supported ? 0.35 : 1;

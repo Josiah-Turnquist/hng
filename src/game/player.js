@@ -77,6 +77,8 @@ export class PlayerController {
     // (About 2 to 3 degrees for a rifle hit to the body.)
     this.kick.vp += (0.8 + Math.random() * 0.6) * k;
     this.kick.vy += (Math.random() - 0.5) * 1.4 * k;
+    // The gun in your hands is knocked once too, and springs back.
+    this.viewmodel.jolt(k);
   }
 
   // A weapon on the ground within reach, unless a vehicle is nearer.
@@ -572,10 +574,10 @@ export class PlayerController {
     const walk = Math.min(1, b.moving / 2) * 0.006;
     const walkP = Math.sin(t * 7.5) * walk,
       walkY = Math.cos(t * 3.75) * walk;
-    const flinch = (s.hitFlinch || 0) * 0.05;
-    s.hitFlinch = damp(s.hitFlinch || 0, 0, 4, dt);
-    this.sway.pitch = (breathP + dr.pitch + pulse + walkP) * k + flinch * (Math.random() - 0.5);
-    this.sway.yaw = (breathY + dr.yaw + walkY) * k + flinch * (Math.random() - 0.5);
+    // (A hit knocks the view and the gun once, in flinch(): a new random push
+    // every frame for a second after each hit read as the gun shaking.)
+    this.sway.pitch = (breathP + dr.pitch + pulse + walkP) * k;
+    this.sway.yaw = (breathY + dr.yaw + walkY) * k;
   }
 
   _probeLight(dt) {

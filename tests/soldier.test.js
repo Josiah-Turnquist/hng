@@ -412,3 +412,43 @@ test('first person: on long guns the fingers close on the wood, not through it',
   }
   assert.equal(checked, 36);
 });
+
+test('first person: a hit knocks the gun once and it settles, with no shaking', async () => {
+  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => ({ addColorStop() {}, data: new Uint8ClampedArray(16) })), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+  const { ViewModel } = await import('../src/weapons/viewmodel.js');
+  const { WEAPONS } = await import('../src/weapons/defs.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const vm = new ViewModel({ get: () => ({ map: null, normalMap: null, ormMap: null, world: 1 }) }, 'US', null);
+  const cam = new THREE.PerspectiveCamera(52, 16 / 9, 0.01, 30);
+  cam.position.set(0, 1.6, 0);
+  cam.updateMatrixWorld();
+  const base = { aiming: false, sprinting: false, speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, light: 1, sunDir: new THREE.Vector3(0.4, 0.8, 0.3).normalize(), sunColor: new THREE.Color(1, 1, 1), sunIntensity: 3, ambient: 1 };
+  for (const id of ['m1911a1', 'bazooka_m1a1', 'm1_garand']) {
+    vm.setWeapon(WEAPONS[id], new Atmosphere(0, 15));
+    for (let i = 0; i < 60; i++) vm.update(1 / 60, cam, base);
+    const rest = vm.gun.root.getWorldQuaternion(new THREE.Quaternion());
+    vm.jolt(1.3); // a heavy hit
+    const q = new THREE.Quaternion();
+    let far = 0;
+    for (let i = 0; i < 45; i++) {
+      vm.update(1 / 60, cam, base);
+      far = Math.max(far, vm.gun.root.getWorldQuaternion(q).angleTo(rest));
+    }
+    assert.ok(far > 0.01 && far < 0.06, `${id}: knocked ${far} rad`);
+    assert.ok(q.angleTo(rest) < 0.004, `${id}: settled back within 0.75 s (${q.angleTo(rest)} rad off)`);
+  }
+  // And the hold's sway (breathing, drift) stays smooth after a hit: no new random
+  // push every frame (which read as the gun shaking for a second after each hit).
+  const { PlayerController } = await import('../src/game/player.js');
+  const s = { body: { stance: 0, breath: 0, moving: 0 }, weapon: { def: { mass: 1.1 } }, armWound: 0.5, supported: false, aiming: false, hitFlinch: 1 };
+  const p = { soldier: s, sway: { pitch: 0, yaw: 0 }, drift: { yaw: 0, pitch: 0, vy: 0, vp: 0 }, adsTime: 0, holdingBreath: false, breathHold: 0, breathDebt: 0, swayT: 0 };
+  let last = null,
+    jump = 0;
+  for (let i = 0; i < 60; i++) {
+    PlayerController.prototype._updateSway.call(p, 1 / 60);
+    if (last) jump = Math.max(jump, Math.abs(p.sway.pitch - last[0]), Math.abs(p.sway.yaw - last[1]));
+    last = [p.sway.pitch, p.sway.yaw];
+  }
+  assert.ok(jump < 0.0005, `the sway jumps ${jump} rad in a frame`);
+});
