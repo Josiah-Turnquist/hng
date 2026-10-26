@@ -620,9 +620,20 @@ export class Bike extends Vehicle {
         w.ny = Math.max(0.3, _hit.ny);
         w.nz = _hit.nz;
         const gy = y0 - _hit.t;
+        w.gy = gy;
         w.planeD = w.nx * wx + w.ny * gy + w.nz * wz;
         w.surface = _hit.ground ? hf.getSurface(wx, wz) : _hit.box?.owner?.isVehicle ? 4 : 6;
       } else w.hit = false;
+    }
+    // An outfit sits tilted with the ground across it (as lean: + = down to
+    // the right): the ground under the sidecar wheel against the ground under
+    // the motorcycle's own wheels there. Its chair is off the ground only by
+    // as much as it leans past that.
+    const sc = this.wS;
+    if (sc && sc.hit && this.wF.hit && this.wR.hit) {
+      const t = (sc.z - this.wF.z) / (this.wR.z - this.wF.z);
+      const line = this.wF.gy + (this.wR.gy - this.wF.gy) * t;
+      this.groundLean = Math.asin(clamp((line - sc.gy) / (sc.x * Math.cos(this.pitch)), -0.5, 0.5));
     }
     let mu = 0,
       mis = 0,
@@ -788,8 +799,10 @@ export class Bike extends Vehicle {
         slip = 1;
         w.lock = true;
       } else {
-        // Friction circle (an ellipse with the extra sideways grip).
-        const e = Math.hypot(fl / maxF, fy / maxFy);
+        // Friction circle (an ellipse with the extra sideways grip, and the
+        // same extra grip for a driven tire pulling: gameplay, BIKE_GRIP).
+        const maxFl = fl > 0 && w.drive > 0 ? maxF * BIKE_GRIP : maxF;
+        const e = Math.hypot(fl / maxFl, fy / maxFy);
         if (e > 1) {
           slip = 1 - 1 / e;
           fl /= e;
@@ -986,7 +999,10 @@ export class Bike extends Vehicle {
       this.rigSpin = approach(this.rigSpin || 0, spin, (spin > (this.rigSpin || 0) ? 6 : 2) * h);
       // Turning toward the sidecar unloads its wheel: he eases off as it goes
       // light and straightens up if it lifts, so the chair flies but drops back.
-      const lift = -this.lean * side; // (+ = the chair off the ground)
+      // (+ = the chair off the ground: leaning past the ground's own tilt. On
+      // a hillside with the chair uphill, the plain lean read as the chair up,
+      // and he would not open the throttle at all.)
+      const lift = -(this.lean - (this.groundLean || 0)) * side;
       this.chairLift = lift;
       if (kappa * side > 0 && this.wS) {
         const light = this.wS.N / Math.max(1, this.wS.L);
@@ -998,7 +1014,7 @@ export class Bike extends Vehicle {
       // tip over the front wheel and the chair): he eases off the same way.
       if (kappa * side < 0) {
         const light = this.wR.N / Math.max(1, this.wR.L);
-        const tip = this.lean * side;
+        const tip = (this.lean - (this.groundLean || 0)) * side;
         let ease = light < 0.35 ? 0.5 + 1.4 * light : 1;
         if (tip > 0.04) ease = Math.min(ease, clamp(1 - (tip - 0.04) / 0.1, 0, 1));
         kappa *= Math.min(1, ease);
@@ -1210,8 +1226,11 @@ export class Bike extends Vehicle {
     let br = Math.min(b * d.brakes.rear, 0.95 * trust(this.wR));
     if (inp.handbrake) br = d.brakes.rear;
     // Stopped with nothing pressed: the rider (or the stand) holds it, on both
-    // brakes so that it stays put on a hill.
-    if (throttle < 0.05 && Math.abs(u) < 0.5 && !this.paddle) {
+    // brakes so that it stays put on a hill. So he does while he kicks the
+    // engine into life and gets it into gear (it used to roll back down a
+    // hill the moment W was pressed, with nothing yet to drive it).
+    const noDrive = !this.pedal && this.wantDir > 0 && (!this.engineOn || this.gear === 0 || this.shiftTimer > 0);
+    if ((throttle < 0.05 || noDrive) && Math.abs(u) < 0.5 && !this.paddle) {
       br = Math.max(br, d.brakes.rear * 0.6);
       bf = Math.max(bf, d.brakes.front * 0.6);
     }
@@ -1237,8 +1256,15 @@ export class Bike extends Vehicle {
     const wheelT = (torque + engineBrake) * ratio * d.efficiency;
     const rotMass = (d.engine.inertia * ratio * ratio + this.wheelInertia) / (R * R);
     const share = this.m / (this.m + rotMass);
-    // (With the gameplay gain on the push: see ACCEL_GAIN in vehicle.js.)
-    let F = this._gain((wheelT / R) * share);
+    // The engine and the wheels have to be spun up as well: of the push left
+    // over after the hill, the ground and the air, only a share speeds the
+    // machine up (and that with the gameplay gain, ACCEL_GAIN in vehicle.js).
+    // What holds it against a hill is the whole push. (It used to be only the
+    // share of it all: a quarter less pull at a standstill, and an outfit
+    // stalled on a 20 % grass bank.)
+    const push = wheelT / R;
+    const hold = Math.max(0, this._resistance());
+    let F = push > hold ? hold + ACCEL_GAIN * share * (push - hold) : push > 0 ? push : push * share;
     // On an outfit in a turn he keeps the rear wheel from spinning, leaving it
     // the grip the turn needs (it goes light in a turn away from the chair).
     // (At a walk he lets it spin: that is how it gets through mud and sand.)
@@ -1246,7 +1272,7 @@ export class Bike extends Vehicle {
       const nR = Math.max(0, this.wR.N),
         nS = Math.max(0, this.wS.N);
       const fyR = (((this.m * Math.abs(this.ay) * (this.cz - this.wF.z)) / d.wheelbase) * nR) / Math.max(1, nR + nS);
-      const room = this._gripNow * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * Math.max(1, nR))) ** 2)) + (this.rollTable[this.wR.surface] ?? 0.03) * nR;
+      const room = this._gripNow * BIKE_GRIP * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * Math.max(1, nR))) ** 2)) + (this.rollTable[this.wR.surface] ?? 0.03) * nR;
       F = Math.min(F, Math.max(room / Math.max(0.05, this.wR.driven), 0.4 * F));
     }
     // Leaned over, the rider feeds the throttle in only as far as the rear
@@ -1260,7 +1286,10 @@ export class Bike extends Vehicle {
       const fyR = (this.m * ay * (this.cz - this.wF.z)) / d.wheelbase;
       const care = smoothstep(0.03, 0.12, lean); // (leaned over: a little more in hand)
       const nR = Math.max(1, this.wR.N);
-      const room = (0.9 - 0.05 * care) * this._gripNow * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * nR)) ** 2));
+      // (Upright he counts on the tire's whole pull, BIKE_GRIP; leaned over
+      // only on what a real tire gives, or he would run wide in a long bend.)
+      const pull = BIKE_GRIP - (BIKE_GRIP - 1) * care;
+      const room = (0.9 - 0.05 * care) * this._gripNow * pull * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * nR)) ** 2));
       F = Math.min(F, Math.max(room, (0.25 - 0.15 * care) * F));
     }
     this.wR.drive = F * this.wR.driven;

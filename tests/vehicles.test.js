@@ -16,6 +16,7 @@ import { ProjectileSystem } from '../src/ballistics/projectiles.js';
 import { buildVehicle } from '../src/vehicles/models/index.js';
 import { VEHICLES } from '../src/vehicles/defs.js';
 import { TrackedVehicle } from '../src/vehicles/tracked.js';
+import { PlayerController } from '../src/game/player.js';
 
 const kmh = (v) => v.speed * 3.6;
 const yawOf = (v) => {
@@ -976,6 +977,78 @@ test('holding the throttle and a turn key does not put a motorcycle or an outfit
     assert.ok(Math.abs(turned) > 60 * DEG, `${id} only turned ${(Math.abs(turned) / DEG).toFixed(0)} degrees in 8 s`);
     assert.ok(kmh(v) > 15, `${id} slowed to ${kmh(v).toFixed(0)} km/h in the turn`);
   }
+});
+
+// A parked machine, a rider gets on and holds W for `seconds`: its speed
+// then, the slowest it went (backward is negative) and how far it got.
+function pullAway(id, surface, { slopePct = 0, yaw = 0, seconds = 10 } = {}) {
+  const { game } = makeWorld({ size: 2048, surface, slopeDeg: (Math.atan(slopePct / 100) * 180) / Math.PI });
+  const v = spawn(game, id, 0, 0, yaw, { empty: true });
+  run(v, 2);
+  v.enter(rider(), 0);
+  const p0 = v.body.position.clone();
+  let min = 0;
+  run(v, seconds, () => {
+    v.driverInput(1, 0);
+    min = Math.min(min, v.speed);
+  });
+  return { v, kmh: kmh(v), min, moved: v.body.position.distanceTo(p0) };
+}
+
+test('motorcycles pull away from rest on the battlefield\'s ground: grass, ploughed fields, mud and hills', () => {
+  const all = ['wla', 'r75', 'm72', 'wla_sidecar', 'r75_sidecar', 'm72_sidecar'];
+  // Up a 20 % grass bank, from a standstill, and on up it. (The outfits whose
+  // sidecar wheel is not driven used to stall there with the clutch slipping
+  // and the rear wheel spinning: the steady pull was cut by the share of it
+  // that spins up the engine, and the rear tire had a real tire's grip.)
+  for (const id of all) {
+    const r = pullAway(id, SURF.GRASS, { slopePct: 20 });
+    assert.ok(r.kmh > 10 && !r.v.fallen, `${id} up 20 % of grass: ${r.kmh.toFixed(1)} km/h after 10 s`);
+  }
+  // Up a 15 % ploughed field, and along flat mud.
+  for (const id of all) {
+    const field = pullAway(id, SURF.FIELD, { slopePct: 15 });
+    assert.ok(field.kmh > 10, `${id} up 15 % of ploughed field: ${field.kmh.toFixed(1)} km/h after 10 s`);
+    const mud = pullAway(id, SURF.MUD);
+    assert.ok(mud.kmh > 15, `${id} on flat mud: ${mud.kmh.toFixed(1)} km/h after 10 s`);
+  }
+  // It doesn't roll back down a hill while he kicks the engine into life.
+  for (const id of ['wla', 'wla_sidecar']) {
+    const r = pullAway(id, SURF.DRY_GRASS, { slopePct: 10, seconds: 3 });
+    assert.ok(r.min > -0.1, `${id} rolled back ${(-r.min * 3.6).toFixed(1)} km/h pulling away up 10 %`);
+  }
+});
+
+test('a sidecar outfit parked across a hillside pulls away, its chair uphill or downhill', () => {
+  // The rider read the outfit's tilt with the ground as its chair lifting, and
+  // with the chair uphill he kept off the throttle: it never moved.
+  for (const id of ['wla_sidecar', 'r75_sidecar', 'm72_sidecar'])
+    for (const [yaw, side] of [
+      [Math.PI / 2, 'chair uphill'],
+      [-Math.PI / 2, 'chair downhill'],
+    ]) {
+      const r = pullAway(id, SURF.DRY_GRASS, { slopePct: 10, yaw });
+      assert.ok(r.kmh > 30 && r.moved > 40 && !r.v.fallen, `${id}, ${side} on a 10 % hillside: ${r.kmh.toFixed(1)} km/h, ${r.moved.toFixed(0)} m in 10 s`);
+    }
+});
+
+test('getting on beside a machine (F) puts a lone player on the saddle; the sidecar only when the saddle is taken', () => {
+  const { game } = makeWorld();
+  const v = spawn(game, 'wla_sidecar', 0, 0, 0, { empty: true });
+  run(v, 1);
+  const near = (x, z) => PlayerController.prototype.nearestVehicle.call({ soldier: { body: { x, y: 50, z } }, game });
+  // On the rider's side, beside the chair, and behind it.
+  for (const [x, z] of [
+    [-1.2, 0],
+    [2.3, 0],
+    [0.5, 1.9],
+  ]) {
+    const n = near(x, z);
+    assert.ok(n && n.v === v && n.seat === 0, `from (${x}, ${z}): ${n ? `seat ${n.seat}` : 'out of reach'}`);
+  }
+  v.enter(rider(), 0);
+  const n = near(-1.2, 0);
+  assert.equal(v.seats[n.seat].role, 'sidecarMg', 'with somebody on the saddle, the sidecar');
 });
 
 test('clutch-brake and epicyclic tanks turn at speed; a jeep holds its turn at speed', () => {

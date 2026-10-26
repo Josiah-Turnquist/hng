@@ -361,7 +361,7 @@ const M72_SIDECAR = {
   lean: { tip: 0.5 },
   rider: { barRate: 2, latG: 0.55 },
   brakes: { front: 1050, rear: 1350 },
-  cda: 1.05,
+  cda: 1.2, // (est.: the boxy chair and its upright gunner; with this it tops out at its real 85-90 km/h)
   seats: [
     rider('motorcycle', [0, 0.87, 0.1], [[-0.36, 1.0, -0.4], [0.36, 1.0, -0.4]], [[-0.27, 0.3, -0.07], [0.27, 0.3, -0.07]], [0, 1.61, 0.0]),
     sidecarSeat([0.83, 0.5, 0.35], [[0.73, 0.22, -0.5], [0.93, 0.22, -0.5]]),
