@@ -79,6 +79,35 @@ export class PlayerController {
     this.kick.vy += (Math.random() - 0.5) * 1.4 * k;
   }
 
+  // A weapon on the ground within reach, unless a vehicle is nearer.
+  nearestPickup() {
+    const near = this.game.pickups?.nearest(this.soldier);
+    if (!near) return null;
+    const v = this.nearestVehicle();
+    if (v && near.dist > 0.9) return null;
+    return near.d;
+  }
+
+  // Pick it up: it goes in its slot and in your hands; your own is left there.
+  _tryPickup() {
+    const d = this.nearestPickup();
+    if (!d) return false;
+    const s = this.soldier;
+    const cur = s.weapon;
+    if (cur?.state === 'reloading') cur.cancelReload();
+    cur?.setTrigger(false);
+    if (s.throwing) return false;
+    const slot = this.game.pickups.take(s, d);
+    if (slot === null) return false;
+    const prev = s.current;
+    s.current = -1; // (so the equip below counts as a change)
+    this._equip(slot);
+    this.lastWeapon = prev;
+    this.game.hud?.flash(`Picked up ${s.weapon.def.name}`, 1.5);
+    this.game.audio?.play?.('weaponHandling', null, { volume: 0.8 });
+    return true;
+  }
+
   // Get into the nearest vehicle within reach.
   _tryEnterVehicle() {
     const s = this.soldier;
@@ -140,7 +169,7 @@ export class PlayerController {
       this.vehicleCtl.frameInput(dt);
       return;
     }
-    if (input.hit('use') && this._tryEnterVehicle()) return;
+    if (input.hit('use') && (this._tryPickup() || this._tryEnterVehicle())) return;
     const w = s.weapon;
     // --- Looking -------------------------------------------------------------------
     const [mx, my] = input.takeMouse();

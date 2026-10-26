@@ -214,6 +214,8 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
     m.setLod(lod);
   }
   m.update(dt, st);
+  // His gun was dropped (it lies on the ground as a pickup): not in the dead hands.
+  if (!s.alive && s.gunDropped && m.gun) m.gun.visible = false;
 }
 
 export function removeSoldierModel(s) {

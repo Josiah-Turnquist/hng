@@ -210,6 +210,8 @@ export class Soldier {
     this.deaths++;
     this.killer = cause?.attacker || null;
     for (const w of this.weapons) w?.setTrigger(false);
+    // His main weapon falls beside him, for anyone to pick up.
+    this.game.pickups?.dropFrom(this);
     // The dead are left where they fell (out of the seat).
     if (this.vehicle) {
       const v = this.vehicle;

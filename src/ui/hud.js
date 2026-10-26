@@ -641,8 +641,10 @@ export class Hud {
       u.t = 0.15;
       let text = '';
       if (s.alive && !s.vehicle && this.game.cameraMode === 'first') {
-        const near = p.nearestVehicle();
-        if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
+        const pick = p.nearestPickup?.();
+        const near = pick ? null : p.nearestVehicle();
+        if (pick) text = `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
+        else if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
       }
       const key = text && !text.endsWith('no free seat') ? this.game.input.key('use') : '';
       if (text !== u.text || key !== u.key) {

@@ -17,6 +17,8 @@ import { NavGrid } from '../ai/navgrid.js';
 import { attachSoldierModel, updateSoldierView } from './soldierView.js';
 import { ThrownView } from './thrownView.js';
 import { ProjectileView } from './projectileView.js';
+import { Pickups } from './pickups.js';
+import { PickupView } from './pickupView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
 import { AMMO } from '../weapons/ammo.js';
@@ -56,6 +58,7 @@ export class Game {
     this.pipeline = new Pipeline(this.renderer, this.quality);
     this.pipeline.setSky(this.world.sky.skyCube);
     this.effects = new Effects(this.world);
+    this.pickups = new Pickups(this);
     this.casings = new Casings(this.world, this.audio);
     this.projectiles = new ProjectileSystem({
       world: this.world.collision,
@@ -231,6 +234,7 @@ export class Game {
     this._footsteps();
     this._runOver();
     this.projectiles.update(dt);
+    this.pickups?.update();
     this._guard(this.mode, () => this.mode.update?.(dt));
   }
 
@@ -712,6 +716,7 @@ export class Game {
     for (const s of this.soldiers) updateSoldierView(this, s, frameDt, camPos, fp);
     (this.thrownView ||= new ThrownView(this)).update(frameDt, camPos);
     (this.projectileView ||= new ProjectileView(this)).update(frameDt);
+    (this.pickupView ||= new PickupView(this)).update(camPos);
     for (const v of this.vehicles) {
       updateVehicleEffects(this, v, frameDt);
       if (this.audio) updateVehicleSound(this, v, frameDt);

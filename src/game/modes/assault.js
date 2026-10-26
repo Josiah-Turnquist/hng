@@ -318,6 +318,7 @@ export class AssaultMode {
     s.action = null;
     s.deathTime = 0;
     s.killer = null;
+    s.gunDropped = false;
     s.yaw = this._facing(p);
     b.yaw = s.yaw;
     s.resupply();

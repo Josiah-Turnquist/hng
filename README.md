@@ -24,7 +24,7 @@ To make a single HTML file you can open without a server: `npm run build` (write
 
 ### Battlefields
 
-- **Saint-Aubin-sur-Lenne (Assault).** A French village in a bend of the river Lenne, modeled on H&G's "Town" map: the police station (O1) and the church (O2), five attack lines (A to E) of four capture points each, three bridges (one blown), farms on every approach, and Normandy countryside of woods, orchards and bocage hedgerows. Bots fill both sides, with tanks and anti-tank soldiers.
+- **Saint-Aubin-sur-Lenne (Assault).** A French village in a bend of the river Lenne, modeled on H&G's "Town" map: the police station (O1) and the church (O2), five attack lines (A to E) of four capture points each, three bridges (one blown), farms on every approach, and Normandy countryside of woods, orchards and bocage hedgerows. Bots fill both sides (24 a side by default, up to 32 on the Generals screen), with tanks and anti-tank soldiers.
 - **Proving Ground.** A firing range with paper targets and steel plates from 25 to 800 m, a penetration lane (planks, brick, sandbags, concrete, steel), target tanks at 200, 300 and 500 m, and a motor pool with every vehicle. A range card shows where each shot landed, its flight time, speed and energy.
 
 ### Controls
@@ -52,6 +52,8 @@ Red marks round the middle of the screen point to where a shot that hit you came
 Where to go: a marker floats over each point your side should take or hold next, with its name, distance and capture progress; the nearest says ATTACK or DEFEND and stays at the edge of the screen when you look away. Marks above the compass show which way the points lie, a line under the points bar says how it's going on the point you stand on ("Taking A2: 35%"), and when you respawn a hint names the point to make for (Settings > Screen > Objective markers).
 
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
+
+Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
 
 ## What is simulated
 
