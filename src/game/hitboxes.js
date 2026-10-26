@@ -114,7 +114,9 @@ export function hitboxesFor(s, out = _boxes) {
 // Nearest hit on a soldier: { t, tExit, part, nx, ny, nz } or null.
 export function raycastSoldier(s, ox, oy, oz, dx, dy, dz, maxDist) {
   if (!s.alive && s.deathTime > 30) return null;
-  const boxes = s.model?.getHitboxes ? s.model.getHitboxes(_tmpBoxes) : hitboxesFor(s);
+  // The posed model's skeleton when it's being drawn; otherwise (the player's own
+  // body in first person, or no model) zones built from the body itself.
+  const boxes = s.model?.getHitboxes && s.model.poseValid !== false ? s.model.getHitboxes(_tmpBoxes) : hitboxesFor(s);
   let best = null;
   for (const h of boxes) {
     const r = rayCapsule(ox, oy, oz, dx, dy, dz, h.ax, h.ay, h.az, h.bx, h.by, h.bz, h.r);

@@ -116,6 +116,12 @@ function frames(pts) {
 // A tapered bark tube along a polyline. The bark texture repeats every BARK_WORLD
 // meters along the tube: the tube is cut at each repeat so atlas UVs stay in the cell.
 // o: { sides, cell, tint, ao(p) -> number, bend(p) -> number, phase }
+// The trunk as drawn, [[x, y, z, radius], ...] from below the ground up (the
+// collision boxes and bullet holes follow it).
+function trunkLine(pts, radii) {
+  return pts.map((p, i) => [p[0], p[1], p[2], radii[i]]);
+}
+
 function tube(G, pts, radii, o) {
   const sides = o.sides;
   const [u0, v0, u1, v1] = cellRect(o.cell, 0.035);
@@ -382,7 +388,7 @@ function broadleaf(G, sp, r) {
     const p = [C[0] + u[0] * R[0] * 0.5, C[1] + u[1] * R[1] * 0.45, C[2] + u[2] * R[2] * 0.5];
     cluster(G, p, cellLeaf, sp.card[1], style, r, { cards: 2, shade: 0.85 });
   }
-  return { H, C, R, trunkR: r0, crownBase: C[1] - R[1] };
+  return { H, C, R, trunkR: r0, crownBase: C[1] - R[1], trunk: trunkLine(tp, tr) };
 }
 
 function spruce(G, sp, r) {
@@ -460,7 +466,7 @@ function spruce(G, sp, r) {
   const ua = r.next() * Math.PI;
   card(G, top, [Math.cos(ua), 0, Math.sin(ua)], UP, 1.1, 2.1, CELL.spruce, o);
   card(G, top, [-Math.sin(ua), 0, Math.cos(ua)], UP, 1.1, 2.1, CELL.spruce, o);
-  return { H, C, R: Rc, trunkR: r0, crownBase: base };
+  return { H, C, R: Rc, trunkR: r0, crownBase: base, trunk: trunkLine(tp, tr) };
 }
 
 function pine(G, sp, r) {
@@ -532,7 +538,7 @@ function pine(G, sp, r) {
   let guard = 0;
   while (cl.length < sp.clusters && guard++ < 300) cl.push(r.chance(0.45) ? shellPoint(C, R, r, [0.55, 1.0], -0.5) : madd(tips[r.int(0, tips.length - 1)], randUnit(r), r.range(0.5, 1.6)));
   for (const p of cl) cluster(G, p, CELL.pine, r.range(sp.card[0], sp.card[1]), { ...style, normal: (q) => norm(add(style.normal(q), [0, 0.8, 0])) }, r, { cards: 3, face: 0.7 });
-  return { H, C, R, trunkR: r0, crownBase: clear };
+  return { H, C, R, trunkR: r0, crownBase: clear, trunk: trunkLine(lo.concat(hi.slice(1)), lr.concat(hr.slice(1))) };
 }
 
 function poplar(G, sp, r) {
@@ -586,7 +592,7 @@ function poplar(G, sp, r) {
     cl.push([C[0] + q[0] * rt * R[0], C[1] + q[1] * rt * R[1], C[2] + q[2] * rt * R[2]]);
   }
   for (const p of cl) cluster(G, p, CELL.poplar, r.range(sp.card[0], sp.card[1]), style, r, { cards: 3, face: 0.78, spin: 0.5 });
-  return { H, C, R, trunkR: r0, crownBase: H * 0.07 };
+  return { H, C, R, trunkR: r0, crownBase: H * 0.07, trunk: trunkLine(tp, tr) };
 }
 
 function bush(G, sp, r) {

@@ -308,7 +308,8 @@ export class Pipeline {
     }
     this.fxaa.uniforms.resolution.value.set(1 / rw, 1 / rh);
     this.sharpenMat.uniforms.uTexel.value.set(1 / rw, 1 / rh);
-    this.dofMat.uniforms.uMaxBlur.value = Math.max(3, rh * 0.012);
+    // (Strong enough that a rear peep sight a few cm from the eye blurs into a soft ring.)
+    this.dofMat.uniforms.uMaxBlur.value = Math.max(4, rh * 0.022);
     SHARED_UNIFORMS.uScreen.value.set(rw, rh, 1 / rw, 1 / rh);
     this.taaReset = true;
   }

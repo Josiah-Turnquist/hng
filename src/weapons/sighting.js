@@ -43,7 +43,9 @@ export class Sighting {
     const shoulder = a.shoulder;
     if (this.sightKind === 'scope') this.eyeRelief = 0.085;
     else if (!shoulder) this.eyeRelief = 0.55; // pistols held at arm's length
-    else if (this.kind === 'aperture') this.eyeRelief = Math.max(0.05, Math.min(0.12, shoulder.z - 0.2 - this.rear.z));
+    // A peep sight is held close to the eye (about 8 cm), so the hole looks wide
+    // and the rim blurs into a soft ring.
+    else if (this.kind === 'aperture') this.eyeRelief = Math.max(0.05, Math.min(0.08, shoulder.z - 0.2 - this.rear.z));
     else this.eyeRelief = Math.max(0.08, Math.min(0.5, shoulder.z - 0.17 - this.rear.z));
     if (def.type === 'launcher') this.eyeRelief = 0.12;
 

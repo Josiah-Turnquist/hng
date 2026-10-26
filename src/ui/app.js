@@ -80,7 +80,7 @@ export class App {
         cls: p.get('class') || 'infantry',
         tank: p.get('tank') || null,
         loadout: p.get('weapon') ? [p.get('weapon'), null, null] : null,
-        bots: Number(p.get('bots') || 10),
+        bots: Number(p.get('bots') || 24),
         minutes: Number(p.get('minutes') || 20),
       };
     } else {

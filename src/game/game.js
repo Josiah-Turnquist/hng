@@ -90,7 +90,7 @@ export class Game {
         attackers: attack ? faction : enemy,
         defenders: attack ? enemy : faction,
         playerTeam: team,
-        perSide: this.opts.bots || Number(this.app.params.get('bots') || 10),
+        perSide: this.opts.bots || Number(this.app.params.get('bots') || 24),
         minutes: this.opts.minutes || Number(this.app.params.get('minutes') || 20),
       });
     } else this.mode = new RangeMode(this);
@@ -473,6 +473,21 @@ export class Game {
       fx.impact({ ...info, energy: info.energy * 0.3 });
       return;
     }
+    // A hit on a tree trunk: the splinters and the hole come off the round bark, not on the face of
+    // the box standing in for it.
+    const tr = info.box?.trunk;
+    if (tr) {
+      const dx = info.x - tr.x,
+        dz = info.z - tr.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 1e-4) {
+        info.nx = dx / d;
+        info.ny = 0;
+        info.nz = dz / d;
+        info.x = tr.x + info.nx * tr.r;
+        info.z = tr.z + info.nz * tr.r;
+      }
+    }
     fx.impact(info);
     this.mode.onImpact?.(p, info);
     // Bullet holes on hard surfaces (not on soft ground or water).
@@ -644,8 +659,12 @@ export class Game {
     }
   }
 
+  // The player hurt: a red flash at the edges, the view jolts, and he grunts.
   onDamage(s, amount) {
-    if (s === this.player?.soldier) this.hud?.damage(amount);
+    if (s !== this.player?.soldier) return;
+    this.hud?.damage(amount);
+    this.player.flinch?.(amount);
+    if (amount >= 4) this.audio?.play?.('hurtGrunt', null, { volume: Math.min(1, 0.45 + amount / 60) });
   }
 
   // Scores as in the original game: +5 a kill, -10 a team kill, -1 a suicide.
@@ -714,6 +733,9 @@ export class Game {
     this.hud.update(frameDt);
     const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;
     this.pipeline.grade.uniforms.uDamage.value = clamp(this.hud.damageFlash, 0, 1);
+    // Bleeding hard or nearly dead: the edges of the view blur.
+    const me = this.player?.soldier;
+    this.pipeline.grade.uniforms.uBlur.value = me?.alive ? clamp(me.bleed / 2.5, 0, 0.6) + (me.health < 25 ? 0.25 : 0) : 0;
     // (The first-person gun and arms only while they are shown: not when killed,
     // scoped, or seen from outside.)
     const fpv = vm?.visible ? vm : null;

@@ -130,6 +130,9 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   // Hidden: the player's own body in first person, and crews inside tanks.
   const hidden = (s.isPlayer && firstPersonPlayer && !v && s.alive) || (v && v.def.kind === 'tracked') || (!s.alive && s.deathTime > 90);
   m.root.visible = !hidden;
+  // A hidden model isn't posed, so its skeleton can't stand in for the soldier's
+  // hit zones (hitboxes.js builds them from his body instead).
+  m.poseValid = !(hidden && s.alive);
   if (hidden && s.alive) return;
   const st = _state;
   const smooth = (t) => t * t * (3 - 2 * t);

@@ -322,13 +322,17 @@ float linZ(float d) {
   float zn = d * 2.0 - 1.0;
   return 2.0 * uNearFar.x * uNearFar.y / (uNearFar.y + uNearFar.x - zn * (uNearFar.y - uNearFar.x));
 }
+// The eye focuses on the front sight: the furthest part of the gun near the
+// middle of the view (never on the rear sight close to the eye).
 float focusZ() {
-  float f = 0.0, n = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float d = texture2D(tLayerDepth, vec2(0.5, 0.5 - float(i) * 0.012)).r;
-    if (d < 1.0) { f += linZ(d); n += 1.0; }
+  float f = 0.0;
+  for (int i = 0; i < 9; i++) {
+    float a = float(i) * 0.785398;
+    vec2 o = i == 0 ? vec2(0.0) : vec2(cos(a), sin(a)) * 0.02;
+    float d = texture2D(tLayerDepth, vec2(0.5, 0.49) + o).r;
+    if (d < 1.0) f = max(f, linZ(d));
   }
-  return n > 0.0 ? f / n : 0.7;
+  return f > 0.0 ? max(f, 0.4) : 0.7;
 }
 float blurAt(vec2 uv, float fz) {
   float d = texture2D(tLayerDepth, uv).r;

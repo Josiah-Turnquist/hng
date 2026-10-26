@@ -47,13 +47,42 @@ export function addVegetationColliders(collision, { plants, info, pieces, def })
       stats.bushes++;
       continue;
     }
-    // Trunk: upright box from below the ground to where the crown starts.
+    // Trunk, from below the ground to where the crown starts: a stack of upright
+    // boxes along the trunk as drawn, following its bend and its taper, each a
+    // little inside the bark (a square round a round trunk would stand out at the
+    // corners). Each knows its piece of trunk, so bullet holes go on the bark.
     const rt = vi.trunkR * s * sw * 0.9;
     if (rt >= 0.05) {
       const top = Math.min(Math.max(vi.crownBase, 2.5), vi.H * 0.7) * s * sy;
-      const lean = 0.5 * top;
-      collision.add(new Box(x + P.lx[i] * lean, y + (top - 0.5) / 2, z + P.lz[i] * lean, rt, (top + 0.5) / 2, rt, yaw, 'wood', FLAG_DEFAULT));
-      stats.trunks++;
+      const line = vi.trunk;
+      if (line?.length > 1) {
+        const hs = s * sw,
+          vs = s * sy;
+        for (let k = 0; k + 1 < line.length; k++) {
+          const A = line[k],
+            B = line[k + 1];
+          const ya = A[1] * vs;
+          if (ya >= top) break;
+          // Cut the piece off where the crown starts.
+          const f = Math.min(1, (top / vs - A[1]) / Math.max(1e-6, B[1] - A[1]));
+          const yb = (A[1] + (B[1] - A[1]) * f) * vs;
+          if (yb - ya < 0.05) continue;
+          const mx = (A[0] + (B[0] - A[0]) * f * 0.5) * hs,
+            mz = (A[2] + (B[2] - A[2]) * f * 0.5) * hs,
+            my = (ya + yb) / 2;
+          const wx = x + c * mx + sn * mz + P.lx[i] * my,
+            wz = z - sn * mx + c * mz + P.lz[i] * my;
+          const r = (A[3] + (B[3] - A[3]) * f * 0.5) * hs;
+          const box = new Box(wx, y + my, wz, r * 0.82, (yb - ya) / 2, r * 0.82, yaw, 'wood', FLAG_DEFAULT);
+          box.trunk = { x: wx, z: wz, r };
+          collision.add(box);
+          stats.trunks++;
+        }
+      } else {
+        const lean = 0.5 * top;
+        collision.add(new Box(x + P.lx[i] * lean, y + (top - 0.5) / 2, z + P.lz[i] * lean, rt, (top + 0.5) / 2, rt, yaw, 'wood', FLAG_DEFAULT));
+        stats.trunks++;
+      }
     }
     const role = P.role[i];
     const crownR = vi.R[0] * s * sw;

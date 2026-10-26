@@ -40,6 +40,7 @@ export class PlayerController {
     this.backAfterThrow = false;
     this.toggleCrouchState = false;
     this.camShake = 0;
+    this.kick = { p: 0, y: 0, vp: 0, vy: 0 }; // view jolt from being hit (rad, rad/s)
     this.eye = new THREE.Vector3();
     this.vehicleCtl = new VehicleController(this);
     this._equip(soldier.current);
@@ -68,6 +69,14 @@ export class PlayerController {
       }
     }
     return best ? { v: best, seat: best.freeSeat(0) } : null;
+  }
+
+  // Hit: the view jolts up and to one side, then settles back (the aim isn't lost).
+  flinch(amount) {
+    const k = clamp(amount / 35, 0.25, 1.3);
+    // (About 2 to 3 degrees for a rifle hit to the body.)
+    this.kick.vp += (0.8 + Math.random() * 0.6) * k;
+    this.kick.vy += (Math.random() - 0.5) * 1.4 * k;
   }
 
   // Get into the nearest vehicle within reach.
@@ -417,14 +426,20 @@ export class PlayerController {
     this.camShake = damp(this.camShake, 0, 8, dt);
     const shakeP = (Math.random() - 0.5) * this.camShake * 0.004;
     const shakeY = (Math.random() - 0.5) * this.camShake * 0.004;
+    // The jolt of a hit: a stiff spring back to where you were looking.
+    const kk = this.kick;
+    for (const [x, v] of [['p', 'vp'], ['y', 'vy']]) {
+      kk[v] += (-kk[x] * 140 - kk[v] * 16) * Math.min(dt, 0.05);
+      kk[x] += kk[v] * Math.min(dt, 0.05);
+    }
 
     const right = new THREE.Vector3(Math.cos(this.look.yaw), 0, -Math.sin(this.look.yaw));
     cam.position.copy(this.eye).addScaledVector(right, bobX);
     cam.position.y += bobY;
     const rollLean = -b.lean * 0.17;
     cam.rotation.set(
-      this.look.pitch + this.sway.pitch * aimBlend + shakeP,
-      this.look.yaw + this.sway.yaw * aimBlend + shakeY,
+      this.look.pitch + this.sway.pitch * aimBlend + shakeP + kk.p,
+      this.look.yaw + this.sway.yaw * aimBlend + shakeY + kk.y,
       rollLean + Math.sin(this.camBobT) * 0.004 * this.camBob,
       'YXZ',
     );

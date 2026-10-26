@@ -290,8 +290,9 @@ export class ViewModel {
     const adsQ = new THREE.Quaternion().setFromUnitVectors(s.losDir, Z_NEG);
     const adsPos = s.eye.clone().applyQuaternion(adsQ).negate();
 
-    // Blend hip -> aimed.
-    const a = this.aim * (1 - this.sprint);
+    // Blend hip -> aimed (not with the muzzle up against something: the gun is
+    // pushed off the eye rather than into it).
+    const a = this.aim * (1 - this.sprint) * (1 - this.blocked);
     hip.p.copy(hipPos).lerp(adsPos, a);
     hip.q.copy(hipQ).slerp(adsQ, a);
 

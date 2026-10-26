@@ -253,7 +253,7 @@ export function m1_garand(b) {
   b.span({ z0: -0.064, z1: -0.032, y0: 0.0118, y1: 0.0175, w: 0.0255, mat: P, r: 0.0015 });
   for (const s of [-1, 1]) b.extrude({ points: S([[-0.0475, 0.0168], [-0.0335, 0.0168], [-0.0338, 0.0328], [-0.042, 0.0352], [-0.0472, 0.032]], 2), width: 0.0024, x: s * 0.0081, mat: P, bevel: 0.0005 });
   b.part('rearSight', [0, RS, RZ]);
-  plateXYz(b, { outline: superellipse(0, RS - 0.0005, 0.0128, 0.0175, 3.2, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.0011, b.detail(1) ? 16 : 6)], z0: RZ - 0.0016, z1: RZ + 0.0016, mat: P, bevel: 0.0003 });
+  plateXYz(b, { outline: superellipse(0, RS - 0.0005, 0.0128, 0.0175, 3.2, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.003, b.detail(1) ? 16 : 6)], z0: RZ - 0.0016, z1: RZ + 0.0016, mat: P, bevel: 0.0003 });
   b.span({ z0: RZ - 0.0016, z1: RZ + 0.009, y0: RS - 0.0105, y1: RS - 0.0078, w: 0.0122, mat: P, r: 0.0006 }); // aperture slide
   b.anchor('rearSight', 0, RS, RZ);
   b.body();
@@ -416,7 +416,7 @@ function carbine(b, v) {
     for (const s of [-1, 1]) b.extrude({ points: S([[-0.012, 0.014], [0.012, 0.014], [0.012, 0.0285], [0.004, 0.0298]], 2), width: 0.0021, x: s * 0.0079, mat: P, bevel: 0.0004 });
     knurledKnob(b, { at: [0.0112, 0.0175, -0.004], axis: 'x', r: 0.0052, len: 0.0045, teeth: 16, mat: P });
     b.part('rearSight', [0, 0.024, 0.0]);
-    plateXYz(b, { outline: superellipse(0, 0.0215, 0.0102, 0.0145, 4, b.detail(1) ? 20 : 8), holes: [circle(0, 0.024, 0.0012, b.detail(1) ? 14 : 6)], z0: -0.0014, z1: 0.0014, mat: P, bevel: 0.0003 });
+    plateXYz(b, { outline: superellipse(0, 0.0215, 0.0102, 0.0145, 4, b.detail(1) ? 20 : 8), holes: [circle(0, 0.024, 0.0025, b.detail(1) ? 14 : 6)], z0: -0.0014, z1: 0.0014, mat: P, bevel: 0.0003 });
     b.span({ z0: -0.003, z1: 0.012, y0: 0.0145, y1: 0.0175, w: 0.0122, mat: P, r: 0.0008 });
     b.anchor('rearSight', 0, 0.024, 0.0);
     b.body();
@@ -426,7 +426,7 @@ function carbine(b, v) {
     b.span({ z0: -0.022, z1: 0.014, y0: 0.0105, y1: 0.0155, w: 0.0162, mat: P, r: 0.0015 });
     b.span({ z0: 0.0, z1: 0.012, y0: 0.0145, y1: 0.0175, w: 0.0122, mat: P, r: 0.001 });
     b.part('rearSight', [0, 0.024, 0.0]);
-    plateXYz(b, { outline: [[-0.006, 0.0145], [0.006, 0.0145], [0.006, 0.0275], [0.003, 0.0302], [-0.003, 0.0302], [-0.006, 0.0275]], holes: [circle(0, 0.024, 0.0013, b.detail(1) ? 14 : 6)], z0: -0.0013, z1: 0.0013, mat: P, bevel: 0.0003 });
+    plateXYz(b, { outline: [[-0.006, 0.0145], [0.006, 0.0145], [0.006, 0.0275], [0.003, 0.0302], [-0.003, 0.0302], [-0.006, 0.0275]], holes: [circle(0, 0.024, 0.0025, b.detail(1) ? 14 : 6)], z0: -0.0013, z1: 0.0013, mat: P, bevel: 0.0003 });
     b.anchor('rearSight', 0, 0.024, 0.0);
     b.body();
   }
@@ -1048,7 +1048,7 @@ export function thompson_m1a1(b) {
   // Rear sight: fixed peep between protecting ears (100 yd).
   b.span({ z0: 0.028, z1: 0.066, y0: 0.0215, y1: 0.0262, w: 0.0172, mat: P, r: 0.0012 });
   for (const s of [-1, 1]) b.extrude({ points: S([[0.031, 0.0245], [0.064, 0.0245], [0.064, 0.0352], [0.056, 0.0438], [0.047, 0.0442], [0.04, 0.0362]], 3), width: 0.0019, x: s * 0.0076, mat: P, bevel: 0.0004 });
-  plateXYz(b, { outline: superellipse(0, 0.0345, 0.012, 0.0185, 3.5, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.0012, b.detail(1) ? 16 : 6)], z0: RZ - 0.0012, z1: RZ + 0.0012, mat: P, bevel: 0.0003 });
+  plateXYz(b, { outline: superellipse(0, 0.0345, 0.012, 0.0185, 3.5, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.0025, b.detail(1) ? 16 : 6)], z0: RZ - 0.0012, z1: RZ + 0.0012, mat: P, bevel: 0.0003 });
   b.anchor('rearSight', 0, RS, RZ);
 
   // --- Frame: magazine well, trigger guard, selector and safety rockers (left).
@@ -1225,7 +1225,7 @@ export function m3_greasegun(b) {
   b.anchor('frontSight', 0, 0.0387, -0.2895);
   b.span({ z0: 0.068, z1: 0.096, y0: 0.0225, y1: 0.0302, w: 0.0162, mat: P, r: 0.0015 });
   for (const s of [-1, 1]) b.extrude({ points: S([[0.07, 0.028], [0.094, 0.028], [0.094, 0.047], [0.084, 0.047]], 1), width: 0.002, x: s * 0.0075, mat: P, bevel: 0.0004 });
-  plateXYz(b, { outline: superellipse(0, 0.0372, 0.0122, 0.0165, 4, b.detail(1) ? 20 : 8), holes: [circle(0, 0.0415, 0.0015, b.detail(1) ? 14 : 6)], z0: 0.0868, z1: 0.0892, mat: P, bevel: 0.0003 });
+  plateXYz(b, { outline: superellipse(0, 0.0372, 0.0122, 0.0165, 4, b.detail(1) ? 20 : 8), holes: [circle(0, 0.0415, 0.0025, b.detail(1) ? 14 : 6)], z0: 0.0868, z1: 0.0892, mat: P, bevel: 0.0003 });
   b.anchor('rearSight', 0, 0.0415, 0.088);
   // Ejection port with its cover swung open (down) on the right.
   b.span({ z0: -0.27, z1: -0.175, y0: -0.006, y1: 0.012, w: 0.0018, x: 0.0254, mat: 'black', r: 0.0006 });
@@ -1401,7 +1401,7 @@ export function bar_m1918a2(b) {
   b.span({ z0: 0.0368, z1: 0.0428, y0: 0.0692, y1: 0.0732, w: 0.0148, mat: P, r: 0.0008 });
   if (b.detail(0)) for (let i = 0; i < 14; i++) b.box({ x: 0.0089, y: 0.031 + i * 0.0029, z: 0.0398, w: 0.0004, h: 0.00035, d: i % 5 === 4 ? 0.0055 : 0.003, mat: 'black', r: 0 });
   b.part('rearSight', [0, RS, RZ]);
-  plateXYz(b, { outline: superellipse(0, RS, 0.0136, 0.0128, 4, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.0013, b.detail(1) ? 16 : 6)], z0: RZ - 0.0013, z1: RZ + 0.0013, mat: P, bevel: 0.0003 });
+  plateXYz(b, { outline: superellipse(0, RS, 0.0136, 0.0128, 4, b.detail(1) ? 24 : 8), holes: [circle(0, RS, 0.0025, b.detail(1) ? 16 : 6)], z0: RZ - 0.0013, z1: RZ + 0.0013, mat: P, bevel: 0.0003 });
   b.anchor('rearSight', 0, RS, RZ);
   b.body();
   b.meta.sightKind = 'slide';
@@ -1660,7 +1660,7 @@ export function johnson_lmg(b) {
   b.span({ z0: 0.02, z1: 0.06, y0: 0.02, y1: 0.034, w: 0.016, mat: P, r: 0.002 });
   for (const sx of [-1, 1]) b.extrude({ points: [[0.03, 0.032], [0.058, 0.032], [0.058, 0.062], [0.046, 0.066]], width: 0.002, x: sx * 0.0075, mat: P, bevel: 0.0004 });
   b.part('rearSight', [0, 0.034, 0.05]);
-  plateXY(b, { outline: [[-0.0055, 0.032], [0.0055, 0.032], [0.0055, 0.063], [-0.0055, 0.063]], holes: [circle(0, 0.0595, 0.0014, 14)], z: 0.048, thick: 0.0025, mat: P });
+  plateXY(b, { outline: [[-0.0055, 0.032], [0.0055, 0.032], [0.0055, 0.063], [-0.0055, 0.063]], holes: [circle(0, 0.0595, 0.0025, 14)], z: 0.048, thick: 0.0025, mat: P });
   b.anchor('rearSight', 0, 0.0595, 0.048);
   b.body();
   b.meta.sightKind = 'slide';

@@ -26,9 +26,9 @@ const _rp = { x: 0, y: 0, z: 0 };
 const _v = new THREE.Vector3();
 
 export const SKILL = {
-  recruit: { reaction: [0.6, 1.1], aim: 2.2, track: 1.2, spot: 0.7, burst: [2, 5] },
-  regular: { reaction: [0.4, 0.8], aim: 1.4, track: 1.8, spot: 1, burst: [3, 6] },
-  veteran: { reaction: [0.3, 0.55], aim: 0.9, track: 2.6, spot: 1.3, burst: [3, 8] },
+  recruit: { reaction: [0.55, 1.0], aim: 1.8, track: 1.4, spot: 0.7, burst: [2, 5] },
+  regular: { reaction: [0.35, 0.7], aim: 1.1, track: 2.1, spot: 1, burst: [3, 6] },
+  veteran: { reaction: [0.25, 0.5], aim: 0.7, track: 3.0, spot: 1.3, burst: [3, 8] },
 };
 
 export class BotBrain {
@@ -67,6 +67,8 @@ export class BotBrain {
     this.nadeT = 8 + Math.random() * 12; // no grenade before this
     this.throwAt = null; // where a grenade we're throwing should land
     this.treatT = 0; // stopping to treat a wound until then
+    this.goalT = 0; // next time to choose which point to fight for
+    this.goalOwner = undefined;
     this.engagedAt = 0; // when we picked the current target
   }
 
@@ -226,12 +228,20 @@ export class BotBrain {
     const b = s.body;
     const g = this.game;
     const mode = g.mode;
-    const goal = mode.botGoal?.(this) || null;
-    if (goal && (!this.goal || goal.id !== this.goal.id)) {
-      this.goal = goal;
-      this.path = null;
-      this.wander = null;
-      this.watch = null;
+    // Which point to fight for: chosen afresh now and then, or when it changes
+    // hands (asking every moment, the choice would flicker between two points and
+    // every new choice throws the route away).
+    const gp = this.goal && mode.byId?.[this.goal.id];
+    if (!this.goal || g.time > this.goalT || (gp && gp.owner !== this.goalOwner)) {
+      const goal = mode.botGoal?.(this) || null;
+      this.goalT = g.time + 12 + Math.random() * 10;
+      if (goal && (!this.goal || goal.id !== this.goal.id)) {
+        this.goal = goal;
+        this.path = null;
+        this.wander = null;
+        this.watch = null;
+      }
+      this.goalOwner = this.goal ? mode.byId?.[this.goal.id]?.owner : undefined;
     }
     // A long way to go: take a bicycle or motorcycle if there's one at hand.
     if (!this.target && this.goal && !s.vehicle && !this.ride) this.ride = findRide(this);
@@ -826,8 +836,8 @@ export class BotBrain {
           if (this.burstLeft <= 0) this.holdFire = 0.25 + Math.random() * 0.5;
         } else this.holdFire = w.isBolt ? 0.2 : 0.25 + Math.random() * 0.35;
         // Recoil throws the aim off; it's pulled back over the next moments.
-        this.err.vp += 0.08 + Math.random() * 0.05;
-        this.err.vy += gaussRandom(0, 0.04);
+        this.err.vp += 0.06 + Math.random() * 0.04;
+        this.err.vy += gaussRandom(0, 0.03);
       }
       for (const ev of w.takeEvents()) this.game.onWeaponEvent?.(s, w, ev);
     }

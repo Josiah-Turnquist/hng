@@ -118,10 +118,13 @@ function check(s) {
   return s;
 }
 
+// Soldiers on each side of a battle unless the Generals screen says otherwise.
+export const BATTLE_SIZE = 24;
+
 // The starting roster: an infantry soldier of each army.
 export function newRoster(rng = Math.random) {
   const soldiers = ['US', 'GE', 'SU'].map((f) => makeSoldier(f, 'infantry', null, rng));
-  return { soldiers, selectedId: soldiers[0].id, mission: { map: 'town', side: 'attack', enemy: null, bots: 10, minutes: 20 } };
+  return { soldiers, selectedId: soldiers[0].id, mission: { map: 'town', side: 'attack', enemy: null, bots: BATTLE_SIZE, minutes: 20, size: 2 } };
 }
 
 export function loadRoster() {
@@ -135,7 +138,12 @@ export function loadRoster() {
   r.soldiers = r.soldiers.map(check).filter(Boolean);
   if (!r.soldiers.length) return newRoster();
   if (!r.soldiers.some((s) => s.id === r.selectedId)) r.selectedId = r.soldiers[0].id;
-  r.mission = { map: 'town', side: 'attack', enemy: null, bots: 10, minutes: 20, ...(r.mission || {}) };
+  r.mission = { map: 'town', side: 'attack', enemy: null, bots: BATTLE_SIZE, minutes: 20, ...(r.mission || {}) };
+  // Saved before battles grew: the old default of 10 a side becomes the new one.
+  if (!r.mission.size) {
+    if (r.mission.bots <= 10) r.mission.bots = BATTLE_SIZE;
+    r.mission.size = 2;
+  }
   return r;
 }
 

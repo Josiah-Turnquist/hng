@@ -439,7 +439,7 @@ export function showFrontEnd(app) {
         const inp = el('input');
         inp.type = 'range';
         inp.min = 4;
-        inp.max = 18;
+        inp.max = 32;
         inp.value = m.bots;
         inp.id = l.htmlFor = 'fe-bots';
         inp.addEventListener('input', () => {
@@ -448,7 +448,7 @@ export function showFrontEnd(app) {
           save();
         });
         r.appendChild(inp);
-        r.appendChild(el('div', 'note', 'The original game fought 18 against 18. Fewer is lighter on slower computers.'));
+        r.appendChild(el('div', 'note', 'The original game fought 18 against 18; bots make up the numbers. Fewer is lighter on slower computers.'));
         d.appendChild(r);
         row('Battle clock', [[10, '10 min'], [20, '20 min'], [30, '30 min']], m.minutes, (v) => (m.minutes = v));
       }
