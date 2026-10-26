@@ -317,7 +317,8 @@ export class Hud {
         const mode = w.mode === 'bolt' ? 'bolt action' : w.mode === 'slow' ? 'auto (slow)' : w.mode;
         const status = w.state === 'reloading' ? ' · reloading' : w.needsCycle ? ' · work bolt' : w.loaded === 0 ? ' · empty' : '';
         const heat = w.heat > 120 ? ' · barrel hot' : '';
-        this.modeEl.textContent = `${mode} · sight ${w.zeroRange} ${d.sight.unit}${status}${heat}`;
+        const sights = d.irons ? (w.useIrons ? ' (irons)' : ' (scope)') : '';
+        this.modeEl.textContent = `${mode} · sight ${w.zeroRange} ${w.sight.unit}${sights}${status}${heat}`;
       }
     }
     this._updateVehicle(p);
@@ -830,7 +831,7 @@ export class Hud {
       return;
     }
     const w = p.soldier.weapon;
-    const show = p.scoped && w?.def.scope && !v;
+    const show = p.scoped && w?.scope && !v;
     const key = show ? `${w.def.id}:${this.scope.width}x${this.scope.height}` : null;
     if (key === this.lastScope) return;
     this.lastScope = key;
@@ -840,7 +841,7 @@ export class Hud {
     c.clearRect(0, 0, W, H);
     this.scope.style.display = show ? 'block' : 'none';
     if (!show) return;
-    const sc = w.def.scope;
+    const sc = w.scope;
     // Apparent field of view: true field x magnification, relative to the 31.6 deg "1x" view.
     const apparent = Math.min(0.9, (sc.fieldDeg * sc.mag) / 31.6);
     const R = (H * apparent) / 2;
@@ -862,7 +863,7 @@ export class Hud {
     c.fillStyle = '#050505';
     c.strokeStyle = '#050505';
     const u = R / 100;
-    if (sc.reticle === 'german1') {
+    if (sc.reticle === 'german1' || sc.reticle === 'germanPost') {
       // ZF39 "Absehen 1": a pointed post from below and two thick side bars.
       c.beginPath();
       c.moveTo(cx - 2.2 * u, cy + R);
@@ -871,8 +872,11 @@ export class Hud {
       c.lineTo(cx + 2.2 * u, cy + 6 * u);
       c.lineTo(cx + 2.2 * u, cy + R);
       c.fill();
-      c.fillRect(cx - R, cy - 1.6 * u, R - 14 * u, 3.2 * u);
-      c.fillRect(cx + 14 * u, cy - 1.6 * u, R - 14 * u, 3.2 * u);
+      // (The ZF 41's post stands alone.)
+      if (sc.reticle === 'german1') {
+        c.fillRect(cx - R, cy - 1.6 * u, R - 14 * u, 3.2 * u);
+        c.fillRect(cx + 14 * u, cy - 1.6 * u, R - 14 * u, 3.2 * u);
+      }
     } else if (sc.reticle === 'soviet') {
       // PU: pointed post from below, thin tapered side lines.
       c.beginPath();
@@ -890,9 +894,19 @@ export class Hud {
         c.lineTo(cx + sgn * R, cy + 1.2 * u);
         c.fill();
       }
+    } else if (sc.reticle === 'post') {
+      // M82: a post from below, tapering to a flat tip at the center.
+      c.beginPath();
+      c.moveTo(cx - 3.2 * u, cy + R);
+      c.lineTo(cx - 3.2 * u, cy + 18 * u);
+      c.lineTo(cx - 0.9 * u, cy);
+      c.lineTo(cx + 0.9 * u, cy);
+      c.lineTo(cx + 3.2 * u, cy + 18 * u);
+      c.lineTo(cx + 3.2 * u, cy + R);
+      c.fill();
     } else {
-      // Fine crosshair.
-      c.lineWidth = Math.max(1, 0.6 * u);
+      // Crosshair: fine, or medium wires (the Marine Corps' Unertl).
+      c.lineWidth = Math.max(1, (sc.reticle === 'crosshairMedium' ? 1.2 : 0.6) * u);
       c.beginPath();
       c.moveTo(cx - R, cy);
       c.lineTo(cx + R, cy);

@@ -222,12 +222,20 @@ export class AssaultMode {
   }
 
   // A varied but sensible loadout per faction: mostly rifles, some SMGs and MGs.
+  // Scouts (recon) carry their army's scoped rifles in turn, now and then a
+  // plain gun; the others carry no scope.
   _botLoadout(faction, cls, i) {
     const base = DEFAULT_LOADOUT[faction][cls] || DEFAULT_LOADOUT[faction].infantry;
     const prim = weaponsFor(faction, cls, 'primary').filter((w) => w.type !== 'launcher' && w.type !== 'atRifle');
-    const pick = prim[(i * 7 + 3) % prim.length];
+    const scoped = prim.filter((w) => w.scope);
+    const plain = prim.filter((w) => !w.scope);
     const loadout = base.slice();
-    if (pick && i % 2 === 1) loadout[0] = pick.id;
+    const k = Math.floor(i / 8); // (one scout in every eight men)
+    if (cls === 'recon' && scoped.length && k % 4 !== 3) loadout[0] = scoped[k % scoped.length].id;
+    else {
+      const pick = plain[(i * 7 + 3) % plain.length];
+      if (pick && (i % 2 === 1 || cls === 'recon')) loadout[0] = pick.id;
+    }
     // Every fifth man carries the army's anti-tank weapon.
     const at = { US: 'bazooka_m1a1', GE: 'panzerschreck', SU: 'ptrd41' }[faction];
     if (i % 5 === 4 && at) loadout[0] = at;

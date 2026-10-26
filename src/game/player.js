@@ -152,6 +152,7 @@ export class PlayerController {
     if (index !== s.current) this.lastWeapon = s.current;
     s.current = index;
     this.viewmodel.setWeapon(w.def, this.game.world.atmosphere);
+    this.viewmodel.setIrons(w.useIrons);
     this.viewmodel.setZero(w.zeroIndex);
     this.game.hud?.weaponChanged(w);
   }
@@ -223,7 +224,7 @@ export class PlayerController {
     if (input.hit('slot3')) this._requestSwitch(2);
     const wheel = input.takeWheel();
     if (wheel && w) {
-      if (s.aiming && w.def.sight.ranges.length > 1) {
+      if (s.aiming && w.sight.ranges.length > 1) {
         if (w.changeZero(-Math.sign(wheel))) this.viewmodel.setZero(w.zeroIndex);
       } else {
         this._requestSwitch((s.current + (wheel > 0 ? 1 : 2)) % 3);
@@ -231,7 +232,9 @@ export class PlayerController {
     }
     if (w && input.hit('zeroUp') && w.changeZero(1)) this.viewmodel.setZero(w.zeroIndex);
     if (w && input.hit('zeroDown') && w.changeZero(-1)) this.viewmodel.setZero(w.zeroIndex);
-    if (w && input.hit('fireMode')) w.cycleMode();
+    // The fire mode key: on a rifle with one fire mode and a scope that leaves
+    // the iron sights clear, it switches between the scope and the irons.
+    if (w && input.hit('fireMode') && (w.def.modes.length > 1 || !w.toggleSights())) w.cycleMode();
     if (w && input.hit('reload') && s.alive && !b.sprinting) {
       if (w.state === 'reloading') w.cancelReload();
       else if (w.needsCycle && w.state === 'ready') w.startBoltCycle();
@@ -310,7 +313,13 @@ export class PlayerController {
         g.hud?.flash(`Fire mode: ${ev.mode === 'slow' ? 'slow auto' : ev.mode}`);
         break;
       case 'zero':
-        g.hud?.flash(`Sight: ${ev.range} ${w.def.sight.unit}`);
+        g.hud?.flash(`Sight: ${ev.range} ${w.sight.unit}`);
+        break;
+      case 'sights':
+        this.viewmodel.setIrons(ev.irons);
+        this.viewmodel.setZero(w.zeroIndex);
+        g.audio?.play('fireModeSwitch', null, { volume: 0.4 });
+        g.hud?.flash(ev.irons ? `Iron sights: ${w.zeroRange} ${w.sight.unit}` : `Scope: ${w.zeroRange} ${w.sight.unit}`);
         break;
       case 'dry':
         break;
@@ -477,7 +486,7 @@ export class PlayerController {
 
     // Field of view: slight zoom on iron sights (eye focusing), real magnification on scopes.
     let fov = this.baseFov;
-    const scope = w?.def.scope;
+    const scope = w?.scope;
     if (scope) {
       const scopeFov = (2 * Math.atan(Math.tan((NATURAL_FOV * DEG) / 2) / scope.mag)) / DEG;
       fov = THREE.MathUtils.lerp(this.baseFov, scopeFov, Math.pow(aimBlend, 3));

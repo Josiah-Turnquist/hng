@@ -67,7 +67,7 @@ export const ACTIONS = [
       ['fire', 'Fire', 'any', 'Hold to cook a grenade, let go to throw it.'],
       ['aim', 'Aim through the sights', 'any', 'Also the gunner\'s sight in a tank.'],
       ['reload', 'Reload, work the bolt', 'foot'],
-      ['fireMode', 'Fire mode', 'foot'],
+      ['fireMode', 'Fire mode, scope or iron sights', 'foot', 'On a scoped rifle with one fire mode whose mount leaves the iron sights clear, switches between the scope and the iron sights.'],
       ['zeroUp', 'Sight range up', 'any'],
       ['zeroDown', 'Sight range down', 'any'],
       ['slot1', 'Main weapon', 'foot'],

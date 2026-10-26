@@ -2,6 +2,7 @@
 // meters, bore along Z at x = y = 0, muzzle toward -Z, trigger at z = 0.
 import { S, place, circle, slot, boxMag, guard, trigger, plateXY, lathe, tube, cartridge, swivel, taperZ, path, loft } from './parts.js';
 import { stock, band, plateXYz, bar, screw, buttPlate, arch, stockSection, sectionLoft, crisp, stations, superellipse, knurledKnob, sweepGrip, serrations, perfTube, sling, stamp, ribbon, latheY, ringLoft, smoothstep } from './shapes.js';
+import { m1cMount, unertl, ring } from './optics.js';
 
 const PI = Math.PI;
 
@@ -324,6 +325,20 @@ export function m1_garand(b) {
   b.meta.boltThrow = 0.092;
 }
 
+// M1C: the sniper Garand of 1944, an M1 with the Griffin & Howe side mount on
+// the left of the receiver and a 2.5x Lyman Alaskan (M81 crosshair or M82
+// post), offset left so clips still go in from the top and the iron sights stay
+// clear; leather cheek pad on the butt (optics.js).
+export function m1c_m81(b) {
+  m1_garand(b);
+  m1cMount(b);
+}
+
+export function m1c_m82(b) {
+  m1_garand(b);
+  m1cMount(b);
+}
+
 // .30 Carbine family (M1, M1A1, M2): 904 mm long, 458 mm barrel, short-stroke gas
 // piston under the barrel driving the operating slide on the right (charging
 // handle at its rear), round-topped receiver with the rotating bolt, cross-bolt
@@ -627,13 +642,15 @@ export function m2_carbine(b) {
 // down), blade front sight on a movable stud, upper band with the bayonet lug and
 // stacking swivel, lower band with the sling swivel, magazine cutoff on the left of
 // the receiver, flag safety on the bolt sleeve, knurled cocking piece, checkered
-// butt plate. v.scope = M1903A4: no iron sights, Weaver 330C (M73B1) 2.5x scope on
-// a Redfield Junior mount, bent bolt handle, C-type pistol grip stock.
+// butt plate. v.scope = M1903A4: no iron sights, Weaver 330C (M73B1) 2.75x scope on
+// a Redfield Junior mount, bent bolt handle, C-type pistol grip stock. v.cStock =
+// M1903A1: the C-type pistol grip stock with the iron sights and straight handle.
 // Parkerized (wartime). Dimensions est. from photos.
 function springfield(b, v) {
   const P = 'parkerized';
   const W = 'walnut';
   const A4 = !!v.scope;
+  const cStock = A4 || !!v.cStock;
   const MZ = -0.777;
   // --- Barrel.
   lathe(b, {
@@ -673,8 +690,8 @@ function springfield(b, v) {
   b.box({ x: 0, y: -0.0365, z: -0.524, w: 0.006, h: 0.004, d: 0.01, mat: P, r: 0.001 });
   bar(b, { pts: [[0, -0.037, -0.531], [0, -0.0475, -0.526], [0, -0.0525, -0.513], [0, -0.0455, -0.508], [0, -0.038, -0.518]], closed: true, r: 0.0021, mat: P, seg: 8 });
 
-  // --- Stock: straight grip (M1903) or C-type pistol grip (A4).
-  const grip = A4
+  // --- Stock: straight grip (M1903) or C-type pistol grip (A1, A4).
+  const grip = cStock
     ? [
         [0.045, -0.054],
         [0.058, -0.074],
@@ -893,7 +910,7 @@ function springfield(b, v) {
     b.meta.sight = 'notch';
     b.meta.sightKind = 'leaf';
   } else {
-    // Redfield Junior base and rings, Weaver 330C (M73B1) 2.5x scope.
+    // Redfield Junior base and rings, Weaver 330C (M73B1) 2.75x scope.
     const yc = 0.0375;
     b.span({ z0: -0.198, z1: -0.066, y0: 0.0158, y1: 0.0235, w: 0.0172, mat: 'steel', r: 0.002 });
     for (const [z, wide] of [
@@ -927,7 +944,7 @@ function springfield(b, v) {
     b.anchor('scopeEye', 0, yc, 0.0122);
     b.anchor('scopeFront', 0, yc, -0.2722);
     b.meta.sight = 'scope';
-    b.meta.scopeMag = 2.5;
+    b.meta.scopeMag = 2.75;
   }
 
   // --- Bolt with the shroud, flag safety and knurled cocking piece; straight
@@ -966,9 +983,38 @@ export function m1903(b) {
   springfield(b, {});
 }
 
-// M1903A4 sniper: Weaver 330C (M73B1) 2.5x scope, Redfield Junior mount, no iron sights.
+// M1903A4 sniper: Weaver 330C (M73B1) 2.75x scope, Redfield Junior mount, no iron sights.
 export function m1903a4(b) {
   springfield(b, { scope: true });
+}
+
+// M1903A1 with the Marine Corps' Unertl 8x target scope: the blocks are
+// dovetailed onto the receiver ring and the barrel 7.2 in (183 mm) apart, the
+// rear mount carries the micrometer knobs (elevation on top, windage on the
+// right), and the scope slides in both rings, pulled back by hand after each
+// shot. Mounted high enough for the straight bolt handle. Heights est.
+export function m1903a1_unertl(b) {
+  springfield(b, { cStock: true });
+  const P = 'parkerized';
+  const yc = 0.054;
+  const r = 0.0095;
+  const zR = -0.182,
+    zF = zR - 0.183;
+  for (const [z, y0] of [
+    [zR, 0.0152],
+    [zF, 0.0158],
+  ]) {
+    b.span({ z0: z - 0.0105, z1: z + 0.0105, y0, y1: 0.0232, w: 0.0142, mat: P, r: 0.0012 }); // block
+    b.span({ z0: z - 0.0085, z1: z + 0.0085, y0: 0.0232, y1: 0.0268, w: 0.0172, mat: P, r: 0.0008 }); // dovetail foot
+    b.span({ z0: z - 0.0055, z1: z + 0.0055, y0: 0.0262, y1: yc - r, w: 0.0092, mat: P, r: 0.0015 }); // upright
+    ring(b, { y: yc, z, r, w: 0.012, t: 0.0035, mat: P });
+  }
+  // Micrometer knobs on the rear mount.
+  knurledKnob(b, { at: [0, yc + r + 0.0095, zR], axis: 'y', r: 0.0078, len: 0.009, teeth: 32, mat: P });
+  b.cylAxis({ axis: 'y', x: 0, y: yc + r + 0.003, z: zR, len: 0.006, r: 0.0042, mat: P, seg: 14 });
+  knurledKnob(b, { at: [0.0175, yc - 0.004, zR], axis: 'x', r: 0.0072, len: 0.008, teeth: 30, mat: P });
+  b.cylAxis({ axis: 'x', x: 0.011, y: yc - 0.004, z: zR, len: 0.006, r: 0.004, mat: P, seg: 14 });
+  unertl(b, { y: yc, zEye: -0.004 });
 }
 
 // Thompson M1A1: .45 ACP blowback SMG, 813 mm long, 267 mm plain barrel (no
