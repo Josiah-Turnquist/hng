@@ -480,6 +480,7 @@ function screenPage(body, view) {
     toggleRow(view, 'shotMarkers', 'Shot direction markers', 'Red marks round the middle of the screen point the way a shot that hit you came from; pale ones point to bullets that only just missed.'),
   );
   body.appendChild(toggleRow(view, 'bulletTrails', 'Bullets in flight', 'Ordinary bullets flying near you show as small blurred bullets (your own are not shown), so you can see fire coming past. Tracer rounds, shells and rockets always show.'));
+  body.appendChild(toggleRow(view, 'allyMarkers', 'Teammate markers', 'A green dot over the head of everyone on your side, so you can tell who not to shoot. It shows through walls and smoke, and fades with distance.'));
   body.appendChild(toggleRow(view, 'objectiveMarkers', 'Objective markers', 'A mark over each point your side should take or hold next, with its name and how far it is; the nearest says ATTACK or DEFEND and stays at the edge of the screen when it is out of view. Marks over the compass show which way they lie.'));
   body.appendChild(toggleRow(view, 'grenadeWarning', 'Grenade warning', 'A grenade mark on live grenades that land near you (they are easy to lose in long grass), red when you are close enough to be hurt. Out of sight, the mark sits at the edge of the ring pointing to it.'));
   body.appendChild(toggleRow(view, 'showFps', 'Show frame rate', 'Frames per second in the top left corner. 60 is smooth; below 30 try a lower quality or render resolution.'));

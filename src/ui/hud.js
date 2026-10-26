@@ -354,11 +354,12 @@ export class Hud {
     }
     const nades = this._nearGrenades(p);
     const objs = this._objectives(p);
-    if (!marks.length && !nades.length && !objs && !this.shotsDrawn) return;
+    const allies = this._allies(p);
+    if (!marks.length && !nades.length && !objs && !allies && !this.shotsDrawn) return;
     const c = this.shotsCanvas;
     const ctx = this.shotsCtx;
     ctx.clearRect(0, 0, c.width, c.height);
-    this.shotsDrawn = marks.length > 0 || nades.length > 0 || !!objs;
+    this.shotsDrawn = marks.length > 0 || nades.length > 0 || !!objs || !!allies;
     if (!this.shotsDrawn) return;
     const f = _cv.set(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
     const camYaw = Math.atan2(-f.x, -f.z);
@@ -366,6 +367,7 @@ export class Hud {
     const cx = c.width / 2,
       cy = c.height / 2;
     const R = Math.max(70, Math.min(c.width, c.height) * 0.16);
+    if (allies) this._drawAllies(ctx, allies);
     if (objs) this._drawObjectives(ctx, objs, camYaw);
     if (nades.length) this._drawGrenades(ctx, nades, b, camYaw, cx, cy, R);
     ctx.lineCap = 'butt';
@@ -397,6 +399,48 @@ export class Hud {
       ctx.closePath();
       ctx.fill();
     }
+  }
+
+  // --- teammates ------------------------------------------------------------------
+  // Everyone on the player's side, alive (and not the player), when the marks are on.
+  _allies(p) {
+    const me = p.soldier;
+    if (!me.alive || !this.game.settings.get('allyMarkers')) return null;
+    const list = this.game.soldiers.filter((s) => s !== me && s.alive && s.team === me.team);
+    return list.length ? list : null;
+  }
+
+  // A green dot over the head of each teammate in view (through walls and
+  // smoke too: it says who not to shoot), smaller and fainter far off.
+  _drawAllies(ctx, list) {
+    const c = this.shotsCanvas;
+    const w = c.width,
+      h = c.height;
+    const cam = this.game.camera;
+    const cp = cam.position;
+    const k = Math.max(0.8, Math.min(w, h) / 1080); // (sizes for a 1080-line screen)
+    ctx.save();
+    ctx.fillStyle = 'rgb(70, 215, 95)';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.lineWidth = 1.5 * k;
+    for (const s of list) {
+      const veh = s.vehicle;
+      if (veh?.seatPos) veh.seatPos(s.seat, _cv, 'eye');
+      else s.body.eyePosition(_cv);
+      const d = Math.hypot(_cv.x - cp.x, _cv.y - cp.y, _cv.z - cp.z);
+      if (d > 600 || d < 1.5) continue;
+      _cv.y += 0.35 + d * 0.004; // over the helmet, a little higher far off (where a man is a few pixels tall)
+      const v = _cv.project(cam);
+      if (v.z >= 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue;
+      const x = (v.x * 0.5 + 0.5) * w,
+        y = (0.5 - v.y * 0.5) * h;
+      ctx.globalAlpha = d < 350 ? 0.95 : 0.95 * (1 - (d - 350) / 250);
+      ctx.beginPath();
+      ctx.arc(x, y, clamp(8 - d / 50, 4, 8) * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // --- where to go next ------------------------------------------------------------

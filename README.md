@@ -51,6 +51,8 @@ Red marks round the middle of the screen point to where a shot that hit you came
 
 Where to go: a marker floats over each point your side should take or hold next, with its name, distance and capture progress; the nearest says ATTACK or DEFEND and stays at the edge of the screen when you look away. Marks above the compass show which way the points lie, a line under the points bar says how it's going on the point you stand on ("Taking A2: 35%"), and when you respawn a hint names the point to make for (Settings > Screen > Objective markers).
 
+Who not to shoot: a green dot floats over the head of everyone on your side, through walls and smoke too, smaller and fainter with distance (Settings > Screen > Teammate markers).
+
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
 
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
