@@ -186,6 +186,7 @@ export class Bike extends Vehicle {
     this.chairLift = 0; // outfits: how far the sidecar wheel is off the ground (rad)
     this.rigSpin = 0; // outfits: how much the rider has rolled off for a slide (0-1)
     this._gripNow = 0.7;
+    this.grip = BIKE_GRIP * (def.grip ?? 1); // gameplay grip of this machine's tires (see BIKE_GRIP)
     this.steerG = 0; // front wheel steer angle on the ground (+ = right)
     this.u = 0;
     this.ay = 0;
@@ -772,7 +773,7 @@ export class Bike extends Vehicle {
       const mu = surf.mu * (this.waterDepth > 0.3 ? 0.75 : 1) * (flat ? 0.55 : 1);
       const N = Math.min(w.N, w.L * 3.5 + 500);
       const maxF = mu * N;
-      const maxFy = maxF * BIKE_GRIP; // (sideways: gameplay grip, BIKE_GRIP)
+      const maxFy = maxF * this.grip; // (sideways: gameplay grip, this.grip)
       const crr = (this.rollTable[w.surface] ?? 0.03) * (flat ? 3 : 1);
       // Along the wheel.
       let fl = w.drive;
@@ -800,8 +801,8 @@ export class Bike extends Vehicle {
         w.lock = true;
       } else {
         // Friction circle (an ellipse with the extra sideways grip, and the
-        // same extra grip for a driven tire pulling: gameplay, BIKE_GRIP).
-        const maxFl = fl > 0 && w.drive > 0 ? maxF * BIKE_GRIP : maxF;
+        // same extra grip for a driven tire pulling: gameplay, this.grip).
+        const maxFl = fl > 0 && w.drive > 0 ? maxF * this.grip : maxF;
         const e = Math.hypot(fl / maxFl, fy / maxFy);
         if (e > 1) {
           slip = 1 - 1 / e;
@@ -973,7 +974,7 @@ export class Bike extends Vehicle {
       const aChair = (this.wS.L * track) / (this.m * hc);
       const aRear = (this.wR.L * (this.wF.z - this.wR.z) * track) / ((this.wF.z - this.wS.z) * this.m * hc);
       // (And no more than the ground under it gives: grass and mud hold less.)
-      const aLim = Math.min(towardChair ? Math.min(latG, 0.95 * aChair) : Math.min(latG / TURN_CIRCLE, 0.65 * aRear), 0.75 * this._gripNow * BIKE_GRIP * G);
+      const aLim = Math.min(towardChair ? Math.min(latG, 0.95 * aChair) : Math.min(latG / TURN_CIRCLE, 0.65 * aRear), 0.75 * this._gripNow * this.grip * G);
       let kappa = steerIn * Math.min(Math.tan(lockR) / L, aLim / Math.max(u * u, 0.5));
       let spin = 0;
       // Bars left alone, he holds his line (outfits are rigged to run straight,
@@ -1115,7 +1116,7 @@ export class Bike extends Vehicle {
     const accWant = refAcc - 2 * zeta * wn * (this.leanRate - this.leanTargetRate) - wn * wn * (this.lean - this.leanTarget);
     const cosL = Math.max(0.3, Math.cos(this.lean));
     let aDes = G * Math.tan(this.lean) - ((k2 / H) * (accWant - refAcc)) / cosL;
-    const grip = this._gripNow * BIKE_GRIP * G * 0.95;
+    const grip = this._gripNow * this.grip * G * 0.95;
     aDes = clamp(aDes, -grip, grip);
     // The bars: the path curvature plus the slip angles the tires need for that
     // turn (the front and rear share of the cornering force, on their loads),
@@ -1149,9 +1150,9 @@ export class Bike extends Vehicle {
     const a = this.cz - this.wF.z,
       b = this.wR.z - this.cz;
     const mu = this._gripNow;
-    const capF = mu * BIKE_GRIP * Math.max(this.wF.N, 50);
+    const capF = mu * this.grip * Math.max(this.wF.N, 50);
     const nR = Math.max(this.wR.N, 50);
-    const capR = Math.max(50, mu * BIKE_GRIP * nR * Math.sqrt(Math.max(0, 1 - (this.wR.drive / (mu * nR)) ** 2)));
+    const capR = Math.max(50, mu * this.grip * nR * Math.sqrt(Math.max(0, 1 - (this.wR.drive / (mu * nR)) ** 2)));
     // No more than the tires give comfortably (near their peak the steering
     // needed stops growing with the turn and a rider can't use it).
     const cap = Math.min((capF * L) / b, (capR * L) / a);
@@ -1182,7 +1183,7 @@ export class Bike extends Vehicle {
     const tanGrip = (keep * cap * (trust / Math.max(mu, 0.1))) / (this.m * G);
     let clear = d.lean.clear - 0.04 + LEAN_EXTRA;
     // Pedaling, the inside pedal comes down: less clearance on a bicycle.
-    if (this.pedal && this.effort !== 'coast' && this.effort !== 'idle') clear = Math.min(clear, 0.45 + LEAN_EXTRA);
+    if (this.pedal && this.effort !== 'coast' && this.effort !== 'idle') clear = Math.min(clear, (d.lean.pedal ?? 0.45) + LEAN_EXTRA);
     return Math.min(clear, Math.atan(tanGrip));
   }
 
@@ -1272,7 +1273,7 @@ export class Bike extends Vehicle {
       const nR = Math.max(0, this.wR.N),
         nS = Math.max(0, this.wS.N);
       const fyR = (((this.m * Math.abs(this.ay) * (this.cz - this.wF.z)) / d.wheelbase) * nR) / Math.max(1, nR + nS);
-      const room = this._gripNow * BIKE_GRIP * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * Math.max(1, nR))) ** 2)) + (this.rollTable[this.wR.surface] ?? 0.03) * nR;
+      const room = this._gripNow * this.grip * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * this.grip * Math.max(1, nR))) ** 2)) + (this.rollTable[this.wR.surface] ?? 0.03) * nR;
       F = Math.min(F, Math.max(room / Math.max(0.05, this.wR.driven), 0.4 * F));
     }
     // Leaned over, the rider feeds the throttle in only as far as the rear
@@ -1286,10 +1287,10 @@ export class Bike extends Vehicle {
       const fyR = (this.m * ay * (this.cz - this.wF.z)) / d.wheelbase;
       const care = smoothstep(0.03, 0.12, lean); // (leaned over: a little more in hand)
       const nR = Math.max(1, this.wR.N);
-      // (Upright he counts on the tire's whole pull, BIKE_GRIP; leaned over
+      // (Upright he counts on the tire's whole pull, this.grip; leaned over
       // only on what a real tire gives, or he would run wide in a long bend.)
-      const pull = BIKE_GRIP - (BIKE_GRIP - 1) * care;
-      const room = (0.9 - 0.05 * care) * this._gripNow * pull * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * BIKE_GRIP * nR)) ** 2));
+      const pull = this.grip - (this.grip - 1) * care;
+      const room = (0.9 - 0.05 * care) * this._gripNow * pull * nR * Math.sqrt(Math.max(0, 1 - (fyR / (this._gripNow * this.grip * nR)) ** 2));
       F = Math.min(F, Math.max(room, (0.25 - 0.15 * care) * F));
     }
     this.wR.drive = F * this.wR.driven;
@@ -1316,8 +1317,7 @@ export class Bike extends Vehicle {
     // as much harder as it takes to keep up the pace he rides at on a road
     // (within the same limit).
     const grade = Math.max(0, this._grade());
-    const soft = (this.m * G * Math.max(0, this._rolling() - HARD_ROLL) * this._pace()) / pd.efficiency;
-    const steady = Math.min(pd.cp, pd.cruise + (pd.cp - pd.cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1) + soft);
+    const steady = this._effort(pd.cruise, pd.cp, grade);
     const fSeat = pd.F0 * fall * toWheel; // the most force at the tire at this cadence
     const fMax = grade > 0.02 ? (pd.F0stand ?? pd.F0) * fall * toWheel : fSeat;
     let F = 0;
@@ -1325,11 +1325,11 @@ export class Bike extends Vehicle {
     this.standing = false;
     if (throttle > 0.05 && !this.fallen && this.rightingT <= 0) {
       if (this.input.sprint && !spent) {
-        // All he has: what the legs push at this cadence, and above critical
-        // power only as much as his remaining W' allows.
-        F = fMax;
-        const pMax = F * Math.max(u, 0);
-        if (pMax > pd.cp && u > 0.5) F = Math.min(F, (pd.cp + (pMax - pd.cp) * Math.sqrt(clamp(this.wBal / this.wMax, 0, 1))) / u);
+        // Pedalling hard, out of the saddle: the steady effort of a stronger
+        // rider (pd.heavy, about 5 km/h quicker), within what the legs push at
+        // this cadence. What is above his critical power comes out of his W'.
+        const want = (this._effort(pd.heavy.cruise, pd.heavy.cp, grade) * throttle) / Math.max(u, 0.8);
+        F = Math.min(want, fMax);
         effort = 'sprint';
         this.standing = true;
       } else {
@@ -1367,11 +1367,21 @@ export class Bike extends Vehicle {
     this.gear = 1;
   }
 
-  // The speed his steady effort gives on a level road (m/s, about 5).
-  _pace() {
-    if (this._paceV) return this._paceV;
+  // What he puts out to hold an effort of cruise W on the flat: more up a hill
+  // and on soft ground (as much more as it takes to keep up the pace that
+  // effort gives on a road), up to cp.
+  _effort(cruise, cp, grade) {
     const pd = this.def.pedal;
-    const P = pd.cruise * pd.efficiency;
+    const soft = (this.m * G * Math.max(0, this._rolling() - HARD_ROLL) * this._pace(cruise)) / pd.efficiency;
+    return Math.min(cp, cruise + (cp - cruise) * clamp(grade / (pd.climb ?? 0.06), 0, 1) + soft);
+  }
+
+  // The speed an effort of cruise W gives on a level road (m/s, about 7).
+  _pace(cruise = this.def.pedal.cruise) {
+    const cache = (this._paceV ||= {});
+    if (cache[cruise]) return cache[cruise];
+    const pd = this.def.pedal;
+    const P = cruise * pd.efficiency;
     const roll = this.nominalMass * G * HARD_ROLL,
       air = 0.5 * 1.2 * (this.def.cda ?? 0.8);
     let lo = 0,
@@ -1381,7 +1391,7 @@ export class Bike extends Vehicle {
       if ((roll + air * v * v) * v > P) hi = v;
       else lo = v;
     }
-    return (this._paceV = lo);
+    return (cache[cruise] = lo);
   }
 
   // W' balance: work above critical power drains it; below, it comes back. (As

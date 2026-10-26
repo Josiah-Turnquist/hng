@@ -58,10 +58,11 @@ const BICYCLE = {
     // Gameplay: a real fit soldier keeps up about 160 W for hours and has a
     // critical power of about 230 W, which rides at 18 km/h on a road: slower
     // than the game's soldiers sprint on foot (22 km/h, with three times real
-    // stamina). So he is given a good deal more, to ride at about 30 km/h on a
-    // road or grass and 26 through fields: clearly quicker than running.
-    cruise: 420, // W: a steady effort on the flat that he can keep up
-    cp: 520, // W: critical power (sustainable without tiring); he climbs at it
+    // stamina). So he is given a good deal more, to ride at about 25 km/h on a
+    // road or grass and 21 through fields, and 5 km/h more pedalling hard.
+    cruise: 285, // W: a steady effort on the flat that he can keep up
+    cp: 375, // W: critical power (sustainable without tiring); he climbs at it
+    heavy: { cruise: 420, cp: 520 }, // W: pedalling hard (sprint key), out of the saddle: about 5 km/h quicker
     climb: 0.06, // grade at which his steady effort has risen to critical power
     wPrime: 14000, // J: work above critical power before he is spent
     efficiency: 0.95, // chain and bearings
@@ -81,8 +82,14 @@ const BICYCLE = {
     front: { k: 90000, c: 700, droop: 0.01, bump: 0.025 },
     rear: { k: 100000, c: 800, droop: 0.012, bump: 0.025 },
   },
-  lean: { clear: 0.6, crash: 0.85, stand: 0 }, // stand: parked upright on its rear stand
-  rider: { rollRate: 1.6, barRate: 4, wn: 4, foot: -1, latG: 0.6 },
+  // stand: parked upright on its rear stand. pedal: how far he leans pedalling.
+  // Gameplay: he leans further than a real inside pedal clears the ground
+  // (about 0.45), and the tires grip 1.4 times the other machines' gameplay
+  // grip (grip), so at the game's riding speeds (25 km/h) he turns as quickly
+  // as a real rider at 18: a quarter turn in about 1.7 s.
+  lean: { clear: 0.66, crash: 0.85, stand: 0, pedal: 0.66 },
+  grip: 1.4,
+  rider: { rollRate: 2.6, rollAcc: 8, barRate: 4, wn: 4, foot: -1, latG: 0.6 },
   brakes: { front: 270, rear: 190 }, // N: stirrup rim brakes
   cda: 0.75, // m2 with an upright rider in uniform, helmet, rifle and pack (est.)
   engine: { name: 'The rider\'s legs', human: true, idle: 0, redline: 140, torque: [[0, 0]], inertia: 0, sound: null },

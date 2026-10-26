@@ -375,7 +375,7 @@ test('motorcycles: real top speeds, solo and with sidecar', () => {
   }
 });
 
-test('bicycle: about 30 km/h at a steady effort (clearly quicker than running), more sprinting, hills slow it', () => {
+test('bicycle: about 25 km/h at a steady effort (quicker than running), 5 km/h more pedalling hard, hills slow it', () => {
   const ride = (slopeDeg, sprint, seconds) => {
     const { game } = makeWorld({ size: 2048, slopeDeg });
     const v = spawn(game, 'bicycle', 0, 600, 0);
@@ -390,15 +390,15 @@ test('bicycle: about 30 km/h at a steady effort (clearly quicker than running), 
   const cruise = ride(0, false, 40);
   // (Gameplay: a real soldier's steady 160 W rides at 18 km/h, slower than the
   // game's soldiers sprint on foot, 22 km/h: see bikeDefs.)
-  assert.ok(cruise.end > 27 && cruise.end < 33, `cruise ${cruise.end.toFixed(1)} km/h`);
+  assert.ok(cruise.end > 23 && cruise.end < 27, `cruise ${cruise.end.toFixed(1)} km/h`);
   assert.ok(Math.abs(cruise.v.power - cruise.v.def.pedal.cruise) < 25, `cruise power ${cruise.v.power.toFixed(0)} W`);
   // (With the soldiers' bigger stamina, STAMINA_POOL, a sprint lasts a couple of minutes.)
   const sprint = ride(0, true, 150);
-  assert.ok(sprint.top > cruise.end + 2 && sprint.top < 40, `sprint peak ${sprint.top.toFixed(1)} km/h`);
+  assert.ok(sprint.top > cruise.end + 3.5 && sprint.top < cruise.end + 6.5, `pedalling hard ${sprint.top.toFixed(1)} km/h`);
   assert.ok(sprint.v.occupants[0].body.stamina < 85, `sprinting uses stamina (${sprint.v.occupants[0].body.stamina.toFixed(0)} left)`);
   // A 3 degree (5 %) climb: slower than on the flat, still quicker than running.
   const hill = ride(3, false, 30);
-  assert.ok(hill.end > 14 && hill.end < 24, `uphill ${hill.end.toFixed(1)} km/h`);
+  assert.ok(hill.end > 11 && hill.end < 19, `uphill ${hill.end.toFixed(1)} km/h`);
   // Coasting down the same slope, it runs away to over 30 km/h.
   const { game } = makeWorld({ size: 2048, slopeDeg: 3 });
   const v = spawn(game, 'bicycle', 0, -600, Math.PI);
@@ -419,9 +419,9 @@ test('bicycle: climbs hills, slower as they steepen, standing on the pedals when
     return v;
   };
   for (const [grade, lo, hi] of [
-    [0.06, 4.3, 5.8],
-    [0.08, 3.6, 4.9],
-    [0.1, 3.0, 4.2],
+    [0.06, 3.3, 4.4],
+    [0.08, 2.7, 3.7],
+    [0.1, 2.2, 3.2],
     [0.15, 0.7, 1.8],
   ]) {
     const v = climb(grade, false);
@@ -429,7 +429,7 @@ test('bicycle: climbs hills, slower as they steepen, standing on the pedals when
     assert.ok(!v.fallen, `fell on the ${grade * 100} % climb`);
   }
   const hard = climb(0.08, true, 6);
-  assert.ok(hard.speed > 4.5, `8 % standing on the pedals: ${hard.speed.toFixed(2)} m/s`);
+  assert.ok(hard.speed > 3.7, `8 % standing on the pedals: ${hard.speed.toFixed(2)} m/s`);
   // Down a 10 % hill: coasting runs it up past 30 km/h, and the brakes stop it.
   const { game } = makeWorld({ size: 2048, slopeDeg: (Math.atan(0.1) * 180) / Math.PI });
   const v = spawn(game, 'bicycle', 0, -600, Math.PI);
@@ -447,6 +447,29 @@ test('bicycle: climbs hills, slower as they steepen, standing on the pedals when
   assert.ok(Math.abs(v.speed) < 0.3, `held still on the hill (${v.speed.toFixed(2)} m/s)`);
 });
 
+test('bicycle: a full turn at riding speed comes round quickly and stays up', () => {
+  // (At 25 km/h a quarter turn in about 1.7 s, as a real rider manages at 18:
+  // gameplay lean and grip, see bikeDefs.)
+  for (const sprint of [false, true]) {
+    const { game } = makeWorld({ size: 2048, surface: SURF.GRASS });
+    const v = spawn(game, 'bicycle', 0, 600, 0);
+    run(v, 1);
+    run(v, 12, () => v.driverInput(1, 0, false, sprint));
+    let turned = 0,
+      last = v.yaw,
+      t90 = null;
+    run(v, 4, (t) => {
+      v.driverInput(1, 1, false, sprint);
+      const d = v.yaw - last;
+      turned += Math.atan2(Math.sin(d), Math.cos(d));
+      last = v.yaw;
+      if (t90 === null && Math.abs(turned) >= Math.PI / 2) t90 = t;
+    });
+    assert.ok(!v.fallen, `fell in the turn (${sprint ? 'pedalling hard' : 'steady'})`);
+    assert.ok(t90 !== null && t90 < (sprint ? 2.2 : 2.0), `a quarter turn ${sprint ? 'pedalling hard' : 'steady'} in ${t90?.toFixed(2)} s`);
+  }
+});
+
 test('bicycle: three times the pick-up of the plain figures (gameplay)', () => {
   // Without the gain: 0-15 km/h in 12.8 s at a steady effort, 0-20 km/h in 7.3 s sprinting.
   const pick = (sprint, to) => {
@@ -462,7 +485,7 @@ test('bicycle: three times the pick-up of the plain figures (gameplay)', () => {
   };
   const cruise = pick(false, 15),
     sprint = pick(true, 20);
-  assert.ok(cruise > 1.2 && cruise < 2.4, `0-15 km/h at a steady effort in ${cruise.toFixed(2)} s`);
+  assert.ok(cruise > 1.4 && cruise < 2.8, `0-15 km/h at a steady effort in ${cruise.toFixed(2)} s`);
   assert.ok(sprint > 1.8 && sprint < 3.2, `0-20 km/h sprinting in ${sprint.toFixed(2)} s`);
 });
 
@@ -483,25 +506,25 @@ test('bicycle: holding W gets it going on grass, leaf litter and crops too (most
   };
   const grass = ride(SURF.GRASS, 20);
   assert.ok(grass.t15 !== null && grass.t15 < 3, `0-15 km/h on grass in ${grass.t15?.toFixed(1)} s`);
-  assert.ok(kmh(grass.v) > 26 && kmh(grass.v) < 33, `cruising on grass at ${kmh(grass.v).toFixed(1)} km/h`);
+  assert.ok(kmh(grass.v) > 23 && kmh(grass.v) < 27, `cruising on grass at ${kmh(grass.v).toFixed(1)} km/h`);
   // He works harder there, but no harder than he can keep up (his stamina
   // stays near full).
   const pd = grass.v.def.pedal;
   assert.ok(grass.v.power > pd.cruise + 30 && grass.v.power < pd.cp + 8, `on grass at ${grass.v.power.toFixed(0)} W`);
   assert.ok(grass.v.occupants[0].body.stamina > 90, `stamina ${grass.v.occupants[0].body.stamina.toFixed(0)}`);
   for (const [name, lo, hi] of [
-    ['FOREST', 25, 32],
-    ['WHEAT', 24, 31],
-    ['FIELD', 23, 29],
-    ['MUD', 19, 26],
-    ['SAND', 17, 23],
+    ['FOREST', 22, 26.5],
+    ['WHEAT', 21, 25.5],
+    ['FIELD', 19.5, 24],
+    ['MUD', 15.5, 20.5],
+    ['SAND', 13.5, 18],
   ]) {
     const { v } = ride(SURF[name], 15);
     assert.ok(kmh(v) > lo && kmh(v) < hi, `${name.toLowerCase()}: ${kmh(v).toFixed(1)} km/h, want ${lo}-${hi}`);
   }
   // A 6 % grassy hill: he rides up it at about a running pace, not walking it.
   const hill = ride(SURF.GRASS, 12, (Math.atan(0.06) * 180) / Math.PI);
-  assert.ok(!hill.v.walking && !hill.v.fallen && kmh(hill.v) > 12 && kmh(hill.v) < 21, `6 % on grass: ${kmh(hill.v).toFixed(1)} km/h`);
+  assert.ok(!hill.v.walking && !hill.v.fallen && kmh(hill.v) > 9 && kmh(hill.v) < 18, `6 % on grass: ${kmh(hill.v).toFixed(1)} km/h`);
 });
 
 test('parked machines stand upright on their stands, also with a wheel up on a kerb; outfits sit with the ground', () => {
@@ -932,7 +955,7 @@ test('steering answers the way it is pressed at once, and stops soon after the k
     ['willys_mb', 29, 8],
     ['m4a1_sherman', 22, 14],
     ['wla', 45, 12],
-    ['bicycle', 18, 24],
+    ['bicycle', 18, 28], // (it turns 90 degrees in those 1.2 s: the run-on is a quarter of that)
     ['r75_sidecar', 40, 4],
   ]) {
     const v = cruise(id, speed);
