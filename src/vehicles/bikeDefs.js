@@ -55,8 +55,13 @@ const BICYCLE = {
     F0: 700,
     F0stand: 1000,
     c0: 190,
-    cruise: 160, // W: a steady effort on the flat that he can keep up for hours
-    cp: 230, // W: critical power (sustainable without tiring); he climbs at it
+    // Gameplay: a real fit soldier keeps up about 160 W for hours and has a
+    // critical power of about 230 W, which rides at 18 km/h on a road: slower
+    // than the game's soldiers sprint on foot (22 km/h, with three times real
+    // stamina). So he is given a good deal more, to ride at about 30 km/h on a
+    // road or grass and 26 through fields: clearly quicker than running.
+    cruise: 420, // W: a steady effort on the flat that he can keep up
+    cp: 520, // W: critical power (sustainable without tiring); he climbs at it
     climb: 0.06, // grade at which his steady effort has risen to critical power
     wPrime: 14000, // J: work above critical power before he is spent
     efficiency: 0.95, // chain and bearings

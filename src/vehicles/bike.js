@@ -27,7 +27,7 @@
 //    than the outfit takes either way, brings the chair down when it lifts,
 //    and catches the rear when it slides out.
 //  - Bicycles are driven by the soldier's legs: force falls with cadence (about
-//    600 W at best), a steady cruise of 160 W, and sprints spend his stamina (the
+//    600 W at best), a steady cruise (stronger than a real rider's: see bikeDefs.js), and sprints spend his stamina (the
 //    work he can do above his critical power, W').
 // The heading, position and speeds follow a single-track (bicycle) model with
 // tire slip; pitch and heave come from the wheel springs. Units: SI.
@@ -103,7 +103,7 @@ const PEDAL_GAIN = 3;
 // gave 9 km/h on grass and 5 on a ploughed field (slower than a soldier jogs),
 // in mud or sand his legs could not get it rolling at all, and nine tenths of
 // a battlefield is soft ground. (He also works harder there: see _legs.)
-const SOFT_ROLL = 0.4;
+const SOFT_ROLL = 0.3;
 const HARD_ROLL = ROLL.bicycle[8]; // (a road)
 
 // Gameplay: riders roll into a lean, and back up out of it, this many times
