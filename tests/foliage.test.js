@@ -63,7 +63,7 @@ test('bushes and hedges are thick (they hide a man beyond a few meters), tree cr
   assert.ok(bushes.length > 1000, `${bushes.length} bushes`);
   const crowns = leafy.filter((b) => !b.dense);
   assert.ok(crowns.length > 200, `${crowns.length} tree crowns`);
-  // Across a hedge: hidden from a bot 20 m off, not from one 6 m off.
+  // Across a hedge: hidden from a bot 20 m off, not from one a few meters off.
   let tested = 0;
   for (const b of hedges.filter((h) => Math.max(h.hx, h.hz) > 3).slice(0, 60)) {
     const y = b.cy + b.hy * 0.4;
@@ -71,11 +71,11 @@ test('bushes and hedges are thick (they hide a man beyond a few meters), tree cr
     const r = Math.min(b.hx, b.hz);
     const at = (k) => [b.cx + thin[0] * k, y, b.cz + thin[2] * k];
     const far = at(20),
-      near = at(5),
+      near = at(2.5),
       man = at(-r - 0.8);
     if (!coll.lineOfSight(...far, ...man) || !coll.lineOfSight(...near, ...man)) continue;
     assert.ok(leavesBetween(coll, ...far, ...man).hides, 'seen through a hedge from 20 m');
-    assert.ok(!leavesBetween(coll, ...near, ...man).hides, 'hidden behind a hedge from 6 m');
+    assert.ok(!leavesBetween(coll, ...near, ...man).hides, 'hidden behind a hedge from a few meters');
     tested++;
   }
   assert.ok(tested >= 10, `only ${tested} hedges had a clean view`);

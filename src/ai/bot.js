@@ -48,19 +48,22 @@ export const DIFFICULTY = {
 };
 
 // How far a bot picks out and takes on a man, by its sights (m): spotting falls
-// off sharply past spot, and it opens fire only within fire (further if he is
-// shooting at it from there). Iron sights reach about as far as a player can
-// make out a man on the screen (some 10 pixels tall at 200 m); scoped rifles and
-// machine guns further; submachine guns, pistols and launchers (at men) less.
+// off sharply past spot, and it opens fire only within fire (a little further if
+// he is shooting at it from there). Gameplay: well inside what a player can make
+// out on the screen (a man is about 15 pixels tall at 120 m at 1080 lines), so a
+// bot is never the one with the longer reach; scoped rifles and machine guns a
+// little further, submachine guns, pistols and launchers (at men) less.
 const RANGES = {
-  iron: { spot: 200, fire: 250 },
-  scope: { spot: 400, fire: 500 },
-  lmg: { spot: 350, fire: 450 },
-  smg: { spot: 200, fire: 175 },
-  pistol: { spot: 200, fire: 60 },
-  revolver: { spot: 200, fire: 60 },
-  launcher: { spot: 200, fire: 120 },
+  iron: { spot: 120, fire: 150 },
+  scope: { spot: 250, fire: 300 },
+  lmg: { spot: 160, fire: 200 },
+  smg: { spot: 100, fire: 100 },
+  pistol: { spot: 60, fire: 40 },
+  revolver: { spot: 60, fire: 40 },
+  launcher: { spot: 120, fire: 100 },
 };
+// Shot at from further off, he answers out to this many times his range.
+const ANSWER = 1.3;
 export function engageRange(def) {
   if (!def) return RANGES.iron;
   return def.scope ? RANGES.scope : RANGES[def.type] || RANGES.iron;
@@ -201,7 +204,13 @@ export class BotBrain {
     if (at) for (const v of this.game.vehicles) if (v.alive && v.team !== s.team && v.occupants.some((o) => o)) list.push({ e: v, d: Math.hypot(v.body.position.x - b.x, v.body.position.z - b.z) });
     list.sort((a, b2) => a.d - b2.d);
     for (const { e, d } of list) {
-      if (d > 520) continue;
+      if (d > (e.isVehicle ? 520 : range.fire * ANSWER + 30)) {
+        // Out of our sights' reach: he fades from mind as if out of view.
+        const ls = this.lastSeen.get(e);
+        if (ls) ls.visible = false;
+        this.aware.set(e, Math.max(0, (this.aware.get(e) || 0) - dt * 0.25));
+        continue;
+      }
       let a = this.aware.get(e) || 0;
       const ti = tinfo(e, _ti);
       const dx = ti.x - b.x,
@@ -230,16 +239,16 @@ export class BotBrain {
           if (lv.hides && !veh) {
             visible = false;
             leafy = true;
-          } else if (lv.total > 0) cover = Math.max(Math.exp(-lv.total / 0.9), firing ? 0.5 : 0.08);
+          } else if (lv.total > 0) cover = Math.max(Math.exp(-lv.total / 0.5), firing ? 0.35 : 0.04);
         }
       }
       if (visible && (inView || heard)) {
         // How fast we notice: close, moving, standing, shooting people stand out; vehicles more so.
         const stance = e.isVehicle ? 2 : e.body.stance === STANCE.PRONE ? 0.3 : e.body.stance === STANCE.CROUCH ? 0.65 : 1;
         const moving = (e.isVehicle ? Math.abs(e.speed) > 1 : e.body.moving > 1) ? 1.6 : 1;
-        // Past what our sights pick out (iron sights: about 200 m), a man is a few
-        // pixels on a player's screen: hard to make out, soon not at all.
-        const far = e.isVehicle || d <= range.spot ? 1 : Math.exp(-(((d - range.spot) / 50) ** 2));
+        // Past what our sights pick out (iron sights: about 120 m), hard to make
+        // out, soon not at all.
+        const far = e.isVehicle || d <= range.spot ? 1 : Math.exp(-(((d - range.spot) / 30) ** 2));
         const rate = ((this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70)) * cover * far;
         a = Math.min(1.5, a + rate * dt * (inView ? 1 : 0.5));
         this.lastSeen.set(e, { x: ti.x, y: ti.y, z: ti.z, t: this.game.time, visible: true });
@@ -279,7 +288,7 @@ export class BotBrain {
       if (e.isVehicle && (!at || d > 220)) continue;
       // A man too far for our sights, unless he's shooting at us from there (and
       // not hopelessly far).
-      if (!e.isVehicle && d > range.fire * (e === this.target ? 1.1 : 1) && !(now - (this.shotBy.get(e) ?? -99) < 10 && d < range.fire * 1.5)) continue;
+      if (!e.isVehicle && d > range.fire * (e === this.target ? 1.1 : 1) && !(now - (this.shotBy.get(e) ?? -99) < 10 && d < range.fire * ANSWER)) continue;
       const score = -d + (e.isVehicle ? 400 : 0) + (now - (e.lastShotTime ?? -99) < 2 ? 40 : 0) + (e === this.target ? 25 : 0) - (guess ? 60 : 0);
       if (score > bestScore) {
         bestScore = score;

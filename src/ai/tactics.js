@@ -14,12 +14,12 @@ import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 const _hit = new RayHit();
 const _leaves = { dense: 0 };
 
-// Thick bushes and hedges hide a man completely beyond a few meters (as they do
-// on screen): this many meters of them on a sight line (CollisionWorld.foliageAlong,
-// dense) and the line is blocked, unless it is shorter than SEE_THROUGH_LEAVES.
-// Less than that (the edge of a bush), or thinner leaves, only slow spotting.
-export const THICK_LEAVES = 0.5;
-export const SEE_THROUGH_LEAVES = 10;
+// Bushes, shrubs and hedges hide a man completely beyond a few meters (as they
+// do on screen): this many meters of them on a sight line
+// (CollisionWorld.foliageAlong, dense) and the line is blocked, unless it is
+// shorter than SEE_THROUGH_LEAVES. Thinner leaves (tree crowns) slow spotting.
+export const THICK_LEAVES = 0.3;
+export const SEE_THROUGH_LEAVES = 6;
 
 // Meters of leaves from a to b ({ total, dense }) and whether they hide b.
 export function leavesBetween(coll, ax, ay, az, bx, by, bz, out = { total: 0, dense: 0, hides: false }) {

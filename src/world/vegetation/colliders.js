@@ -41,11 +41,12 @@ export function addVegetationColliders(collision, { plants, info, pieces, def })
     const c = Math.cos(yaw),
       sn = Math.sin(yaw);
     if (isBush(v)) {
-      // (Knee-high ones hide nothing worth a box.)
+      // (Shrubs from knee height up: they hide a man lying or crouching behind
+      // them. Ankle-high ones hide nothing worth a box.)
       const h = vi.top * s * sy;
-      if (h < 0.9) continue;
-      const hw = vi.R[0] * 0.72 * s * sw;
-      const box = collision.add(new Box(x, y + h * 0.45, z, hw, h * 0.45, hw, yaw, 'foliage', FLAG_SIGHT | FLAG_BULLET));
+      if (h < 0.4) continue;
+      const hw = vi.R[0] * 0.8 * s * sw;
+      const box = collision.add(new Box(x, y + h * 0.5, z, hw, h * 0.5, hw, yaw, 'foliage', FLAG_SIGHT | FLAG_BULLET));
       box.dense = true;
       stats.bushes++;
       continue;

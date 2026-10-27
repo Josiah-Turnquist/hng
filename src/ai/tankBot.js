@@ -8,6 +8,11 @@ import * as THREE from 'three';
 import { clamp, wrapAngle, DEG } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { SHELLS } from '../vehicles/defs.js';
+import { leavesBetween } from './tactics.js';
+
+// How far a tank crew makes out men at all (m).
+const INFANTRY_SIGHT = 300;
+const _lv = { total: 0, dense: 0, hides: false };
 
 const _hit = new RayHit();
 const _v = new THREE.Vector3();
@@ -64,7 +69,11 @@ export class TankBrain {
       const dx = c.p.x - eye.x,
         dz = c.p.z - eye.z;
       const d = Math.hypot(dx, dz);
-      if (d > 900) continue;
+      // (Buttoned up, men are hard to make out at all beyond about 300 m.)
+      if (d > (c.kind === 'soldier' ? INFANTRY_SIGHT : 900)) {
+        this.aware.set(c.obj, Math.max(0, (this.aware.get(c.obj) || 0) - dt * 0.3));
+        continue;
+      }
       let a = this.aware.get(c.obj) || 0;
       if (checks < 6) {
         checks++;
@@ -75,11 +84,13 @@ export class TankBrain {
         for (const p of tgtProx) p.box.enabled = false;
         const blocked = coll.raycast(eye.x, eye.y, eye.z, dx / len, dy / len, dz / len, len - 0.5, _hit, FLAG_SIGHT, true);
         for (const p of tgtProx) p.box.enabled = true;
-        if (!blocked) {
+        // Bushes, shrubs and hedges hide men from the crew as from anyone (a
+        // vehicle is too big to hide in them); thinner leaves slow spotting.
+        const lv = blocked ? null : leavesBetween(coll, eye.x, eye.y, eye.z, c.p.x, ty, c.p.z, _lv);
+        if (lv?.hides && c.kind === 'soldier') a = Math.max(0, a - dt * 0.3);
+        else if (!blocked) {
           // Buttoned up, a tank crew is slow to spot men; vehicles are obvious.
-          // Leaves in the way make anything slower to pick out, never invisible.
-          const leaves = coll.foliageAlong(eye.x, eye.y, eye.z, c.p.x, ty, c.p.z);
-          const cover = leaves > 0 ? Math.max(Math.exp(-leaves / 0.9), 0.08) : 1;
+          const cover = lv.total > 0 ? Math.max(Math.exp(-lv.total / 0.5), 0.04) : 1;
           const rate = (c.kind === 'vehicle' ? 1.4 / (1 + d / 400) : ((c.obj.body.moving > 1 ? 0.9 : 0.4) / (1 + d / 80)) * (c.obj.body.stance === 2 ? 0.3 : 1)) * cover;
           a = Math.min(1.5, a + rate * dt * 2);
         } else a = Math.max(0, a - dt * 0.3);
