@@ -1,7 +1,7 @@
 // What the bots can see and how far they fight, in the real town: thick bushes
 // and hedges hide a man from them as from the player (one firing from them
 // gives away only roughly where he is); with iron sights they don't open fire
-// beyond about 150 m unless shot at from there, and far off their first shots
+// beyond about 250 m unless shot at from there, and far off their first shots
 // go wide; the bot difficulty setting changes how they react and aim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -157,16 +157,16 @@ test('thick leaves hide a man from the bots beyond a few meters; firing from the
   assert.ok(br2.lastSeen.get(foe)?.visible, 'a man a few meters off behind leaves is seen');
 });
 
-test('with iron sights a bot does not open fire on a man 180 m off unless he shoots at it; a scoped rifle takes him on at 250 m, its first shots wide', () => {
+test('with iron sights a bot does not open fire on a man 300 m off unless he shoots at it; a scoped rifle does, its first shots wide', () => {
   const L = openLine();
   assert.ok(L, 'an open line 300 m long');
-  let fx = L.x + L.ux * 180,
-    fz = L.z + L.uz * 180;
+  const fx = L.x + L.ux * 300,
+    fz = L.z + L.uz * 300;
   let br = setup(L.x, L.z, fx, fz);
   br.aware.set(foe, 1.5); // (he knows the man is there)
   shots = 0;
   run(12);
-  assert.equal(shots, 0, 'opened fire at 180 m');
+  assert.equal(shots, 0, 'opened fire at 300 m');
   // A bullet of his cracks past: now it answers.
   const e = { x: fx, y: ground(fx, fz) + 1.5, z: fz };
   const t = { x: L.x + 0.8, y: ground(L.x, L.z) + 1.6, z: L.z };
@@ -178,9 +178,7 @@ test('with iron sights a bot does not open fire on a man 180 m off unless he sho
   run(10);
   assert.ok(br.shotBy.has(foe), 'the crack told him who');
   assert.ok(shots > 0, 'shot back');
-  // A scoped rifle takes him on at 250 m.
-  fx = L.x + L.ux * 250;
-  fz = L.z + L.uz * 250;
+  // A scoped rifle takes him on at 300 m.
   br = setup(L.x, L.z, fx, fz, { weapon: 'kar98k_zf39' });
   br.aware.set(foe, 1.5);
   shots = 0;

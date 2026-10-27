@@ -11,7 +11,7 @@ import { SHELLS } from '../vehicles/defs.js';
 import { leavesBetween } from './tactics.js';
 
 // How far a tank crew makes out men at all (m).
-const INFANTRY_SIGHT = 300;
+const INFANTRY_SIGHT = 900;
 const _lv = { total: 0, dense: 0, hides: false };
 
 const _hit = new RayHit();
@@ -69,7 +69,6 @@ export class TankBrain {
       const dx = c.p.x - eye.x,
         dz = c.p.z - eye.z;
       const d = Math.hypot(dx, dz);
-      // (Buttoned up, men are hard to make out at all beyond about 300 m.)
       if (d > (c.kind === 'soldier' ? INFANTRY_SIGHT : 900)) {
         this.aware.set(c.obj, Math.max(0, (this.aware.get(c.obj) || 0) - dt * 0.3));
         continue;

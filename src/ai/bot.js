@@ -32,10 +32,15 @@ const _rp = { x: 0, y: 0, z: 0 };
 const _v = new THREE.Vector3();
 const _lv = { total: 0, dense: 0, hides: false };
 
+// hold: how far a shot strays from where the sights were (rad, one standard
+// deviation each way): the waver of a rifle held up by hand, the jerk of the
+// trigger, firing a moment early. Gameplay: as a real player shoots, a few
+// centimeters at 25 m and half a meter at 100 m, so bots hit well close in and
+// miss more often the further off.
 export const SKILL = {
-  recruit: { reaction: [0.55, 1.0], aim: 1.8, track: 1.4, spot: 0.7, burst: [2, 5] },
-  regular: { reaction: [0.35, 0.7], aim: 1.1, track: 2.1, spot: 1, burst: [3, 6] },
-  veteran: { reaction: [0.25, 0.5], aim: 0.7, track: 3.0, spot: 1.3, burst: [3, 8] },
+  recruit: { reaction: [0.55, 1.0], aim: 1.8, track: 1.4, spot: 0.7, burst: [2, 5], hold: 0.006 },
+  regular: { reaction: [0.35, 0.7], aim: 1.1, track: 2.1, spot: 1, burst: [3, 6], hold: 0.0045 },
+  veteran: { reaction: [0.25, 0.5], aim: 0.7, track: 3.0, spot: 1.3, burst: [3, 8], hold: 0.0035 },
 };
 
 // The bot difficulty setting (Settings > Gameplay): how many veterans and
@@ -48,22 +53,22 @@ export const DIFFICULTY = {
 };
 
 // How far a bot picks out and takes on a man, by its sights (m): spotting falls
-// off sharply past spot, and it opens fire only within fire (a little further if
-// he is shooting at it from there). Gameplay: well inside what a player can make
-// out on the screen (a man is about 15 pixels tall at 120 m at 1080 lines), so a
-// bot is never the one with the longer reach; scoped rifles and machine guns a
-// little further, submachine guns, pistols and launchers (at men) less.
+// off sharply past spot, and it opens fire only within fire (further if he is
+// shooting at it from there). Iron sights reach about as far as a player can
+// make out a man on the screen (some 10 pixels tall at 200 m); scoped rifles and
+// machine guns further; submachine guns, pistols and launchers (at men) less.
+// (Far off they mostly miss: see SKILL.hold.)
 const RANGES = {
-  iron: { spot: 120, fire: 150 },
-  scope: { spot: 250, fire: 300 },
-  lmg: { spot: 160, fire: 200 },
-  smg: { spot: 100, fire: 100 },
-  pistol: { spot: 60, fire: 40 },
-  revolver: { spot: 60, fire: 40 },
-  launcher: { spot: 120, fire: 100 },
+  iron: { spot: 200, fire: 250 },
+  scope: { spot: 400, fire: 500 },
+  lmg: { spot: 350, fire: 450 },
+  smg: { spot: 200, fire: 175 },
+  pistol: { spot: 200, fire: 60 },
+  revolver: { spot: 200, fire: 60 },
+  launcher: { spot: 200, fire: 120 },
 };
 // Shot at from further off, he answers out to this many times his range.
-const ANSWER = 1.3;
+const ANSWER = 1.5;
 export function engageRange(def) {
   if (!def) return RANGES.iron;
   return def.scope ? RANGES.scope : RANGES[def.type] || RANGES.iron;
@@ -130,7 +135,7 @@ export class BotBrain {
     const D = DIFFICULTY[diff];
     const level = this.level || (this.rank < D.veteran ? 'veteran' : this.rank < D.veteran + D.recruit ? 'recruit' : 'regular');
     const k = SKILL[level];
-    this.skill = { level, reaction: [k.reaction[0] * D.reaction, k.reaction[1] * D.reaction], aim: k.aim * D.aim, track: k.track * D.track, spot: k.spot * D.spot, burst: k.burst };
+    this.skill = { level, reaction: [k.reaction[0] * D.reaction, k.reaction[1] * D.reaction], aim: k.aim * D.aim, track: k.track * D.track, spot: k.spot * D.spot, burst: k.burst, hold: k.hold * D.aim };
   }
 
   // A bullet of his hit us or cracked past: we know he's about, and may shoot
@@ -246,9 +251,9 @@ export class BotBrain {
         // How fast we notice: close, moving, standing, shooting people stand out; vehicles more so.
         const stance = e.isVehicle ? 2 : e.body.stance === STANCE.PRONE ? 0.3 : e.body.stance === STANCE.CROUCH ? 0.65 : 1;
         const moving = (e.isVehicle ? Math.abs(e.speed) > 1 : e.body.moving > 1) ? 1.6 : 1;
-        // Past what our sights pick out (iron sights: about 120 m), hard to make
-        // out, soon not at all.
-        const far = e.isVehicle || d <= range.spot ? 1 : Math.exp(-(((d - range.spot) / 30) ** 2));
+        // Past what our sights pick out (iron sights: about 200 m), a man is a few
+        // pixels on a player's screen: hard to make out, soon not at all.
+        const far = e.isVehicle || d <= range.spot ? 1 : Math.exp(-(((d - range.spot) / 50) ** 2));
         const rate = ((this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70)) * cover * far;
         a = Math.min(1.5, a + rate * dt * (inView ? 1 : 0.5));
         this.lastSeen.set(e, { x: ti.x, y: ti.y, z: ti.z, t: this.game.time, visible: true });
@@ -925,7 +930,7 @@ export class BotBrain {
         const running = this.cover && !this._atCover() && !(autoW && d < 25);
         if (!ducked && !running && !this._friendlyInLine(ti, d)) pull = true;
       }
-      s.aiming = d > 12 && w?.def.type !== 'lmg';
+      s.aiming = d > 12;
     } else {
       s.aiming = false;
       this.target = t && t.alive ? t : null;

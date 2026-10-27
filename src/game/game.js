@@ -268,7 +268,11 @@ export class Game {
       dy = Math.sin(s.pitch),
       dz = -Math.cos(s.yaw) * cp;
     let err = s.aiming ? 0 : (d.hipError * Math.PI) / 180 * 0.5;
-    err = Math.hypot(err, d.accuracy * 0.000291 * 0.42);
+    // The rifle's own spread and the man's hold (his shot strays from where his
+    // sights were: bot.js SKILL.hold), worse from the hip or with a machine gun
+    // held up off its bipod.
+    const hold = (s.brain?.skill?.hold ?? 0) * (s.aiming ? 1 : 1.5) * (d.bipod && !s.supported ? 1.5 : 1);
+    err = Math.hypot(err, d.accuracy * 0.000291 * 0.42, hold);
     dx += gaussRandom(0, err);
     dy += gaussRandom(0, err);
     dz += gaussRandom(0, err);
