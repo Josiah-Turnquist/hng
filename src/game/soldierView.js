@@ -121,6 +121,14 @@ const _state = {
   seated: false,
 };
 
+// How much the view is magnified over the normal field of view (1 unless
+// looking through a scope or zoomed sights).
+const DEG = Math.PI / 180;
+export function viewZoom(game) {
+  const base = game.player?.baseFov ?? game.camera.fov;
+  return Math.max(1, Math.tan((base * DEG) / 2) / Math.tan((game.camera.fov * DEG) / 2));
+}
+
 // Per rendered frame.
 export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   const m = s.model;
@@ -195,8 +203,11 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
     const f = v.forward;
     st.yaw = Math.atan2(-f.x, -f.z);
   } else m.root.position.set(b.x, b.y, b.z);
-  // Detail by distance, with a little hysteresis so it doesn't flicker.
-  const d = m.root.position.distanceTo(camPos);
+  // Detail by how big he looks, with a little hysteresis so it doesn't flicker:
+  // through a scope's magnification he is as near as he looks. (Picked by the
+  // bare distance, a man 150 m off seen through a 4x scope kept the far,
+  // stripped-down gun, its thin parts gone.)
+  const d = m.root.position.distanceTo(camPos) / viewZoom(game);
   setSoldierWeapon(game, s, d);
   // A fired launcher's tube stays empty until it's reloaded.
   const gun = s.view.guns.get(s.view.gunId);

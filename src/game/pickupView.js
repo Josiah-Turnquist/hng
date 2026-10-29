@@ -2,9 +2,11 @@
 // its side in the grass, near the camera only.
 import * as THREE from 'three';
 import { buildGun, MODELS } from '../weapons/models/index.js';
-import { worldGunMaterials } from './soldierView.js';
+import { worldGunMaterials, viewZoom } from './soldierView.js';
 
-const RANGE = 120; // m from the camera
+// m from the camera, further through a scope (it magnifies: a gun 300 m off
+// looks as near as one at 75 m through a 4x scope).
+const RANGE = 120;
 
 export class PickupView {
   constructor(game) {
@@ -34,8 +36,9 @@ export class PickupView {
     if (!list) return;
     const keep = (this._keep ||= new Set());
     keep.clear();
+    const range = RANGE * viewZoom(this.game);
     for (const d of list) {
-      if (Math.hypot(d.x - camPos.x, d.z - camPos.z) > RANGE) continue;
+      if (Math.hypot(d.x - camPos.x, d.z - camPos.z) > range) continue;
       let o = this.shown.get(d.id);
       if (!o) {
         o = this._model(d.w.def);
