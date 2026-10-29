@@ -4,7 +4,7 @@
 // the real ammunition (ammo.js) and the physics engine.
 //
 // Fields:
-//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade
+//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade | melee
 //   feed     how it is loaded: box (detachable magazine), drum, pan, belt, enbloc (M1 Garand
 //            clip), stripper (internal magazine filled from 5-round clips or single rounds),
 //            gate (revolver loaded one round at a time), moon (revolver half-moon clips),
@@ -977,6 +977,20 @@ for (const [id, w] of Object.entries(WEAPONS)) {
     w.feed = 'grenade';
     w.rpm = 60;
     w.reload = {};
+  }
+  if (w.type === 'melee') {
+    // A close-combat weapon fires nothing: what the rest of the game reads off
+    // a gun (sights, fire modes, magazine) is there but empty. Its blows are
+    // game/melee.js's.
+    w.sight = { kind: 'none', unit: 'm', ranges: [0], zero: 0 };
+    w.modes = ['semi'];
+    w.feed = 'melee';
+    w.capacity = 0;
+    w.reserve = 0;
+    w.reload = {};
+    w.rpm = 60 / w.attack.period;
+    w.loadedMass = w.mass;
+    continue;
   }
   const a = AMMO[w.ammo];
   if (!a) throw new Error(`weapon ${id}: unknown ammo ${w.ammo}`);

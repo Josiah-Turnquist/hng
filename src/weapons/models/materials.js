@@ -218,6 +218,8 @@ const PRESETS = {
   gunPaintYellow: { mat: 'paintedMetal', world: 0.3, a: lin(0.72, 0.6, 0.22), b: lin(0.7, 0.62, 0.4) },
   // Unfinished beech of grenade handles.
   gunBeechRaw: { mat: 'gunWood', world: 0.15, a: lin(0.6, 0.45, 0.29), b: raw(0.3, 0.72, 0.7) },
+  // Pale ash or birch under clear varnish: baseball and lapta bats, tool handles.
+  gunAsh: { mat: 'gunWood', world: 0.15, a: lin(0.66, 0.52, 0.35), b: raw(0.55, 0.4, 0.2) },
 };
 
 addMaterials(GLSL, PRESETS);
@@ -407,6 +409,7 @@ const LOW = {
   glassClear: [0.2, 0.22, 0.24],
   yellowPaint: [0.45, 0.31, 0.06],
   handleWood: [0.3, 0.17, 0.07],
+  ash: [0.36, 0.24, 0.12],
   oliveCast: [0.06, 0.07, 0.035],
 };
 
@@ -467,6 +470,7 @@ export function makeGunMaterials(textures, { size = 512, firstPerson = false } =
     oliveCast: patchGun(std('paintOD'), { kind: 1, wear: 0.45 }), // painted cast iron: chips show dark iron
     yellowPaint: patchGun(std('gunPaintYellow'), { kind: 1 }),
     handleWood: wood('gunBeechRaw', 'handle'), // grain along Y: upright stick grenade handles
+    ash: wood('gunAsh', 'beech'), // grain along Z: bats and spade handles
     brass: new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.78, 0.56, 0.3), roughness: 0.32, metalness: 1 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55 }),
     glassClear: new THREE.MeshStandardMaterial({ color: 0xb8c4c8, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.14, depthWrite: false }), // window panes

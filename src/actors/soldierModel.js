@@ -104,7 +104,7 @@ export function clearOutfitCache() {
 const FACTIONS = new Set(['US', 'GE', 'SU']);
 const CLASSES = new Set(['infantry', 'recon', 'paratrooper', 'tanker']);
 const ROLES = new Set(['rifle', 'smg', 'mg', 'at']);
-const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'none']);
+const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'melee', 'none']);
 const _v = new THREE.Vector3(),
   _v2 = new THREE.Vector3(),
   _inv = new THREE.Matrix4();
@@ -222,7 +222,7 @@ export class SoldierModel {
   }
 
   // Put a gun model (from buildGun) in the hands, or null. kind: rifle | smg |
-  // lmg | pistol | launcher | grenade | none.
+  // lmg | pistol | launcher | grenade | melee | none.
   setWeapon(gun, kind = 'rifle') {
     if (this.gun && this.gun.root?.parent) this.gun.root.parent.remove(this.gun.root);
     if (this.gun?.isObject3D && this.gun.parent) this.gun.parent.remove(this.gun);
@@ -244,7 +244,8 @@ export class SoldierModel {
   //   sprinting, onGround, yaw (body facing, rad), aimPitch (rad, + up),
   //   aimYawOffset (rad, upper body twist, + = to the left like yaw), aiming (shouldered),
   //   lean (-1 left .. 1 right), recoil (0..1 kick),
-  //   action null | 'reload' | 'bolt' | 'throw' | 'bandage' | 'use', actionT (0..1),
+  //   action null | 'reload' | 'bolt' | 'throw' | 'bandage' | 'use' | 'melee', actionT (0..1),
+  //   meleeStyle 'stab' | 'swing' and meleeHit (the actionT where a blow lands),
   //   alive, deathT (s since death), hitDir {x, z} (world direction the killing shot
   //   travelled; the body is pushed along it), seated (the root is then the seat point
   //   under the buttocks; feet rest 0.42 m below it), ride (a rider pose from a

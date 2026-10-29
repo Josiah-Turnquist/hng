@@ -2,12 +2,14 @@
 import * as german from './german.js';
 import * as us from './us.js';
 import * as soviet from './soviet.js';
+import * as melee from './melee.js';
 import { GunBuilder } from './kit.js';
 
 export const MODELS = {
   ...us,
   ...german,
   ...soviet,
+  ...melee,
 };
 
 // Levels of detail: 0 = first person (30k-60k triangles), 1 = soldiers nearby

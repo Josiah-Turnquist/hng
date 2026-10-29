@@ -6,7 +6,8 @@
 // comes from breathing, heart rate, fatigue and stance; the gun lags behind fast
 // turns depending on its weight. Reloads and bolt cycling are animated from the
 // weapon's own moving parts (bolt, magazine, clip, feed cover) with the hands
-// following them.
+// following them. A close-combat weapon (knife, bayonet, spade, bat) is held
+// in the right hand alone and thrust or swung on the fire button (MELEE below).
 import * as THREE from 'three';
 import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
@@ -61,6 +62,11 @@ const POSES = {
   pistol: { hip: [0.16, -0.1, -0.42], dir: [0, 0.05, 0.06], sprint: [0.12, -0.26, -0.22] },
   launcher: { hip: [0.17, -0.13, 0.04], dir: [0, 0.05, 0.06], sprint: [0.12, -0.2, 0.0] },
   grenade: { hip: [0.16, -0.2, -0.3], dir: [0.006, 0.008, 0.06], sprint: [0.12, -0.26, -0.22] },
+  // Close combat (the hand round the handle, the blade or head up and
+  // forward): per style, a knife held low with its point up toward the middle
+  // of the view, a spade or bat raised over the right shoulder.
+  stab: { hip: [0.14, -0.14, -0.36], dir: [0.3, 0.7, -0.35], sprint: [0.12, -0.3, -0.22] },
+  swing: { hip: [0.19, -0.16, -0.38], dir: [0.15, 1.0, -0.3], sprint: [0.14, -0.32, -0.2] },
 };
 // Throwing a grenade, in camera space: [x, y, z (m), pitch, yaw, roll (rad)].
 const THROW = {
@@ -69,6 +75,65 @@ const THROW = {
   down: [0.02, -0.45, -0.38, -1.2, 0.1, -0.2], // follow-through, out of view
 };
 const smooth = (x) => x * x * (3 - 2 * x);
+
+// A blow with a close-combat weapon (game/melee.js), in camera space like
+// THROW, the handle's grip point placed and the weapon turned: a thrust drawn
+// back (cock) and driven out to the middle of the view (out); a swing drawn
+// back over the shoulder (raise), brought down across the view (strike, the
+// moment it lands) and followed through low to the left (follow), out of view.
+const MELEE = {
+  stab: {
+    cock: [0.18, -0.17, -0.22, 0.55, 0.2, -0.25],
+    out: [0.13, -0.14, -0.5, 0.35, 0.15, -0.1],
+  },
+  swing: {
+    raise: [0.21, 0.02, -0.28, 1.75, -0.3, -0.5],
+    strike: [0.12, -0.15, -0.5, 0.25, 0.65, 0.3],
+    follow: [-0.08, -0.45, -0.38, -0.6, 0.8, 0.4],
+  },
+};
+
+// Set p, q to the pose a..b at u, either of them a key ([x, y, z, pitch, yaw,
+// roll]) or a pose { p, q }.
+const _mp = new THREE.Vector3(),
+  _mq = new THREE.Quaternion();
+function blend(a, b, u, p, q) {
+  const ap = a.p || _v3.fromArray(a),
+    aq = a.q || _q3.setFromEuler(_e.set(a[3], a[4], a[5]));
+  const bp = b.p || _mp.fromArray(b),
+    bq = b.q || _mq.setFromEuler(_e.set(b[3], b[4], b[5]));
+  p.copy(ap).lerp(bp, u);
+  q.copy(aq).slerp(bq, u);
+}
+
+// The weapon's pose (p, q) at time t into blow m, from the carry pose `carry`.
+function meleePose(m, carry, p, q) {
+  const { hit, period } = m.def.attack;
+  const t = m.t;
+  if (m.def.style === 'stab') {
+    const K = MELEE.stab;
+    const tc = hit * 0.45,
+      tb = hit + (period - hit) * 0.3;
+    if (t < tc) blend(carry, K.cock, smooth(t / tc), p, q);
+    else if (t < hit) blend(K.cock, K.out, ((t - tc) / (hit - tc)) ** 2, p, q);
+    else if (t < tb) blend(K.out, K.out, 0, p, q);
+    else blend(K.out, carry, smooth(Math.min(1, (t - tb) / (period - tb))), p, q);
+    return;
+  }
+  const K = MELEE.swing;
+  const tr = hit * 0.55,
+    tf = hit + (period - hit) * 0.3;
+  if (t < tr) blend(carry, K.raise, smooth(t / tr), p, q);
+  else if (t < hit) blend(K.raise, K.strike, ((t - tr) / (hit - tr)) ** 2, p, q);
+  else if (t < tf) blend(K.strike, K.follow, 1 - (1 - (t - hit) / (tf - hit)) ** 2, p, q);
+  else blend(K.follow, carry, smooth(Math.min(1, (t - tf) / (period - tf))), p, q);
+}
+
+// Close-combat weapons have no sights: a stand-in with the interface Sighting
+// has (they are never raised to the eye).
+function noSights() {
+  return { kind: 'none', sightKind: 'none', eye: new THREE.Vector3(), losDir: new THREE.Vector3(0, 0, -1), eyeRelief: 1, setRangeIndex() { return this; } };
+}
 
 // Set p, q to the throwing pose a..b at u (a may be the carry pose { p, q }).
 function throwPose(a, b, u, p, q) {
@@ -112,6 +177,8 @@ function poseKind(def) {
       return 'launcher';
     case 'grenade':
       return 'grenade';
+    case 'melee':
+      return def.style === 'swing' ? 'swing' : 'stab';
     default:
       return 'rifle';
   }
@@ -233,7 +300,7 @@ export class ViewModel {
           o.frustumCulled = false;
         }
       });
-      const sighting = new Sighting(gun, def, atm);
+      const sighting = def.type === 'melee' ? noSights() : new Sighting(gun, def, atm);
       // A scoped rifle whose iron sights stay usable: their own line of sight.
       const irons = def.irons ? new Sighting(gun, { ...def, sight: def.irons, scope: null }, atm) : null;
       // Remember the rest transform of every animated part.
@@ -371,8 +438,9 @@ export class ViewModel {
     const adsPos = s.eye.clone().applyQuaternion(adsQ).negate();
 
     // Blend hip -> aimed (not with the muzzle up against something: the gun is
-    // pushed off the eye rather than into it).
-    const a = this.aim * (1 - this.sprint) * (1 - this.blocked);
+    // pushed off the eye rather than into it). (A close-combat weapon is not aimed.)
+    const melee = this.kind === 'stab' || this.kind === 'swing';
+    const a = melee ? 0 : this.aim * (1 - this.sprint) * (1 - this.blocked);
     hip.p.copy(hipPos).lerp(adsPos, a);
     hip.q.copy(hipQ).slerp(adsQ, a);
 
@@ -406,6 +474,10 @@ export class ViewModel {
       this.swap = 0;
     }
     if (this.kind === 'grenade' && ctx.empty) this.swap = 0;
+    // A blow with a close-combat weapon (game/melee.js).
+    const ml = melee && ctx.melee?.def === def ? ctx.melee : null;
+    this.meleeState = ml;
+    if (ml) meleePose(ml, { p: hip.p.clone(), q: hip.q.clone() }, hip.p, hip.q);
     this.gun.root.visible = !(th?.phase === 'follow' || (this.kind === 'grenade' && ctx.empty));
 
     // Reload / bolt motions tilt the gun to show the action.
@@ -585,7 +657,7 @@ export class ViewModel {
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const arms = this.fpArms;
     if (this.fpArmsGun !== this.gun) {
-      arms.setWeapon(this.gun, this.kind);
+      arms.setWeapon(this.gun, this.kind === 'stab' || this.kind === 'swing' ? 'melee' : this.kind);
       arms.setView(this._peepView());
       this.fpArmsGun = this.gun;
     }
@@ -621,8 +693,11 @@ export class ViewModel {
         left = anchors.coverHinge.clone().add(new THREE.Vector3(0, 0.02, -0.06));
       }
     }
+    // A close-combat weapon is held in the right hand alone: the left is down
+    // out of view.
+    const melee = this.kind === 'stab' || this.kind === 'swing';
     // Without a support grip the left hand cups the right (a point below it).
-    if (!left && !anchors.gripL) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
+    if (!left && !anchors.gripL && !melee) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
     // Throwing: the left hand pulls the pin, then drops away out of sight.
     const th = this.throwState;
     let leftWorld = null;
@@ -633,7 +708,7 @@ export class ViewModel {
       const low = cam.position.clone().addScaledVector(camRight, -0.12).addScaledVector(camUp, -0.45).addScaledVector(camFwd, 0.3);
       const u = th.phase === 'windup' ? Math.min(1, th.t / WINDUP) : 1;
       leftWorld = u < 0.45 ? cup.lerp(pin, smooth(u / 0.45)) : pin.lerp(low, smooth(Math.min(1, (u - 0.45) / 0.4)));
-    }
+    } else if (melee) leftWorld = cam.position.clone().addScaledVector(camRight, -0.12).addScaledVector(camUp, -0.5).addScaledVector(camFwd, 0.2);
     const G = (this._gunXf ||= { q: new THREE.Quaternion(), p: new THREE.Vector3() });
     G.q.copy(gunRoot.quaternion);
     G.p.copy(gunRoot.position);
@@ -648,7 +723,8 @@ export class ViewModel {
       if (sgn < 0 && leftWorld) arms.place(sgn, S, G, { mode: 'point', point: leftWorld, pole, curl: pinch });
       else if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
       else if (sgn > 0 && th?.phase === 'follow') arms.place(sgn, S, G, { mode: 'grip', pole, curl: [0.2, 0.15, 0.25] }); // let go: hand open
-      else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? [1, 0.55, 0.82] : [0.95, 0.9, 0.45] });
+      // (The right index round a handle too, where there is no trigger.)
+      else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? (melee ? [1, 1, 0.85] : [1, 0.55, 0.82]) : [0.95, 0.9, 0.45] });
     }
   }
 }

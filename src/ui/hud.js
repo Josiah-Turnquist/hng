@@ -333,6 +333,11 @@ export class Hud {
         this.loadedEl.textContent = `${(w.chambered ? 1 : 0) + (w.spareMags?.length || 0)}`;
         this.reserveEl.textContent = '';
         this.modeEl.textContent = 'Hold LMB to cook, release to throw';
+      } else if (d.type === 'melee') {
+        // Nothing to load: what it does instead.
+        this.loadedEl.textContent = '';
+        this.reserveEl.textContent = '';
+        this.modeEl.textContent = d.style === 'stab' ? 'Close combat: LMB to stab' : 'Close combat: LMB to strike';
       } else {
         this.loadedEl.textContent = `${w.loaded}`;
         const unit = d.feed === 'stripper' ? 'clips' : d.feed === 'enbloc' ? 'clips' : d.feed === 'belt' ? 'belts' : d.feed === 'drum' ? 'drums' : d.feed === 'pan' ? 'pans' : d.feed === 'single' ? 'rounds' : d.feed === 'gate' ? 'rounds' : d.feed === 'moon' ? 'clips' : 'mags';
@@ -714,7 +719,7 @@ export class Hud {
       if (s.alive && !s.vehicle && this.game.cameraMode === 'first') {
         const pick = p.nearestPickup?.();
         const near = pick ? null : p.nearestVehicle();
-        if (pick) text = `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
+        if (pick) text = pick.w.def.type === 'melee' ? `Pick up: ${pick.w.def.name}` : `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
         else if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
       }
       const key = text && !text.endsWith('no free seat') ? this.game.input.key('use') : '';
@@ -741,7 +746,7 @@ export class Hud {
     const vm = p.viewmodel;
     const cam = p.camera;
     let want = 0;
-    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && vm.gun && vm.visible) {
+    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && w.def.type !== 'melee' && vm.gun && vm.visible) {
       want = clamp01(1 - vm.aim * 2) * (1 - vm.sprint) * vm.swap * (1 - vm.blocked) * (vm.action ? 0.5 : 1);
     }
     c.a = damp(c.a, want, 16, dt);

@@ -420,3 +420,27 @@ The original game gave scopes to the Recon class. A 2020 Steam thread (game data
 - **PE on its top mount**, **AVS-36 with the PE** and **SVT-38** snipers: pre-war and few; the PE is the PEM's optics with a focusing ring.
 - **K43 and G41 with the ZF 4**, **StG 44 with the ZF 4**: rifles not in the game, or very few.
 - **Night sights** (the US infrared Sniperscope on the M2 carbine, the German Vampir on the StG 44): left out as the brief asked.
+
+---
+
+## 10. Close-combat weapons (knives, bayonets, spades, bats)
+
+The original game's close-combat slot: each army's entrenching spade, a knife or bayonet, and a baseball bat (the lapta bat for the Soviets). As in sections 0 to 9, every value comes from WebSearch result summaries (WebFetch could not reach any host); dealers' and reproduction makers' listings stand in where no manual was found, so most figures are **[U]**. "est." in `src/weapons/items/melee.js` marks a value chosen for the game where nothing was found.
+
+| Item (game id) | Overall length | Blade | Mass | Sources |
+|---|---|---|---|---|
+| US M3 trench knife (`knife_m3`) | 11.75 in (298 mm) | 6.75 in (171 mm), spear point | 230 g (a French reference); 8.4 to 9 oz (238 to 255 g conv.) for reproductions **[C]** | https://en.wikipedia.org/wiki/M3_trench_knife ; https://www.dday-overlord.com/?p=133817 ; https://www.bladehq.com/item--Ontario-Mark-III-M3-Trench-Knife--11288 |
+| US M-1910 entrenching tool, "T-handle" (`spade_m1910`) | 22 in (559 mm); 56.5 to 57 cm for reproductions | 7 in (178 mm) wide (museum entry) | about 0.6 kg (reproduction); 1.5 lb (0.68 kg conv.) **[U]** | https://hub.catalogit.app/oklahoma-national-guard-museum/folder/entry/entrenching-tool ; https://therupturedduck.com/products/us-t-m1910-handled-entrenching-tool ; https://armyandoutdoors.co.nz/products/us-repro-m1910-t-handle-shovel |
+| German small entrenching tool, kleines Schanzzeug (`spade_ge`) | about 21 to 22 in (533 to 559 mm) **[C]** (dealers; one gives a 14 in handle) | 7.5 to 7.75 in long, 5.6 to 5.75 in wide (190 to 197 x 143 to 146 mm conv.); 18.5 x 14.5 cm (mp44.nl) | **[NF]** (game est. 0.9 kg) | https://www.ima-usa.com/products/german-wwii-square-head-entrenching-tool-schanzzeug ; https://mp44.nl/equipment/entrenching_tool.htm |
+| German Seitengewehr 84/98 (`bayonet_s84_98`) | 385 mm; 15 to 15.25 in from dealers | 252 mm, single edge with a fuller | **[NF]** (game est. 0.4 kg) | https://en.wikipedia.org/wiki/S84/98_III_bayonet ; https://www.ima-usa.com/products/original-german-wwii-98k-1942-dated-bayonet-by-paul-weyersberg-with-scabbard-frog |
+| Soviet MPL-50 small infantry spade (`spade_mpl50`) | 50 cm (52 cm in one maker's listing) **[C]** | about 15 cm wide, 18 cm long | 0.55 kg (a modern maker) **[U]** (game est. 0.8 kg for wartime steel) | https://en.wikipedia.org/wiki/MPL-50 ; https://www.ima-usa.com/products/original-russian-wwi-era-mpl-50-entrenching-tool-with-rare-imperial-eagle-still-visible-dated-1914 ; https://enex.market/en/product/lopata-malaya-pekhotnaya-mpl-50/ |
+| Soviet NR-40 scout's knife (`knife_nr40`) | 10.5 in (267 mm conv.) **[U]** | 152 mm, clip point; S-shaped guard, black wooden grip | 5 oz (142 g conv.) **[U]** | https://ww2db.com/weapon.php?q=a252 ; https://en.wikipedia.org/wiki/NR-40 ; https://armorvenue.com/get/russian-nr-40-wwii-scout-recon-knife/ |
+| Soviet AVS-36 bayonet (`bayonet_avs36`) | 450 mm without scabbard | 335 mm (another listing: a 10 in knife blade) **[C]** | **[NF]** (game est. 0.5 kg) | https://cornet.cc/en/photos/121704 ; https://ima-usa.com/products/original-soviet-pre-wwii-1936-avs-36-rifle-first-model-bayonet-rare |
+| Baseball bat, 1930s (`bat_us`, `bat_ge`) | 35 in (889 mm) for two game-used bats of 1932 and 1936 to 1937 | | 34.3 oz and 37 to 39 oz (0.97 to 1.11 kg conv.) **[U]**; the game: 36 oz (1.02 kg) | https://www.mearsonlineauctions.com/1932_Frank_Frisch_St__Louis_Cardinals_H_B_Louisvil-LOT5452.aspx ; https://lelands.com/bids/1936-1937-billy-southworth-game-used-bat |
+| Lapta bat (`bat_lapta`) | 60 to 110 cm, at most 5 cm across (the sport's rules) | | **[NF]** (game: 80 cm of birch, est. 0.6 kg) | https://legalacts.ru/doc/prikaz-minsporta-rossii-ot-28042014-n-272-ob-utverzhdenii/ |
+
+**The German bat.** Baseball was a demonstration sport at the Berlin Olympics: one game on 12 August 1936 between two American teams before about 90,000 to 100,000 people (https://en.wikipedia.org/wiki/Baseball_at_the_1936_Summer_Olympics). No source describes the bats; the game gives the German soldier the same 35 in American bat, darker.
+
+**Timing of a blow.** A 2024 review of stabbing biomechanics gives knife motions of 0.62 to 1.07 s at 5 to 10 m/s, and for a forward thrust 0.61 +- 0.15 s, an overhand stab 0.68 +- 0.14 s (https://doaj.org/article/9675550f62944fdeb8e06adc32d1943f). A batter's swing from the start of the downswing to contact takes about 0.15 s (MLB average 0.149 s, https://blastmotion.com/blog/what-is-time-to-contact-in-baseball/), but a soldier swinging a bat or a spade one-handed from the shoulder first has to raise it. The game: a knife 0.55 s a blow, landing 0.2 s in; a bayonet 0.6 s (0.22 s); a spade 0.75 s (0.34 s); a bat 0.9 s (0.42 s) (est., within the measured thrust times for the blades).
+
+**Reach and damage** are the original game's, not research: a stab with a knife or bayonet kills with one blow to the head or body; a spade or bat with one to the head or two to the body. Reach from the eyes: 1.0 m for a knife, 1.3 m for a spade or bayonet, 1.4 m for a bat (est.).
