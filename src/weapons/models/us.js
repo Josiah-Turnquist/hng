@@ -2,7 +2,7 @@
 // meters, bore along Z at x = y = 0, muzzle toward -Z, trigger at z = 0.
 import { S, place, circle, slot, boxMag, guard, trigger, plateXY, lathe, tube, cartridge, swivel, taperZ, path, loft } from './parts.js';
 import { stock, band, plateXYz, bar, screw, buttPlate, arch, stockSection, sectionLoft, crisp, stations, superellipse, knurledKnob, sweepGrip, serrations, perfTube, sling, stamp, ribbon, latheY, ringLoft, smoothstep } from './shapes.js';
-import { m1cMount, unertl, ring } from './optics.js';
+import { m1cMount, unertlMount, redfieldMount } from './optics.js';
 
 const PI = Math.PI;
 
@@ -642,10 +642,11 @@ export function m2_carbine(b) {
 // down), blade front sight on a movable stud, upper band with the bayonet lug and
 // stacking swivel, lower band with the sling swivel, magazine cutoff on the left of
 // the receiver, flag safety on the bolt sleeve, knurled cocking piece, checkered
-// butt plate. v.scope = M1903A4: no iron sights, Weaver 330C (M73B1) 2.75x scope on
-// a Redfield Junior mount, bent bolt handle, C-type pistol grip stock. v.cStock =
-// M1903A1: the C-type pistol grip stock with the iron sights and straight handle.
-// Parkerized (wartime). Dimensions est. from photos.
+// butt plate. v.scope = M1903A4: no iron sights, bent bolt handle, C-type pistol
+// grip stock (m1903a4 puts its scope on). v.cStock = M1903A1: the C-type pistol
+// grip stock with the iron sights and straight handle. v.bent: the bent bolt
+// handle alone, to clear a scope over the action. Parkerized (wartime).
+// Dimensions est. from photos.
 function springfield(b, v) {
   const P = 'parkerized';
   const W = 'walnut';
@@ -909,46 +910,10 @@ function springfield(b, v) {
     b.body();
     b.meta.sight = 'notch';
     b.meta.sightKind = 'leaf';
-  } else {
-    // Redfield Junior base and rings, Weaver 330C (M73B1) 2.75x scope.
-    const yc = 0.0375;
-    b.span({ z0: -0.198, z1: -0.066, y0: 0.0158, y1: 0.0235, w: 0.0172, mat: 'steel', r: 0.002 });
-    for (const [z, wide] of [
-      [-0.183, 0],
-      [-0.081, 1],
-    ]) {
-      tube(b, { y: yc, z0: z - 0.009, z1: z + 0.009, rIn: 0.0096, rOut: 0.0128, mat: 'steel', seg: 24 });
-      b.span({ z0: z - 0.009, z1: z + 0.009, y0: 0.022, y1: yc - 0.008, w: 0.0132, mat: 'steel', r: 0.002 });
-      if (wide) for (const s of [-1, 1]) knurledKnob(b, { at: [s * 0.0128, 0.0245, z], axis: 'x', r: 0.0034, len: 0.008, teeth: 12, mat: 'steel' }); // windage screws
-    }
-    lathe(b, {
-      mat: 'steel',
-      y: yc,
-      seg: 28,
-      profile: [
-        [0, 0.012],
-        [0.0118, 0.012],
-        [0.0126, 0.008],
-        [0.0126, -0.026],
-        [0.0098, -0.04],
-        [0.0096, -0.25],
-        [0.0108, -0.258],
-        [0.0108, -0.272],
-        [0, -0.272],
-      ],
-    });
-    knurledKnob(b, { at: [0, yc + 0.0125, -0.133], axis: 'y', r: 0.0072, len: 0.01, teeth: 20, mat: 'steel' }); // elevation
-    knurledKnob(b, { at: [0.0125, yc, -0.133], axis: 'x', r: 0.0072, len: 0.01, teeth: 20, mat: 'steel' }); // windage
-    b.cylAxis({ axis: 'z', x: 0, y: yc, z: 0.0121, len: 0.0006, r: 0.0105, mat: 'glass' });
-    b.cylAxis({ axis: 'z', x: 0, y: yc, z: -0.2722, len: 0.0006, r: 0.0094, mat: 'glass' });
-    b.anchor('scopeEye', 0, yc, 0.0122);
-    b.anchor('scopeFront', 0, yc, -0.2722);
-    b.meta.sight = 'scope';
-    b.meta.scopeMag = 2.75;
   }
 
   // --- Bolt with the shroud, flag safety and knurled cocking piece; straight
-  // handle, or bent for the A4.
+  // handle, or bent for the A4 (and any scope over the action).
   b.part('bolt', [0, 0, 0.016]);
   b.cyl({ z0: -0.167, z1: -0.056, r0: 0.0094, mat: 'steelBright', seg: 28 });
   b.cyl({ z0: -0.064, z1: -0.054, r0: 0.0104, mat: 'steelBright', seg: 28 }); // handle root
@@ -956,7 +921,7 @@ function springfield(b, v) {
   b.cylAxis({ axis: 'y', x: 0, y: 0.0118, z: -0.03, len: 0.0035, r: 0.0042, mat: P, seg: 14 });
   b.extrude({ points: S([[-0.0365, 0.0], [-0.0245, 0.0], [-0.023, 0.0055], [-0.0265, 0.0108], [-0.0345, 0.0108], [-0.038, 0.0055]], 3), width: 0.0024, x: 0.0068, mat: P, bevel: 0.0005 }); // safety wing
   knurledKnob(b, { at: [0, 0, 0.0015], axis: 'z', r: 0.0088, len: 0.011, teeth: 24, mat: P }); // cocking piece knob
-  if (A4) {
+  if (A4 || v.bent) {
     bar(b, { pts: [[0.008, -0.0005, -0.06], [0.026, -0.0085, -0.058], [0.034, -0.025, -0.051], [0.0355, -0.033, -0.047]], r: [[0, 0.0048], [1, 0.0039]], mat: 'steelBright', seg: 14 });
     b.sphere({ x: 0.037, y: -0.037, z: -0.044, r: 0.0085, mat: 'steelBright', seg: 20 });
     b.anchor('boltHandle', 0.037, -0.037, -0.044);
@@ -979,42 +944,26 @@ function springfield(b, v) {
 }
 
 // Springfield M1903: straight-grip stock, M1905 leaf rear sight on the barrel.
-export function m1903(b) {
-  springfield(b, {});
+// v: as springfield() takes (upgradeScopes.js bends the handle for a scope).
+export function m1903(b, v = {}) {
+  springfield(b, v);
 }
 
 // M1903A4 sniper: Weaver 330C (M73B1) 2.75x scope, Redfield Junior mount, no iron sights.
 export function m1903a4(b) {
   springfield(b, { scope: true });
+  redfieldMount(b);
+  b.meta.sight = 'scope';
+  b.meta.scopeMag = 2.75;
 }
 
-// M1903A1 with the Marine Corps' Unertl 8x target scope: the blocks are
-// dovetailed onto the receiver ring and the barrel 7.2 in (183 mm) apart, the
-// rear mount carries the micrometer knobs (elevation on top, windage on the
-// right), and the scope slides in both rings, pulled back by hand after each
-// shot. Mounted high enough for the straight bolt handle. Heights est.
+// M1903A1 with the Marine Corps' Unertl 8x target scope on its blocks
+// (optics.js).
 export function m1903a1_unertl(b) {
   springfield(b, { cStock: true });
-  const P = 'parkerized';
-  const yc = 0.054;
-  const r = 0.0095;
-  const zR = -0.182,
-    zF = zR - 0.183;
-  for (const [z, y0] of [
-    [zR, 0.0152],
-    [zF, 0.0158],
-  ]) {
-    b.span({ z0: z - 0.0105, z1: z + 0.0105, y0, y1: 0.0232, w: 0.0142, mat: P, r: 0.0012 }); // block
-    b.span({ z0: z - 0.0085, z1: z + 0.0085, y0: 0.0232, y1: 0.0268, w: 0.0172, mat: P, r: 0.0008 }); // dovetail foot
-    b.span({ z0: z - 0.0055, z1: z + 0.0055, y0: 0.0262, y1: yc - r, w: 0.0092, mat: P, r: 0.0015 }); // upright
-    ring(b, { y: yc, z, r, w: 0.012, t: 0.0035, mat: P });
-  }
-  // Micrometer knobs on the rear mount.
-  knurledKnob(b, { at: [0, yc + r + 0.0095, zR], axis: 'y', r: 0.0078, len: 0.009, teeth: 32, mat: P });
-  b.cylAxis({ axis: 'y', x: 0, y: yc + r + 0.003, z: zR, len: 0.006, r: 0.0042, mat: P, seg: 14 });
-  knurledKnob(b, { at: [0.0175, yc - 0.004, zR], axis: 'x', r: 0.0072, len: 0.008, teeth: 30, mat: P });
-  b.cylAxis({ axis: 'x', x: 0.011, y: yc - 0.004, z: zR, len: 0.006, r: 0.004, mat: P, seg: 14 });
-  unertl(b, { y: yc, zEye: -0.004 });
+  unertlMount(b);
+  b.meta.sight = 'scope';
+  b.meta.scopeMag = 7.8;
 }
 
 // Thompson M1A1: .45 ACP blowback SMG, 813 mm long, 267 mm plain barrel (no

@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { buildGun, MODELS } from './models/index.js';
 import { makeGunMaterials } from './models/kit.js';
 import { buildDownloadedGarand, downloadedGarandState, loadDownloadedGarand } from './models/downloaded.js';
-import { fitScopeToDownloadedGarand } from './models/optics.js';
+import { fitScopeToDownloadedGarand, M1C_SCOPES } from './models/optics.js';
 import { Sighting } from './sighting.js';
 import { damp, clamp, approach } from '../core/math.js';
 import { FirstPersonArms } from '../actors/soldierFP.js';
@@ -225,7 +225,8 @@ export class ViewModel {
     if (!entry) {
       const modelId = MODELS[def.model] ? def.model : fallbackModel(def);
       let gun = variant === 'download' ? buildDownloadedGarand() : buildGun(modelId, this.mats);
-      if (variant === 'download' && def.scope) gun = fitScopeToDownloadedGarand(gun, this.mats);
+      // (A scope upgrade's model, `m1_garand+m84`, names the scope it carries.)
+      if (variant === 'download' && def.scope) gun = fitScopeToDownloadedGarand(gun, this.mats, 0, M1C_SCOPES[modelId.split('+')[1]] ?? M1C_SCOPES.alaskan);
       gun.root.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = false;

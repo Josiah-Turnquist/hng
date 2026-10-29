@@ -974,6 +974,55 @@ export class Hud {
       c.lineTo(cx + 3.2 * u, cy + 18 * u);
       c.lineTo(cx + 3.2 * u, cy + R);
       c.fill();
+    } else if (sc.reticle === 'fineDuplex') {
+      // Duplex: thick wires in from the edge, thinning to fine wires across the middle.
+      c.lineWidth = Math.max(1, 0.5 * u);
+      c.beginPath();
+      c.moveTo(cx - R, cy);
+      c.lineTo(cx + R, cy);
+      c.moveTo(cx, cy - R);
+      c.lineTo(cx, cy + R);
+      c.stroke();
+      const t = 2.4 * u;
+      c.fillRect(cx - R, cy - t / 2, R - 30 * u, t);
+      c.fillRect(cx + 30 * u, cy - t / 2, R - 30 * u, t);
+      c.fillRect(cx - t / 2, cy - R, t, R - 30 * u);
+      c.fillRect(cx - t / 2, cy + 30 * u, t, R - 30 * u);
+    } else if (sc.reticle === 'german4') {
+      // "Absehen 4": thick posts from the left, the right and below, ending short
+      // of the center, and a fine crosshair between them.
+      c.lineWidth = Math.max(1, 0.5 * u);
+      c.beginPath();
+      c.moveTo(cx - R, cy);
+      c.lineTo(cx + R, cy);
+      c.moveTo(cx, cy - R);
+      c.lineTo(cx, cy + R);
+      c.stroke();
+      c.fillRect(cx - R, cy - 1.8 * u, R - 16 * u, 3.6 * u);
+      c.fillRect(cx + 16 * u, cy - 1.8 * u, R - 16 * u, 3.6 * u);
+      c.fillRect(cx - 2 * u, cy + 16 * u, 4 * u, R - 16 * u);
+    } else if (sc.reticle === 'tPost') {
+      // A thick flat-topped post from below to the center, a fine wire across.
+      c.lineWidth = Math.max(1, 0.5 * u);
+      c.beginPath();
+      c.moveTo(cx - R, cy);
+      c.lineTo(cx + R, cy);
+      c.stroke();
+      c.fillRect(cx - 2.6 * u, cy, 5.2 * u, R);
+    } else if (sc.reticle === 'infantry' || sc.reticle === 'infantryMarksman') {
+      // A plain pointed post from below with a short tip; the marksman's adds
+      // fine side bars ending short of the center.
+      c.beginPath();
+      c.moveTo(cx - 1.8 * u, cy + R);
+      c.lineTo(cx - 1.8 * u, cy + 3 * u);
+      c.lineTo(cx, cy);
+      c.lineTo(cx + 1.8 * u, cy + 3 * u);
+      c.lineTo(cx + 1.8 * u, cy + R);
+      c.fill();
+      if (sc.reticle === 'infantryMarksman') {
+        c.fillRect(cx - R, cy - 0.5 * u, R - 12 * u, u);
+        c.fillRect(cx + 12 * u, cy - 0.5 * u, R - 12 * u, u);
+      }
     } else {
       // Crosshair: fine, or medium wires (the Marine Corps' Unertl).
       c.lineWidth = Math.max(1, (sc.reticle === 'crosshairMedium' ? 1.2 : 0.6) * u);

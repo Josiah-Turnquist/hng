@@ -2,12 +2,14 @@
 import * as german from './german.js';
 import * as us from './us.js';
 import * as soviet from './soviet.js';
+import { UPGRADE_MODELS } from './upgradeScopes.js';
 import { GunBuilder } from './kit.js';
 
 export const MODELS = {
   ...us,
   ...german,
   ...soviet,
+  ...UPGRADE_MODELS, // rifles with a scope upgrade: `${rifle}+${family}`
 };
 
 // Levels of detail: 0 = first person (30k-60k triangles), 1 = soldiers nearby
