@@ -82,6 +82,8 @@ export class App {
         cls: p.get('class') || 'infantry',
         tank: p.get('tank') || null,
         loadout: p.get('weapon') ? [p.get('weapon'), null, null] : null,
+        // Upgrades on that weapon: upgrades=sight:u113,barrel:u61 (weapons/upgrades.js).
+        upgrades: p.get('weapon') && p.get('upgrades') ? { [p.get('weapon')]: Object.fromEntries(p.get('upgrades').split(',').map((x) => x.split(':'))) } : null,
         bots: Number(p.get('bots') || 24),
         minutes: Number(p.get('minutes') || 20),
       };
