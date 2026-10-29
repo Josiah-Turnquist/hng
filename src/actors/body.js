@@ -260,7 +260,7 @@ export class Body {
     } else {
       const rest = this.moving < 0.2 ? 14 : this.moving < 2 ? 9 : 5;
       const stanceBonus = this.stance === STANCE.PRONE ? 1.3 : this.stance === STANCE.CROUCH ? 1.15 : 1;
-      this.stamina += rest * stanceBonus * STAMINA_REGEN * dt;
+      this.stamina += rest * stanceBonus * STAMINA_REGEN * (this.staminaRegenMul || 1) * dt;
     }
     // Breathing settles more slowly than stamina recovers.
     const exertion = 1 - this.stamina / 100;

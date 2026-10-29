@@ -9,6 +9,7 @@
 //   r.selected                       // the soldier going into battle
 //   recruit(r, { faction, cls, name }); select(r, id); dismiss(r, id); saveRoster(r);
 //   awardBattle(r, id, { xp, won, kills, deaths, captures, ribbons })  // after a battle
+import { wearable } from '../game/badges.js';
 import { DEFAULT_LOADOUT, WEAPONS, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 import { ribbonInfo, ribbonLevel, unlocked, tankUnlocked, carriable } from '../game/ribbons.js';
 import { variantCount } from '../actors/soldierKit.js';
@@ -116,6 +117,7 @@ function check(s) {
   for (const k of Object.keys(s.ribbons)) if (!ribbonInfo(k) || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
   s.loadout = fitLoadout(s, s.loadout);
   if (s.tank && !tankUnlocked(s, s.tank)) s.tank = null;
+  if (s.badge && !wearable(s).includes(s.badge)) s.badge = null;
   s.xp = Math.max(0, Number(s.xp) || 0);
   s.variant = Math.max(0, Math.floor(Number(s.variant) || 0)) % variantCount(s.faction, s.cls);
   s.seed = Number(s.seed) || 1;

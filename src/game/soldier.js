@@ -7,6 +7,7 @@
 // bandaged; leg wounds slow you down, arm wounds make your aim shakier.
 // Like the original game, health recovers on its own up to the top of the
 // current third once you stop bleeding.
+import { badgeValue } from './badges.js';
 import { Body, STANCE } from '../actors/body.js';
 import { Weapon } from '../weapons/weapon.js';
 import { WEAPONS } from '../weapons/defs.js';
@@ -43,7 +44,7 @@ export function bulletDamage(energyJ, diameterM) {
 let nextSoldierId = 1;
 
 export class Soldier {
-  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0 }) {
+  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badge = null }) {
     this.id = nextSoldierId++;
     this.game = game;
     this.faction = faction;
@@ -56,7 +57,9 @@ export class Soldier {
     const y = game.world.hf.getHeight(x, z);
     this.body = new Body(game.world.collision, x, y, z);
     this.loadout = loadout.slice(); // the weapons he set out with (ids): he has them again each time he comes back
-    this.weapons = loadout.map((id) => (id ? new Weapon(WEAPONS[id]) : null));
+    this.badge = badge; // the combat badge he wears: { id, tier, value } (game/badges.js)
+    this.body.staminaRegenMul = badgeValue(this, 'marathonMan', 1);
+    this.weapons = loadout.map((id, i) => this._arm(id, i));
     this.current = 0;
     this.health = 100;
     this.maxHealth = 100;
@@ -136,12 +139,14 @@ export class Soldier {
     // up only once it's done: moving interrupts treatment, and you keep it.
     if (this.action) {
       this.actionT += dt;
-      if (this.action === 'bandage' && this.actionT >= 3.2) {
+      // (First Aid: game/badges.js.)
+      const quick = badgeValue(this, 'firstAid', 1);
+      if (this.action === 'bandage' && this.actionT >= 3.2 * quick) {
         this.bandages = Math.max(0, this.bandages - 1);
         this.bleed = 0;
         this.health = Math.min(100, this.health + 8);
         this.action = null;
-      } else if (this.action === 'firstaid' && this.actionT >= 4.5) {
+      } else if (this.action === 'firstaid' && this.actionT >= 4.5 * quick) {
         this.firstAid = Math.max(0, this.firstAid - 1);
         this.bleed = 0;
         this.health = Math.min(100, Math.max(this.health, 80));
@@ -210,6 +215,9 @@ export class Soldier {
       this.woundedWith = cause.weapon;
       this.woundedT = this.game.time;
     }
+    // (Heavy Set: less harm from falls and blasts; Driver: from crashes.)
+    if (cause?.kind === 'fall' || cause?.kind === 'explosion') amount *= badgeValue(this, 'heavySet', 1);
+    if (cause?.vehicle && (cause.kind === 'crash' || cause.kind === 'fall')) amount *= badgeValue(this, 'driver', 1);
     this.health -= amount;
     this.lastHitTime = this.game.time;
     this.game.onDamage?.(this, amount, cause);
@@ -248,9 +256,24 @@ export class Soldier {
   // up (those stay with the life they were picked up in).
   rearm() {
     this.loadout.forEach((id, i) => {
-      if (this.weapons[i]?.def.id !== (id || undefined)) this.weapons[i] = id ? new Weapon(WEAPONS[id]) : null;
+      if (this.weapons[i]?.def.id !== (id || undefined)) this.weapons[i] = this._arm(id, i);
     });
     this._updateLoad();
+  }
+
+  // A weapon of his loadout, as his combat badge has it: Hoarder's spare
+  // magazines for his main weapon, Dynamite Lover's extra grenades, Fast
+  // Reload (game/badges.js).
+  _arm(id, i) {
+    if (!id || !WEAPONS[id]) return null;
+    const w = new Weapon(WEAPONS[id]);
+    const extra = i === 0 ? badgeValue(this, 'hoarder', 0) : w.def.type === 'grenade' ? badgeValue(this, 'dynamiteLover', 0) : 0;
+    if (extra) {
+      w.extraReserve = extra;
+      w.fill();
+    }
+    w.reloadMul = badgeValue(this, 'fastReload', 1);
+    return w;
   }
 
   // Support for weapon stability: bipod down on the ground / prone.

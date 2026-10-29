@@ -13,6 +13,7 @@ import { ribbonInfo, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
 import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
 import { FACTIONS } from '../weapons/defs.js';
+import { DEF } from '../game/modes/assault.js';
 
 export class App {
   // resume: state handed over from a previous version of the page (see main.js).
@@ -252,6 +253,7 @@ export class App {
     const xp = 100 + s.kills * 100 + captures * 150 + (won ? 400 : 0);
     const roster = loadRoster();
     const cls = roster.soldiers.find((x) => x.id === id)?.cls || s.cls;
+    g.ribbonTally?.end({ won, defending: s.team === DEF, seconds: g.time, deaths: s.deaths });
     const ribbons = g.ribbonTally ? ribbonPoints(g.ribbonTally, cls) : {};
     const res = awardBattle(roster, id, { xp, won, kills: s.kills, deaths: s.deaths, captures, ribbons });
     if (!res) return null;

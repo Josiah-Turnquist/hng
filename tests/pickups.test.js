@@ -67,6 +67,7 @@ test('coming back in, a soldier has his own loadout again, not what he picked up
   const me = soldier(0, 0, ['m1_garand', 'm1911a1', 'mk2_grenade']);
   me.loadout = ['m1_garand', 'm1911a1', 'mk2_grenade'];
   me._updateLoad = () => {};
+  me._arm = Soldier.prototype._arm;
   const grenades = me.weapons[2];
   pickups.take(me, pickups.put(new Weapon(WEAPONS.mp40), 0, 0));
   pickups.take(me, pickups.put(new Weapon(WEAPONS.p38), 0, 0));

@@ -21,7 +21,8 @@ import { Pickups } from './pickups.js';
 import { PickupView } from './pickupView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
-import { RibbonTally } from './ribbons.js';
+import { RibbonTally, LONG_RANGE } from './ribbons.js';
+import { STANCE } from '../actors/body.js';
 import { AMMO } from '../weapons/ammo.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
@@ -106,7 +107,7 @@ export class Game {
       });
     } else this.mode = new RangeMode(this);
     const spawn = this.mode.playerSpawn();
-    const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z });
+    const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z, badge: this.opts.badge || null });
     player.yaw = spawn.yaw;
     this.soldiers.push(player);
     this.player = new PlayerController(this, player);
@@ -244,14 +245,55 @@ export class Game {
       if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
     }
     this._playerDeploy(dt);
-    // (Tank Driver: the distance he drives his tank.)
-    const me = this.player.soldier;
-    if (me.alive && me.vehicle?.def.kind === 'tracked' && me.seat === 0) this.ribbonTally?.drive(Math.abs(me.vehicle.speed) * dt);
+    this._ribbonMoves(dt);
     this._footsteps();
     this._runOver();
     this.projectiles.update(dt);
     this.pickups?.update();
     this._guard(this.mode, () => this.mode.update?.(dt));
+  }
+
+  // How the player gets about, for his ribbons (game/ribbons.js): on foot by
+  // gait (Physical Training, Combat Movement); driving (Tank Driver, Driver,
+  // Chauffeur when men ride with him) or cycling (Physical Training).
+  _ribbonMoves(dt) {
+    const t = this.ribbonTally;
+    const me = this.player.soldier;
+    if (!t || !me.alive) return;
+    const v = me.vehicle;
+    if (!v) {
+      const b = me.body;
+      const m = b.moving * dt;
+      if (!b.onGround || m <= 0) return;
+      if (b.stance === STANCE.CROUCH) t.move('crouch', m);
+      else if (b.stance === STANCE.PRONE) return;
+      else if (b.sprinting) t.move('sprint', m);
+      else t.move(b.moving < 2.2 ? 'walk' : 'run', m);
+      return;
+    }
+    if (me.seat !== 0) return;
+    const m = Math.abs(v.speed) * dt;
+    if (v.def.kind === 'tracked') return t.drive(m);
+    const kind = v.isBike ? (v.pedal ? 'bicycle' : 'motorcycle') : (v.def.mass || 0) > 2500 ? 'truck' : 'car';
+    t.ride(kind, m, v.occupants.some((o, i) => i > 0 && o && o.alive));
+  }
+
+  // Points taken or turned neutral by the player (the Tactical ribbon).
+  onPointTaken(s) {
+    if (s === this.player?.soldier) this.ribbonTally?.event('capture');
+  }
+
+  onPointNeutral(s) {
+    if (s === this.player?.soldier) this.ribbonTally?.event('neutralize');
+  }
+
+  // Is this soldier on a point his side is taking (or holding against takers)?
+  _onPoint(s, taking) {
+    for (const p of this.mode?.points || []) {
+      if (Math.hypot(s.body.x - p.x, s.body.z - p.z) >= p.radius) continue;
+      if (taking ? p.owner !== s.team && this.mode.capturable?.(p, s.team) !== false : true) return p;
+    }
+    return null;
   }
 
   // A bug in one soldier, vehicle or rule shouldn't stop the whole battle (an
@@ -713,11 +755,20 @@ export class Game {
     }
   }
 
+  // A rifle shot from far off (the Recon ribbon: semi-automatic and bolt-action
+  // rifles, at LONG_RANGE or more).
+  _farShot(a, s, cause) {
+    const t = cause?.weapon?.type;
+    if (cause?.kind !== 'bullet' || !['semi', 'carbine', 'rifle', 'sniper'].includes(t)) return false;
+    return Math.hypot(a.body.x - s.body.x, a.body.z - s.body.z) >= LONG_RANGE;
+  }
+
   // The player hurt: a red flash at the edges, the view jolts, and he grunts.
   onDamage(s, amount, cause) {
     const a = cause?.attacker;
     if (a && a === this.player?.soldier && a.team !== s.team) {
       this.ribbonTally?.damage(cause.weapon, a, amount);
+      if (this._farShot(a, s, cause)) this.ribbonTally?.far('dmg', Math.min(amount, 100));
       // (Should someone else finish him, the player has an assist.)
       s.hurtByPlayer = { t: this.time, weapon: cause.weapon };
     }
@@ -738,6 +789,11 @@ export class Game {
         // bled out), not only by a bullet.
         if (a === this.player?.soldier) {
           this.ribbonTally?.kill(cause?.weapon, a, !!cause?.headshot);
+          // Tactical: a kill while taking a point; Defense: the man killed was
+          // taking one; Recon: a rifle kill from far off.
+          if (this._onPoint?.(a, true)) this.ribbonTally?.event('killWhileCapturing');
+          if (this._onPoint?.(s, true)) this.ribbonTally?.event('killCapturing');
+          if (this._farShot?.(a, s, cause)) this.ribbonTally?.far(cause?.headshot ? 'head' : 'kill');
           this.hud?.hitMarker(2);
           this.hud?.killConfirm?.(s.name, { points: 5, headshot: !!cause?.headshot });
         }

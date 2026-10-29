@@ -13,6 +13,7 @@
 //    around a locked track; heavy and abrupt.
 //  - epicyclic (Panzer IV): steering units slow the inner track gradually; full
 //    lever brakes it to turn around it.
+import { badgeValue } from '../game/badges.js';
 import * as THREE from 'three';
 import { Vehicle, TURN_RATE } from './vehicle.js';
 import { SHELLS } from './defs.js';
@@ -490,7 +491,9 @@ export class TrackedVehicle extends Vehicle {
   }
 
   _loaderFactor() {
-    return this.modules.gun < 1 ? 1.6 : 1;
+    // (Gunner: a crewman's combat badge, game/badges.js.)
+    const gunner = Math.min(1, ...this.occupants.map((o) => (o ? badgeValue(o, 'gunner', 1) : 1)));
+    return (this.modules.gun < 1 ? 1.6 : 1) * gunner;
   }
 
   // Fire the main gun. Returns the projectile or null.

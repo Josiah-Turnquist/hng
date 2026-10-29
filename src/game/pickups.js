@@ -2,6 +2,7 @@
 // him, with what ammunition he had left in it and for it; anyone on foot can
 // pick it up (the player with the use key), leaving the gun he carried in that
 // slot in its place. Dropped weapons stay a couple of minutes.
+import { badgeValue } from './badges.js';
 import { Weapon } from '../weapons/weapon.js';
 
 const LIFE = 120; // s a dropped weapon stays
@@ -81,5 +82,22 @@ export class Pickups {
   update() {
     const t = this.game.time;
     if (this.list.length && t - this.list[0].t > LIFE) this.list = this.list.filter((d) => t - d.t <= LIFE);
+    this._scavenge();
+  }
+
+  // Scavenger (a combat badge, game/badges.js): walking past a fallen man's gun
+  // the player takes part of a magazine for his own main weapon from it, once
+  // per gun.
+  _scavenge() {
+    const s = this.game.player?.soldier;
+    const share = badgeValue(s, 'scavenger', 0);
+    if (!share || !s.alive || s.vehicle) return;
+    const w = s.weapons[0];
+    if (!w || w.def.type === 'grenade' || !w.def.capacity) return;
+    for (const d of this.list) {
+      if (d.scavenged || Math.hypot(d.x - s.body.x, d.z - s.body.z) > 2) continue;
+      d.scavenged = true;
+      if (w.addRounds?.(Math.ceil(w.def.capacity * share))) this.game.hud?.flash?.('Ammunition taken', 1.2);
+    }
   }
 }

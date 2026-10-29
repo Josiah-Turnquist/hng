@@ -9,6 +9,7 @@
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
 import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints } from '../weapons/defs.js';
+import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
 import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
@@ -119,6 +120,7 @@ export function showFrontEnd(app) {
         cls: s.cls,
         tank: s.cls === 'tanker' ? s.tank || TANKS[s.faction][0][0] : null,
         loadout: [...s.loadout],
+        badge: badgeOf(s),
         bots: m.bots,
         minutes: m.minutes,
         soldier: { id: s.id, name: s.name, seed: s.seed, variant: s.variant },
@@ -232,6 +234,7 @@ export function showFrontEnd(app) {
         ['weapons', 'Weapons'],
         ['vehicle', 'Vehicle'],
         ['ribbons', 'Ribbons'],
+        ['badge', 'Badge'],
         ['uniform', 'Uniform'],
       ];
       tabs.innerHTML = '';
@@ -338,6 +341,46 @@ export function showFrontEnd(app) {
         } else {
           body.appendChild(el('div', 'lo-note', `${CLASS_NAMES[s.cls]} soldiers go into battle on foot. Jeeps, bicycles and motorcycles wait at the spawn points: walk up to one and press the get-in key. Recruit a tank crewman to fight in a tank.`));
         }
+      } else if (tab === 'badge') {
+        // His combat badge, as in the original game: one worn, each with three
+        // tiers that open at levels of his ribbons.
+        const open = wearable(s);
+        const worn = badgeOf(s);
+        const none = el('button', `badge-card${worn ? '' : ' on'}`);
+        none.innerHTML = '<div class="bdg-head"><b>No badge</b></div>';
+        none.addEventListener('click', () => {
+          s.badge = null;
+          save();
+          loadout(s, 'badge');
+        });
+        body.appendChild(none);
+        const ids = Object.keys(BADGES).sort((a, b) => open.includes(b) - open.includes(a));
+        for (const id of ids) {
+          const b = BADGES[id];
+          const tiers = badgeTiers(s, id);
+          const can = open.includes(id);
+          const c = el('button', `badge-card${worn?.id === id ? ' on' : ''}${can ? '' : ' locked'}`);
+          c.innerHTML = '<div class="bdg-head"><b></b><span class="bdg-tier"></span></div><div class="bdg-does"></div><div class="bdg-tiers"></div>';
+          c.querySelector('b').textContent = b.name;
+          const top = tiers.filter((t) => t.open).pop();
+          c.querySelector('.bdg-tier').textContent = top ? `Tier ${'I'.repeat(top.tier)}` : 'Locked';
+          c.querySelector('.bdg-does').textContent = b.does;
+          const tl = c.querySelector('.bdg-tiers');
+          for (const t of tiers) {
+            const row = el('span', t.open ? 'open' : '');
+            row.textContent = `${'I'.repeat(t.tier)}: ${b.show(t.value)}${t.open ? '' : `, at ${t.alts.map((a) => `${RIBBONS[a.ribbon].name} ${a.level}`).join(' or ')}`}`;
+            tl.appendChild(row);
+          }
+          if (can)
+            c.addEventListener('click', () => {
+              s.badge = id;
+              save();
+              loadout(s, 'badge');
+            });
+          else c.disabled = true;
+          body.appendChild(c);
+        }
+        body.appendChild(el('div', 'lo-note', 'The original game gives each badge\'s strength but not what it does; what each does here is read from its name.'));
       } else if (tab === 'ribbons') {
         // His ribbons, as the original game's: the level, how far to the next,
         // and what the levels still to come open for him.

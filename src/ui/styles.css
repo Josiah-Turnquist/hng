@@ -787,6 +787,15 @@ canvas.game {
 .wpn-card.locked:hover { background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)); }
 .wpn-card.locked small,
 .veh-card em { color: var(--amber); font-style: normal; font-size: 12px; }
+.badge-card { display: grid; gap: 4px; width: 100%; padding: 9px 12px; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); }
+.badge-card.on { border-color: rgba(226, 172, 70, 0.6); background: rgba(226, 172, 70, 0.1); }
+.badge-card.locked { opacity: 0.55; cursor: default; }
+.bdg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.bdg-head b { font-family: var(--cond); font-size: 16px; letter-spacing: 0.04em; }
+.bdg-tier { font-size: 12px; color: var(--amber); white-space: nowrap; }
+.bdg-does { font-size: 12px; color: var(--ink); }
+.bdg-tiers { display: grid; gap: 1px; font-size: 11px; color: var(--ink-dim); }
+.bdg-tiers .open { color: var(--amber); }
 .rib-row { display: grid; gap: 4px; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); }
 .rib-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .rib-head b { font-family: var(--cond); font-size: 16px; letter-spacing: 0.04em; }

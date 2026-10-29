@@ -3,6 +3,7 @@
 // seated in a jeep, riding a bicycle or motorcycle, ragdoll on death). Its posed
 // skeleton also provides the bullet hit zones. The uniform and kit follow the
 // soldier's army, class and primary weapon; three levels of detail by distance.
+import { badgeValue } from './badges.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 import { buildGun, gunLodForDistance, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
@@ -175,7 +176,7 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   st.actionT = 0;
   if (s.action === 'bandage' || s.action === 'firstaid') {
     st.action = 'bandage';
-    st.actionT = Math.min(1, s.actionT / (s.action === 'bandage' ? 3.2 : 4.5));
+    st.actionT = Math.min(1, s.actionT / ((s.action === 'bandage' ? 3.2 : 4.5) * badgeValue(s, 'firstAid', 1)));
   } else if (v && s.seat === 0 && !st.ride) {
     st.action = 'use';
   } else if (s.throwing) {

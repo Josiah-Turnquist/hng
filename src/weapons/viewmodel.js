@@ -332,7 +332,7 @@ export class ViewModel {
     this.aimT = approach(this.aimT, ctx.aiming ? 1 : 0, dt / adsTime);
     this.aim = this.aimT * this.aimT * (3 - 2 * this.aimT);
     this.sprint = damp(this.sprint, ctx.sprinting ? 1 : 0, 7, dt);
-    this.swap = Math.min(1, this.swap + dt * 3.2);
+    this.swap = Math.min(1, this.swap + dt * (this.swapRate || 3.2));
     this.blocked = damp(this.blocked, ctx.blocked ? 1 : 0, 10, dt);
 
     // Inertia: the gun lags behind quick turns.

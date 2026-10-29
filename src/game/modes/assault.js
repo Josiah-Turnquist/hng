@@ -485,7 +485,12 @@ export class AssaultMode {
       // Access points go straight over (no neutral stage).
       const before = p.c;
       p.c = Math.max(-1, Math.min(1, p.c + (dir * dt * boost(n)) / halfT));
-      if (Math.sign(before) !== Math.sign(p.c) && p.kind !== 'access') p.owner = null; // neutral
+      if (Math.sign(before) !== Math.sign(p.c) && p.kind !== 'access' && p.owner !== null) {
+        p.owner = null; // neutral
+        // (Those who turned it share the credit: the Tactical ribbon.)
+        const team = dir < 0 ? ATT : DEF;
+        for (const s of this.game.soldiers) if (s.alive && s.team === team && Math.hypot(s.body.x - p.x, s.body.z - p.z) < p.radius) this.game.onPointNeutral?.(s, p);
+      }
       if (p.c <= -0.999 && p.owner !== ATT) this._captured(p, ATT);
       if (p.c >= 0.999 && p.owner !== DEF) this._captured(p, DEF);
     } else if (na === 0 && nd === 0 && p.owner !== null && Math.abs(p.c) < 1) {
@@ -502,6 +507,7 @@ export class AssaultMode {
       if (s.alive && s.team === team && Math.hypot(s.body.x - p.x, s.body.z - p.z) < p.radius) {
         s.score += p.kind === 'objective' ? 20 : 10;
         s.captures = (s.captures || 0) + 1;
+        g.onPointTaken?.(s, p);
       }
     p.owner = team;
     p.c = team === DEF ? 1 : -1;

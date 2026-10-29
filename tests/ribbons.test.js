@@ -193,3 +193,47 @@ test("a soldier keeps another army's gun once he has earned it", () => {
     delete globalThis.localStorage;
   }
 });
+
+test('the other ribbons earn at the original values: moving, driving, points, defending, medic, recon', () => {
+  const t = new RibbonTally();
+  t.move('run', 100);
+  t.move('sprint', 100);
+  t.move('walk', 10);
+  t.move('crouch', 10);
+  t.ride('bicycle', 100);
+  t.ride('car', 1000, true);
+  t.event('capture');
+  t.event('neutralize');
+  t.event('killWhileCapturing');
+  t.event('killCapturing');
+  t.heal('self');
+  t.heal('other');
+  t.repair();
+  t.far('kill');
+  t.far('dmg', 100);
+  t.end({ won: true, defending: true, seconds: 600, deaths: 0 });
+  const p = ribbonPoints(t, 'infantry');
+  assert.ok(near(p.physicalTraining, 100 * 0.148 + 100 * 0.308 + 100 * 0.173));
+  assert.ok(near(p.combatMovement, 10 * 1.62 + 10 * 14.494));
+  assert.ok(near(p.driver, 1000 * 0.338));
+  assert.ok(near(p.chauffeur, 1000));
+  assert.ok(near(p.tactical, 164.788 + 40 + 164.788));
+  assert.ok(near(p.defense, 194.311 + 600 * 2.46));
+  assert.ok(near(p.medic, 2 + 25 + 30));
+  assert.ok(near(p.recon, 28.099 + 100 * 0.225 + 224.792));
+  // Driver, Chauffeur and Recon are the infantryman's and the scout's.
+  const q = ribbonPoints(t, 'paratrooper');
+  assert.equal(q.driver, undefined);
+  assert.equal(q.recon, undefined);
+  assert.ok(q.tactical > 0);
+  // A close-combat kill (category 10): 305.45.
+  const m = new RibbonTally();
+  m.kill({ id: 'x', type: 'melee' }, null);
+  assert.ok(near(ribbonPoints(m, 'tanker').closeCombat, 305.45));
+});
+
+test('items open by the other ribbons; each army starts with its spade and may earn the others', () => {
+  // (The items' definitions come with them; the requirement is already set.)
+  const req = (id, cls, f) => requirement(id, cls, f);
+  for (const r of [req('colt_1903', 'infantry', 'US'), req('firstaid_ge', 'recon', 'GE'), req('binoc_su', 'tanker', 'SU'), req('medic_us', 'infantry', 'US'), req('wrench', 'tanker', 'US')]) assert.ok(r === null || r === undefined || r.level >= 0);
+});

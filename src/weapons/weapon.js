@@ -77,21 +77,39 @@ export class Weapon {
   }
 
   // Start fully loaded.
+  // Rounds taken from elsewhere (Scavenger): a part-filled magazine, loose
+  // rounds or a clip, as the weapon is fed. Returns whether it took any.
+  addRounds(n) {
+    const d = this.def;
+    if (!(n > 0)) return false;
+    if (this.spareMags) this.spareMags.push(Math.min(n, d.capacity));
+    else if (d.feed === 'stripper' || d.feed === 'gate') this.loose = (this.loose || 0) + n;
+    else if (d.feed === 'enbloc' || d.feed === 'moon') this.clips = (this.clips || 0) + Math.max(1, Math.round(n / d.capacity));
+    else return false;
+    return true;
+  }
+
+  // Spare magazines (clips, rounds) carried: the weapon's, and any extra a
+  // combat badge gives (game/badges.js: Hoarder, Dynamite Lover).
+  get reserveCount() {
+    return (this.def.reserve || 0) + (this.extraReserve || 0);
+  }
+
   fill() {
     const d = this.def;
     this.mag = d.capacity;
     this.chambered = false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
-      this.clips = d.reserve; // full clips
+      this.clips = this.reserveCount; // full clips
       this.loose = 0; // loose rounds (from partly used clips)
     } else if (d.feed === 'gate') {
-      this.loose = d.reserve;
+      this.loose = this.reserveCount;
       this.clips = 0;
     } else if (d.feed === 'moon') {
-      this.clips = d.reserve; // half-moon clips of 3
+      this.clips = this.reserveCount; // half-moon clips of 3
       this.loose = 0;
     } else {
-      this.spareMags = new Array(d.reserve).fill(d.capacity);
+      this.spareMags = new Array(this.reserveCount).fill(d.capacity);
     }
     if (d.openBolt) this.boltBack = true;
     else if (d.feed !== 'single' && d.feed !== 'disposable' && d.type !== 'grenade') {
@@ -228,6 +246,8 @@ export class Weapon {
         else if (releaseAfter) steps.push({ name: 'boltRelease', t: chargeT, end: () => this._charge() });
       }
     }
+    // (Fast Reload: game/badges.js.)
+    if (this.reloadMul) for (const st of steps) st.t *= this.reloadMul;
     this.sequence = { kind: 'reload', steps };
     this.stepIndex = 0;
     this.stepT = 0;
@@ -526,9 +546,9 @@ export class Weapon {
   // Refill ammunition (ammo crates).
   resupply() {
     const d = this.def;
-    if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = d.reserve;
-    else if (d.feed === 'gate') this.loose = d.reserve;
-    else if (d.feed === 'moon') this.clips = d.reserve;
-    else if (this.spareMags) this.spareMags = new Array(d.reserve).fill(d.capacity);
+    if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = this.reserveCount;
+    else if (d.feed === 'gate') this.loose = this.reserveCount;
+    else if (d.feed === 'moon') this.clips = this.reserveCount;
+    else if (this.spareMags) this.spareMags = new Array(this.reserveCount).fill(d.capacity);
   }
 }

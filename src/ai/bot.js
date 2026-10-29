@@ -18,6 +18,7 @@
 // on where an enemy disappeared and, attacking, goes to look for him. It calls
 // out what it sees to comrades nearby. Fireteams of three come at an objective
 // from different sides; holding a point, a bot takes a post facing the enemy.
+import { badgeValue } from '../game/badges.js';
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { clamp, gaussRandom, wrapAngle, DEG, G } from '../core/math.js';
@@ -254,7 +255,10 @@ export class BotBrain {
         // Past what our sights pick out (iron sights: about 200 m), a man is a few
         // pixels on a player's screen: hard to make out, soon not at all.
         const far = e.isVehicle || d <= range.spot ? 1 : Math.exp(-(((d - range.spot) / 50) ** 2));
-        const rate = ((this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70)) * cover * far;
+        // (Ghillie: a combat badge, game/badges.js; it hides a man only while he
+        // holds his fire.)
+        const ghillie = firing ? 1 : badgeValue(e, 'ghillie', 1);
+        const rate = ((this.skill.spot * 2.6 * stance * moving * (firing ? 3 : 1)) / (1 + d / 70)) * cover * far * ghillie;
         a = Math.min(1.5, a + rate * dt * (inView ? 1 : 0.5));
         this.lastSeen.set(e, { x: ti.x, y: ti.y, z: ti.z, t: this.game.time, visible: true });
       } else {

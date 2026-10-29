@@ -7,6 +7,7 @@
 // follows through. Killed with a cooking grenade in hand, a soldier drops it.
 // The first- and third-person throwing motions read s.throwing:
 //   { phase: 'windup' | 'swing' | 'follow', t (s into the phase), cook, w, ... }
+import { badgeValue } from './badges.js';
 import { STANCE } from '../actors/body.js';
 
 export const WINDUP = 0.3; // s to pull the pin and draw the arm back
@@ -78,7 +79,8 @@ export function throwActionT(th) {
 // Throw strength by stance: lying down you can only lob it a short way.
 export function throwSpeed(s, w) {
   const st = s.body.stance;
-  return w.def.throwSpeed * (st === STANCE.PRONE ? 0.55 : st === STANCE.CROUCH ? 0.85 : 1);
+  // (Grenadier: the range goes with the square of the speed.)
+  return w.def.throwSpeed * (st === STANCE.PRONE ? 0.55 : st === STANCE.CROUCH ? 0.85 : 1) * Math.sqrt(badgeValue(s, 'grenadier', 1));
 }
 
 // Where the hand lets go: just ahead of the eye, a little to the right.

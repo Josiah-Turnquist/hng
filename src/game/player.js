@@ -1,5 +1,6 @@
 // The local player: turns keyboard and mouse into soldier actions, runs the
 // first-person camera and weapon, and fires real projectiles from the muzzle.
+import { badgeValue } from './badges.js';
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
@@ -149,6 +150,8 @@ export class PlayerController {
     const s = this.soldier;
     const w = s.weapons[index];
     if (!w) return;
+    // (Quickdraw: game/badges.js.)
+    this.viewmodel.swapRate = 3.2 / badgeValue(s, 'quickdraw', 1);
     if (index !== s.current) this.lastWeapon = s.current;
     s.current = index;
     this.viewmodel.setWeapon(w.def, this.game.world.atmosphere);
@@ -380,7 +383,7 @@ export class PlayerController {
     // Part of the kick stays: automatic fire climbs unless you pull down.
     const auto = w.mode === 'auto' || w.mode === 'slow';
     const r = d.recoil || { rise: 1, side: 0.3 };
-    const climb = impulse * 0.00105 * r.rise * massK * stanceK * (supported ? 0.3 : 1) * (auto ? 1 : 0.35);
+    const climb = impulse * 0.00105 * r.rise * massK * stanceK * (supported ? 0.3 : 1) * (auto ? 1 : 0.35) * badgeValue(s, 'tightGrip', 1);
     this.look.pitch += climb;
     this.look.yaw += gaussRandom(0, climb * r.side * 0.8);
     this.camShake = Math.min(1, this.camShake + impulse * 0.01);
@@ -399,7 +402,7 @@ export class PlayerController {
   spread(w, aimed) {
     const s = this.soldier;
     const d = w.def;
-    let err = aimed ? 0 : d.hipError * DEG * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.8 : 1) * (1 + s.body.moving * 0.25);
+    let err = aimed ? 0 : d.hipError * DEG * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.8 : 1) * (1 + s.body.moving * 0.25) * badgeValue(s, 'pointShooter', 1);
     err = Math.hypot(err, (d.accuracy || 0) * 0.000291 * 0.42);
     if (w.heat > 120) err *= 1 + (w.heat - 120) / 150;
     return err;
@@ -565,7 +568,7 @@ export class PlayerController {
     // Hold breath: steadier for ~6 s, then you must gasp.
     if (this.holdingBreath) {
       this.breathHold += dt;
-      if (this.breathHold > 6.5) {
+      if (this.breathHold > 6.5 * badgeValue(s, 'deadEye', 1)) {
         this.breathDebt = 3;
         this.holdingBreath = false;
       }
