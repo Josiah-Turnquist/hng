@@ -1,8 +1,8 @@
 // Combat badges, as in the original game: their tiers open at levels of the
-// soldier's ribbons, he wears one, and it changes what it says.
+// soldier's ribbons, he wears two, and they change what they say.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BADGES, badgeTiers, badgeOf, wearable, badgeValue } from '../src/game/badges.js';
+import { BADGES, badgeTiers, badgeOf, badgesOf, wornIds, wearable, badgeValue } from '../src/game/badges.js';
 import { Weapon } from '../src/weapons/weapon.js';
 import { WEAPONS } from '../src/weapons/defs.js';
 import { RIBBON_XP } from '../src/game/ribbons.js';
@@ -28,7 +28,7 @@ test("a badge's tiers open at its ribbon's levels, as in the game data", () => {
 
 test('badges change what they say: spare magazines, reloading, blasts', async () => {
   const { Soldier } = await import('../src/game/soldier.js');
-  const arm = (badge, id, i) => Soldier.prototype._arm.call({ badge }, id, i);
+  const arm = (badge, id, i) => Soldier.prototype._arm.call({ badges: badge ? [badge] : [] }, id, i);
   const plain = arm(null, 'm1_garand', 0);
   const hoard = arm({ id: 'hoarder', value: 2 }, 'm1_garand', 0);
   assert.equal(hoard.clips, plain.clips + 2);
@@ -41,6 +41,18 @@ test('badges change what they say: spare magazines, reloading, blasts', async ()
   slow.startReload();
   const total = (w) => w.sequence.steps.reduce((n, s) => n + s.t, 0);
   assert.ok(Math.abs(total(fast) / total(slow) - 0.7) < 1e-9);
-  assert.equal(badgeValue({ badge: { id: 'heavySet', value: 0.85 } }, 'heavySet', 1), 0.85);
-  assert.equal(badgeValue({ badge: { id: 'heavySet', value: 0.85 } }, 'ghillie', 1), 1);
+  assert.equal(badgeValue({ badges: [{ id: 'heavySet', value: 0.85 }] }, 'heavySet', 1), 0.85);
+  assert.equal(badgeValue({ badges: [{ id: 'heavySet', value: 0.85 }] }, 'ghillie', 1), 1);
+  // Both worn badges count.
+  const two = { badges: [{ id: 'heavySet', value: 0.85 }, { id: 'quickdraw', value: 0.62 }] };
+  assert.equal(badgeValue(two, 'heavySet', 1), 0.85);
+  assert.equal(badgeValue(two, 'quickdraw', 1), 0.62);
+});
+
+test('he wears two badges; an old save with one keeps it in the first slot', () => {
+  const s = { ribbons: { combatMovement: at(4), recon: at(3) }, badges: ['quickdraw', 'deadEye'] };
+  assert.deepEqual(badgesOf(s).map((b) => b.id), ['quickdraw', 'deadEye']);
+  assert.equal(badgeOf(s, 1).id, 'deadEye');
+  assert.deepEqual(wornIds({ badge: 'quickdraw' }), ['quickdraw', null]);
+  assert.deepEqual(badgesOf({ ribbons: s.ribbons, badges: [null, 'deadEye'] }).map((b) => b.id), ['deadEye']);
 });

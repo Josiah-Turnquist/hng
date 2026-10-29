@@ -735,7 +735,6 @@ canvas.game {
 .bul-item span { color: var(--ink-dim); }
 .fe-stage { grid-column: 2; grid-row: 1 / span 2; position: relative; cursor: grab; touch-action: none; min-height: 280px; }
 .fe-stage:active { cursor: grabbing; }
-.stage-turn { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; align-items: center; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(233, 228, 214, 0.5); pointer-events: none; }
 .fe-nameplate { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(520px, 100%); text-align: center; padding: 10px 14px 12px; background: linear-gradient(180deg, rgba(10, 11, 9, 0), rgba(10, 11, 9, 0.75) 35%); pointer-events: none; }
 .np-top { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .np-top h2 { margin: 0; font-family: var(--cond); font-weight: 700; font-size: clamp(24px, 3.2vw, 38px); letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); text-wrap: balance; }
@@ -1052,7 +1051,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-stage .fe-nameplate .np-text { flex: 1; min-width: 0; }
 .hx-stage .fe-nameplate .np-sub, .hx-stage .fe-nameplate .np-xp { font-size: 11px; color: var(--ink-dim); }
 .hx-stage .fe-nameplate .xp { height: 4px; margin: 5px 0 3px; }
-.hx-stage .stage-turn { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); }
 .hx-badges { align-self: center; display: flex; gap: 12px; margin-bottom: 4px; }
 .hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
 .hx-badge:hover { border-color: rgba(226, 172, 70, 0.6); }

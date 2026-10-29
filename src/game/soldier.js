@@ -47,7 +47,7 @@ export function bulletDamage(energyJ, diameterM) {
 let nextSoldierId = 1;
 
 export class Soldier {
-  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badge = null, upgrades = null }) {
+  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badges = [], upgrades = null }) {
     this.id = nextSoldierId++;
     this.game = game;
     this.faction = faction;
@@ -60,7 +60,7 @@ export class Soldier {
     const y = game.world.hf.getHeight(x, z);
     this.body = new Body(game.world.collision, x, y, z);
     this.loadout = loadout.slice(); // the weapons he set out with (ids): he has them again each time he comes back
-    this.badge = badge; // the combat badge he wears: { id, tier, value } (game/badges.js)
+    this.badges = badges; // the combat badges he wears: [{ id, tier, value }] (game/badges.js)
     this.body.staminaRegenMul = badgeValue(this, 'marathonMan', 1);
     this.upgrades = upgrades; // the upgrades fitted to his guns: { gun: { slot: id } } (weapons/upgrades.js)
     this.weapons = loadout.map((id, i) => this._arm(id, i));

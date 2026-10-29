@@ -10,7 +10,7 @@
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
 import { FACTIONS, WEAPONS, baseOf, weaponsFor, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints } from '../weapons/defs.js';
-import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
+import { BADGES, BADGE_SLOTS, badgeOf, badgesOf, badgeTiers, wearable, wornIds } from '../game/badges.js';
 import { RIBBONS, RIBBON_XP, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { ribbonSvg, RIBBON_GROUPS } from './ribbonArt.js';
 import { badgeSvg } from './badgeArt.js';
@@ -164,7 +164,7 @@ export function showFrontEnd(app) {
         cls: s.cls,
         tank: s.cls === 'tanker' ? s.tank || TANKS[s.faction][0][0] : null,
         loadout: [...s.loadout],
-        badge: badgeOf(s),
+        badges: badgesOf(s),
         upgrades: loadoutUpgrades(s, s.loadout),
         bots: m.bots,
         minutes: m.minutes,
@@ -210,7 +210,7 @@ export function showFrontEnd(app) {
       const s = selected(roster);
       main.innerHTML = `
         <aside class="fe-roster hx-col"><div class="hx-filter"></div><div class="roster-list"></div></aside>
-        <div class="fe-stage hx-stage"><div class="stage-turn">${ICONS.turn}<span>Drag to turn</span></div><div class="fe-nameplate"></div><div class="hx-badges"></div></div>
+        <div class="fe-stage hx-stage"><div class="fe-nameplate"></div><div class="hx-badges"></div></div>
         <section class="hx-col hx-load"><div class="hx-head"><div class="hx-icons"></div><div class="hx-pts"></div></div><div class="hx-slots"></div></section>
         <aside class="hx-col hx-right"><div class="fe-panel hx-next"></div><div class="fe-ready"></div></aside>`;
       // Roster, filtered by army and class.
@@ -272,7 +272,7 @@ export function showFrontEnd(app) {
         ask();
         main.querySelector('.fe-roster').appendChild(foot);
       }
-      // The soldier in 3D, his name plate, and his badge under him.
+      // The soldier in 3D, his name plate, and his two badges under him.
       const stage = main.querySelector('.fe-stage');
       if (preview) {
         preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0] });
@@ -281,20 +281,22 @@ export function showFrontEnd(app) {
           preview.enableDrag(stage);
           stage.dataset.drag = '1';
         }
-      } else stage.querySelector('.stage-turn').hidden = true;
+      }
       const r = rankOf(s.xp);
       const plate = main.querySelector('.fe-nameplate');
       plate.innerHTML = `<span class="np-rank">${rankBadge(r.rank)}</span><div class="np-text"><h2></h2><div class="np-sub"></div><div class="xp"><i style="width:${(r.progress * 100).toFixed(1)}%"></i></div><div class="np-xp"></div></div>`;
       plate.querySelector('h2').textContent = s.name;
       plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]}`;
       plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP`;
-      const worn = badgeOf(s);
-      // Like a loadout card: its label, the badge, its name.
-      const bd = el('button', 'hx-badge', `<span class="lab">Badge</span>${worn ? badgeSvg(worn.id, worn.tier) : shield('<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<b></b>`);
-      bd.querySelector('b').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Choose one';
-      bd.title = worn ? BADGES[worn.id].does : 'Choose a combat badge';
-      bd.addEventListener('click', () => badgeWindow(s));
-      main.querySelector('.hx-badges').appendChild(bd);
+      // Each like a loadout card: its label, the badge, its name.
+      for (let slot = 0; slot < BADGE_SLOTS; slot++) {
+        const worn = badgeOf(s, slot);
+        const bd = el('button', 'hx-badge', `<span class="lab">Badge ${slot + 1}</span>${worn ? badgeSvg(worn.id, worn.tier) : shield('<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<b></b>`);
+        bd.querySelector('b').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Choose one';
+        bd.title = worn ? BADGES[worn.id].does : 'Choose a combat badge';
+        bd.addEventListener('click', () => badgeWindow(s, slot));
+        main.querySelector('.hx-badges').appendChild(bd);
+      }
       loadoutColumn(s);
       nextUp(s, main.querySelector('.hx-next'));
       readyBox(main.querySelector('.fe-ready'), s);
@@ -310,7 +312,7 @@ export function showFrontEnd(app) {
       const tabs = [
         [ICONS.rifle || '', 'Weapons', null],
         ...(s.cls === 'tanker' ? [[ICONS.tank || '', 'Tank', () => vehicleWindow(s)]] : []),
-        [ICONS.shield || '', 'Badge', () => badgeWindow(s)],
+        [ICONS.shield || '', 'Badges', () => badgeWindow(s, 0)],
         [ICONS.shirt || '', 'Uniform', () => uniformWindow(s)],
       ];
       for (const [icon, label, open] of tabs) {
@@ -531,22 +533,29 @@ export function showFrontEnd(app) {
       if (!items.length) W.body.appendChild(el('div', 'lo-note', 'Nothing his class may carry here.'));
     }
 
-    // His combat badge, as in the original game: one worn, each with three
-    // tiers that open at levels of his ribbons.
-    function badgeWindow(s) {
-      const W = openWindow('Combat badge', { sub: 'One worn; its tiers open with his ribbons', cls: 'hx-wide' });
+    // His combat badges: two worn, each with three tiers that open at levels
+    // of his ribbons. The window fills one slot; choosing the badge worn in
+    // the other slot swaps the two.
+    function badgeWindow(s, slot) {
+      const W = openWindow(`Combat badge ${slot + 1}`, { sub: 'He wears two; their tiers open with his ribbons', cls: 'hx-wide' });
+      const wear = (id) => {
+        const ids = wornIds(s);
+        const other = ids.indexOf(id);
+        if (id && other !== -1 && other !== slot) ids[other] = ids[slot];
+        ids[slot] = id;
+        s.badges = ids;
+        save();
+        draw();
+      };
       const draw = () => {
         W.body.innerHTML = '';
         const grid = el('div', 'hx-badgegrid');
         const open = wearable(s);
-        const worn = badgeOf(s);
+        const worn = badgeOf(s, slot);
+        const ids = wornIds(s);
         const none = el('button', `badge-card${worn ? '' : ' on'}`);
         none.innerHTML = '<div class="bdg-head"><b>No badge</b></div>';
-        none.addEventListener('click', () => {
-          s.badge = null;
-          save();
-          draw();
-        });
+        none.addEventListener('click', () => wear(null));
         grid.appendChild(none);
         // The ones he may wear; the rest folded away until asked for.
         const shut = Object.keys(BADGES).filter((id) => !open.includes(id));
@@ -558,7 +567,8 @@ export function showFrontEnd(app) {
           const top = tiers.filter((t) => t.open).pop();
           c.innerHTML = `<span class="bdg-pic">${badgeSvg(id, top?.tier || 1, { grey: !can })}</span><div class="bdg-head"><b></b><span class="bdg-tier"></span></div><div class="bdg-does"></div><div class="bdg-tiers"></div>`;
           c.querySelector('b').textContent = b.name;
-          c.querySelector('.bdg-tier').textContent = top ? `Tier ${'I'.repeat(top.tier)}` : 'Locked';
+          const elsewhere = ids.indexOf(id);
+          c.querySelector('.bdg-tier').textContent = !top ? 'Locked' : elsewhere !== -1 && elsewhere !== slot ? `Tier ${'I'.repeat(top.tier)} · in badge ${elsewhere + 1}` : `Tier ${'I'.repeat(top.tier)}`;
           c.querySelector('.bdg-does').textContent = b.does;
           const tl = c.querySelector('.bdg-tiers');
           for (const t of tiers) {
@@ -566,12 +576,7 @@ export function showFrontEnd(app) {
             row.textContent = `${'I'.repeat(t.tier)}: ${b.show(t.value)}${t.open ? '' : `, at ${t.alts.map((a) => `${RIBBONS[a.ribbon].name} ${a.level}`).join(' or ')}`}`;
             tl.appendChild(row);
           }
-          if (can)
-            c.addEventListener('click', () => {
-              s.badge = id;
-              save();
-              draw();
-            });
+          if (can) c.addEventListener('click', () => wear(id));
           else c.disabled = true;
           grid.appendChild(c);
         }

@@ -1,4 +1,4 @@
-// Combat badges, as in the original game: a soldier wears one, and its tiers
+// Combat badges, as in the original game: a soldier wears two, and their tiers
 // open at set levels of his ribbons (combatbadgetemplate, combatbadgetype and
 // progressionUnlock item type 7). The data gives each tier's value but not what
 // it changes; what each badge does here is read from its name and values, and
@@ -6,8 +6,11 @@
 // 4.6). Badges for things this game doesn't have (aircraft, parachute jumps,
 // stealing vehicles, squad leadership) are left out.
 //
-//   badgeOf(soldier)                      // { id, tier, value } he wears, or null
-//   badgeValue(soldier, id, dflt)         // the worn badge's value, else dflt
+//   BADGE_SLOTS                           // how many he wears: 2
+//   wornIds(soldier)                      // the ids he has chosen, one per slot (null for empty)
+//   badgeOf(soldier, slot)                // { id, tier, value } he wears there, or null
+//   badgesOf(soldier)                     // all he wears: [{ id, tier, value }]
+//   badgeValue(soldier, id, dflt)         // a worn badge's value, else dflt
 //   badgeTiers(soldier, id)               // tiers open to him: [{ tier, value, open, ribbon, level }]
 //   wearable(soldier)                     // the badges he may choose (some tier open)
 import { ribbonLevel } from './ribbons.js';
@@ -55,18 +58,32 @@ export function wearable(s) {
   return Object.keys(BADGES).filter((id) => badgeTiers(s, id).some((t) => t.open));
 }
 
-// The badge he wears at its highest open tier, or null.
-export function badgeOf(s) {
-  const id = s?.badge?.id ?? s?.badge;
+export const BADGE_SLOTS = 2;
+
+// The ids he has chosen, one per slot. Older saves kept one in s.badge.
+export function wornIds(s) {
+  const ids = Array.isArray(s?.badges) ? s.badges : [s?.badge?.id ?? s?.badge];
+  return Array.from({ length: BADGE_SLOTS }, (_, i) => ids[i] || null);
+}
+
+// The badge he wears in a slot at its highest open tier, or null.
+export function badgeOf(s, slot = 0) {
+  const id = wornIds(s)[slot];
   if (!id || !BADGES[id]) return null;
-  if (s.badge?.value !== undefined) return s.badge;
   const open = badgeTiers(s, id).filter((t) => t.open);
   if (!open.length) return null;
   const t = open[open.length - 1];
   return { id, tier: t.tier, value: t.value };
 }
 
+export function badgesOf(s) {
+  return wornIds(s)
+    .map((_, i) => badgeOf(s, i))
+    .filter(Boolean);
+}
+
+// A soldier in battle carries what he wears as s.badges: [{ id, value }].
 export function badgeValue(s, id, dflt = 1) {
-  const b = s?.badge;
-  return b && b.id === id && b.value !== undefined ? b.value : dflt;
+  const b = (s?.badges ?? [s?.badge]).find((x) => x?.id === id);
+  return b && b.value !== undefined ? b.value : dflt;
 }
