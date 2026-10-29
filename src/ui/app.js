@@ -7,6 +7,8 @@ import { Game } from '../game/game.js';
 import { AudioSystem } from '../audio/audio.js';
 import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
+import { loadWar, saveWar } from '../war/warStore.js';
+import { battleOf, resolveBattle } from '../war/war.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
 import { ribbonSvg } from './ribbonArt.js';
@@ -262,8 +264,26 @@ export class App {
     if (!res) return null;
     saveRoster(roster);
     const soldier = roster.soldiers.find((x) => x.id === id);
-    this.recorded = { xp, captures, kills: s.kills, deaths: s.deaths, ...res, soldier };
+    const warfunds = this._warResult(won, s.kills, captures);
+    this.recorded = { xp, captures, kills: s.kills, deaths: s.deaths, ...res, soldier, warfunds };
     return this.recorded;
+  }
+
+  // A battle of the war (Generals screen): its outcome goes back into the war,
+  // and the hero earns his general warfunds (ours: 40 a man he puts down, as
+  // the original paid its generals, and 250 a point he takes).
+  _warResult(won, kills, captures) {
+    const w = this.opts?.war;
+    if (!w) return null;
+    const war = loadWar();
+    const b = war && war.number === w.number ? battleOf(war, w.battle) : null;
+    if (!b) return null;
+    const attackersWon = (this.opts.side === 'attack') === won;
+    resolveBattle(war, b.id, attackersWon, { hero: this.opts.soldier?.id });
+    const funds = kills * 40 + captures * 250;
+    war.funds[war.army] += funds;
+    saveWar(war);
+    return funds;
   }
 
   // Leave the battle (pause menu): keep the experience, back to the Heroes screen.
@@ -282,7 +302,7 @@ export class App {
     const f = r?.soldier?.faction || s.faction;
     const rk = r ? rankOf(r.soldier.xp) : null;
     el.innerHTML = `<div class="br-box">
-        <div class="br-kind">Assault · ${g.mapDef.name}</div>
+        <div class="br-kind">${this.opts?.war ? `War battle · ${this.opts.war.point}` : `Assault · ${g.mapDef.name}`}</div>
         <h1>${won ? 'Victory' : 'Defeat'}</h1>
         <div class="br-why"></div>
         <div class="br-stats">
@@ -291,6 +311,7 @@ export class App {
           <div><b>${s.captures || 0}</b><span>Points taken</span></div>
           <div class="xp"><b>${r ? `+${r.xp.toLocaleString('en-US')}` : '0'}</b><span>Experience</span></div>
           <div class="br-credits"><b>${r ? `+${(r.credits || 0).toLocaleString('en-US')}` : '0'}</b><span>Credits</span></div>
+          ${r?.warfunds != null ? `<div class="br-credits"><b>+${r.warfunds.toLocaleString('en-US')}</b><span>Warfunds</span></div>` : ''}
         </div>
         ${
           r

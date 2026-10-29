@@ -23,6 +23,11 @@ import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
 import { loadRoster, saveRoster, selected, select, recruit, dismiss, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
 import { BattleMap } from './battleMap.js';
+import { WarMapView, ARMY_COLORS } from './warMapView.js';
+import { MAP, KIND_NAMES } from '../war/warMap.js';
+import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
+import { newWar, nextWar, tick, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
+import { loadWar, saveWar, commandPoints, generalRank } from '../war/warStore.js';
 
 const TANKS = {
   US: [
@@ -147,28 +152,36 @@ export function showFrontEnd(app) {
       console.warn('No soldier preview', e);
     }
 
-    const go = () => {
+    // Into battle: the staged battle chosen, or a battle of the war (b) that
+    // this soldier joins as a hero.
+    const go = (b = null, war = null) => {
       const s = selected(roster);
       const m = roster.mission;
+      if (b) {
+        b.hero = s.id;
+        saveWar(war);
+      }
+      const att = b ? b.att === s.faction : m.side === 'attack';
       save();
       window.removeEventListener('keydown', onKey);
       view?.close();
       preview?.dispose();
       root.remove();
       resolve({
-        map: m.map,
+        map: b ? 'town' : m.map,
         mode: 'auto',
         faction: s.faction,
-        side: m.side,
-        enemy: enemyOf(s.faction, m.enemy),
+        side: att ? 'attack' : 'defend',
+        enemy: b ? (att ? b.def : b.att) : enemyOf(s.faction, m.enemy),
         cls: s.cls,
         tank: s.cls === 'tanker' ? s.tank || TANKS[s.faction][0][0] : null,
         loadout: [...s.loadout],
         badges: badgesOf(s),
         upgrades: loadoutUpgrades(s, s.loadout),
         bots: m.bots,
-        minutes: m.minutes,
+        minutes: b ? BATTLE_TIME / 60 : m.minutes,
         soldier: { id: s.id, name: s.name, seed: s.seed, variant: s.variant },
+        war: b ? { number: war.number, battle: b.id, point: MAP.name(b.point) } : null,
       });
     };
 
@@ -428,7 +441,7 @@ export function showFrontEnd(app) {
       const close = () => {
         window.removeEventListener('keydown', onKey, true);
         dim.remove();
-        show('heroes');
+        show(screen);
       };
       window.addEventListener('keydown', onKey, true);
       dim.querySelector('.x').addEventListener('click', close);
@@ -734,17 +747,27 @@ export function showFrontEnd(app) {
       return `Opens at ${requirementText(req)} (now level ${ribbonLevel(s.ribbons?.[req.ribbon]).level})`;
     }
 
+    // The battle he goes to: a battle of the war, if one was chosen and is
+    // still on and he is of the army the player leads, else a staged battle.
     function readyBox(box, s) {
       const m = roster.mission;
+      const war = m.war ? loadWar() : null;
+      const wb = war && !war.over && war.army === s.faction ? battleOf(war, m.war) : null;
       const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];
       const enemy = enemyOf(s.faction, m.enemy);
-      const what = m.map === 'town' ? `${m.side === 'attack' ? 'Attacking' : 'Defending'} against the ${FACTIONS[enemy].army} · ${m.bots} per side · ${m.minutes} min` : 'Practice, no enemies';
       box.innerHTML = `<div class="ready-mission"><span class="rm-kind"></span><b></b><small></small><button class="rm-change">Change battle</button></div><button class="ready-btn">Ready for battle</button>`;
-      box.querySelector('.rm-kind').textContent = mi.kind;
-      box.querySelector('b').textContent = mi.title;
-      box.querySelector('small').textContent = what;
-      box.querySelector('.rm-change').addEventListener('click', () => show('generals'));
-      box.querySelector('.ready-btn').addEventListener('click', go);
+      if (wb) {
+        const att = wb.att === s.faction;
+        box.querySelector('.rm-kind').textContent = 'War battle';
+        box.querySelector('b').textContent = MAP.name(wb.point);
+        box.querySelector('small').textContent = `${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[att ? wb.def : wb.att].army} · ${Math.max(0, Math.ceil((wb.ends - war.t) / 60))} min left`;
+      } else {
+        box.querySelector('.rm-kind').textContent = mi.kind;
+        box.querySelector('b').textContent = mi.title;
+        box.querySelector('small').textContent = m.map === 'town' ? `${m.side === 'attack' ? 'Attacking' : 'Defending'} against the ${FACTIONS[enemy].army} · ${m.bots} per side · ${m.minutes} min` : 'Practice, no enemies';
+      }
+      box.querySelector('.rm-change').addEventListener('click', () => battleWindow(s));
+      box.querySelector('.ready-btn').addEventListener('click', () => (wb ? go(wb, war) : go()));
     }
 
     // A gun, sight or item he has opened but not bought: its price, and a
@@ -983,53 +1006,411 @@ export function showFrontEnd(app) {
       main.appendChild(panel);
     }
 
-    // --- Generals: the battles ------------------------------------------------------
+    // --- Generals: the war -----------------------------------------------------------
+    // As in the original's strategy game: the war map of Europe, the player's
+    // assault teams bought with warfunds and set down within his command
+    // points, sent along the supply lines; battles where they meet the enemy,
+    // joined by a hero or settled on their own. The other two armies have
+    // computer generals. The war runs while this screen is open.
     function generals() {
-      const s = selected(roster);
-      const m = roster.mission;
+      let war = loadWar();
+      if (!war) return newWarScreen();
+      const army = war.army;
+      for (const b of war.battles) b.hero = null;
+      war.cpLimit[army] = commandPoints(generalRank(roster, army));
       main.innerHTML = `
-        <aside class="fe-panel fe-missions"><h3>Battles</h3><div class="mission-list"></div></aside>
-        <div class="fe-panel fe-mapbox"><canvas class="fe-map"></canvas><div class="map-caption"></div></div>
-        <aside class="fe-panel fe-detail"></aside>`;
-      const list = main.querySelector('.mission-list');
-      for (const mi of MISSIONS) {
-        const c = el('button', `mission-card${mi.id === m.map ? ' on' : ''}`);
-        c.innerHTML = '<span class="mc-kind"></span><b></b><small></small>';
-        c.querySelector('.mc-kind').textContent = mi.kind;
-        c.querySelector('b').textContent = mi.title;
-        c.querySelector('small').textContent = mi.line;
+        <aside class="fe-panel wr-side wr-army"></aside>
+        <div class="wr-mapbox"><canvas class="wr-map"></canvas><div class="wr-top"></div><div class="wr-hint" hidden></div>
+          <div class="wr-zoom"><button data-z="1.4" title="Zoom in">+</button><button data-z="0.71" title="Zoom out">&minus;</button><button data-z="fit" title="All of Europe">${ICONS.screen}</button></div>
+          <div class="wr-over" hidden></div></div>
+        <aside class="fe-panel wr-side wr-detail"></aside>`;
+      const armyBox = main.querySelector('.wr-army');
+      const detail = main.querySelector('.wr-detail');
+      const top = main.querySelector('.wr-top');
+      const hint = main.querySelector('.wr-hint');
+      const overBox = main.querySelector('.wr-over');
+      let paused = false;
+      let sel = null;
+      let saveT = 0,
+        uiT = 1;
+      const mine = (t) => t && t.army === army;
+      const pick = (p) => {
+        const t = sel?.team ? teamOf(war, sel.team) : null;
+        // A team of his selected and a point tapped: send it there.
+        if (p?.point != null && mine(t) && t.at !== null && !t.battle) {
+          if (order(war, t.id, p.point)) {
+            flash(`${TEAMS[t.type].name}: ${t.air ? 'flying' : 'on the way'} to ${MAP.name(p.point)}`);
+            return refresh(true);
+          }
+          return flash(`${TEAMS[t.type].name} can't get to ${MAP.name(p.point)}`);
+        }
+        sel = p;
+        mapView.selected = sel;
+        refresh(true);
+      };
+      const canvas = main.querySelector('.wr-map');
+      const mapView = new WarMapView(canvas, {
+        army,
+        onPick: pick,
+        onFrame: (dt) => {
+          if (!paused && !war.over) tick(war, dt * WAR_SPEED);
+          saveT += dt;
+          uiT += dt;
+          if (saveT > 3) {
+            saveT = 0;
+            saveWar(war);
+          }
+          if (uiT > 0.4) refresh();
+        },
+      });
+      mapView.setWar(war);
+      // Start over his own land.
+      const home = capitalsOf(war, army);
+      if (home.length) {
+        mapView.view.x = home.reduce((n, p) => n + MAP.x[p], 0) / home.length;
+        mapView.view.y = home.reduce((n, p) => n + MAP.y[p], 0) / home.length;
+        mapView.view.s = Math.max(mapView.view.s, 0.09);
+      }
+      const onResize = () => mapView.resize();
+      window.addEventListener('resize', onResize);
+      view = {
+        close() {
+          mapView.stop();
+          saveWar(war);
+          window.removeEventListener('resize', onResize);
+          main.removeEventListener('click', onAct);
+          main.removeEventListener('pointerdown', press, true);
+          window.removeEventListener('pointerup', release, true);
+        },
+      };
+      main.querySelector('.wr-zoom').addEventListener('click', (e) => {
+        const z = e.target.closest('button')?.dataset.z;
+        if (z === 'fit') mapView.fit();
+        else if (z) mapView.zoom(Number(z));
+      });
+      let flashT = 0;
+      function flash(text) {
+        hint.hidden = false;
+        hint.textContent = text;
+        hint.classList.add('flash');
+        flashT = performance.now();
+      }
+
+      // The panels, rebuilt only when what they show has changed (so a button
+      // is never pulled from under the pointer).
+      const last = { army: '', detail: '', top: '' };
+      // Not while a press is under way, so the click lands on what was pressed.
+      let pressing = false;
+      const press = () => (pressing = true);
+      const release = () => setTimeout(() => (pressing = false), 0);
+      main.addEventListener('pointerdown', press, true);
+      window.addEventListener('pointerup', release, true);
+      function refresh(now = false) {
+        if (!now && (uiT < 0.4 || pressing)) return;
+        uiT = 0;
+        const put = (box, key, html) => {
+          if (last[key] === html) return;
+          last[key] = html;
+          box.innerHTML = html;
+        };
+        put(top, 'top', topHtml());
+        put(armyBox, 'army', armyHtml());
+        put(detail, 'detail', detailHtml());
+        const t = sel?.team ? teamOf(war, sel.team) : null;
+        if (performance.now() - flashT > 2600) {
+          hint.classList.remove('flash');
+          hint.hidden = !(mine(t) && t.at !== null && !t.battle);
+          if (!hint.hidden) hint.textContent = `Tap a point to send ${TEAMS[t.type].name} there${canFly(war, t) ? ` · it can fly up to ${Math.round((TEAMS[t.type].airRange * KM) / 10) * 10} km from here` : ''}`;
+        }
+        overBox.hidden = !war.over;
+        if (war.over && !overBox.dataset.done) {
+          overBox.dataset.done = '1';
+          const won = war.over.winner === army;
+          overBox.innerHTML = `<div class="wr-overbox"><span>War ${war.number} is over</span><h2></h2><p></p><button class="ready-btn" data-act="next">Start war ${war.number + 1}</button></div>`;
+          overBox.querySelector('h2').textContent = won ? `The ${FACTIONS[army].army} wins` : `The ${FACTIONS[war.over.winner].army} wins`;
+          overBox.querySelector('p').textContent = won ? `Fifteen capitals held. Your general keeps his warfunds and teams, with ${WAR_BONUS.warfunds} warfunds for each team in the field.` : 'Your general keeps his warfunds and teams for the next war.';
+        }
+      }
+
+      function topHtml() {
+        const score = ARMIES.map((a) => `<span class="wr-sc${a === army ? ' me' : ''}" title="${FACTIONS[a].army}: capitals held of ${CAPITALS_TO_WIN} to win">${emblem(a)}<b>${capitalsOf(war, a).length}</b><i>/${CAPITALS_TO_WIN}</i></span>`).join('');
+        return `<div class="wr-clock"><b>War ${war.number}</b><span>${clock(war.t)}</span><button data-act="pause" title="${paused ? 'Let the war run' : 'Hold the war'}">${paused ? '&#9654;' : '&#10073;&#10073;'}</button></div><div class="wr-score">${score}</div>`;
+      }
+
+      function armyHtml() {
+        const teams = war.teams.filter((t) => t.army === army);
+        const used = cpUsed(war, army);
+        const rows = teams
+          .map((t) => {
+            const on = sel?.team === t.id ? ' on' : '';
+            const full = t.at === null ? 0 : fullness(t);
+            return `<button class="wr-team${on}${t.at === null ? ' reserve' : ''}${t.battle ? ' fight' : ''}" data-act="team" data-id="${t.id}">${teamSign(t)}<span class="t"><b>${esc(TEAMS[t.type].name)}</b><small>${esc(whereText(t))}</small></span><span class="lv">${teamLevel(t)}</span>${t.at === null ? '' : `<span class="bar"><i style="width:${(full * 100).toFixed(0)}%"></i></span>`}</button>`;
+          })
+          .join('');
+        return `<div class="wr-head">${emblem(army)}<div><b>${FACTIONS[army].army}</b><small>You are its general</small></div></div>
+          <div class="wr-stats"><div title="Warfunds buy and refill assault teams"><span>Warfunds</span><b>${fmt(war.funds[army])}</b></div><div title="Command points: room for teams in the field. More as your soldiers of this army rise in rank (12, 15, 18 to 22)."><span>Command points</span><b>${used} / ${war.cpLimit[army]}</b></div></div>
+          <h3>Assault teams</h3><div class="wr-teams">${rows || '<div class="lo-note">No teams yet.</div>'}</div>
+          <button class="wr-add" data-act="buy">+ Assault team</button>`;
+      }
+
+      function detailHtml() {
+        const t = sel?.team ? teamOf(war, sel.team) : null;
+        if (t) return teamHtml(t);
+        if (sel?.point != null) return pointHtml(sel.point);
+        const mineB = war.battles.filter((b) => b.att === army || b.def === army);
+        const battles = mineB.map((b) => battleRow(b)).join('');
+        const news = war.log
+          .slice(0, 14)
+          .map((l) => `<div class="wr-news${l.army ? ` a-${l.army}` : ''}"><time>${clock(l.t).replace('Day ', 'D')}</time><span>${esc(l.text)}</span></div>`)
+          .join('');
+        return `<h3>Your battles</h3>${battles || '<div class="lo-note">None now. Battles start where your teams meet the enemy, or the enemy comes for your capitals.</div>'}
+          <h3 class="wr-gap">War news</h3><div class="wr-newslist">${news}</div>`;
+      }
+
+      function battleRow(b) {
+        const att = b.att === army;
+        const foe = att ? b.def : b.att;
+        const left = Math.max(0, Math.ceil((b.ends - war.t) / 60));
+        const hero = heroFor();
+        return `<div class="wr-battle"><div class="k">${b.garrison ? 'Capital assault' : 'Assault'} · ${left} min left</div><b>${esc(MAP.name(b.point))}</b><small>${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[foe].army}</small>
+          <div class="wr-bbtn"><button data-act="join" data-id="${b.id}" ${hero ? '' : 'disabled'}>${hero ? `Fight as ${esc(hero.name)}` : 'No soldier in this army'}</button><button data-act="look" data-point="${b.point}">Show</button></div></div>`;
+      }
+
+      function teamHtml(t) {
+        const d = TEAMS[t.type];
+        const lv = teamLevel(t);
+        const next = TEAM_LEVELS[lv];
+        const prev = lv ? TEAM_LEVELS[lv - 1] : 0;
+        let h = `<div class="det-kind">${t.army === army ? 'Your assault team' : FACTIONS[t.army].army} · Level ${lv}</div><h2>${esc(d.name)}</h2><div class="wr-where">${esc(whereText(t))}</div>`;
+        if (t.army !== army) {
+          return `${h}<div class="lo-note">About ${fmt(Object.entries(t.men).reduce((n, [r, c]) => n + (r in RESOURCE_NAMES ? c : 0), 0))} men and machines, morale ${Math.round(t.morale)}.</div>`;
+        }
+        const made = Object.entries(d.made)
+          .map(([r, n]) => {
+            const have = t.at === null ? t.men[r] || 0 : Math.min(n, t.men[r] || 0);
+            return `<div class="wr-res"><span>${RESOURCE_NAMES[r]}</span><b>${have} / ${n}</b><i><u style="width:${((have / n) * 100).toFixed(0)}%"></u></i></div>`;
+          })
+          .join('');
+        h += `<div class="wr-resl">${made}<div class="wr-res"><span>Morale</span><b>${Math.round(t.morale)}</b><i><u class="m" style="width:${t.morale.toFixed(0)}%"></u></i></div>
+          <div class="wr-res"><span>Team XP</span><b>${fmt(t.xp)}${next ? ` / ${fmt(next)}` : ''}</b><i><u class="x" style="width:${next ? (((t.xp - prev) / (next - prev)) * 100).toFixed(0) : 100}%"></u></i></div></div>`;
+        const pace = d.speed / TEAMS.guard.speed;
+        h += `<div class="wr-facts">${d.cp} command point${d.cp > 1 ? 's' : ''} · ${pace === 1 ? 'marches at a Guard\'s pace' : `${pace.toFixed(1)} times a Guard's pace`}${d.airSpeed ? ', far faster in the air' : ''} · earns ${d.joinFunds ? `${fmt(d.joinFunds)} warfunds a battle and ` : ''}${fmt(d.winFunds)} for a win</div>`;
+        if (t.at === null) {
+          const caps = capitalsOf(war, army);
+          const why = deployProblem(war, t, null);
+          h += `<h3 class="wr-gap">Set it down at</h3>${why ? `<div class="lo-note warn">${esc(why)}</div>` : `<div class="lo-note">Costs ${fmt(refillCost(t))} warfunds to bring it to full strength.</div>`}
+            <div class="wr-caps">${caps.map((p) => `<button data-act="deploy" data-point="${p}" ${why ? 'disabled' : ''}>${esc(MAP.name(p))}</button>`).join('')}</div>`;
+        } else if (!t.battle) {
+          h += `<div class="wr-acts">${t.path.length || t.hold > 0 ? '<button data-act="stop">Stop here</button>' : ''}<button data-act="withdraw" ${supplied(war, army)[t.at] ? '' : 'disabled title="Only from your own land joined to a capital"'}>Back to reserve</button></div>`;
+        } else {
+          const b = battleOf(war, t.battle);
+          if (b) h += battleRow(b);
+        }
+        const ups = upgradesFor(t);
+        if (ups.length) {
+          h += `<h3 class="wr-gap">Upgrade</h3>${ups
+            .map((u) => {
+              const why = upgradeProblem(war, t, u.id);
+              return `<button class="wr-up" data-act="upgrade" data-type="${u.id}" ${why ? 'disabled' : ''}><b>${esc(u.name)}</b><span>${fmt(u.price)} warfunds</span><small>${esc(why || madeText(u))}</small></button>`;
+            })
+            .join('')}`;
+        }
+        return h;
+      }
+
+      function pointHtml(p) {
+        const who = ownerOf(war, p);
+        const kind = MAP.isCapital(p) ? 'Capital' : KIND_NAMES[MAP.kind[p]];
+        const here = teamsAt(war, p);
+        const b = war.battles.find((x) => x.point === p);
+        let h = `<div class="det-kind">${kind}</div><h2>${esc(MAP.name(p))}</h2><div class="wr-where">${who ? `${emblem(who)}<span>Held by the ${FACTIONS[who].army}</span>` : '<span>Neutral</span>'}</div>`;
+        if (b) h += battleRow(b);
+        if (here.length) h += `<h3 class="wr-gap">Here</h3>${here.map((t) => `<button class="wr-team" data-act="team" data-id="${t.id}">${teamSign(t)}<span class="t"><b>${esc(TEAMS[t.type].name)}</b><small>${FACTIONS[t.army].army}</small></span></button>`).join('')}`;
+        if (MAP.isCapital(p)) h += `<div class="lo-note">Capitals win the war: ${CAPITALS_TO_WIN} of the 23. A capital held by an army is defended by its garrison when no team stands in it; a neutral one takes two hours to take.</div>`;
+        return h;
+      }
+
+      // Clicks in the panels and on the map's top bar.
+      const onAct = (e) => {
+        const b = e.target.closest('[data-act]');
+        if (!b || b.disabled) return;
+        const act = b.dataset.act;
+        const t = sel?.team ? teamOf(war, sel.team) : null;
+        if (act === 'pause') paused = !paused;
+        if (act === 'team') {
+          sel = { team: Number(b.dataset.id) };
+          const tt = teamOf(war, sel.team);
+          if (tt?.at != null) {
+            const [x, y] = mapView.teamXY(tt);
+            mapView.view.x = x;
+            mapView.view.y = y;
+          }
+        }
+        if (act === 'look') {
+          sel = { point: Number(b.dataset.point) };
+          mapView.focus(sel.point, Math.max(mapView.view.s, 0.25));
+        }
+        if (act === 'buy') return buyWindow();
+        if (act === 'deploy' && t && deploy(war, t.id, Number(b.dataset.point))) {
+          mapView.focus(t.at);
+          saveWar(war);
+        }
+        if (act === 'stop' && t) {
+          t.path = [];
+          t.leg = 0;
+          t.hold = 0;
+        }
+        if (act === 'withdraw' && t) withdraw(war, t.id);
+        if (act === 'upgrade' && t) upgrade(war, t.id, b.dataset.type);
+        if (act === 'join') {
+          const bt = battleOf(war, Number(b.dataset.id));
+          const hero = heroFor();
+          if (bt && hero) {
+            select(roster, hero.id);
+            return go(bt, war);
+          }
+        }
+        if (act === 'next') {
+          war = nextWar(war);
+          saveWar(war);
+          return show('generals');
+        }
+        mapView.selected = sel;
+        refresh(true);
+      };
+      main.addEventListener('click', onAct);
+
+      // His hero for a battle: the soldier picked on the Heroes screen if he
+      // is of this army, else his best soldier who is.
+      function heroFor() {
+        const s = selected(roster);
+        if (s.faction === army) return s;
+        return roster.soldiers.filter((x) => x.faction === army).sort((a, b) => b.xp - a.xp)[0] || null;
+      }
+
+      function whereText(t) {
+        if (t.at === null) return 'In reserve';
+        if (t.battle) return `In battle at ${MAP.name(t.at)}`;
+        if (t.hold > 0) return `Taking ${MAP.name(t.at)} · ${Math.ceil(t.hold / 60)} min`;
+        if (t.path.length) return `${t.air ? 'Flying' : 'Marching'} to ${MAP.name(t.path[t.path.length - 1])}${t.air ? '' : ` · ${t.path.length} point${t.path.length > 1 ? 's' : ''}`}`;
+        return `At ${MAP.name(t.at)}`;
+      }
+
+      // Buying a team: the four the original sold outright (the rest are
+      // upgrades of these).
+      function buyWindow() {
+        const W = openWindow('New assault team', { sub: 'Bought with warfunds, then set down at one of your capitals' });
+        const draw = () => {
+          W.body.innerHTML = '';
+          for (const id of BUYABLE) {
+            const d = TEAMS[id];
+            const c = el('button', `wr-buy${war.funds[army] < d.price ? ' locked' : ''}`);
+            c.innerHTML = `${teamSign({ type: id, army })}<span class="t"><b></b><small></small></span><span class="p"><b>${fmt(d.price)}</b><small>warfunds · ${d.cp} CP</small></span>`;
+            c.querySelector('b').textContent = d.name;
+            c.querySelector('small').textContent = madeText(d) + (d.airRange ? ' · flies from airfields and capitals' : '');
+            c.disabled = war.funds[army] < d.price;
+            c.addEventListener('click', () => {
+              const t = buyTeam(war, army, id);
+              if (!t) return;
+              sel = { team: t.id };
+              saveWar(war);
+              W.close();
+            });
+            W.body.appendChild(c);
+          }
+          W.body.appendChild(el('div', 'lo-note', `You have ${fmt(war.funds[army])} warfunds. Teams rise in level as they fight, which opens their upgrades (Guard to Motorized Guard or Infantry, Light Armor to Medium Armor or tank destroyers, and so on).`));
+        };
+        draw();
+      }
+
+      refresh(true);
+      mapView.start();
+    }
+
+    // The first war: which army the player leads as its general.
+    function newWarScreen() {
+      main.innerHTML = `<div class="wr-new fe-panel"><div class="det-kind">The war</div><h2>Choose your army</h2><p>Three armies fight over Europe on the original game's war map. You lead one as its general; the other two have computer generals. Your soldiers of that army fight its battles as heroes. The army that holds 15 capitals wins the war.</p><div class="wr-armies"></div></div>`;
+      const box = main.querySelector('.wr-armies');
+      const sNow = selected(roster);
+      for (const a of ARMIES) {
+        const n = roster.soldiers.filter((s) => s.faction === a).length;
+        const caps = MAP.capitals.filter((c) => c.start === a).map((c) => MAP.name(c.point));
+        const c = el('button', `wr-pick${a === sNow.faction ? ' on' : ''}`);
+        c.innerHTML = `${emblem(a)}<b></b><small></small><em></em>`;
+        c.querySelector('b').textContent = FACTIONS[a].army;
+        c.querySelector('small').textContent = `Starts with ${caps.join(', ')}`;
+        c.querySelector('em').textContent = n ? `${n} of your soldiers` : 'None of your soldiers yet';
         c.addEventListener('click', () => {
-          m.map = mi.id;
-          save();
+          saveWar(newWar({ army: a }));
           show('generals');
         });
-        list.appendChild(c);
+        box.appendChild(c);
       }
-      const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];
-      main.querySelector('.map-caption').textContent = `${mi.title}: ${MAPS[mi.id].description}`;
-      drawMap(main.querySelector('.fe-map'), MAPS[mi.id], m.side === 'attack' ? 1 : 0);
-      const d = main.querySelector('.fe-detail');
-      d.appendChild(el('div', 'det-kind')).textContent = mi.kind;
-      d.appendChild(el('h2')).textContent = mi.title;
-      d.appendChild(el('p')).textContent = mi.note;
-      const row = (label, opts, value, set) => {
-        const r = el('div', 'det-row');
-        r.appendChild(el('label')).textContent = label;
-        const c = el('div', 'choice-row');
-        for (const [v, text] of opts) {
-          const b = el('button', v === value ? 'on' : '');
-          b.innerHTML = text;
-          b.addEventListener('click', () => {
-            set(v);
-            save();
-            show('generals');
-          });
-          c.appendChild(b);
+    }
+
+    // Choosing a battle for the Heroes screen: a battle of the war for a soldier
+    // of the army the player leads, or a staged battle.
+    function battleWindow(s) {
+      const W = openWindow('Choose a battle', { sub: 'A battle of your war, or a staged one', cls: 'hx-wide' });
+      const m = roster.mission;
+      const draw = () => {
+        W.body.innerHTML = '';
+        const war = loadWar();
+        W.body.appendChild(el('h3', 'wr-gap', 'Your war'));
+        if (!war) W.body.appendChild(el('div', 'lo-note', 'No war yet: start one on the Generals screen.'));
+        else if (war.army !== s.faction) W.body.appendChild(el('div', 'lo-note', `Your war is fought by the ${FACTIONS[war.army].army}; ${s.name} is in the ${FACTIONS[s.faction].army}.`));
+        else {
+          const list = war.battles.filter((b) => b.att === war.army || b.def === war.army);
+          if (!list.length) W.body.appendChild(el('div', 'lo-note', 'No battles right now. Send your assault teams to meet the enemy on the Generals screen.'));
+          for (const b of list) {
+            const att = b.att === war.army;
+            const c = el('button', `mission-card${m.war === b.id ? ' on' : ''}`);
+            c.innerHTML = '<span class="mc-kind"></span><b></b><small></small>';
+            c.querySelector('.mc-kind').textContent = `War battle · ${Math.max(0, Math.ceil((b.ends - war.t) / 60))} min left`;
+            c.querySelector('b').textContent = MAP.name(b.point);
+            c.querySelector('small').textContent = `${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[att ? b.def : b.att].army} · fought on the Town map`;
+            c.addEventListener('click', () => {
+              m.war = b.id;
+              save();
+              draw();
+            });
+            W.body.appendChild(c);
+          }
         }
-        r.appendChild(c);
-        d.appendChild(r);
-      };
-      if (mi.id === 'town') {
+        W.body.appendChild(el('h3', 'wr-gap', 'Staged battles'));
+        for (const mi of MISSIONS) {
+          const c = el('button', `mission-card${!m.war && mi.id === m.map ? ' on' : ''}`);
+          c.innerHTML = '<span class="mc-kind"></span><b></b><small></small>';
+          c.querySelector('.mc-kind').textContent = mi.kind;
+          c.querySelector('b').textContent = mi.title;
+          c.querySelector('small').textContent = mi.line;
+          c.addEventListener('click', () => {
+            m.map = mi.id;
+            m.war = null;
+            save();
+            draw();
+          });
+          W.body.appendChild(c);
+        }
+        if (m.war || m.map !== 'town') return;
+        const d = el('div', 'wr-staged');
+        const row = (label, opts, value, set) => {
+          const r = el('div', 'det-row');
+          r.appendChild(el('label')).textContent = label;
+          const c = el('div', 'choice-row');
+          for (const [v, text] of opts) {
+            const b = el('button', v === value ? 'on' : '');
+            b.innerHTML = text;
+            b.addEventListener('click', () => {
+              set(v);
+              save();
+              draw();
+            });
+            c.appendChild(b);
+          }
+          r.appendChild(c);
+          d.appendChild(r);
+        };
         row('Your side', [['attack', 'Attack'], ['defend', 'Defend']], m.side, (v) => (m.side = v));
         const foes = ['US', 'GE', 'SU'].filter((f) => f !== s.faction);
         row('Against', foes.map((f) => [f, `${emblem(f)}<span>${FACTIONS[f].army}</span>`]), enemyOf(s.faction, m.enemy), (v) => (m.enemy = v));
@@ -1051,16 +1432,30 @@ export function showFrontEnd(app) {
         r.appendChild(el('div', 'note', 'The original game fought 18 against 18; bots make up the numbers. Fewer is lighter on slower computers.'));
         d.appendChild(r);
         row('Battle clock', [[10, '10 min'], [20, '20 min'], [30, '30 min']], m.minutes, (v) => (m.minutes = v));
-      }
-      const who = el('div', 'det-soldier');
-      const r = rankOf(s.xp);
-      who.innerHTML = `<span class="np-emb">${emblem(s.faction)}</span><span class="sc-text"><b></b><small></small></span>`;
-      who.querySelector('b').textContent = s.name;
-      who.querySelector('small').textContent = `${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]} · ${WEAPONS[s.loadout[0]].name}`;
-      d.appendChild(who);
-      const b = el('button', 'ready-btn', 'Join battle');
-      b.addEventListener('click', go);
-      d.appendChild(b);
+        W.body.appendChild(d);
+      };
+      draw();
+    }
+
+    // A team's staff-map sign, in its army's colour.
+    function teamSign(t) {
+      const br = TEAMS[t.type].branch;
+      const inner = {
+        infantry: '<path d="M4 4l22 12M26 4L4 16"/>',
+        paratrooper: '<path d="M4 4l22 12M26 4L4 16"/><path d="M8 10q3.5-6 7 0q3.5-6 7 0"/>',
+        tanker: '<ellipse cx="15" cy="10" rx="9" ry="5"/>',
+        recon: '<path d="M4 16L26 4"/>',
+      }[br];
+      return `<svg class="wr-sign" viewBox="0 0 30 20" aria-hidden="true"><rect x="1" y="1" width="28" height="18" fill="${ARMY_COLORS[t.army]}" stroke="#f3eedd" stroke-width="1.2"/><g fill="none" stroke="#f3eedd" stroke-width="1.5">${inner}</g></svg>`;
+    }
+
+    // Map units to kilometres: London to Warsaw is about 1,450 km on the ground.
+    const KM = 1450 / 6177;
+
+    function madeText(d) {
+      return Object.entries(d.made)
+        .map(([r, n]) => `${n} ${RESOURCE_NAMES[r]}`)
+        .join(', ');
     }
 
     // The battlefield's map, drawn from the map's plan (no terrain yet); drawn
@@ -1078,6 +1473,7 @@ export function showFrontEnd(app) {
         window.addEventListener('resize', onResize);
       });
     }
+    void drawMap;
 
     // --- Progression -------------------------------------------------------------
     function progression() {
@@ -1125,9 +1521,10 @@ export function showFrontEnd(app) {
     function about() {
       main.innerHTML = `<div class="fe-panel fe-about">
         <h2>About</h2>
-        <p>An unofficial fan tribute to <b>Heroes &amp; Generals</b>, the WWII game by Reto-Moto (2016 to 2023; its servers closed in May 2023): large battles of infantry, tanks and vehicles fought over a French village. It is not connected with Reto-Moto or the game's later owners and uses none of their assets.</p>
+        <p>An unofficial fan tribute to <b>Heroes &amp; Generals</b>, the WWII game by Reto-Moto (2016 to 2023; its servers closed in May 2023): large battles of infantry, tanks and vehicles fought over a French village. It is not connected with Reto-Moto or the game's later owners and uses none of their art or sound.</p>
         <p>Everything is simulated: bullets fly with real drag and drop for their ammunition and slow down through walls; guns load, cycle and recoil like the originals and are aimed through their real sights; armor stops or fails against each shell by its real thickness and slope; tanks steer like their real transmissions; soldiers tire, bleed and bandage.</p>
         <p>All models, textures and sounds are generated in code when the game loads. Your soldiers and their ranks are kept in this browser.</p>
+        <p>The war map, assault teams, upgrades and prices come from the original game's data as kept by the Heroes &amp; Generals community project (Raoul de Heer, MIT licence).</p>
         <p>Play it on a computer with a keyboard and a mouse or touchpad. Settings &gt; Controls lists every key.</p></div>`;
     }
 
