@@ -46,7 +46,7 @@ export const SLOT_NAMES = { ammo: 'Ammunition', barrel: 'Barrel', internal: 'Int
 // scopes.js for the same scope; the Zielacht's from Zeiss hunting scopes of
 // the 1930s, est.).
 export const SCOPE_FAMILIES = {
-  m84: { name: 'M84', unit: 'yd', eyeRelief: 0.09, fieldDeg: 6, mass: 0.3 },
+  m84: { name: 'M84', unit: 'yd', eyeRelief: 0.1, fieldDeg: 6, mass: 0.3 },
   m73b1: { name: 'M73B1 (Weaver 330)', unit: 'yd', eyeRelief: 0.089, fieldDeg: 6.7, mass: 0.29 },
   unertl: { name: 'Unertl 8x', unit: 'yd', eyeRelief: 0.06, fieldDeg: 2.2, mass: 0.7 },
   zf39: { name: 'ZF 39 (Zielvier)', unit: 'm', eyeRelief: 0.085, fieldDeg: 6, mass: 0.45 },
@@ -57,16 +57,38 @@ export const SCOPE_FAMILIES = {
   pe: { name: 'PE', unit: 'm', eyeRelief: 0.085, fieldDeg: 5.5, mass: 0.6 },
 };
 
-// How a scope sits on each gun: clipsBlocked (over the clip guide: loaded a
-// round at a time), irons (the iron sights still usable beside or under it),
-// the mount's weight. Bolt-action rifles fed by clips take most scopes over
-// the action; the ZF 41 sits ahead of it; the Garand's go to the side, as the
-// M1C's did; magazine guns load as before.
-const OVER_ACTION = ['kar98k', 'm1903', 'mosin_9130'];
+// How a scope sits on each gun (the mounts are built in
+// models/upgradeScopes.js): clipsBlocked (over the clip guide: loaded a round
+// at a time), irons (the iron sights still usable beside or under it), the
+// mount's weight (kg, est.), and ironsMax: the highest iron sight setting whose
+// line still clears the scope and mount.
+const M = (clipsBlocked, irons, mountMass, ironsMax = Infinity) => ({ clipsBlocked, irons, mountMass, ironsMax });
+const MOUNTS = {
+  'm1_garand+m73b1': M(false, true, 0.3),
+  'm1_garand+m84': M(false, true, 0.3),
+  'm1903+m73b1': M(true, false, 0.12),
+  'm1903+m84': M(true, false, 0.12),
+  'm1903+unertl': M(true, false, 0.1),
+  'kar98k+zf39': M(true, true, 0.25, 900),
+  'kar98k+zf4': M(true, true, 0.25, 400),
+  'kar98k+zf41': M(false, true, 0.08),
+  'kar98k+zielacht': M(true, true, 0.25, 600),
+  'gewehr43+zf4': M(false, false, 0.25),
+  'gewehr43+zf41': M(false, false, 0.2),
+  'fg42+zf4': M(false, false, 0.15),
+  'stg44+zf4': M(false, false, 0.25),
+  'stg44+zf41': M(false, true, 0.1, 400),
+  'mosin_9130+pe': M(true, false, 0.35),
+  'mosin_9130+pu': M(true, false, 0.33),
+  'mosin_9130+zielacht': M(true, false, 0.35),
+  'svt40+pe': M(false, true, 0.3, 900),
+  'svt40+pu': M(false, true, 0.3, 900),
+  'avs36+pe': M(false, true, 0.3, 1000),
+  'avs36+pu': M(false, true, 0.3, 1000),
+};
+for (const c of ['m1_carbine', 'm1a1_carbine', 'm2_carbine']) for (const f of ['m73b1', 'm84']) MOUNTS[`${c}+${f}`] = M(false, true, 0.2);
 export function scopeMount(gun, family) {
-  if (OVER_ACTION.includes(gun)) return { clipsBlocked: family !== 'zf41', irons: family === 'zf39' || family === 'zf41', mountMass: 0.2 };
-  if (gun === 'm1_garand') return { clipsBlocked: false, irons: true, mountMass: 0.3 };
-  return { clipsBlocked: false, irons: family === 'zf41', mountMass: 0.15 };
+  return MOUNTS[`${gun}+${family}`] || M(false, false, 0.2);
 }
 
 const steps = (from, to, step) => {
@@ -197,7 +219,8 @@ export function upgradedDef(gun, picks) {
     w.type = base.type === 'rifle' ? 'sniper' : base.type;
     w.sight = { kind: 'scope', unit, ranges, zero: ranges.includes(200) ? 200 : ranges[0] };
     w.scope = { name: `${fam.name} ${sc.mag}x`, mag: sc.mag, reticle: sc.reticle, fieldDeg: fam.fieldDeg, eyeRelief: fam.eyeRelief };
-    w.irons = mount.irons ? { ...base.sight, ranges: [...base.sight.ranges] } : null;
+    const irons = base.sight.ranges.filter((r) => r <= mount.ironsMax);
+    w.irons = mount.irons ? { ...base.sight, ranges: irons, zero: irons.includes(base.sight.zero) ? base.sight.zero : irons[0] } : null;
     w.clipsBlocked = mount.clipsBlocked;
     w.mass = Math.round((base.mass + fam.mass + mount.mountMass) * 100) / 100;
     w.loadedMass = base.loadedMass + (w.mass - base.mass);

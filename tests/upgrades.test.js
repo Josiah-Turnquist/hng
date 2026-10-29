@@ -95,3 +95,21 @@ test('armory: credits buy opened guns and upgrades once; the kit is free', () =>
   checkArmory(old);
   assert.ok(owns(old, 'mp40'));
 });
+
+test('upgrades: every scope pairing has a model and the same mount as its model file', async () => {
+  const { SCOPE_MOUNTS } = await import('../src/weapons/models/upgradeScopes.js');
+  const { MODELS } = await import('../src/weapons/models/index.js');
+  const { scopeMount } = await import('../src/weapons/upgrades.js');
+  for (const [gun, e] of Object.entries(GUN_UPGRADES)) {
+    if (WEAPONS[gun]?.scope) continue;
+    for (const id of e.upgrades) {
+      const u = UPGRADES[id];
+      if (!u.family) continue;
+      const key = `${gun}+${u.family}`;
+      assert.ok(MODELS[key], `model ${key}`);
+      const a = scopeMount(gun, u.family),
+        b = SCOPE_MOUNTS[key];
+      assert.deepEqual([a.clipsBlocked, a.irons, a.mountMass], [b.clipsBlocked, b.irons, b.mountMass], key);
+    }
+  }
+});

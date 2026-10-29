@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { S, place, slot, circle, boxMag, guard, trigger, lathe, tube, swivel, taperZ, path, loft, cartridge } from './parts.js';
 import { stock, band, plateXYz, bar, screw, buttPlate, arch, stockSection, sectionLoft, crisp, stations, superellipse, knurledKnob, sweepGrip, serrations, perfTube, sling, stamp, ribbon, latheY, ringLoft, smoothstep } from './shapes.js';
-import { pem, pu, ring } from './optics.js';
+import { puMount, pemMount, svtBracket } from './optics.js';
 
 const PI = Math.PI;
 
@@ -15,9 +15,10 @@ const R762R = { caseLen: 0.0536, oal: 0.0772, rRim: 0.00715, rNeck: 0.0042, rBul
 // box with its hinged floor plate, long thin trigger, straight bolt handle and the
 // big round cocking knob; hooded front post; tangent rear sight in meters (1-20);
 // two barrel bands held by flat springs; birch stock with steel-lined sling slots
-// through the fore-end and the butt. v.pu = sniper with the PU 3.5x scope on a side
-// mount and the long turned-down bolt handle; v.pem = the same with the older,
-// longer PEM 4x on its taller side mount. Dimensions est. from side views.
+// through the fore-end and the butt. v.bent = the sniper's long turned-down bolt
+// handle, to clear a scope over the action (the scope and its side mount are put
+// on by mosin_pu, mosin_pem and upgradeScopes.js). Dimensions est. from side
+// views.
 function mosin(b, v = {}) {
   const P = 'steelDark';
   const W = 'birch';
@@ -309,7 +310,7 @@ function mosin(b, v = {}) {
     const a = (i / 18) * PI * 2;
     b.box({ x: Math.cos(a) * 0.0127, y: Math.sin(a) * 0.0127, z: 0.0025, w: 0.0008, h: 0.0008, d: 0.0075, mat: P, r: 0, rz: a });
   }
-  if (v.pu || v.pem) {
+  if (v.bent) {
     bar(b, { pts: [[0.008, -0.0005, -0.052], [0.026, -0.004, -0.0505], [0.038, -0.016, -0.0475], [0.046, -0.034, -0.0445]], r: [[0, 0.0048], [1, 0.0039]], mat: 'steelBright', seg: 14 });
     b.sphere({ x: 0.0482, y: -0.0405, z: -0.0435, r: 0.0088, mat: 'steelBright', seg: 20 });
     b.anchor('boltHandle', 0.0482, -0.0405, -0.0435);
@@ -320,55 +321,7 @@ function mosin(b, v = {}) {
   }
   b.body();
 
-  if (v.pu) {
-    // PU 3.5x scope on the side mount: base on the left of the receiver, two rings.
-    const yc = 0.047;
-    b.span({ z0: -0.208, z1: -0.072, y0: -0.012, y1: 0.012, w: 0.0082, x: -0.0198, mat: P, r: 0.002 });
-    if (b.detail(0)) for (const z of [-0.19, -0.09]) screw(b, { at: [-0.024, 0.0, z], axis: '-x', r: 0.0026, mat: P, slot: 0.4 });
-    for (const z of [-0.18, -0.092]) {
-      b.span({ z0: z - 0.008, z1: z + 0.008, y0: 0.006, y1: yc - 0.008, w: 0.0082, x: -0.0158, mat: P, r: 0.0015 });
-      tube(b, { y: yc, z0: z - 0.008, z1: z + 0.008, rIn: 0.0115, rOut: 0.0142, mat: P, seg: 28 });
-    }
-    lathe(b, {
-      mat: P,
-      y: yc,
-      seg: 28,
-      profile: [
-        [0, -0.036],
-        [0.0148, -0.036],
-        [0.0155, -0.04],
-        [0.0155, -0.066],
-        [0.0115, -0.074],
-        [0.0115, -0.19],
-        [0.0125, -0.195],
-        [0.0125, -0.205],
-        [0, -0.205],
-      ],
-    });
-    knurledKnob(b, { at: [0, yc + 0.0145, -0.135], axis: 'y', r: 0.0085, len: 0.009, teeth: 24, mat: P });
-    knurledKnob(b, { at: [-0.0145, yc, -0.135], axis: 'x', r: 0.0085, len: 0.009, teeth: 24, mat: P });
-    b.cylAxis({ axis: 'z', x: 0, y: yc, z: -0.0357, len: 0.0006, r: 0.0135, mat: 'glass' });
-    b.cylAxis({ axis: 'z', x: 0, y: yc, z: -0.2053, len: 0.0006, r: 0.011, mat: 'glass' });
-    b.anchor('scopeEye', 0, yc, -0.0356);
-    b.anchor('scopeFront', 0, yc, -0.2054);
-    b.meta.sight = 'scope';
-    b.meta.scopeMag = 3.5;
-  } else if (v.pem) {
-    // PEM 4x on its side mount: a taller base on the left of the receiver, an
-    // arm reaching over to two rings.
-    const yc = 0.0525;
-    b.span({ z0: -0.208, z1: -0.072, y0: -0.012, y1: 0.016, w: 0.0088, x: -0.0202, mat: P, r: 0.002 });
-    if (b.detail(0)) for (const z of [-0.19, -0.09]) screw(b, { at: [-0.0246, 0.0, z], axis: '-x', r: 0.0026, mat: P, slot: 0.4 });
-    for (const z of [-0.2, -0.125]) {
-      plateXYz(b, { outline: [[-0.0246, 0.012], [-0.0158, 0.012], [-0.0158, 0.024], [-0.0045, yc - 0.0128], [-0.0045, yc - 0.0108], [-0.0246, yc - 0.0108]], z0: z - 0.009, z1: z + 0.009, mat: P, bevel: 0.0008 });
-      ring(b, { y: yc, z, r: 0.0115, w: 0.016, t: 0.003, mat: P });
-    }
-    pem(b, { y: yc, zEye: -0.04 });
-    b.meta.sight = 'scope';
-    b.meta.scopeMag = 4;
-  } else {
-    b.meta.sight = 'notch';
-  }
+  b.meta.sight = 'notch';
 
   // Canvas sling on the left, through the slots on leather dog collars.
   sling(b, { from: [-0.0228, -0.0215, -0.56], to: [-0.0245, -0.0885, 0.19], sag: 0.06, width: 0.035, mat: 'canvas', hardware: 'leather' });
@@ -384,19 +337,27 @@ function mosin(b, v = {}) {
   b.meta.boltLift = PI / 2;
 }
 
-// Mosin-Nagant 1891/30 rifle.
-export function mosin_9130(b) {
-  mosin(b);
+// Mosin-Nagant 1891/30 rifle. v: as mosin() takes (upgradeScopes.js bends the
+// handle for a scope).
+export function mosin_9130(b, v = {}) {
+  mosin(b, v);
 }
 
-// Mosin-Nagant 1891/30 sniper with the PU 3.5x scope.
+// Mosin-Nagant 1891/30 sniper with the PU 3.5x scope on its side mount.
 export function mosin_pu(b) {
-  mosin(b, { pu: true });
+  mosin(b, { bent: true });
+  puMount(b);
+  b.meta.sight = 'scope';
+  b.meta.scopeMag = 3.5;
 }
 
-// Mosin-Nagant 1891/30 sniper with the PEM 4x scope (made until 1940).
+// Mosin-Nagant 1891/30 sniper with the PEM 4x scope (made until 1940) on its
+// taller side mount.
 export function mosin_pem(b) {
-  mosin(b, { pem: true });
+  mosin(b, { bent: true });
+  pemMount(b);
+  b.meta.sight = 'scope';
+  b.meta.scopeMag = 4;
 }
 
 // Self-loading rifle parts shared by the SVT-40 and AVS-36: a slotted muzzle
@@ -620,26 +581,13 @@ export function svt40(b) {
   b.meta.boltThrow = 0.085;
 }
 
-// SVT-40 sniper with the PU 3.5x: a bracket clamps the rear of the receiver by
-// its sides, two plates rise either side of the bolt carrier to an arm that
-// runs forward under the scope's two rings. The scope sits high and the space
-// under it is open, so the eye still finds the iron sights beneath. Sizes est.
+// SVT-40 sniper with the PU 3.5x on its bracket over the receiver, high and
+// open underneath, so the eye still finds the iron sights beneath (optics.js).
 export function svt40_pu(b) {
   svt40(b);
-  const P = 'steelDark';
-  const yc = 0.0655;
-  for (const s of [-1, 1]) {
-    b.span({ z0: -0.035, z1: 0.012, y0: -0.012, y1: 0.0082, w: 0.0042, x: s * 0.0172, mat: P, r: 0.001 }); // clamp jaws
-    plateXYz(b, { outline: [[s * 0.0151, 0.004], [s * 0.0193, 0.004], [s * 0.0193, 0.0452], [s * 0.0151, 0.0452]], z0: -0.03, z1: 0.008, mat: P, bevel: 0.0006 });
-  }
-  b.span({ z0: -0.03, z1: 0.008, y0: 0.0452, y1: 0.0502, w: 0.0386, mat: P, r: 0.0015 }); // bridge over the carrier
-  b.span({ z0: -0.122, z1: 0.0, y0: 0.0462, y1: 0.0512, w: 0.0122, mat: P, r: 0.0015 }); // arm under the scope
-  for (const z of [-0.11, -0.046]) {
-    b.span({ z0: z - 0.006, z1: z + 0.006, y0: 0.05, y1: yc - 0.0115, w: 0.01, mat: P, r: 0.0012 });
-    ring(b, { y: yc, z, r: 0.0115, w: 0.013, t: 0.0028, mat: P });
-  }
-  b.box({ x: -0.0215, y: 0.0, z: -0.012, w: 0.004, h: 0.007, d: 0.026, mat: P, r: 0.0012 }); // locking lever
-  pu(b, { y: yc, zEye: 0.004 });
+  svtBracket(b);
+  b.meta.sight = 'scope';
+  b.meta.scopeMag = 3.5;
 }
 
 // AVS-36 (Simonov): 7.62x54R select-fire rifle, 1236 mm long, 615 mm barrel. Big

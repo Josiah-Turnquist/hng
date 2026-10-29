@@ -874,18 +874,19 @@ function matchSights(b, { style, finish: F }) {
 // stand in with the nearest one (the M73B1 for the Alaskan's slim tube, the
 // ZF 39 for the ZF 4, the Zielacht for the PEM's big objective).
 const SCOPE_BODY = {
-  m84: optics.alaskan,
-  m73b1: optics.m73b1 || optics.alaskan,
+  m84: optics.m84,
+  m73b1: optics.weaver330,
   unertl: optics.unertl,
-  zf39: optics.zf39 || optics.zf4,
+  zf39: optics.zf39,
   zf4: optics.zf4,
   zf41: optics.zf41,
-  zielacht: optics.zielacht || optics.pem,
+  zielacht: optics.zielacht,
   pu: optics.pu,
   pe: optics.pem,
 };
-// The tube's radius under the rings, per body.
-const TUBE_R = new Map([[optics.alaskan, 0.011], [optics.unertl, 0.0095], [optics.zf41, 0.0098], [optics.zf4, 0.013], [optics.pu, 0.0115], [optics.pem, 0.0115]]);
+// The tube's radius under the rings, per body (7/8 in for the M84, 3/4 in for
+// the Weaver and the Unertl, 26 mm for the German hunting and sniper scopes).
+const TUBE_R = new Map([[optics.alaskan, 0.011], [optics.m84, 0.0111], [optics.weaver330, 0.0096], [optics.unertl, 0.0095], [optics.zf39, 0.013], [optics.zielacht, 0.013], [optics.zf41, 0.0098], [optics.zf4, 0.013], [optics.pu, 0.0115], [optics.pem, 0.0115]]);
 
 function scope(b, { family, mount: M }) {
   const body = SCOPE_BODY[family];
