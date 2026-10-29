@@ -4,6 +4,7 @@
 //
 //   findCover(game, s, threat, opts)  // a spot to fight (or hide) from, or null
 //   coverHolds(game, spot, threat)    // is that spot still hidden from the threat?
+//   findOverwatch(game, s, goal, opts) // a scout's post that sees an objective from afar
 //   fireteam(game, s)                 // { index, side, leader } of s's fireteam
 //   callout(game, s, enemy)           // tell comrades close by where an enemy is
 //   leavesBetween(coll, a.., b..)     // meters of leaves on a sight line; do they hide b?
@@ -181,6 +182,62 @@ export function findCover(game, s, threat, { radius = 14, tries = 8, fight = tru
     }
   }
   return best;
+}
+
+// A scout's overwatch post on an objective: a walkable spot between near and
+// far meters from it, on the side toward from (where he is coming from, within
+// about 70 degrees of that), whose eyes see some of the objective: its middle
+// or spots across it (from a long way off, houses, hedges and trees hide most
+// of a point; a scout watches what he can of it and the ground round it).
+// Lying down if that sees it, else crouched, else standing. Seeing more of it,
+// lower, from higher ground and from the middle of the range score better;
+// spots another scout has (taken) are left to him. Nothing found: nearer in,
+// down to 40 m. Returns { x, y, z, low, high, yaw } or null.
+export function findOverwatch(game, s, goal, { near = 80, far = 200, from = null, tries = 50, taken = null } = {}) {
+  const nav = game.nav;
+  if (!nav) return null;
+  const coll = game.world.collision;
+  const hf = game.world.hf;
+  const b = s.body;
+  const fx = (from?.x ?? b.x) - goal.x,
+    fz = (from?.z ?? b.z) - goal.z;
+  const base = Math.atan2(fz, fx);
+  const rg = (goal.radius || 15) * 0.6;
+  const looks = [[0, 0]].concat([0, 1, 2, 3, 4, 5].map((k) => [Math.cos(k * 1.047) * rg, Math.sin(k * 1.047) * rg])).map(([dx, dz]) => ({ x: goal.x + dx, y: hf.getHeight(goal.x + dx, goal.z + dz) + 1.2, z: goal.z + dz }));
+  const gy = looks[0].y - 1.2;
+  for (let shrink = 1; near * shrink >= 40; shrink *= 0.6) {
+    const n0 = near * shrink,
+      n1 = far * shrink;
+    let best = null,
+      bestScore = -Infinity;
+    for (let k = 0; k < tries; k++) {
+      const a = base + (Math.random() * 2 - 1) * 1.2;
+      const r = n0 + Math.random() * (n1 - n0);
+      const x = goal.x + Math.cos(a) * r,
+        z = goal.z + Math.sin(a) * r;
+      const i = nav.index(x, z);
+      if (i < 0 || !nav.cost[i] || nav.cost[i] >= 30) continue;
+      if (taken && taken.some((t) => Math.hypot(t.x - x, t.z - z) < 18)) continue;
+      const y = nav.floorY[i];
+      let low = null,
+        seen = 0;
+      for (const st of [STANCE.PRONE, STANCE.CROUCH, STANCE.STAND]) {
+        seen = looks.filter((l) => seesFrom(coll, x, y, z, st, l)).length;
+        if (seen) {
+          low = st;
+          break;
+        }
+      }
+      if (low === null) continue;
+      const score = seen * 0.8 + (low === STANCE.PRONE ? 2 : low === STANCE.CROUCH ? 1 : 0) + Math.min(4, Math.max(-2, (y - gy) * 0.2)) - Math.abs(r - (n0 + n1) / 2) / (n1 - n0) - Math.abs(a - base) * 0.5;
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x, y, z, low, high: low, yaw: Math.atan2(-(goal.x - x), -(goal.z - z)) };
+      }
+    }
+    if (best) return best;
+  }
+  return null;
 }
 
 // Does the spot still hide a man crouched (or as low as it was chosen for) from the threat?

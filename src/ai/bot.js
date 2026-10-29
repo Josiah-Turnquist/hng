@@ -25,7 +25,7 @@ import { STANCE } from '../actors/body.js';
 import { clamp, gaussRandom, wrapAngle, DEG, G } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { findRide } from './riderBot.js';
-import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt, leavesBetween } from './tactics.js';
+import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt, leavesBetween, findOverwatch } from './tactics.js';
 import { grenadeOf, startThrow, releasePoint, throwSpeed } from '../game/throwing.js';
 import { meleeOf, startAttack, canAttack } from '../game/melee.js';
 import { healKitOf, useKit } from '../game/kits.js';
@@ -82,12 +82,34 @@ export function engageRange(def) {
 // and wind), by more the further, and close in shot by shot.
 const RANGING_FROM = 120;
 
+// How each class fights. Infantry are the ones who take ground: they move up
+// in shorter bounds, keep going under fire that would pin others, don't wait
+// long for their mates, seek cover only from enemies close by while moving up,
+// fight from inside the point they hold, and go after an enemy who drops out
+// of sight sooner. Scouts (recon) support from the back: each takes a post
+// well back from the objective with a clear view of it (a scoped rifle's
+// range, nearer with a plain gun), fights from there, moves to another post
+// now and then or after he's been shot at, and leaves the point itself to
+// the infantry.
+//   bound      seconds firing from one cover before moving up to the next
+//   pinned     suppression (0..1) that stops the move up
+//   waitMates  chance he waits while a fireteam mate runs
+//   pushCover  while moving up, seek cover from enemies within this (m)
+//   huntAfter  seconds watching where an enemy vanished before going after him
+//   overwatch  { scoped: [near, far], plain: [near, far], stay: [min, max] s }
+const STYLE = {
+  infantry: { bound: [3, 6], pinned: 0.75, waitMates: 0.35, pushCover: 45, huntAfter: 2, holdInside: true },
+  recon: { bound: [6, 14], pinned: 0.5, waitMates: 1, pushCover: 90, huntAfter: Infinity, overwatch: { scoped: [80, 200], plain: [50, 120], stay: [60, 100] } },
+  other: { bound: [6, 14], pinned: 0.5, waitMates: 1, pushCover: 90, huntAfter: 4 },
+};
+
 export class BotBrain {
   // skill: 'recruit', 'regular' or 'veteran', or by default from the difficulty's
   // mix, where rank (0..1) places him in it.
   constructor(game, soldier, { skill = null, rank = Math.random() } = {}) {
     this.game = game;
     this.s = soldier;
+    this.style = STYLE[soldier.cls] || STYLE.other;
     this.level = SKILL[skill] ? skill : null;
     this.rank = rank;
     this.difficulty = null;
@@ -116,7 +138,8 @@ export class BotBrain {
     this.coverT = 0; // next time to look for cover
     this.coverCheckT = 0;
     this.peek = { up: false, until: 0 }; // up: showing ourselves to shoot
-    this.boundT = 6 + Math.random() * 8; // moving up: how long to fire from each cover
+    this.boundT = this._boundTime(); // moving up: how long to fire from each cover
+    this.post = null; // a scout's overwatch post: { x, y, z, low, high, yaw, until, since }
     this.watch = null; // a post held on an objective, facing the enemy
     this.hunt = null; // where an enemy we lost sight of was: { e, x, y, z, t, go }
     this.heard = null; // a comrade's callout: { x, z, t }
@@ -128,6 +151,11 @@ export class BotBrain {
     this.engagedAt = 0; // when we picked the current target
     this.bias = { yaw: 0, pitch: 0 }; // first shots far off: misjudged range and wind
     this.shotBy = new Map(); // enemy -> when a bullet of his last hit us or passed close
+  }
+
+  _boundTime() {
+    const [a, b] = this.style.bound;
+    return a + Math.random() * (b - a);
   }
 
   // Skill from the level and the difficulty setting (read again whenever it changes).
@@ -159,6 +187,7 @@ export class BotBrain {
   newLife() {
     this.cover = null;
     this.watch = null;
+    this.post = null;
     this.hunt = null;
     this.heard = null;
     this.ride = null;
@@ -372,6 +401,7 @@ export class BotBrain {
         this.path = null;
         this.wander = null;
         this.watch = null;
+        this.post = null;
       }
       this.goalOwner = this.goal ? mode.byId?.[this.goal.id]?.owner : undefined;
     }
@@ -400,6 +430,7 @@ export class BotBrain {
       if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
       return;
     }
+    if (this.style.overwatch && this._overwatch()) return;
     if (this._inGoal()) {
       this._hold();
       return;
@@ -422,9 +453,16 @@ export class BotBrain {
     const w = s.weapon;
     const ti = this._where(t, _ti);
     const d = Math.hypot(ti.x - b.x, ti.z - b.z);
-    const pushing = !!this.goal && !this._inGoal();
+    const st = this.style;
+    // A scout at (or on his way to) his post fights from there, not forward.
+    const posted = !!this.post;
+    const pushing = !!this.goal && !this._inGoal() && !posted;
     const threat = { x: ti.x, y: ti.y + ti.h * 0.92, z: ti.z };
-    if (!t.isVehicle && d < (pushing ? 90 : 300)) {
+    if (posted && this._atPost()) {
+      this._fightFromPost(t, d);
+      return;
+    }
+    if (!t.isVehicle && d < (pushing ? st.pushCover : 300)) {
       // A post we were holding is our cover, if it hides us from him.
       if (!this.cover && this.watch && !this.watch.open && Math.hypot(this.watch.x - b.x, this.watch.z - b.z) < 1.5 && coverHolds(g, this.watch, threat)) this.cover = this.watch;
       // Still good, now that he may have moved?
@@ -438,7 +476,9 @@ export class BotBrain {
       if (!this.cover && g.time > this.coverT && d > 7) {
         this.coverT = g.time + 2 + Math.random() * 1.5;
         const spot = findCover(g, s, threat, { radius: d < 30 ? 9 : 15, taken: this._taken() });
-        if (spot) this._takeCover(spot);
+        // Infantry holding a point fight from inside it, not from cover beyond.
+        const away = spot && st.holdInside && !pushing && this.goal && this._inGoal() && Math.hypot(spot.x - this.goal.x, spot.z - this.goal.z) > this.goal.radius;
+        if (spot && !away) this._takeCover(spot);
       }
     } else if (this.cover && pushing && !this._atCover()) this.cover = null;
     if (this.cover && this._atCover()) {
@@ -447,8 +487,8 @@ export class BotBrain {
       this.cover.since ??= g.time;
       // Moving up: after a while here, on to cover further forward (or along
       // the way if there's none), unless pinned down or a mate is on the move.
-      if (pushing && g.time - this.cover.since > this.boundT && sup < 0.5 && !this._mateMoving()) {
-        this.boundT = 6 + Math.random() * 8;
+      if (pushing && g.time - this.cover.since > this.boundT && sup < st.pinned && !(Math.random() < st.waitMates && this._mateMoving())) {
+        this.boundT = this._boundTime();
         const spot = t.isVehicle ? null : findCover(g, s, threat, { radius: 18, toward: this.goal, taken: this._taken() });
         if (spot) this._takeCover(spot);
         else {
@@ -500,7 +540,12 @@ export class BotBrain {
     this.lookYaw = Math.atan2(-(h.x - b.x), -(h.z - b.z));
     this.lookPitch = 0;
     if (this.cover && this._atCover()) b.setStance(this.cover.high);
-    if (age < 4) return true;
+    if (age < Math.min(4, this.style.huntAfter)) return true;
+    if (this.style.huntAfter === Infinity) {
+      // A scout keeps his post: he has watched the spot, and the infantry can go.
+      this.hunt = null;
+      return false;
+    }
     const attacking = g.mode?.attacking?.(s.team) || !this.goal;
     if (!attacking) {
       this.hunt = null;
@@ -541,6 +586,71 @@ export class BotBrain {
       this.lookYaw = wt.yaw + Math.sin(g.time * 0.35 + s.id) * 0.5;
       if (b.targetStance !== wt.high) b.setStance(wt.high);
     } else if (b.targetStance !== STANCE.STAND && Math.random() < 0.3) b.setStance(STANCE.STAND);
+  }
+
+  // A scout with a point to support: off to an overwatch post on it, and
+  // watching it from there. A new post after a while there, or soon after
+  // he's been shot at (he's been seen). False with no post to be had (then he
+  // goes on as the infantry do).
+  _overwatch() {
+    const g = this.game;
+    const s = this.s;
+    const b = s.body;
+    const ow = this.style.overwatch;
+    let p = this.post;
+    const shot = [...this.shotBy.values()].some((t) => g.time - t < 2);
+    if (p && (g.time > p.until || (shot && p.since && g.time - p.since > 8))) p = this.post = null;
+    if (!p) {
+      if (g.time < (this.postT || 0)) return false;
+      const [near, far] = this.s.weapon?.def.scope ? ow.scoped : ow.plain;
+      const taken = g.soldiers.filter((o) => o !== s && o.alive && o.team === s.team && o.brain?.post).map((o) => o.brain.post);
+      p = findOverwatch(g, s, this.goal, { near, far, from: this._homeSide(), taken });
+      if (!p) {
+        this.postT = g.time + 6; // look again in a while
+        return false;
+      }
+      p.until = g.time + ow.stay[0] + Math.random() * (ow.stay[1] - ow.stay[0]);
+      this.post = p;
+      this._plan(p.x, p.z);
+    }
+    if (this._atPost()) {
+      p.since ??= g.time;
+      // Scan the objective and the ground round it.
+      this.lookYaw = p.yaw + Math.sin(g.time * 0.3 + s.id) * 0.35;
+      this.lookPitch = 0;
+      if (b.targetStance !== p.low) b.setStance(p.low);
+    } else {
+      if (!this.path || this.pathI >= this.path.length || g.time > this.pathT) this._plan(p.x, p.z);
+      if (b.targetStance !== STANCE.STAND && Math.hypot(p.x - b.x, p.z - b.z) > 6) b.setStance(STANCE.STAND);
+    }
+    return true;
+  }
+
+  _atPost() {
+    const p = this.post;
+    return !!p && Math.hypot(p.x - this.s.body.x, p.z - this.s.body.z) < 1.5;
+  }
+
+  // On his post with a target: stay down and shoot from it, up on an elbow
+  // (crouched) only to reload or look again; heavy fire pins him flat.
+  _fightFromPost(t, d) {
+    const b = this.s.body;
+    const want = (this.s.suppression || 0) > 0.6 ? STANCE.PRONE : this.post.low;
+    if (b.targetStance !== want) b.setStance(want);
+  }
+
+  // Our side of the objective: the middle of our men, or where we are.
+  _homeSide() {
+    let x = 0,
+      z = 0,
+      n = 0;
+    for (const o of this.game.soldiers)
+      if (o.alive && o.team === this.s.team) {
+        x += o.body.x;
+        z += o.body.z;
+        n++;
+      }
+    return n ? { x: x / n, z: z / n } : { x: this.s.body.x, z: this.s.body.z };
   }
 
   // The way to the enemy: toward the middle of their side.
