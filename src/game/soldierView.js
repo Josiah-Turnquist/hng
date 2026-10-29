@@ -21,6 +21,7 @@ const KIND = {
   revolver: 'pistol',
   launcher: 'launcher',
   grenade: 'grenade',
+  binoculars: 'binoculars',
 };
 
 // The primary weapon decides the ammunition pouches on the belt.

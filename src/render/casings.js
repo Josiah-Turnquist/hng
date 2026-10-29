@@ -146,5 +146,6 @@ function caseLength(a) {
   if (a.mass > 0.0085 && d > 0.0075) return 0.058;
   if (a.mass > 0.0075) return 0.033;
   if (d > 0.0105) return 0.023;
+  if (a.mass < 0.0065 && a.mv < 300) return 0.017; // pocket pistol rounds (.25, .32, .380 ACP)
   return 0.021;
 }

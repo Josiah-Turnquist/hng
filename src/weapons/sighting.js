@@ -40,7 +40,7 @@ export class Sighting {
 
     // Eye distance behind the rear sight (cheek on the stock, or arms extended).
     const shoulder = a.shoulder;
-    if (this.sightKind === 'scope') this.eyeRelief = def.scope?.eyeRelief ?? 0.085;
+    if (this.sightKind === 'scope') this.eyeRelief = (def.scope || def.optic)?.eyeRelief ?? 0.085;
     else if (!shoulder) this.eyeRelief = 0.55; // pistols held at arm's length
     // A peep sight is held close to the eye (about 8 cm), so the hole looks wide
     // and the rim blurs into a soft ring.
@@ -61,7 +61,8 @@ export class Sighting {
     const mz = a.muzzle ? a.muzzle.z : -0.6;
     const ahead = Math.max(0, (this.sightKind === 'scope' ? this.scopeEye.z : this.rear.z) + this.eyeRelief - mz);
     const slope = Math.max(0, (scoped ? this.scopeFront.z : this.front.z) - mz);
-    this.angles = def.sight.ranges.map((r) => {
+    // (Binoculars fire nothing: their line of sight is simply their axis.)
+    this.angles = def.type === 'binoculars' ? [0] : def.sight.ranges.map((r) => {
       const R = Math.max(1, r * toM - ahead);
       const t = solveZero(def.ammoData, def.mv, this.sightHeight, R, atm);
       return t - (slope * Math.tan(t)) / R;

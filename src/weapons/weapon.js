@@ -22,7 +22,9 @@ import { getAmmo } from './ammo.js';
 export class Weapon {
   constructor(def) {
     this.def = def;
-    this.ammo = getAmmo(def.ammo);
+    // (Binoculars hold no ammunition: they never fire or load.)
+    this.optic = def.type === 'binoculars';
+    this.ammo = this.optic ? null : getAmmo(def.ammo);
     this.modeIndex = 0;
     this.trigger = false;
     this.triggerWasDown = false;
@@ -59,8 +61,9 @@ export class Weapon {
   }
 
   // The scope in use, or null (no scope, or aiming with the iron sights).
+  // Binoculars: what is seen through them, raised to the eyes.
   get scope() {
-    return this.useIrons ? null : this.def.scope || null;
+    return this.useIrons ? null : this.def.scope || this.def.optic || null;
   }
 
   get zeroRange() {
@@ -81,6 +84,10 @@ export class Weapon {
     const d = this.def;
     this.mag = d.capacity;
     this.chambered = false;
+    if (this.optic) {
+      this.spareMags = [];
+      return;
+    }
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       this.clips = d.reserve; // full clips
       this.loose = 0; // loose rounds (from partly used clips)
@@ -158,7 +165,7 @@ export class Weapon {
   // Can a reload start right now (and is there anything to load)?
   canReload() {
     const d = this.def;
-    if (this.state === 'reloading') return false;
+    if (this.state === 'reloading' || this.optic) return false;
     if (d.feed === 'disposable' || d.type === 'grenade') return false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       const room = d.capacity - this.mag - (d.feed === 'enbloc' && this.chambered ? 0 : 0);
@@ -441,6 +448,11 @@ export class Weapon {
       return 0;
     }
 
+    // Binoculars: the fire button spots (game/spotting.js), it pulls no trigger.
+    if (this.optic) {
+      this.triggerWasDown = this.trigger;
+      return 0;
+    }
     let shots = 0;
     const pressed = this.trigger && !this.triggerWasDown;
     const mode = this.mode;

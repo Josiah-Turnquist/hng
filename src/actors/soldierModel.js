@@ -104,7 +104,7 @@ export function clearOutfitCache() {
 const FACTIONS = new Set(['US', 'GE', 'SU']);
 const CLASSES = new Set(['infantry', 'recon', 'paratrooper', 'tanker']);
 const ROLES = new Set(['rifle', 'smg', 'mg', 'at']);
-const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'none']);
+const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'binoculars', 'none']);
 const _v = new THREE.Vector3(),
   _v2 = new THREE.Vector3(),
   _inv = new THREE.Matrix4();
@@ -222,7 +222,7 @@ export class SoldierModel {
   }
 
   // Put a gun model (from buildGun) in the hands, or null. kind: rifle | smg |
-  // lmg | pistol | launcher | grenade | none.
+  // lmg | pistol | launcher | grenade | binoculars | none.
   setWeapon(gun, kind = 'rifle') {
     if (this.gun && this.gun.root?.parent) this.gun.root.parent.remove(this.gun.root);
     if (this.gun?.isObject3D && this.gun.parent) this.gun.parent.remove(this.gun);

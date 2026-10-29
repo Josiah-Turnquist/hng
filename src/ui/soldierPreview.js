@@ -16,7 +16,7 @@ import { MODELS, buildGun } from '../weapons/models/index.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 
-const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade' };
+const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', binoculars: 'binoculars' };
 const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
 
 function modelId(id) {
@@ -232,6 +232,9 @@ export class SoldierPreview {
     const f = new THREE.DirectionalLight(0xc0d0e8, 0.8);
     f.position.set(2, -1, -2);
     scene.add(k, f, new THREE.AmbientLight(0xffffff, 0.25), gun.root);
+    // Binoculars read best from behind and a little to the side and above (the
+    // two eyecups side by side, the halves running off behind them).
+    if (gun.meta.binoculars) gun.root.rotation.set(0.35, Math.PI / 2 - 0.6, 0, 'YXZ');
     gun.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(gun.root);
     const c = box.getCenter(new THREE.Vector3());

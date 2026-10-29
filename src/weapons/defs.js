@@ -978,6 +978,21 @@ for (const [id, w] of Object.entries(WEAPONS)) {
     w.rpm = 60;
     w.reload = {};
   }
+  if (w.type === 'binoculars') {
+    // Nothing to fire or load: a sight with no settings, an empty magazine.
+    w.sight = { kind: 'scope', unit: 'm', ranges: [0], zero: 0 };
+    w.modes = ['semi'];
+    w.feed = 'none';
+    w.rpm = 60;
+    w.reload = {};
+    w.capacity = 0;
+    w.reserve = 0;
+    w.accuracy = 0;
+    w.hipError = 0;
+    w.ammoData = null;
+    w.loadedMass = w.mass;
+    continue;
+  }
   const a = AMMO[w.ammo];
   if (!a) throw new Error(`weapon ${id}: unknown ammo ${w.ammo}`);
   w.ammoData = a;

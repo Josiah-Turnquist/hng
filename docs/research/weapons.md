@@ -420,3 +420,41 @@ The original game gave scopes to the Recon class. A 2020 Steam thread (game data
 - **PE on its top mount**, **AVS-36 with the PE** and **SVT-38** snipers: pre-war and few; the PE is the PEM's optics with a focusing ring.
 - **K43 and G41 with the ZF 4**, **StG 44 with the ZF 4**: rifles not in the game, or very few.
 - **Night sights** (the US infrared Sniperscope on the M2 carbine, the German Vampir on the StG 44): left out as the brief asked.
+
+---
+
+## 10. Binoculars and pocket pistols
+
+Gathered for the binoculars slot (`src/weapons/items/binoculars.js`) and the pocket pistols (`src/weapons/items/pocket.js`, their rounds in `src/weapons/ammo.js`). Same method and legend as section 0: WebFetch failed again with a DNS error (en.wikipedia.org), so every value comes from **WebSearch result summaries** and no page was read in full. Values the game needs and no source gave are marked "est." in the data files and **[NF]** here.
+
+### 10.1 Binoculars (6x30, all three armies)
+
+| Glasses | Magnification and field | Reticle | Mass | Sources |
+|---|---|---|---|---|
+| US Binocular M3 | 6x30 **[NF]** for the M3's own field; 6x30 Porro glasses of the period: 8.5 deg (8 deg 30 min) | In the left telescope: a horizontal mil scale marked every 10 mils, from 50 mils left to 50 right of center (TM 9-575). Late glasses: a finer scale, 5-mil marks to 40 mils each side, in the lower part of the field | **[NF]** (game est. 0.58 kg) | https://www.ibiblio.org/hyperwar/USA/ref/TM/pdfs/TM9-575.pdf ; https://archive.org/download/TM9-1581/TM9-1581.pdf |
+| German Dienstglas 6x30 | 6x30; field **[NF]** (game: 8.5 deg, as the period's 6x30s) | A "Strichplatte" range-estimation scale in 1/6400 (Strich), visible in the right eyepiece (dealer descriptions **[U]**); its pattern **[NF]** (the game draws a horizontal scale marked every 5 Strich and a vertical one rising from the middle, est. from photos) | **[NF]** (game est. 0.55 kg); a 1927 to 1962 Leitz 6x30 of 8.5 deg weighs 17 oz (0.48 kg) | https://milivault.com/products/87449 ; https://monocular.info/dienstglas6x30.htm ; https://www.l-camera-forum.com/leica-wiki.en/index.php/BIDOXIT |
+| Soviet B-6 (6x30) | 6x, field 8 deg 30 min (a Russian training text on reconnaissance) | An angle-measuring scale for horizontal and vertical angles (same text); its pattern **[NF]** (the game draws a scale in thousandths, 1/6000, est.) | **[NF]** (game est. 0.6 kg) | https://zabgu.ru/files/html_document/pdf_files/fixed/Zadaniya_VUC/Razvedyvatelnaya_podgotovka_Tema_6._Zanyatie1.pdf |
+
+Makers of the Dienstglas (dealer listings): ddx (Voigtlander), bmj and bek (Hensoldt), Leitz, Swarovski (cag), Emil Busch; late-war glasses in dark yellow paint. Soviet 6x30s of 1940 to 1941 from GOMZ.
+
+What the game does with it: raised to the eyes (the aim key), the view has the real 6x magnification (as a scope's, `player.js`) and the figure-eight of the two eyepieces spans the 8.5 deg true field across; the reticle is drawn in the middle of the view, where both eyes see it. Fire spots, as in Heroes & Generals: the enemy nearest the middle of the view (within 1.5 deg), whose head or chest can be seen past walls and thick bushes, is marked for the whole side for 10 seconds (`src/game/spotting.js`). The spotting rules are game data, not history.
+
+### 10.2 Pocket pistols
+
+| Pistol | Cartridge | Length, barrel | Magazine | Mass (empty) | Muzzle velocity | Sources |
+|---|---|---|---|---|---|---|
+| Colt Model 1903 Pocket Hammerless | .32 ACP | 6.75 in (171 mm); 3.75 in (95 mm) from the Type II on (the first had 4 in) | 8 | 24 oz (680 g) | **[NF]** from this pistol; the load's 905 ft/s (276 m/s) from a test barrel (game est. 270 m/s) | https://wikipedia.com/wiki/Colt_M1903_.32_ACP ; https://www.americanrifleman.org/articles/2019/3/26/tested-colt-1903-parkerized-pistol ; https://www.alloutdoor.com/?p=362908 |
+| Beretta M1934 | 9 mm Corto (.380 ACP) | 152 mm (150 or 155 in other sources **[C]**); 94 mm (88 or 86 **[C]**) | 7 | 660 g (617 g in the one German-service source **[C]**) | 229 m/s (Wikipedia), 251 and 290 m/s elsewhere **[C]** (game: 260 m/s) | https://en.wikipedia.org/wiki/Beretta_M1934 ; https://ww2db.com/weapon.php?q=S14 ; https://www.armedconflicts.com/-t11962 |
+| Korovin TK (Tula Korovin) | 6.35 mm (.25 ACP) | 127 mm; 67.5 mm | 8 | 423 g (485 g loaded) | 228 m/s | https://en.wikipedia.org/wiki/Korovin_pistol ; https://americanrifleman.org/content/rifleman-q-a-soviet-tula-korovin-pistol ; https://forgottenweapons.com/1926-tula-korovin-the-first-soviet-semiauto-pistol |
+
+German service: the M1934 as "9 mm P 671(i)" (armedconflicts.com, above; **[U]**: the only source for the designation). The Colt 1903 was issued to US general officers and, Parkerized and marked "U.S. Property", in the war (American Rifleman, above). The Korovin was made at Tula from 1926 to 1935.
+
+**Ammunition.**
+
+| Round | Bullet | Diameter | Velocity (test barrel) | Ballistic coefficient (G1) | Sources |
+|---|---|---|---|---|---|
+| .32 ACP ball | 71 gr (4.60 g, conv.) FMJ round nose | .3125 in (7.94 mm) | 905 ft/s (276 m/s, conv.) | 0.134 (Magtech's listing **[U]**) | https://powdervalley.com/product/magtech-ammo-32-auto-71-grain-fmj-50-rounds ; https://www.chuckhawks.com/32ACP.htm |
+| .380 ACP / 9 mm Corto ball | 95 gr (6.16 g, conv.) FMJ | .355 in (9.02 mm) | 920 ft/s (280 m/s, conv.) | **[NF]** (game est. 0.09) | https://admin.grafs.com/catalog/product/productId/81824 |
+| .25 ACP ball | 50 gr (3.24 g, conv.) FMJ | .251 in (6.38 mm) | 755 to 770 ft/s for most makers (about 230 m/s, conv.); 654 ft/s measured from a 2.1 in Baby Browning | 0.090 (Magtech's listing **[U]**) | https://en.wikipedia.org/wiki/.25_ACP ; https://bullets-brass.com/Product/Details/1181310 ; https://www.ar15.com/forums/Handguns/Fiocchi-25-ACP-50gr-FMJ-in-Clear-Ballistics-Gel-/20-192627/ |
+
+Powder charges, reload times, recoil and accuracy figures for the three pistols are game estimates, scaled from the service pistols' data.

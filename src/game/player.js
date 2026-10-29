@@ -255,9 +255,24 @@ export class PlayerController {
       if (input.hit('fire') && !s.throwing && startThrow(s, w)) this.backAfterThrow = true;
       if (s.throwing && !input.is('fire')) releaseThrow(s, lookAim);
       w.setTrigger(false);
+    } else if (w && w.def.type === 'binoculars') {
+      // Binoculars: raised to the eyes, fire spots the enemy in the middle of
+      // the view for the whole side (spotting.js).
+      w.setTrigger(false);
+      if (input.hit('fire')) this._spot();
     } else if (w) {
       w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
+  }
+
+  // Spot through the binoculars, if they are up at the eyes: the line under
+  // the sights names him.
+  _spot() {
+    const g = this.game;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const e = g.spotting?.trySpot(this.soldier, { eye: this.eye, dir, raised: this.viewmodel.aim });
+    if (e) g.hud?.killConfirm(e.name, { verb: 'Spotted', quiet: true });
+    return e;
   }
 
   _requestSwitch(i) {

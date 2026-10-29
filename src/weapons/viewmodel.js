@@ -61,6 +61,9 @@ const POSES = {
   pistol: { hip: [0.16, -0.1, -0.42], dir: [0, 0.05, 0.06], sprint: [0.12, -0.26, -0.22] },
   launcher: { hip: [0.17, -0.13, 0.04], dir: [0, 0.05, 0.06], sprint: [0.12, -0.2, 0.0] },
   grenade: { hip: [0.16, -0.2, -0.3], dir: [0.006, 0.008, 0.06], sprint: [0.12, -0.26, -0.22] },
+  // Binoculars (hip = their eyecups): in both hands low in front, tipped down
+  // so their top and eyecups face the eye; aimed, up at the eyes.
+  binoculars: { hip: [0.005, -0.098, -0.3], dir: [0, -0.3, 0.02], sprint: [0.06, -0.3, -0.2] },
 };
 // Throwing a grenade, in camera space: [x, y, z (m), pitch, yaw, roll (rad)].
 const THROW = {
@@ -112,6 +115,8 @@ function poseKind(def) {
       return 'launcher';
     case 'grenade':
       return 'grenade';
+    case 'binoculars':
+      return 'binoculars';
     default:
       return 'rifle';
   }

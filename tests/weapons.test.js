@@ -24,7 +24,7 @@ test('every weapon definition is complete and sane', () => {
   for (const [id, d] of Object.entries(WEAPONS)) {
     assert.ok(d.name && d.faction && d.type && d.slot, `${id} basics`);
     assert.ok(d.mass > 0 && d.mass < 25, `${id} mass`);
-    if (d.type === 'grenade') continue;
+    if (d.type === 'grenade' || d.type === 'binoculars') continue; // (nothing fired: tests/binoculars.test.js)
     assert.ok(d.mv > 20 && d.mv < 1300, `${id} muzzle velocity`);
     assert.ok(d.capacity >= 1 && d.capacity <= 100, `${id} capacity`);
     assert.ok(d.sight.ranges.includes(d.sight.zero), `${id} default zero must be a sight setting`);
