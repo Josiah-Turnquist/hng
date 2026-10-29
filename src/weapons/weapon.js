@@ -23,6 +23,9 @@
 // that it sits in a loadout slot like the rest.
 import { getAmmo } from './ammo.js';
 
+// How much faster than the original game's reload times every reload runs.
+export const RELOAD_SPEED = 1.5;
+
 export class Weapon {
   constructor(def) {
     this.def = def;
@@ -255,8 +258,10 @@ export class Weapon {
         else if (releaseAfter) steps.push({ name: 'boltRelease', t: chargeT, end: () => this._charge() });
       }
     }
-    // (Fast Reload: game/badges.js.)
-    if (this.reloadMul) for (const st of steps) st.t *= this.reloadMul;
+    // Every reload runs RELOAD_SPEED times as fast as the original game's
+    // timings (ours), and faster still with Fast Reload (game/badges.js).
+    const k = (this.reloadMul ?? 1) / RELOAD_SPEED;
+    for (const st of steps) st.t *= k;
     this.sequence = { kind: 'reload', steps };
     this.stepIndex = 0;
     this.stepT = 0;

@@ -668,7 +668,7 @@ export function showFrontEnd(app) {
           const open = !u || upgradeOpen(s, gun, id);
           const fitted = (picks[slot] || null) === id;
           const t = el('button', `ctile${id === chosen ? ' sel' : ''}${fitted ? ' fitted' : ''}${open ? '' : ' locked'}`);
-          const p = u ? pic(id, 160, 110) : slot === 'sight' || slot === 'ammo' ? '' : gunPic;
+          const p = u ? pic(id, 160, 110) : slot === 'ammo' ? pic(entry?.ammo, 160, 110) : gunPic;
           t.innerHTML = `<span class="ct-pic">${p ? `<img alt="" src="${p}">` : ''}</span><b></b><span class="ct-sub"></span><span class="ct-tag"></span>`;
           t.querySelector('b').textContent = u ? short(u) : standard(slot);
           t.querySelector('.ct-sub').textContent = u ? sub(u) : 'As issued';
@@ -691,7 +691,7 @@ export function showFrontEnd(app) {
         const id = u?.id || null;
         const now = upgradedDef(gun, picks);
         const next = upgradedDef(gun, { ...picks, [slot]: id || undefined });
-        const p = u ? pic(id, 320, 200) : gunPic;
+        const p = u ? pic(id, 320, 200) : slot === 'ammo' ? pic(entry?.ammo, 320, 200) || gunPic : gunPic;
         box.innerHTML = `<div class="cd-pic">${p ? `<img alt="" src="${p}">` : ''}</div><h3></h3><div class="cd-sub"></div><p class="cd-line"></p><div class="cd-bars"></div><button class="cd-act"></button>`;
         box.querySelector('h3').textContent = u ? short(u) : standard(slot);
         box.querySelector('.cd-sub').textContent = u ? [SLOT_NAMES[slot], sub(u)].filter(Boolean).join(' · ') : `${SLOT_NAMES[slot]} · as issued`;
