@@ -11,7 +11,7 @@ canvas.mk-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index
 .ribbon { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 
 /* Heroes screen, laid out as the original's */
-.mk-heroes { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px 300px 236px; grid-template-rows: minmax(0, 1fr); gap: 12px; height: 100%; box-sizing: border-box; }
+.mk-heroes { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px 250px; grid-template-rows: minmax(0, 1fr); gap: 12px; height: 100%; box-sizing: border-box; }
 .mk-col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .mk-col > * { flex: none; }
 .mk-col > .roster-list { flex: 1; overflow: auto; }
@@ -45,7 +45,7 @@ canvas.mk-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index
 .mk-slot img { height: 40px; justify-self: center; max-width: 100%; }
 .mk-slot b { font-family: var(--cond); font-size: 14px; font-weight: 600; }
 .mk-slot .pt { position: absolute; right: 8px; top: 6px; font-family: var(--cond); font-size: 12px; color: var(--amber); }
-.mk-slot.empty { place-items: center; color: var(--ink-dim); font-size: 12px; min-height: 40px; }
+.mk-slot.empty { place-items: start; color: var(--ink-dim); font-size: 12px; min-height: 0; padding: 7px 10px; border-style: dashed; background: transparent; font-family: var(--cond); letter-spacing: 0.1em; text-transform: uppercase; }
 .mk-slot .mods { position: absolute; right: 8px; bottom: 6px; display: flex; gap: 3px; }
 .mk-slot .mods i { width: 7px; height: 7px; background: rgba(255, 255, 255, 0.15); }
 .mk-slot .mods i.on { background: #9fc27a; }
@@ -63,6 +63,10 @@ canvas.mk-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index
 .mk-card.locked img.gun, .mk-card.locked b { opacity: 0.5; }
 .mk-card .eye { position: absolute; right: 8px; top: 6px; font-size: 13px; color: var(--ink-dim); }
 .mk-next { display: flex; flex-direction: column; gap: 8px; }
+.mk-nx { display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: center; }
+.mk-nx b { display: block; font-family: var(--cond); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-nx i { display: block; height: 3px; margin-top: 4px; background: rgba(255, 255, 255, 0.1); }
+.mk-nx em { display: block; height: 100%; background: #6f97c8; }
 .mk-next h3 { margin: 0; }
 .mk-ov { display: flex; align-items: center; gap: 8px; padding: 6px 8px; white-space: nowrap; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); font-family: var(--cond); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
 .mk-ov .ribbon { width: 34px; }
@@ -89,6 +93,15 @@ canvas.mk-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index
 .mk-win header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .mk-win header h2 { margin: 0; font-family: var(--cond); font-size: 30px; letter-spacing: 0.04em; text-transform: uppercase; }
 .mk-win header .x { margin-left: auto; width: 34px; height: 34px; display: grid; place-items: center; background: #8a2a22; border: 0; font-size: 16px; }
+.mk-sub { margin-left: 14px; font-size: 12px; color: var(--ink-dim); }
+.mk-pick { width: min(820px, 92%); }
+.mk-pb { padding: 6px 16px 16px; overflow: auto; }
+.mk-ph { margin: 12px 0 8px; font-family: var(--cond); font-size: 14px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--amber); }
+.mk-pg { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.mk-pg .mk-card { padding: 8px 10px 10px; }
+.mk-pg .mk-card img.gun { height: 70px; }
+.mk-cust { display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(226, 172, 70, 0.12); border: 1px solid rgba(226, 172, 70, 0.4); color: var(--amber); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.mk-more { display: flex; justify-content: space-between; width: 100%; margin-top: 14px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.14); color: var(--ink-dim); font-size: 13px; }
 .mk-win footer { display: flex; justify-content: center; padding: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .mk-win footer button { padding: 8px 40px; font-family: var(--cond); font-size: 18px; letter-spacing: 0.12em; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); }
 .mk-ovb { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; padding: 16px; overflow: auto; }
@@ -242,7 +255,7 @@ function heroes() {
   const labels = ['Primary', 'Sidearm', 'Equipment', 'Equipment', 'Equipment', 'Close combat', 'Binoculars'];
   s.loadout.forEach((id, i) => {
     if (!id) {
-      slots.appendChild(el('button', 'mk-slot empty', `<span class="lab">${labels[i]}</span>Empty`));
+      slots.appendChild(el('button', 'mk-slot empty', `<span>+ ${labels[i]}</span>`));
       return;
     }
     const w = WEAPONS[id];
@@ -252,29 +265,10 @@ function heroes() {
   });
   mid.appendChild(slots);
   g.appendChild(mid);
-  // What he could carry in the chosen slot: owned, for sale, or locked by a ribbon.
-  const gear = el('div', 'mk-col');
-  gear.innerHTML = `<div class="mk-head"><div class="mk-icons"><button class="on">${gunIcon}</button><button>${pistolIcon}</button><button>${nadeIcon}</button><button>${knifeIcon}</button><button>${binoIcon}</button></div><span style="margin-left:auto;font-size:11px;color:var(--ink-dim)">Primary</span></div>`;
-  const gl = el('div', 'mk-gear');
-  const fams = [];
-  for (const w of carriable(s, 'primary')) {
-    const b = baseOf(w);
-    if (!fams.includes(b) && b.faction === s.faction) fams.push(b);
-  }
-  for (const w of fams) {
-    const open = unlocked(s, w.id), have = owns(s, w.id), r = requirement(w.id, s.cls, s.faction);
-    const c = el('button', `mk-card${w.id === s.loadout[0] ? ' on' : ''}${open ? '' : ' locked'}`);
-    c.innerHTML = `<small>${w.type === 'semi' ? 'Semi-automatic rifle' : w.type === 'rifle' ? 'Bolt-action rifle' : w.type === 'smg' ? 'Submachine gun' : w.type === 'lmg' ? 'Light machine gun' : w.type === 'carbine' ? 'Carbine' : w.type === 'assault' ? 'Assault rifle' : 'Weapon'}</small><img class="gun" alt="" src="${pic(w.id, 240, 72)}"><b>${w.name}</b>`;
-    if (!open) c.innerHTML += `<span class="lock">${ribbonSvg(r.ribbon, r.level)}<em>Level ${r.level}</em></span>`;
-    else c.innerHTML += `<span class="tag">${have ? '<span class="own">✓ Owned</span>' : `<span class="price">${ICONS.coin}${fmt(priceOf(w.id))}</span>`}<span style="color:var(--ink-dim);font-size:11px">${pointsOf(w.id)} pt</span></span>`;
-    gl.appendChild(c);
-  }
-  gear.appendChild(gl);
-  g.appendChild(gear);
   // Next unlocks and the battle.
   const right = el('div', 'mk-col mk-right');
   const next = el('div', 'fe-panel mk-next');
-  next.innerHTML = `<h3>Next unlocks</h3><button class="mk-ov">${ribbonSvg('infantryAssault', lv('infantryAssault').level)}Ribbon overview</button>`;
+  next.innerHTML = '<h3>Next up</h3>';
   const all = [];
   for (const k of keysFor()) {
     const L = lv(k);
@@ -282,11 +276,10 @@ function heroes() {
   }
   all.sort((a, b) => a.need - b.need);
   for (const o of all.slice(0, 3)) {
-    const row = el('div', 'mk-un');
     const done = ((s.ribbons[o.k] || 0) - o.from) / (o.to - o.from);
-    row.innerHTML = `${ribbonSvg(o.k, o.level, { grey: false })}<span class="pic">${thing(o, 120, 46)}</span><span class="txt"><b>${o.name}</b><span>${fmt(o.need)} pts</span></span><span class="bar"><i style="width:${Math.max(4, done * 100).toFixed(0)}%"></i></span>`;
-    next.appendChild(row);
+    next.appendChild(el('div', 'mk-nx', `${ribbonSvg(o.k, o.level, { grey: false })}<span><b>${o.name}</b><i><em style="width:${Math.max(4, done * 100).toFixed(0)}%"></em></i></span>`));
   }
+  next.appendChild(el('button', 'mk-ov', `${ribbonSvg('infantryAssault', lv('infantryAssault').level)}Ribbons`));
   right.appendChild(next);
   const bat = el('div', 'mk-battle');
   bat.innerHTML = `<div class="rm"><span>Assault</span><b>Saint-Aubin-sur-Lenne</b><small>Attacking · 24 per side · 20 min</small></div><button class="mk-go">To battle!</button>`;
@@ -307,6 +300,33 @@ const binoIcon = ic('M4 9h6v9H4zM14 9h6v9h-6zM10 11h4v3h-4zM5 5h4v4H5zM15 5h4v4h
 const carIcon = ic('M3 14l2-5h10l3 4h3v4H3zM6 18a2 2 0 1 0 0 .1zM17 18a2 2 0 1 0 0 .1z');
 const badgeIcon = ic('M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z');
 const shirtIcon = ic('M8 3l4 2 4-2 5 4-3 3-2-1v12H8V9L6 10 3 7z');
+
+function pick() {
+  heroes();
+  const d = el('div', 'mk-dim');
+  d.innerHTML = `<div class="mk-win mk-pick"><header><h2>Primary weapon</h2><span class="mk-sub">${loadoutPoints(s.loadout)} of ${CLASS_POINTS[s.cls]} points used</span><button class="x">✕</button></header><div class="mk-pb"></div><footer><button>OK</button></footer></div>`;
+  const body = d.querySelector('.mk-pb');
+  const fams = [];
+  for (const w of carriable(s, 'primary')) {
+    const b = baseOf(w);
+    if (!fams.includes(b) && b.faction === s.faction) fams.push(b);
+  }
+  const yours = fams.filter((w) => unlocked(s, w.id) && owns(s, w.id));
+  const sale = fams.filter((w) => unlocked(s, w.id) && !owns(s, w.id));
+  const locked = fams.filter((w) => !unlocked(s, w.id));
+  const card = (w, tag) => el('button', `mk-card${w.id === s.loadout[0] ? ' on' : ''}`, `<img class="gun" alt="" src="${pic(w.id, 300, 90)}"><b>${w.name}</b><small>${pointsOf(w.id)} points</small>${tag}`);
+  const sec = (title, list, tag) => {
+    if (!list.length) return;
+    body.appendChild(el('h4', 'mk-ph', title));
+    const g = el('div', 'mk-pg');
+    for (const w of list) g.appendChild(card(w, tag(w)));
+    body.appendChild(g);
+  };
+  sec('Yours', yours, (w) => (w.id === s.loadout[0] ? `<span class="tag"><span class="own">✓ Carrying</span><span class="mk-cust">${ICONS.wrench} Customize</span></span>` : '<span class="tag"><span class="own">Owned</span></span>'));
+  sec('For sale', sale, (w) => `<span class="tag"><span class="price">${ICONS.coin}${fmt(priceOf(w.id))}</span></span>`);
+  body.appendChild(el('button', 'mk-more', `<span>${locked.length} more open as his ribbons rise</span><span>Show ▸</span>`));
+  root.appendChild(d);
+}
 
 function overview() {
   heroes();
@@ -375,7 +395,7 @@ function results() {
   root.appendChild(d);
 }
 
-({ heroes, overview, track, results })[screen]();
+({ heroes, pick, overview, track, results })[screen]();
 window.done = true;
 </script>
 </body>
