@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Upgrade parts</title>
+<style>
+body{margin:0;padding:12px;background:#0b0c0a;color:#cfcabb;font:11px sans-serif}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,var(--w));gap:8px}
+figure{margin:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)}
+figure img{display:block;width:var(--w);height:var(--h)}
+figcaption{padding:2px 4px 4px;line-height:1.25;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+figcaption b{color:#e6c46a;font-weight:normal}
+</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="grid"></div>
+<script type="module">
+// Contact sheet of the parts the weapon upgrades fit: one picture of every
+// distinct part, as SoldierPreview.partPicture draws them for the
+// customization screen (on its backdrop), labeled with a gun and the upgrade.
+// Usage: debug/parts.html             every distinct part
+//   gun=kar98k                         one gun's upgrades only
+//   model=barrel                       one kind of part (barrel, bolt, spring,
+//                                      trigger, irons, matchSights, scope, cartridge)
+//   scale=2                            pictures twice the size
+import * as THREE from 'three';
+import { SoldierPreview } from '../src/ui/soldierPreview.js';
+import { GUN_UPGRADES, upgradesOf } from '../src/weapons/upgrades.js';
+import { partOf, partKey } from '../src/weapons/models/upgradeParts.js';
+
+const params = new URLSearchParams(location.search);
+const scale = Number(params.get('scale') || 1);
+const W = 160 * scale, H = 110 * scale;
+document.body.style.setProperty('--w', `${W}px`);
+document.body.style.setProperty('--h', `${H}px`);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(4, 4);
+// As on the menus (SoldierPreview.start).
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const pv = new SoldierPreview(renderer);
+const seen = new Set();
+const grid = document.getElementById('grid');
+const guns = params.get('gun') ? [params.get('gun')] : Object.keys(GUN_UPGRADES);
+const order = ['barrel', 'bolt', 'spring', 'trigger', 'irons', 'matchSights', 'scope', 'cartridge'];
+const items = [];
+for (const gun of guns) {
+  for (const u of upgradesOf(gun)) {
+    const part = partOf(gun, u.id);
+    if (params.get('model') && part.model !== params.get('model')) continue;
+    const key = partKey(part);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ gun, u, part });
+  }
+}
+items.sort((a, b) => order.indexOf(a.part.model) - order.indexOf(b.part.model));
+// One picture per task, after the page has loaded.
+let i = 0;
+const t0 = performance.now();
+function next() {
+  if (i >= items.length) {
+    console.log(`${items.length} parts in ${Math.round(performance.now() - t0)} ms`);
+    window.__done = true;
+    return;
+  }
+  const { gun, u, part } = items[i++];
+  const fig = document.createElement('figure');
+  const img = new Image();
+  try {
+    img.src = pv.partPicture(gun, u.id, W, H);
+  } catch (e) {
+    console.error(gun, u.id, e.stack || e.message);
+  }
+  const cap = document.createElement('figcaption');
+  cap.innerHTML = `<b>${part.model}</b> ${u.name}<br>${gun}`;
+  fig.append(img, cap);
+  grid.append(fig);
+  setTimeout(next, 0);
+}
+setTimeout(next, 0);
+</script>
+</body>
+</html>
