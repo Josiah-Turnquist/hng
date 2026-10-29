@@ -1193,3 +1193,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-badgegrid .badge-card:first-child { grid-template-columns: minmax(0, 1fr); }
 .hx-badgegrid .badge-card:first-child > * { grid-column: 1; }
 .hx-opens .badge-art { width: 48px; height: auto; display: block; margin: 0 auto; }
+/* The edge darkening over the soldier's backdrop: lighter backdrops keep more of it. */
+.fe.stage[data-backdrop="mist"], .fe.stage[data-backdrop="dusk"], .fe.stage[data-backdrop="smoke"], .fe.stage[data-backdrop="night"] { background: radial-gradient(ellipse 70% 80% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.2) 65%, rgba(8, 9, 7, 0.6) 100%); }
+.fe.stage[data-backdrop="pale"] { background: radial-gradient(ellipse 75% 85% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.12) 70%, rgba(8, 9, 7, 0.4) 100%); }

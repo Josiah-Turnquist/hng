@@ -73,6 +73,112 @@ function modelId(id) {
   return MODELS[d.model] ? d.model : MODELS[id] ? id : null;
 }
 
+// Backdrops for the soldier: sky colors top to horizon to bottom, the fog and
+// the ground's edge, and layers of shapes along the horizon, from far (pale,
+// very blurred) to near (darker, less blurred). shapes: what stands in the haze.
+const BACKDROPS = {
+  dark: { sky: ['#0d0e0c', '#0d0e0c', '#0d0e0c'], fog: '#0d0e0c', ground: '#000000', shapes: null },
+  smoke: { sky: ['#15161a', '#3a3a38', '#151512'], fog: '#2a2a28', ground: '#141412', shapes: ['trees', 'village', 'trees'], tone: ['#4a4a46', '#2e2e2b', '#1e1e1c'], blur: [26, 16, 9], vignette: 'medium' },
+  mist: { sky: ['#5c6266', '#a3a7a6', '#4a4c48'], fog: '#8d918f', ground: '#5d5f5a', shapes: ['trees', 'village', 'soldiers'], tone: ['#8a8e8d', '#6c706e', '#4c4f4c'], blur: [24, 14, 8], vignette: 'light', env: 0.42 },
+  dusk: { sky: ['#2a2018', '#b8814a', '#2a2218'], fog: '#7a5a3a', ground: '#2e241a', shapes: ['ruins', 'trees', 'tank'], tone: ['#8e6440', '#5a3e26', '#2c2016'], blur: [28, 16, 9], vignette: 'medium', env: 0.36 },
+  pale: { sky: ['#9a9a92', '#d6d3c8', '#8e8b80'], fog: '#c4c1b6', ground: '#8f8b7f', shapes: ['trees', 'village'], tone: ['#bdbaaf', '#a3a094'], blur: [30, 18], vignette: 'none', env: 0.5 },
+  night: { sky: ['#06080e', '#1c2433', '#07090c'], fog: '#151b26', ground: '#07080b', shapes: ['trees', 'village', 'trees'], tone: ['#2a3343', '#1a2130', '#10141c'], blur: [24, 14, 8], vignette: 'medium' },
+};
+export const BACKDROP_NAMES = Object.keys(BACKDROPS);
+
+// Paint a backdrop's sky and its shapes on a canvas (seeded, so the same each time).
+function paintBackdrop(b) {
+  const W = 1600,
+    H = 900;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, b.sky[0]);
+  g.addColorStop(0.58, b.sky[1]);
+  g.addColorStop(1, b.sky[2]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  let x0 = 7;
+  const rnd = () => ((x0 = (x0 * 16807) % 2147483647) - 1) / 2147483646;
+  const horizon = H * 0.6;
+  b.shapes.forEach((kind, layer) => {
+    ctx.save();
+    ctx.filter = `blur(${b.blur[layer]}px)`;
+    ctx.fillStyle = b.tone[layer];
+    const base = horizon + layer * 24;
+    const scale = 1 + layer * 0.45;
+    if (kind === 'trees')
+      for (let x = -60; x < W + 60; x += 30 + rnd() * 50) {
+        const h = (60 + rnd() * 110) * scale;
+        for (let k = 0; k < 3; k++) {
+          ctx.beginPath();
+          ctx.ellipse(x + (rnd() - 0.5) * 30, base - h * (0.45 + k * 0.2), h * 0.28, h * 0.3, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillRect(x - 4, base - h * 0.4, 8, h * 0.4);
+      }
+    if (kind === 'village' || kind === 'ruins')
+      for (let x = 40 + rnd() * 80; x < W; x += 120 + rnd() * 160) {
+        const w = (70 + rnd() * 90) * scale,
+          h = (50 + rnd() * 70) * scale;
+        ctx.beginPath();
+        if (kind === 'ruins') {
+          // Broken walls: jagged tops.
+          ctx.moveTo(x, base);
+          for (let k = 0; k <= 6; k++) ctx.lineTo(x + (w * k) / 6, base - h * (0.4 + rnd() * 0.6));
+          ctx.lineTo(x + w, base);
+        } else {
+          ctx.moveTo(x, base);
+          ctx.lineTo(x, base - h);
+          ctx.lineTo(x + w / 2, base - h - h * 0.55);
+          ctx.lineTo(x + w, base - h);
+          ctx.lineTo(x + w, base);
+        }
+        ctx.fill();
+        if (kind === 'village' && rnd() < 0.18) {
+          // A church spire.
+          ctx.beginPath();
+          ctx.moveTo(x + w * 0.4, base - h);
+          ctx.lineTo(x + w * 0.5, base - h - 190 * scale);
+          ctx.lineTo(x + w * 0.6, base - h);
+          ctx.fill();
+        }
+      }
+    if (kind === 'soldiers')
+      for (let k = 0; k < 9; k++) {
+        const x = rnd() * W,
+          h = (70 + rnd() * 30) * scale;
+        ctx.beginPath();
+        ctx.ellipse(x, base - h * 0.92, h * 0.07, h * 0.08, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(x - h * 0.1, base - h * 0.82, h * 0.2, h * 0.45);
+        ctx.fillRect(x - h * 0.08, base - h * 0.4, h * 0.07, h * 0.4);
+        ctx.fillRect(x + h * 0.01, base - h * 0.4, h * 0.07, h * 0.4);
+        ctx.fillRect(x + h * 0.08, base - h * 0.8, h * 0.4, h * 0.03); // his rifle
+      }
+    if (kind === 'tank')
+      for (const x of [W * 0.18, W * 0.8]) {
+        const s = 1.6 * scale;
+        ctx.fillRect(x - 80 * s, base - 34 * s, 160 * s, 34 * s);
+        ctx.fillRect(x - 40 * s, base - 60 * s, 80 * s, 28 * s);
+        ctx.fillRect(x + 30 * s, base - 50 * s, 90 * s, 8 * s);
+      }
+    ctx.restore();
+  });
+  // Haze over all of it, thickest along the horizon.
+  const h = ctx.createLinearGradient(0, horizon - 260, 0, horizon + 140);
+  h.addColorStop(0, 'rgba(0,0,0,0)');
+  h.addColorStop(0.6, `${b.fog}66`);
+  h.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = h;
+  ctx.fillRect(0, 0, W, H);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export class SoldierPreview {
   constructor(renderer) {
     this.renderer = renderer;
@@ -109,12 +215,15 @@ export class SoldierPreview {
     const tex = this.lib.get('dirt');
     const groundMat = new THREE.MeshStandardMaterial({ color: 0x8a8070, map: tex.map, normalMap: tex.normalMap, roughness: 1 });
     for (const t of [tex.map, tex.normalMap]) if (t) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    // (It fades out into the backdrop's ground color.)
+    this.groundFade = new THREE.Color(0x000000);
     groundMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uFade = { value: this.groundFade };
       sh.fragmentShader = sh.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n gl_FragColor.rgb *= 1.0 - smoothstep(1.2, 4.4, length(vGroundXZ));',
+        '#include <dithering_fragment>\n gl_FragColor.rgb = mix(gl_FragColor.rgb, uFade, smoothstep(1.2, 4.4, length(vGroundXZ)));',
       );
-      sh.fragmentShader = 'varying vec2 vGroundXZ;\n' + sh.fragmentShader;
+      sh.fragmentShader = 'uniform vec3 uFade;\nvarying vec2 vGroundXZ;\n' + sh.fragmentShader;
       sh.vertexShader = 'varying vec2 vGroundXZ;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGroundXZ = position.xz;');
     };
     const ground = new THREE.Mesh(g, groundMat);
@@ -130,6 +239,19 @@ export class SoldierPreview {
     this.cx = 0.5;
     this.pictures = new Map();
     this._state = { stance: 0, stanceBlend: 0, speed: 0, localVelX: 0, localVelZ: 0, sprinting: false, onGround: true, yaw: 0, aimPitch: -0.05, aimYawOffset: 0, aiming: false, lean: 0, recoil: 0, action: null, actionT: 0, alive: true, deathT: 0, seated: false };
+  }
+
+  // The backdrop behind him (BACKDROPS): a painted sky with blurred shapes
+  // in the haze, the ground fading into it.
+  setBackdrop(name = 'dark') {
+    const b = BACKDROPS[name] || BACKDROPS.dark;
+    if (this.backdrop === b) return;
+    this.backdrop = b;
+    this.scene.background?.dispose?.();
+    this.scene.background = b.shapes ? paintBackdrop(b) : new THREE.Color(b.sky[1]);
+    this.scene.fog.color.set(b.fog);
+    this.groundFade.set(b.ground);
+    this.scene.environmentIntensity = b.env ?? 0.28;
   }
 
   // Dress and arm the soldier (rebuilt only when something changed).
