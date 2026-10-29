@@ -768,7 +768,7 @@ export class Game {
     const a = cause?.attacker;
     if (a && a === this.player?.soldier && a.team !== s.team) {
       this.ribbonTally?.damage(cause.weapon, a, amount);
-      if (this._farShot(a, s, cause)) this.ribbonTally?.far('dmg', Math.min(amount, 100));
+      if (this._farShot?.(a, s, cause)) this.ribbonTally?.far('dmg', Math.min(amount, 100));
       // (Should someone else finish him, the player has an assist.)
       s.hurtByPlayer = { t: this.time, weapon: cause.weapon };
     }
