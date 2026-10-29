@@ -8,8 +8,8 @@
 //   Progression: the player's level, each soldier's rank and record, the ranks.
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
-import { FACTIONS, WEAPONS, baseOf, weaponFamilies, weaponsFor, scopeChoices } from '../weapons/defs.js';
-import { RIBBONS, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, tankRequirement, tankUnlocked } from '../game/ribbons.js';
+import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices } from '../weapons/defs.js';
+import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
@@ -248,8 +248,9 @@ export function showFrontEnd(app) {
           ['equipment', 'Equipment'],
         ];
         slots.forEach(([slot, label], i) => {
-          // One card for each rifle; its scopes are chosen under it.
-          const options = weaponFamilies(s.faction, s.cls, slot);
+          // One card for each rifle; its scopes are chosen under it. Another
+          // army's guns show once he has begun to earn them (or has).
+          const options = families(s, slot);
           const cur = WEAPONS[s.loadout[i]];
           const pickWeapon = (id) => {
             s.loadout[i] = id;
@@ -268,7 +269,7 @@ export function showFrontEnd(app) {
               // Another rifle: plain if this soldier may carry it plain, else its first scope.
               const id = w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0].id;
               const open = unlocked(s, id);
-              const c = weaponCard(w, w === baseOf(cur), open ? null : requirement(id, s.cls));
+              const c = weaponCard(w, w === baseOf(cur), open ? null : requirement(id, s.cls, s.faction), w.faction !== s.faction);
               if (open) c.addEventListener('click', () => pickWeapon(id));
               pick.appendChild(c);
             }
@@ -338,6 +339,26 @@ export function showFrontEnd(app) {
             (lv.next === null ? `${fmt(pts)} points: the highest level` : `${fmt(pts)} / ${fmt(lv.next)} points to level ${lv.level + 1}`) + (ahead.length ? ` · Next: ${ahead.map((o) => `${o.name} (${o.level})`).join(', ')}` : '');
           body.appendChild(box);
         }
+        // Specialist ribbons: each gun he has used, its own.
+        const specs = Object.keys(s.ribbons || {}).filter((k) => k.startsWith('spec:'));
+        if (specs.length) {
+          body.appendChild(el('div', 'slot-label', 'Specialist ribbons<span>each gun its own</span>'));
+          specs.sort((a, b) => s.ribbons[b] - s.ribbons[a]);
+          for (const k of specs) {
+            const info = ribbonInfo(k);
+            const lv = ribbonLevel(s.ribbons[k]);
+            const foreign = WEAPONS[info.gun].faction !== s.faction;
+            const box = el('div', 'rib-row');
+            box.innerHTML = '<div class="rib-head"><b></b><span class="rib-lv"></span></div><div class="rib-bar"><i></i></div><div class="rib-next"></div>';
+            box.querySelector('b').textContent = info.name;
+            box.querySelector('.rib-lv').textContent = `Level ${lv.level} of 12`;
+            box.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
+            const pts = Math.round(s.ribbons[k]);
+            box.querySelector('.rib-next').textContent = (lv.next === null ? `${fmt(pts)} points: the highest level` : `${fmt(pts)} / ${fmt(lv.next)} points to level ${lv.level + 1}`) + (foreign ? (lv.level >= 9 ? ' · He may carry it' : ' · At level 9 he may carry it') : '');
+            body.appendChild(box);
+          }
+        }
+        body.appendChild(el('div', 'lo-note', 'Pick up another army\'s gun in battle and use it to earn its Specialist ribbon: at level 9 he may take it into battle.'));
         body.appendChild(el('div', 'lo-note', 'As in the original game, a soldier earns each ribbon by what he does in battle (shots, hits, kills, headshots, vehicles knocked out), and his army\'s guns and tanks open at set ribbon levels. Rank still rises with experience.'));
       } else {
         const n = variantCount(s.faction, s.cls);
@@ -357,12 +378,29 @@ export function showFrontEnd(app) {
       }
     }
 
-    // A weapon to choose; locked: what opens it, and how far he is.
-    function weaponCard(w, on, lock = null) {
+    // The rifles (and other guns) of a slot to choose from: his army's, then
+    // another army's he has begun to earn or has earned.
+    function families(s, slot) {
+      const out = [];
+      for (const w of carriable(s, slot)) {
+        const b = baseOf(w);
+        if (out.includes(b)) continue;
+        if (b.faction !== s.faction) {
+          const r = requirement(b.id, s.cls, s.faction);
+          if (!unlocked(s, w.id) && !(s.ribbons?.[r.ribbon] > 0)) continue;
+        }
+        out.push(b);
+      }
+      return out;
+    }
+
+    // A weapon to choose; locked: what opens it, and how far he is. Another
+    // army's carries its emblem.
+    function weaponCard(w, on, lock = null, foreign = false) {
       const c = el('button', `wpn-card${on ? ' on' : ''}${lock ? ' locked' : ''}`);
       const pic = preview?.gunPicture(w.id) || '';
-      c.innerHTML = `<span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><span class="wpn-text"><b></b><small></small></span>`;
-      c.querySelector('b').textContent = w.name;
+      c.innerHTML = `<span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><span class="wpn-text"><b>${foreign ? `<span class="wpn-army">${emblem(w.faction)}</span>` : ''}<span class="wn"></span></b><small></small></span>`;
+      c.querySelector('.wn').textContent = w.name;
       c.querySelector('small').textContent = lock ? lockLine(selected(roster), lock) : weaponStats(w);
       if (lock) c.disabled = true;
       return c;
@@ -377,7 +415,7 @@ export function showFrontEnd(app) {
       const out = [];
       for (const slot of ['primary', 'sidearm', 'equipment'])
         for (const w of weaponsFor(s.faction, s.cls, slot)) {
-          const r = requirement(w.id, s.cls);
+          const r = requirement(w.id, s.cls, s.faction);
           if (r?.ribbon === key && !w.base) out.push({ name: w.name, level: r.level });
         }
       if (s.cls === 'tanker')

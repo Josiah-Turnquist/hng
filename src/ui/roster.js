@@ -9,8 +9,8 @@
 //   r.selected                       // the soldier going into battle
 //   recruit(r, { faction, cls, name }); select(r, id); dismiss(r, id); saveRoster(r);
 //   awardBattle(r, id, { xp, won, kills, deaths, captures, ribbons })  // after a battle
-import { DEFAULT_LOADOUT, WEAPONS, weaponsFor } from '../weapons/defs.js';
-import { RIBBONS, ribbonLevel, unlocked, tankUnlocked } from '../game/ribbons.js';
+import { DEFAULT_LOADOUT, WEAPONS } from '../weapons/defs.js';
+import { ribbonInfo, ribbonLevel, unlocked, tankUnlocked, carriable } from '../game/ribbons.js';
 import { variantCount } from '../actors/soldierKit.js';
 import '../actors/soldierKitUS.js';
 import '../actors/soldierKitGE.js';
@@ -114,11 +114,11 @@ function check(s) {
     const kills = Math.max(0, Number(s.stats?.kills) || 0);
     s.ribbons = kills ? { [s.cls === 'tanker' ? 'armorAssault' : 'infantryAssault']: kills * 85 } : {};
   }
-  for (const k of Object.keys(s.ribbons)) if (!RIBBONS[k] || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
+  for (const k of Object.keys(s.ribbons)) if (!ribbonInfo(k) || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
   const slots = ['primary', 'sidearm', 'equipment'];
   s.loadout = slots.map((slot, i) => {
     const id = s.loadout?.[i];
-    return weaponsFor(s.faction, s.cls, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
+    return carriable(s, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
   });
   if (s.tank && !tankUnlocked(s, s.tank)) s.tank = null;
   s.xp = Math.max(0, Number(s.xp) || 0);
@@ -204,7 +204,7 @@ export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0,
   const ribbonUps = [];
   const gained = {};
   for (const [k, pts] of Object.entries(ribbons)) {
-    if (!RIBBONS[k] || !(pts > 0)) continue;
+    if (!ribbonInfo(k) || !(pts > 0)) continue;
     const from = ribbonLevel(s.ribbons[k]).level;
     s.ribbons[k] = Math.round((s.ribbons[k] || 0) + pts);
     gained[k] = Math.round(pts);
@@ -225,7 +225,7 @@ export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0,
 const TANK_NAMES = { US: { m5a1_stuart: 'M5A1 Stuart', m4a1_sherman: 'M4A1 Sherman' }, GE: { panzer4_h: 'Panzer IV Ausf. H', tiger1: 'Tiger I' }, SU: { t34_76: 'T-34/76', t34_85: 'T-34-85' } };
 function openedFor(s) {
   const out = [];
-  for (const slot of ['primary', 'sidearm', 'equipment']) for (const w of weaponsFor(s.faction, s.cls, slot)) if (unlocked(s, w.id)) out.push(WEAPONS[w.id].name);
+  for (const slot of ['primary', 'sidearm', 'equipment']) for (const w of carriable(s, slot)) if (unlocked(s, w.id)) out.push(WEAPONS[w.id].name);
   if (s.cls === 'tanker') for (const [id, name] of Object.entries(TANK_NAMES[s.faction] || {})) if (tankUnlocked(s, id)) out.push(name);
   return out;
 }

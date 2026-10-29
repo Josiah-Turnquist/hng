@@ -713,7 +713,11 @@ export class Game {
   // The player hurt: a red flash at the edges, the view jolts, and he grunts.
   onDamage(s, amount, cause) {
     const a = cause?.attacker;
-    if (a && a === this.player?.soldier && a.team !== s.team) this.ribbonTally?.damage(cause.weapon, a, amount);
+    if (a && a === this.player?.soldier && a.team !== s.team) {
+      this.ribbonTally?.damage(cause.weapon, a, amount);
+      // (Should someone else finish him, the player has an assist.)
+      s.hurtByPlayer = { t: this.time, weapon: cause.weapon };
+    }
     if (s !== this.player?.soldier) return;
     this.hud?.damage(amount);
     this.player.flinch?.(amount);
@@ -736,6 +740,15 @@ export class Game {
         }
       } else a.score -= 10;
     } else if (a === s) s.score -= 1;
+    // A kill assist: the player hurt him in the last 15 s and someone else (or
+    // his bleeding) finished him.
+    const me = this.player?.soldier;
+    const h = s.hurtByPlayer;
+    s.hurtByPlayer = null;
+    if (me && a !== me && s.team !== me.team && h && this.time - h.t < 15) {
+      this.ribbonTally?.assist(h.weapon, me);
+      this.hud?.killConfirm?.(s.name, { verb: 'Assist', quiet: true });
+    }
     this.hud?.killFeed(a, s, cause);
   }
 

@@ -9,7 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
-import { RIBBONS, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
+import { ribbonInfo, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
 import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
 import { FACTIONS } from '../weapons/defs.js';
@@ -309,7 +309,7 @@ export class App {
         const row = document.createElement('div');
         row.className = `br-ribbon${up ? ' up' : ''}`;
         row.innerHTML = '<span class="n"></span><span class="l"></span><span class="p"></span><div class="bar"><i></i></div>';
-        row.querySelector('.n').textContent = RIBBONS[k].name;
+        row.querySelector('.n').textContent = ribbonInfo(k).name;
         row.querySelector('.l').textContent = up ? `Level ${up.from} → ${up.to}` : `Level ${lv.level}`;
         row.querySelector('.p').textContent = `+${pts.toLocaleString('en-US')}`;
         row.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;

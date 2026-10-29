@@ -1,5 +1,7 @@
 // Ribbons: how a soldier earns his weapons and tanks, as in the original game's
-// final form. Each soldier has his own ribbons (Infantry Assault, SMG Assault,
+// final form. (Besides the ribbons below, every gun has a Specialist ribbon of
+// its own, earned with that gun alone: level 9 of it lets a soldier carry the
+// gun when it belongs to another army.) Each soldier has his own ribbons (Infantry Assault, SMG Assault,
 // LMG Assault and so on); what he does in battle earns ribbon points (a kill
 // with a bolt-action rifle 95, a headshot with it 213, each shot fired 7, each
 // point of damage to a man 0.57), each ribbon has twelve levels, and his army's
@@ -13,10 +15,11 @@
 //
 //   const t = new RibbonTally();          // during a battle, for the player
 //   t.shot(weapon, owner); t.damage(weapon, owner, hp); t.kill(weapon, owner, head);
-//   t.vehicleKill(weapon, owner); t.drive(meters); t.jump();
+//   t.assist(weapon, owner); t.vehicleKill(weapon, owner); t.drive(meters); t.jump();
 //   const earned = ribbonPoints(t, cls);  // { infantryAssault: 1234, ... }
-//   requirement(weaponId, cls)            // null (free) or { ribbon, level }
+//   requirement(weaponId, cls, faction)   // null (free), { ribbon, level }, or false (never)
 //   unlocked(soldier, weaponId)           // may he carry it?
+//   carriable(soldier, slot)              // the guns of a slot he may choose from, own army first
 import { WEAPONS } from '../weapons/defs.js';
 
 // Ribbon points needed for levels 0 to 12 (ribbonlevel).
@@ -82,38 +85,47 @@ const JUMP = 73.167 + 8.406 * 12;
 // What the player does in a battle, by weapon category.
 export class RibbonTally {
   constructor() {
-    this.by = {};
+    this.by = {}; // by weapon category
+    this.gun = {}; // by gun, for the Specialist ribbons
     this.driven = 0;
     this.jumps = 0;
   }
 
+  // The tallies a weapon's use goes to: its category's and its own gun's.
   _c(weapon, owner) {
+    const out = [];
     let c = categoryOf(weapon, owner);
     if (c === 12 && (WEAPONS[weapon?.id]?.type ?? weapon?.type) === 'atRifle') c = 'atRifle';
-    if (c === null) return null;
-    return (this.by[c] ||= { shot: 0, dmg: 0, kill: 0, head: 0, vkill: 0 });
+    const blank = () => ({ shot: 0, dmg: 0, kill: 0, head: 0, assist: 0, vkill: 0 });
+    if (c !== null) out.push((this.by[c] ||= blank()));
+    const id = specialistOf(weapon);
+    if (id) out.push((this.gun[id] ||= blank()));
+    return out;
   }
 
   shot(weapon, owner) {
-    const t = this._c(weapon, owner);
-    if (t) t.shot++;
+    for (const t of this._c(weapon, owner)) t.shot++;
   }
 
   damage(weapon, owner, hp) {
-    const t = this._c(weapon, owner);
-    if (t && hp > 0) t.dmg += Math.min(hp, 100);
+    if (hp > 0) for (const t of this._c(weapon, owner)) t.dmg += Math.min(hp, 100);
   }
 
   kill(weapon, owner, headshot = false) {
-    const t = this._c(weapon, owner);
-    if (!t) return;
-    t.kill++;
-    if (headshot) t.head++;
+    for (const t of this._c(weapon, owner)) {
+      t.kill++;
+      if (headshot) t.head++;
+    }
+  }
+
+  // He hurt a man someone else then killed: scores as a kill (the game data
+  // gives kill assists the kill's value).
+  assist(weapon, owner) {
+    for (const t of this._c(weapon, owner)) t.assist++;
   }
 
   vehicleKill(weapon, owner) {
-    const t = this._c(weapon, owner);
-    if (t) t.vkill++;
+    for (const t of this._c(weapon, owner)) t.vkill++;
   }
 
   drive(m) {
@@ -124,6 +136,8 @@ export class RibbonTally {
     this.jumps++;
   }
 }
+
+const score = (s, e) => s.shot * e.shot + s.dmg * e.dmg + (s.kill - s.head + (s.assist || 0)) * e.kill + s.head * (e.head || e.kill) + s.vkill * e.vkill;
 
 // Ribbon points a battle earned a soldier of this class. (A headshot kill
 // scores the headshot value in place of the plain kill, as one of them.)
@@ -138,14 +152,74 @@ export function ribbonPoints(tally, cls) {
       const sources = cat === '12' ? [tally.by[12], tally.by.atRifle] : [tally.by[cat]];
       for (const s of sources) {
         if (!s) continue;
-        pts += s.shot * e.shot + s.dmg * e.dmg + (s.kill - s.head) * e.kill + s.head * (e.head || e.kill) + s.vkill * e.vkill;
+        pts += score(s, e);
       }
     }
     if (pts > 0) out[key] = pts;
   }
+  for (const [id, t] of Object.entries(tally.gun)) {
+    const pts = score(t, SPECIALIST[id]);
+    if (pts > 0) out[`spec:${id}`] = pts;
+  }
   if (RIBBONS.tankDriver.classes.includes(cls) && tally.driven > 0) out.tankDriver = tally.driven * DRIVE_PER_M;
   if (RIBBONS.parachute.classes.includes(cls) && tally.jumps > 0) out.parachute = tally.jumps * JUMP;
   return out;
+}
+
+// Specialist ribbons: each gun's own, earned with that gun (statRequirement):
+// points per shot fired, point of damage to a man, kill (and kill assist),
+// headshot kill, vehicle knocked out. A scoped rifle's go to the rifle's.
+const SPECIALIST = {
+  m1_garand: P(9.844, 1.986, 929.162, 1580.168),
+  m1_carbine: P(2.355, 0.475, 222.269, 378.0),
+  m1a1_carbine: P(2.355, 0.475, 222.269, 378.0),
+  m2_carbine: P(3.2, 0.7, 115, 224),
+  m1903: P(19.905, 1.536, 254.825, 572.168),
+  thompson_m1a1: P(3.805, 0.876, 135.794, 288.264),
+  m3_greasegun: P(13.058, 3.007, 466.044, 989.319),
+  bar_m1918a2: P(5.593, 2.051, 258.992, 596.284),
+  m1919a6: P(3.2, 0.7, 115, 244),
+  johnson_lmg: P(3.2, 0.7, 115, 244),
+  m1911a1: P(29.214, 2.742, 478.296, 1028.336),
+  m1917_revolver: P(31.029, 2.913, 508.012, 1092.226),
+  kar98k: P(17.51, 1.351, 224.161, 503.318),
+  gewehr43: P(9.872, 1.991, 931.826, 1584.699),
+  mp40: P(3.805, 0.876, 135.805, 288.287),
+  mp34: P(11.308, 2.604, 403.596, 856.755),
+  stg44: P(3.2, 0.7, 115, 244),
+  mg42: P(3.497, 1.282, 161.922, 372.798),
+  mg34: P(4.954, 1.817, 229.405, 528.165),
+  fg42: P(2.127, 0.78, 98.474, 226.718),
+  p38: P(24.197, 2.271, 396.163, 851.749),
+  luger_p08: P(24.435, 2.294, 400.057, 860.121),
+  c96: P(28.156, 2.643, 460.978, 991.101),
+  mosin_9130: P(18.216, 1.405, 233.202, 523.617),
+  svt40: P(8.828, 1.781, 833.263, 1417.077),
+  avs36: P(3.445, 0.695, 115, 244),
+  ppsh41: P(3.223, 0.742, 115.037, 244.2),
+  pps43: P(3.223, 0.742, 115.037, 244.2),
+  ppd40: P(10.042, 2.313, 358.425, 760.865),
+  dp28: P(4.313, 1.582, 199.727, 459.836),
+  tt33: P(25.719, 2.414, 421.082, 905.325),
+  nagant_m1895: P(28.961, 2.718, 474.145, 1019.411),
+  ptrd41: P(20.531, 1.584, 262.844, 590.175, 706.513),
+};
+
+// The gun whose Specialist ribbon a weapon's use goes to (null: none).
+function specialistOf(weapon) {
+  if (!weapon || weapon.vehicle) return null;
+  const def = WEAPONS[weapon.id];
+  const id = def?.base || weapon.id;
+  return SPECIALIST[id] ? id : null;
+}
+
+// A ribbon's name and what earns it, for any ribbon key (a Specialist
+// ribbon's is 'spec:' and the gun).
+export function ribbonInfo(key) {
+  if (RIBBONS[key]) return RIBBONS[key];
+  const id = key.startsWith('spec:') ? key.slice(5) : null;
+  if (!id || !SPECIALIST[id]) return null;
+  return { name: `${WEAPONS[id].name} Specialist`, classes: ALL, note: `The ${WEAPONS[id].name} alone`, gun: id };
 }
 
 // Level (0 to 12) for an amount of ribbon points, and how far to the next.
@@ -207,13 +281,27 @@ const UNLOCKS = {
 // first battles as they were).
 const START_KIT = new Set(['m1911a1', 'mk2_grenade', 'c96', 'stielhandgranate24', 'tt33', 'rgd33']);
 
-// The ribbon and level a soldier of this class needs for a weapon, or null if
-// it is his from the start. A scoped rifle opens with the plain rifle (the game
-// data's scope unlocks could not be read with confidence).
-export function requirement(weaponId, cls) {
+// Another army's weapons (progressionUnlock): a gun at level 9 of its own
+// Specialist ribbon; launchers and anti-tank rifles by these; never grenades
+// or the Panzerfaust (map crates only).
+const FOREIGN = {
+  bazooka_m1a1: { GE: R('tankDestruction', 9), SU: IA(4) }, // (Lend-Lease)
+  panzerschreck: { US: R('tankDestruction', 12), SU: R('tankDestruction', 12) },
+  ptrd41: { US: R('tankDestruction', 8), GE: R('spec:ptrd41', 9) },
+};
+
+// The ribbon and level a soldier of this class and army needs for a weapon,
+// null if it is his from the start, or false if he can never carry it. A
+// scoped rifle opens with the plain rifle (the game data's scope unlocks could
+// not be read with confidence).
+export function requirement(weaponId, cls, faction) {
   const def = WEAPONS[weaponId];
   if (!def) return null;
   const id = def.base || weaponId;
+  if (faction && faction !== def.faction) {
+    if (FOREIGN[id]) return FOREIGN[id][faction] || false;
+    return SPECIALIST[id] ? R(`spec:${id}`, 9) : false;
+  }
   if (START_KIT.has(id)) return null;
   const u = UNLOCKS[id];
   if (!u) return null;
@@ -221,9 +309,23 @@ export function requirement(weaponId, cls) {
 }
 
 export function unlocked(soldier, weaponId) {
-  const r = requirement(weaponId, soldier.cls);
+  const r = requirement(weaponId, soldier.cls, soldier.faction);
+  if (r === false) return false;
   if (!r) return true;
   return ribbonLevel(soldier.ribbons?.[r.ribbon]).level >= r.level;
+}
+
+// The guns of a slot a soldier of this class may choose from (open or not):
+// his army's, then any other army's he can ever carry.
+export function carriable(soldier, slot) {
+  const own = [],
+    other = [];
+  for (const w of Object.values(WEAPONS)) {
+    if (w.slot !== slot || !w.classes.includes(soldier.cls)) continue;
+    if (w.faction === soldier.faction) own.push(w);
+    else if (requirement(w.id, soldier.cls, soldier.faction) !== false) other.push(w);
+  }
+  return [...own, ...other];
 }
 
 // Tanks for the tank crew, by Armor Assault level (progressionUnlock): the
@@ -248,5 +350,5 @@ export function ribbonsFor(cls) {
 }
 
 export function requirementText(r) {
-  return r ? `${RIBBONS[r.ribbon].name} ${r.level}` : '';
+  return r ? `${ribbonInfo(r.ribbon).name} ${r.level}` : '';
 }

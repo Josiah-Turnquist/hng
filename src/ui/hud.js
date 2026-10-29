@@ -257,18 +257,22 @@ export class Hud {
 
   // The player killed an enemy (or knocked out a vehicle): a short chime and a
   // small line under the sights that fades. Kills close together count up.
-  killConfirm(name, { verb = 'Killed', points = 0, headshot = false } = {}) {
+  killConfirm(name, { verb = 'Killed', points = 0, headshot = false, quiet = false } = {}) {
     const now = this.game.time;
-    this.killStreak = now - (this.killLast ?? -99) < 4 ? (this.killStreak || 1) + 1 : 1;
-    this.killLast = now;
+    // (An assist, quiet, is not a kill: it doesn't count up.)
+    if (!quiet) {
+      this.killStreak = now - (this.killLast ?? -99) < 4 ? (this.killStreak || 1) + 1 : 1;
+      this.killLast = now;
+    }
+    const streak = quiet ? 1 : this.killStreak;
     const el = this.killEl;
-    el.innerHTML = `<span class="v">${verb}</span> <span class="n"></span>${headshot ? ' <span class="h">Headshot</span>' : ''}${points ? ` <span class="p">+${points}</span>` : ''}${this.killStreak > 1 ? ` <span class="x">×${this.killStreak}</span>` : ''}`;
+    el.innerHTML = `<span class="v">${verb}</span> <span class="n"></span>${headshot ? ' <span class="h">Headshot</span>' : ''}${points ? ` <span class="p">+${points}</span>` : ''}${streak > 1 ? ` <span class="x">×${streak}</span>` : ''}`;
     el.querySelector('.n').textContent = name ?? '';
     this.killT = 2;
     el.classList.remove('pop');
     void el.offsetWidth; // (restart the animation)
     el.classList.add('pop');
-    this.game.audio?.play?.('killConfirm', null, { volume: 0.6 });
+    if (!quiet) this.game.audio?.play?.('killConfirm', null, { volume: 0.6 });
   }
 
   damage(amount) {
