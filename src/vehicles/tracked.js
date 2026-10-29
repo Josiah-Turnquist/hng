@@ -153,18 +153,19 @@ export class TrackedVehicle extends Vehicle {
     // The Tiger's regenerative steering turns it on the spot in neutral.
     const neutralTurn = d.steering === 'regenerative' && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1;
     // Turning from a standstill with only A or D: the driver puts it in gear and
-    // feeds in just enough gas to swing round at a walking pace. (A quarter
-    // quicker than a careful driver would, for gameplay: see TURN_RATE. The
-    // controlled differential gets most of that from its tighter radius, below.)
+    // feeds in the gas to swing round at a brisk walk. (Quicker than a careful
+    // driver would, for gameplay: see TURN_RATE. A tank that can't pivot, like
+    // the Sherman, swings round its smallest circle, kept at up to a fast walk.)
     let pivoting = false;
-    if (!neutralTurn && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1.5) {
+    if (!neutralTurn && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < (this.pivotThrottle > 0 ? 4 : 1.5)) {
       this.wantDir = 1;
       pivoting = true;
       const vo = Math.max(Math.abs(this.trackSpeed[0]), Math.abs(this.trackSpeed[1]));
-      const quick = d.steering === 'controlledDiff' ? 1.07 : TURN_RATE;
+      const quick = d.steering === 'controlledDiff' ? 2 : TURN_RATE;
       const target = (d.steering === 'controlledDiff' ? 1.6 : 1.1) * quick;
-      throttle = clamp(((target - vo) * 1.5) / quick, 0, 0.7) * Math.abs(steer);
+      throttle = clamp((target - vo) * 4, 0, 1) * Math.abs(steer);
     }
+    this.pivotThrottle = pivoting ? Math.max(throttle, 0.01) : 0;
     // Levers let go while under way: the driver checks the hull's swing with a
     // touch of the other lever, so it stops turning when the key is let go
     // (left alone, 30 tonnes swing on well past where he wanted to be).
@@ -215,7 +216,7 @@ export class TrackedVehicle extends Vehicle {
       // A steering differential driven from the gearbox: the turning radius is
       // fixed by the gear (3.4 m in first, wider in each higher gear); in
       // neutral the tracks counter-rotate.
-      // (The turns, in or out of gear, a quarter quicker than the real ones:
+      // (The turns, in or out of gear, quicker than the real ones:
       // gameplay, see TURN_RATE.)
       const g = Math.max(1, Math.abs(this.gear || this.nextGear || 1));
       const R = (d.turnRadius * (d.gears[0] / d.gears[g - 1]) ** 0.75) / TURN_RATE;
@@ -227,7 +228,7 @@ export class TrackedVehicle extends Vehicle {
       // Braking one side of the differential speeds up the other: the track speeds
       // are forced apart, up to the fixed ratio of the mechanism (applied below).
       // Fast, the driver eases the steering brake to keep the turn under about
-      // half a g sideways. (Both a quarter sharper for gameplay: TURN_RATE.)
+      // half a g sideways. (Both sharper for gameplay: TURN_RATE.)
       const R = Math.max(d.turnRadius / TURN_RATE, (vMean * vMean) / (4.9 * TURN_RATE));
       diffTarget = (a * d.trackCenters * vMean) / R;
       lock = a < 0.05;
@@ -237,7 +238,7 @@ export class TrackedVehicle extends Vehicle {
       // around it). Drivers feather the lever at speed, so the fraction is less
       // extreme when moving fast.
       // Tightest radius the driver will use: a pivot when slow, and no more than
-      // about 0.4 g sideways when moving (a quarter more for gameplay: TURN_RATE).
+      // about 0.4 g sideways when moving (more for gameplay: TURN_RATE).
       const half = d.trackCenters / 2;
       const rMin = Math.max(half, (vMean * vMean) / (3.9 * TURN_RATE));
       const kMin = (rMin - half) / (rMin + half);

@@ -78,17 +78,17 @@ let nextVehicleId = 1;
 // Gameplay tuning the players asked for, on top of the real figures: every
 // vehicle picks up speed twice as fast (the push left over after the hill, the
 // ground and the air is doubled, and gear changes take half the time, so the
-// top speeds stay where they were), and turns a quarter sharper (a turning
-// circle three quarters the size at the same speed; tanks pivot and turn 25 %
-// faster). The bicycle's rider gets three times the push (bike.js).
+// top speeds stay where they were), and turns much sharper (a turning circle
+// TURN_CIRCLE the size at the same speed; tanks pivot and turn TURN_RATE times
+// as fast). The bicycle's rider gets three times the push (bike.js).
 // At speed, where grip sets the limit, cars and trucks turn harder still: their
 // tires grip TURN_GRIP times as hard sideways (braking and pulling away stay as
-// they were), and their weight sits ROLL_CG as high as the real one, so the
-// harder turns don't roll them over.
+// they were), and their weight sits ROLL_CG as high as the real one (sidecar
+// outfits' too), so the harder turns don't roll them over.
 export const ACCEL_GAIN = 2;
-export const TURN_CIRCLE = 0.75;
-export const TURN_RATE = 1.25;
-export const TURN_GRIP = 1.45;
+export const TURN_CIRCLE = 0.55;
+export const TURN_RATE = 1.7;
+export const TURN_GRIP = 1.9;
 export const ROLL_CG = 0.6;
 
 // Crashes, by the speed (m/s) at which the vehicle closes on what it hits (a

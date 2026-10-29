@@ -18,6 +18,8 @@
 //    braking, drive and cornering. Asking for more lean than the grip allows (on
 //    mud or grass) washes the tires out: the machine falls and slides and the
 //    rider is thrown off, hurt at speed. So does hitting a wall or a vehicle.
+//    (For gameplay a turn held hard over never does: leaned past where he
+//    wants to be, he hauls the machine back up. See _rollSupport.)
 //  - Braking pitches the machine on its springs and moves weight to the front, so
 //    the front brake does most of the work; a locked rear wheel skids.
 //  - Sidecar outfits don't lean: three wheels, asymmetric. The sidecar's mass
@@ -32,7 +34,7 @@
 // The heading, position and speeds follow a single-track (bicycle) model with
 // tire slip; pitch and heave come from the wheel springs. Units: SI.
 import * as THREE from 'three';
-import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP, CRASH_SAFE, crashDamage, crashInjury, fallInjury } from './vehicle.js';
+import { Vehicle, sphereBox, ACCEL_GAIN, TURN_CIRCLE, TURN_GRIP, ROLL_CG, CRASH_SAFE, crashDamage, crashInjury, fallInjury } from './vehicle.js';
 import { STAMINA_POOL, STAMINA_REGEN } from '../actors/body.js';
 import { MountedGun } from './tracked.js';
 import { magic } from './wheeled.js';
@@ -89,13 +91,17 @@ export function magicInv(f) {
 }
 
 // The share of full lock a rider turns with when slow (the rest he keeps in
-// hand to balance with): 0.6 of it, and for gameplay a quarter tighter turns
+// hand to balance with): 0.6 of it, and for gameplay tighter turns
 // than that gives (TURN_CIRCLE in vehicle.js).
 export const LOCK_USE = 0.6 / TURN_CIRCLE;
 
 // Gameplay: the bicycle's rider picks up speed three times as fast as his legs
 // alone would push him (the motorcycles get ACCEL_GAIN, vehicle.js).
 const PEDAL_GAIN = 3;
+
+// Gameplay: the share of the pull of a hill the bicycle's rider is spared, so
+// a climb slows him about 3 km/h (2 mph) less than it would.
+const HILL_HELP = 0.33;
 
 // Gameplay: what soft ground (grass, leaf litter, crops, fields, mud, sand)
 // adds to a bicycle's rolling resistance over a hard road's is cut to this
@@ -357,10 +363,13 @@ export class Bike extends Vehicle {
     }
     this.m = m;
     this.cx = cx;
-    this.hc = cy;
+    // (Gameplay: a sidecar outfit's weight sits lower than the real one, as the
+    // cars' does, ROLL_CG in vehicle.js, so it takes harder turns before the
+    // chair lifts.)
+    this.hc = this.rig ? cy * ROLL_CG : cy;
     this.cz = cz;
     // Roll about the contact line: the inertia about the CG plus m h^2.
-    this.Ic = Iroll + m * (cy * cy + cx * cx);
+    this.Ic = Iroll + m * (this.hc * this.hc + cx * cx);
     this.Ip = Ipitch;
     this.Iz = Iyaw;
     this.kRoll2 = Iroll / m; // radius of gyration squared (about the CG)
@@ -926,7 +935,14 @@ export class Bike extends Vehicle {
     const lim = mr * G * 0.06;
     const e = this.lean - this.leanTarget;
     const slow = 1 - smoothstep(1, 4, Math.abs(this.u));
-    return (this.leanPush || 0) + clamp(-Ic * 4 * e - Ic * 1.5 * (this.leanRate - this.leanTargetRate), -lim, lim) + this.noise * slow * mr * G * 0.035;
+    // (Gameplay: fallen past the most lean he would ever ask for, as he can
+    // when holding a hard turn at speed, he hauls the machine back up rather
+    // than going down with it. Not once the tires are sliding out from under
+    // him: that still puts him down.)
+    const over = Math.abs(this.lean) - this._leanLimit();
+    const sliding = Math.max(this.wF.slip || 0, this.wR.slip || 0) > 0.25;
+    const save = over > 0 && !sliding ? -Math.sign(this.lean) * Ic * 60 * over - Ic * 8 * this.leanRate : 0;
+    return (this.leanPush || 0) + clamp(-Ic * 4 * e - Ic * 1.5 * (this.leanRate - this.leanTargetRate), -lim, lim) + save + this.noise * slow * mr * G * 0.035;
   }
 
   // ------------------------------------------------------------------ the rider
@@ -962,7 +978,7 @@ export class Bike extends Vehicle {
       // of where the rear wheel goes light and slides (both worked out from
       // the outfit's own loads on its wheels). He eases off when the chair
       // lifts anyway.
-      // (For gameplay a quarter tighter than the real lock and a careful rider
+      // (For gameplay tighter than the real lock and a careful rider
       // give, TURN_CIRCLE in vehicle.js; toward the chair its wheel lifting
       // sets the limit.)
       const side = Math.sign(this.def.sidecar.track);
@@ -1177,7 +1193,7 @@ export class Bike extends Vehicle {
     const trust = Math.min(0.72, mu + (this._misjudge ?? 0.05) * smoothstep(6, 14, Math.abs(this.u)));
     const cap = this.latCapAvg ?? 0.6 * this.m * G;
     // Below about 35 km/h he keeps more in hand. (For gameplay he dares a
-    // quarter tighter turns than a careful rider would, TURN_CIRCLE, but always
+    // tighter turns than a careful rider would, TURN_CIRCLE, but always
     // keeps a quarter of the grip in hand to catch a wobble with.)
     const keep = Math.min(0.75, (0.55 + 0.2 * smoothstep(4, 10, Math.abs(this.u))) / TURN_CIRCLE);
     const tanGrip = (keep * cap * (trust / Math.max(mu, 0.1))) / (this.m * G);
@@ -1216,6 +1232,10 @@ export class Bike extends Vehicle {
     // throttle until it settles (see _rider).
     if (this.rig && this.chairLift > 0.04) throttle *= clamp(1 - (this.chairLift - 0.04) / 0.06, 0, 1);
     if (this.rig && this.rigSpin) throttle *= 1 - this.rigSpin;
+    // Turning hard at speed on a solo machine he rolls off the throttle, so the
+    // rear tire has the grip to lean on (flat out, it had none to spare and he
+    // hardly dared lean until the machine stopped picking up speed).
+    if (!this.rig && !this.pedal && rider && Math.abs(u) > 5) throttle *= 1 - 0.65 * Math.min(1, Math.abs(inp.steer));
     if (this.wantDir < 0 && rider && !this.fallen && !this.pedal && d.reverse && this.engineOn) throttle = inp.throttle; // reverse gear
     // Brakes: S works both, and he keeps the wheels turning on ground he knows
     // (front first: most of the stopping happens there, the weight moves
@@ -1340,6 +1360,10 @@ export class Bike extends Vehicle {
       }
     }
     F *= pd.efficiency;
+    // (Gameplay: a hand up hills, a share of the pull of the slope, so he
+    // climbs about 3 km/h quicker than his legs alone would take him. See
+    // HILL_HELP.)
+    if (F > 0) F += HILL_HELP * this.m * G * Math.sin(Math.atan(grade)) * throttle;
     // Too steep to ride: slowed to a walk and still unable to turn the cranks
     // over, he gets a foot down and walks it up (and rides on where it eases).
     const hill = this.m * G * (Math.sin(Math.atan(grade)) + 0.02);

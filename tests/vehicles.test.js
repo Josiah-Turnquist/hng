@@ -106,8 +106,9 @@ test('Sherman cannot turn on the spot; T-34 and Panzer IV can pivot on a track',
     const turned = Math.abs(((yawOf(v) - y0 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
     const moved = v.body.position.distanceTo(p0);
     assert.ok(turned > 15, `${id} turned ${turned}`);
-    if (canPivot) assert.ok(moved < 4, `${id} pivots in place (moved ${moved} m)`);
-    else assert.ok(moved > 3, `${id} has to drive round (moved ${moved} m)`);
+    // (Pivoting on a locked track, its middle swings round that track.)
+    if (canPivot) assert.ok(moved < 5.5, `${id} pivots in place (moved ${moved} m)`);
+    else assert.ok(moved > 8, `${id} has to drive round (moved ${moved} m)`);
   }
 });
 
@@ -117,9 +118,9 @@ test('Tiger I turns on the spot in neutral (regenerative steering)', () => {
   run(v, 2);
   const p0 = v.body.position.clone();
   const y0 = yawOf(v);
-  run(v, 8, () => v.driverInput(0, 1));
+  run(v, 3, () => v.driverInput(0, 1));
   const turned = Math.abs(((yawOf(v) - y0 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
-  assert.ok(turned > 30, `turned ${turned}`);
+  assert.ok(turned > 60, `turned ${turned}`);
   assert.ok(v.body.position.distanceTo(p0) < 2, `stayed in place (${v.body.position.distanceTo(p0)} m)`);
 });
 
@@ -128,7 +129,7 @@ test('Opel Blitz: a slow, heavy truck (about 80-90 km/h flat out)', () => {
   assert.ok(kmh(v) > 70 && kmh(v) < 95, `top speed ${kmh(v)}`);
 });
 
-test('Sherman turns at speed on a fixed circle (the real 31 ft, a quarter tighter for gameplay)', () => {
+test('Sherman turns at speed on a fixed circle (the real 31 ft, tighter for gameplay: TURN_RATE)', () => {
   const { game } = makeWorld();
   const v = spawn(game, 'm4a1_sherman', 0, 300, 0);
   run(v, 2);
@@ -136,10 +137,10 @@ test('Sherman turns at speed on a fixed circle (the real 31 ft, a quarter tighte
   run(v, 6, () => v.driverInput(1, 0));
   run(v, 6, () => v.driverInput(1, 1));
   const r = Math.abs(v.speed / v.body.angular.y);
-  assert.ok(r > 6.3 && r < 9, `radius ${r}`);
+  assert.ok(r > 4.6 && r < 7, `radius ${r}`);
 });
 
-test('gameplay: twice the pick-up and a quarter sharper turns than the real figures, the same top speeds', () => {
+test('gameplay: twice the pick-up and sharper turns than the real figures, the same top speeds', () => {
   // 0-20 km/h (the real machines: Willys 2.1 s, T-34/76 7.9 s, WLA 2.5 s).
   const t20 = (id) => {
     const { game } = makeWorld({ size: 2048 });
@@ -181,16 +182,16 @@ test('gameplay: twice the pick-up and a quarter sharper turns than the real figu
     return u / w;
   };
   for (const [id, lo, hi] of [
-    ['willys_mb', 2.7, 3.3],
-    ['wla', 2.3, 2.9],
+    ['willys_mb', 1.9, 2.5],
+    ['wla', 1.6, 2.2],
   ]) {
     const r = circle(id);
     assert.ok(r > lo && r < hi, `${id} turning radius at 10 km/h ${r.toFixed(2)} m, want ${lo}-${hi}`);
   }
   // Swinging round on the spot (real: T-34/76 7.6, Tiger 26 degrees a second).
   for (const [id, lo, hi] of [
-    ['t34_76', 8.5, 11.5],
-    ['tiger1', 30, 37],
+    ['t34_76', 18, 28],
+    ['tiger1', 42, 54],
   ]) {
     const { game } = makeWorld();
     const v = spawn(game, id, 0, 0, 0);
@@ -410,7 +411,8 @@ test('bicycle: about 25 km/h at a steady effort (quicker than running), 5 km/h m
 
 test('bicycle: climbs hills, slower as they steepen, standing on the pedals when it gets steep', () => {
   // (A real fit soldier with his kit on a loaded single-speed does about 2-3 m/s
-  // up a 6-8 % road; the game's rider is stronger: see bikeDefs.)
+  // up a 6-8 % road; the game's rider is stronger, see bikeDefs, and gets a
+  // hand up hills, HILL_HELP in bike.js.)
   const climb = (grade, sprint, seconds = 8) => {
     const { game } = makeWorld({ size: 2048, slopeDeg: (Math.atan(grade) * 180) / Math.PI });
     const v = spawn(game, 'bicycle', 0, 600, 0);
@@ -419,17 +421,17 @@ test('bicycle: climbs hills, slower as they steepen, standing on the pedals when
     return v;
   };
   for (const [grade, lo, hi] of [
-    [0.06, 3.3, 4.4],
-    [0.08, 2.7, 3.7],
-    [0.1, 2.2, 3.2],
-    [0.15, 0.7, 1.8],
+    [0.06, 4.2, 5.3],
+    [0.08, 3.6, 4.6],
+    [0.1, 3.1, 4.1],
+    [0.15, 2.1, 3.1],
   ]) {
     const v = climb(grade, false);
     assert.ok(v.speed > lo && v.speed < hi, `${grade * 100} % at a steady effort: ${v.speed.toFixed(2)} m/s, want ${lo}-${hi}`);
     assert.ok(!v.fallen, `fell on the ${grade * 100} % climb`);
   }
   const hard = climb(0.08, true, 6);
-  assert.ok(hard.speed > 3.7, `8 % standing on the pedals: ${hard.speed.toFixed(2)} m/s`);
+  assert.ok(hard.speed > 4.7, `8 % standing on the pedals: ${hard.speed.toFixed(2)} m/s`);
   // Down a 10 % hill: coasting runs it up past 30 km/h, and the brakes stop it.
   const { game } = makeWorld({ size: 2048, slopeDeg: (Math.atan(0.1) * 180) / Math.PI });
   const v = spawn(game, 'bicycle', 0, -600, Math.PI);
@@ -665,16 +667,25 @@ test('sidecar outfits stay on three wheels in gentle turns either way', () => {
   }
 });
 
-test('too much lean on grass puts a motorcycle down and hurts the rider', () => {
+test('a hard turn held on grass at 60 km/h stays up: leaned past where he wants, the rider hauls it back', () => {
   const { game } = makeWorld({ size: 2048, surface: SURF.GRASS });
   const v = spawn(game, 'wla', 0, 0, 0);
   const man = v.occupants[0];
   run(v, 1);
   run(v, 25, () => v.driverInput(kmh(v) < 60 ? 1 : 0, 0));
-  run(v, 6, () => v.driverInput(kmh(v) < 60 ? 0.6 : 0, 1));
-  assert.ok(v.fallen, 'it went down');
-  assert.ok(!v.occupants[0], 'the rider was thrown off');
-  assert.ok(man.hurt > 5, `the rider got hurt (${(man.hurt || 0).toFixed(0)})`);
+  let turned = 0;
+  let last = yawOf(v);
+  let most = 0;
+  run(v, 6, () => {
+    v.driverInput(kmh(v) < 60 ? 0.6 : 0, 1);
+    turned += Math.abs(wrap(yawOf(v) - last));
+    last = yawOf(v);
+    most = Math.max(most, Math.abs(v.lean));
+  });
+  assert.ok(!v.fallen, 'it went down');
+  assert.equal(v.occupants[0], man, 'the rider is still aboard');
+  assert.ok(most < v.def.lean.crash, `leaned ${(most / DEG).toFixed(0)} degrees`);
+  assert.ok(turned > 2, `came round ${(turned / DEG).toFixed(0)} degrees in 6 s`);
 });
 
 // Drive into a brick wall at a set speed, head-on or at an angle; the people
@@ -952,8 +963,8 @@ function cruise(id, speed, { surface } = {}) {
 
 test('steering answers the way it is pressed at once, and stops soon after the key is let go', () => {
   for (const [id, speed, runOnMax] of [
-    ['willys_mb', 29, 8],
-    ['m4a1_sherman', 22, 14],
+    ['willys_mb', 29, 12],
+    ['m4a1_sherman', 22, 18],
     ['wla', 45, 12],
     ['bicycle', 18, 28], // (it turns 90 degrees in those 1.2 s: the run-on is a quarter of that)
     ['r75_sidecar', 40, 4],

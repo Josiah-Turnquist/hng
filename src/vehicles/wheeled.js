@@ -116,7 +116,7 @@ export class WheeledVehicle extends Vehicle {
     this.load = clamp(Math.abs(engineTorque) / torqueMax(d), 0, 1);
 
     _fwd.set(0, 0, -1).applyQuaternion(b.quaternion);
-    // Front wheel angle: a quarter tighter than the real lock gives (gameplay, see
+    // Front wheel angle: tighter than the real lock gives (gameplay, see
     // TURN_CIRCLE), as far as the tires can follow: at speed, past about 0.7 of
     // their grip, more lock would only scrub them and the turn would fade.
     const real = this.steer * d.steerMax;
