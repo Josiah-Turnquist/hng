@@ -109,16 +109,14 @@ export const ICONS = {
   screen: svg('<path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" fill="none" stroke="currentColor" stroke-width="2.2"/>'),
   info: svg('<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="2.2" height="7.5" fill="currentColor"/><circle cx="12.1" cy="7" r="1.4" fill="currentColor"/>'),
   plus: svg('<path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2.6"/>'),
-  // A coin in outline, in a darker gold: the rim, its edge showing below as a
-  // band (the coin's thickness), an inner ring and a star struck in the
-  // middle, worn and scratched like the emblems.
+  // A coin in outline, in a darker gold: the rim, an inner ring and a star
+  // struck in the middle, worn and scratched like the emblems.
   coin: svg(
     worn(
       'wear-coin',
       1337,
-      '<path d="M3.8 11.4A8.2 8.2 0 0 0 20.2 11.4V13.6A8.2 8.2 0 0 1 3.8 13.6Z" fill="#8a6626"/>' +
-        '<g fill="none" stroke="#c4923a"><circle cx="12" cy="11.4" r="8.2" stroke-width="1.7"/><circle cx="12" cy="11.4" r="5.9" stroke-width="0.8"/></g>' +
-        `<polygon points="${star(12, 11.8, 4.1)}" fill="#c4923a"/>`,
+      '<g fill="none" stroke="#c4923a"><circle cx="12" cy="12" r="9" stroke-width="1.8"/><circle cx="12" cy="12" r="6.4" stroke-width="0.8"/></g>' +
+        `<polygon points="${star(12, 12.4, 4.5)}" fill="#c4923a"/>`,
     ),
   ),
   wrench: svg('<path d="M14.5 3.5a5 5 0 0 0-4.6 6.9L3.5 16.8a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4a5 5 0 0 0 6.9-4.6l-3 3-2.6-.6-.6-2.6 3-3a5 5 0 0 0-1.8-.8z" fill="currentColor"/>'),
