@@ -80,7 +80,7 @@ export const KITS = {
     anyArmy: true,
     slot: 'equipment',
     type: 'wrench',
-    classes: ALL,
+    classes: ['infantry', 'recon', 'tanker'], // (never a paratrooper's, as in the original game)
     points: 1,
     mass: 0.9,
     length: 0.3,

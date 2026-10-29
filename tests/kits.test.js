@@ -60,12 +60,12 @@ test('kit models build at every LOD with the anchors the hands need', () => {
   assert.ok(buildGun('wrench', mats).anchors.jaw, 'the wrench turns about the nut in its jaws');
 });
 
-test('kit definitions: fixed ids and points, every class and army may carry them, nobody starts with one', () => {
+test('kit definitions: fixed ids and points, every class (the wrench: not paratroopers) and army may carry them, nobody starts with one', () => {
   assert.deepEqual(Object.keys(KITS).sort(), [...IDS].sort());
   for (const id of IDS) {
     const d = WEAPONS[id];
     assert.ok(KIT_TYPES.has(d.type) && d.slot === 'equipment', id);
-    assert.deepEqual([...d.classes].sort(), ['infantry', 'paratrooper', 'recon', 'tanker'], id);
+    assert.deepEqual([...d.classes].sort(), id === 'wrench' ? ['infantry', 'recon', 'tanker'] : ['infantry', 'paratrooper', 'recon', 'tanker'], id);
     assert.equal(pointsOf(id), id.startsWith('medic') ? 2 : 1, `${id} points`);
     assert.ok(d.info && !/—/.test(d.info) && !/—/.test(d.name), `${id} text`);
   }
