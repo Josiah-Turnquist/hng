@@ -109,6 +109,11 @@ export const ICONS = {
   screen: svg('<path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" fill="none" stroke="currentColor" stroke-width="2.2"/>'),
   info: svg('<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="2.2" height="7.5" fill="currentColor"/><circle cx="12.1" cy="7" r="1.4" fill="currentColor"/>'),
   plus: svg('<path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2.6"/>'),
+  // The loadout's buttons: weapons, tank, badge, uniform.
+  rifle: svg('<path d="M2 10h14l1-2h5v3h-3l-1 2H9l-2 5H4l1-5H2z" fill="currentColor"/>'),
+  tank: svg('<path d="M3 14l1-3h12l2 3zM7 8h8v3H7zM15 9h7v1.4h-7zM3 15h18l-2 4H5z" fill="currentColor"/>'),
+  shield: svg('<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" fill="currentColor"/>'),
+  shirt: svg('<path d="M8 3l4 2 4-2 5 4-3 3-2-1v12H8V9L6 10 3 7z" fill="currentColor"/>'),
   // A coin in outline, in a darker gold: the rim, an inner ring and a star
   // struck in the middle, worn and scratched like the emblems.
   coin: svg(

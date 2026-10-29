@@ -9,6 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
+import { ribbonSvg } from './ribbonArt.js';
 import { ribbonInfo, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
 import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
@@ -306,18 +307,20 @@ export class App {
       el.querySelector('.br-rank b').textContent = `${promoted ? 'Promoted: ' : ''}Rank ${rk.rank} ${rankTitle(f, rk.rank)}`;
       el.querySelector('.br-rank small').textContent = `${r.soldier.name} · ${r.soldier.xp.toLocaleString('en-US')} XP${rk.next ? ` · ${(rk.next - r.soldier.xp).toLocaleString('en-US')} to ${rankTitle(f, rk.rank + 1)}` : ''}`;
       el.querySelector('.br-rank').prepend(Object.assign(document.createElement('span'), { className: 'br-emb', innerHTML: emblem(f) }));
-      // His ribbons: what this battle earned each, its level and how far on.
+      // His ribbons: each as its ribbon at the level reached, with how far on
+      // it was (blue) and what this battle added (gold); a new level marked.
       const rb = el.querySelector('.br-ribbons');
       for (const [k, pts] of Object.entries(r.gained || {})) {
-        const lv = ribbonLevel(r.soldier.ribbons[k]);
+        const now = r.soldier.ribbons[k];
+        const lv = ribbonLevel(now);
+        const was = ribbonLevel(now - pts);
         const up = r.ribbonUps.find((u) => u.key === k);
+        const from = up ? 0 : was.progress;
         const row = document.createElement('div');
         row.className = `br-ribbon${up ? ' up' : ''}`;
-        row.innerHTML = '<span class="n"></span><span class="l"></span><span class="p"></span><div class="bar"><i></i></div>';
-        row.querySelector('.n').textContent = ribbonInfo(k).name;
-        row.querySelector('.l').textContent = up ? `Level ${up.from} → ${up.to}` : `Level ${lv.level}`;
-        row.querySelector('.p').textContent = `+${pts.toLocaleString('en-US')}`;
-        row.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
+        row.innerHTML = `${ribbonSvg(k, lv.level)}<div class="t"><b></b>${up ? `<span class="lvup">Level ${up.to}!</span>` : ''}<div class="bar"><i style="width:${(from * 100).toFixed(1)}%"></i><i class="new" style="left:${(from * 100).toFixed(1)}%;width:${(Math.max(0, lv.progress - from) * 100).toFixed(1)}%"></i></div></div><em></em>`;
+        row.querySelector('b').textContent = ribbonInfo(k).name;
+        row.querySelector('em').textContent = `+${pts.toLocaleString('en-US')}`;
         rb.appendChild(row);
       }
       if (r.unlocks?.length) el.querySelector('.br-unlocks b').textContent = r.unlocks.join(', ');

@@ -2,15 +2,17 @@
 // the Heroes, Generals and Progression tabs and, at the right, the player's level,
 // the army of the chosen soldier, settings, full screen and about.
 //   Heroes: the soldier roster (recruit more, any army and class), the chosen
-//     soldier standing in 3D, his loadout (weapons, vehicle, uniform), the
-//     Bulletin, and Ready for battle with the battle he will join.
+//     soldier standing in 3D with his badge, his loadout, what he is nearest
+//     to opening, and Ready for battle with the battle he will join; gear,
+//     badge, tank, uniform and ribbons in windows.
 //   Generals: the battles to join, the battlefield's map and the battle's details.
 //   Progression: the player's level, each soldier's rank and record, the ranks.
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
-import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints } from '../weapons/defs.js';
+import { FACTIONS, WEAPONS, baseOf, weaponsFor, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints } from '../weapons/defs.js';
 import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
-import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
+import { RIBBONS, RIBBON_XP, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
+import { ribbonSvg, RIBBON_GROUPS } from './ribbonArt.js';
 import { AMMO } from '../weapons/ammo.js';
 import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, damageScale as scaleAt, SCOPE_FAMILIES } from '../weapons/upgrades.js';
 import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, picksOf, fit, loadoutUpgrades } from '../game/armory.js';
@@ -39,13 +41,6 @@ const TANKS = {
 const MISSIONS = [
   { id: 'town', kind: 'Assault', title: MAPS.town.name, line: 'Take, or hold, the police station and the church.', note: 'Five lines of capture points (A to E) lead to the two objectives, taken in order. The attackers have 30 seconds per point, the defenders the clock.' },
   { id: 'range', kind: 'Practice', title: MAPS.range.name, line: 'Firing lanes from 25 to 800 m and a motor pool with every vehicle.', note: 'No enemies: zero your sights, try every gun against paper, steel and armor, and drive the tanks, jeeps and bikes.' },
-];
-
-// What's new: shown in the Bulletin.
-const BULLETIN = [
-  ['New', 'Heroes, Generals and Progression: recruit soldiers of any army, rise through the ranks.'],
-  ['Controls', 'Every key can be changed in Settings > Controls > Keys. The ` key (left of 1) aims, as well as the right mouse button.'],
-  ['Field report', 'Bicycles and motorcycles wait at the spawn points; walk up to one and press the get-in key.'],
 ];
 
 const el = (tag, cls, html) => {
@@ -198,17 +193,42 @@ export function showFrontEnd(app) {
     };
 
     // --- Heroes -------------------------------------------------------------------
+    // As in the original game's Heroes screen, kept to what the soldier has
+    // and can use: the roster (filtered by army and class), the soldier with
+    // his badge, his loadout (a card for each thing he carries; one line to add
+    // more of a kind only while he has points to spare), what he is nearest to
+    // opening, and the battle. Choosing gear, the badge, the tank, the uniform
+    // and the ribbons open in windows.
+    const filter = { armies: new Set(['US', 'GE', 'SU']), cls: '' };
     function heroes() {
       const s = selected(roster);
       main.innerHTML = `
-        <aside class="fe-panel fe-roster"><h3>Soldiers <span class="count">${roster.soldiers.length} / ${MAX_SOLDIERS}</span></h3><div class="roster-list"></div></aside>
-        <div class="fe-stage"><div class="stage-turn">${ICONS.turn}<span>Drag to turn</span></div><div class="fe-nameplate"></div></div>
-        <aside class="fe-panel fe-loadout"><div class="lo-tabs"></div><div class="lo-body"></div></aside>
-        <aside class="fe-panel fe-bulletin"><h3>Bulletin</h3></aside>
-        <div class="fe-ready"></div>`;
-      // Roster.
+        <aside class="fe-roster hx-col"><div class="hx-filter"></div><div class="roster-list"></div></aside>
+        <div class="fe-stage hx-stage"><div class="stage-turn">${ICONS.turn}<span>Drag to turn</span></div><div class="fe-nameplate"></div><div class="hx-badges"></div></div>
+        <section class="hx-col hx-load"><div class="hx-head"><div class="hx-icons"></div><div class="hx-pts"></div></div><div class="hx-slots"></div></section>
+        <aside class="hx-col hx-right"><div class="fe-panel hx-next"></div><div class="fe-ready"></div></aside>`;
+      // Roster, filtered by army and class.
+      const fl = main.querySelector('.hx-filter');
+      for (const f of ['US', 'GE', 'SU']) {
+        const b = el('button', filter.armies.has(f) ? 'on' : '', emblem(f));
+        b.title = FACTIONS[f].army;
+        b.addEventListener('click', () => {
+          if (filter.armies.has(f) && filter.armies.size > 1) filter.armies.delete(f);
+          else filter.armies.add(f);
+          show('heroes');
+        });
+        fl.appendChild(b);
+      }
+      const sel = el('select', 'hx-select');
+      sel.innerHTML = `<option value="">All soldiers</option>${Object.entries(CLASS_NAMES).map(([k, n]) => `<option value="${k}"${filter.cls === k ? ' selected' : ''}>${n}</option>`).join('')}`;
+      sel.addEventListener('change', () => {
+        filter.cls = sel.value;
+        show('heroes');
+      });
+      fl.appendChild(sel);
       const list = main.querySelector('.roster-list');
       for (const x of roster.soldiers) {
+        if (x.id !== s.id && (!filter.armies.has(x.faction) || (filter.cls && x.cls !== filter.cls))) continue;
         const r = rankOf(x.xp);
         const card = el('button', `soldier-card${x.id === s.id ? ' on' : ''}`);
         card.innerHTML = `<span class="sc-emb">${emblem(x.faction)}</span><span class="sc-text"><b></b><small></small></span><span class="sc-rank">${rankBadge(r.rank)}<i>${r.rank}</i></span><span class="sc-class" title="${CLASS_NAMES[x.cls]}">${classIcon(x.cls)}</span>`;
@@ -221,7 +241,7 @@ export function showFrontEnd(app) {
         });
         list.appendChild(card);
       }
-      const add = el('button', 'soldier-card recruit', `<span class="sc-emb">${ICONS.plus}</span><span class="sc-text"><b>Recruit a soldier</b><small>Any army, any class</small></span>`);
+      const add = el('button', 'soldier-card recruit', `<span class="sc-emb">${ICONS.plus}</span><span class="sc-text"><b>Recruit a soldier</b><small>${roster.soldiers.length} of ${MAX_SOLDIERS}</small></span>`);
       add.disabled = roster.soldiers.length >= MAX_SOLDIERS;
       add.addEventListener('click', () => recruitPanel());
       list.appendChild(add);
@@ -246,7 +266,7 @@ export function showFrontEnd(app) {
         ask();
         main.querySelector('.fe-roster').appendChild(foot);
       }
-      // The soldier in 3D, and his name plate.
+      // The soldier in 3D, his name plate, and his badge under him.
       const stage = main.querySelector('.fe-stage');
       if (preview) {
         preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0] });
@@ -258,152 +278,259 @@ export function showFrontEnd(app) {
       } else stage.querySelector('.stage-turn').hidden = true;
       const r = rankOf(s.xp);
       const plate = main.querySelector('.fe-nameplate');
-      plate.innerHTML = `<div class="np-top"><span class="np-emb">${emblem(s.faction)}</span><span class="np-rank">${rankBadge(r.rank)}</span><h2></h2></div><div class="np-sub"></div><div class="xp"><i style="width:${(r.progress * 100).toFixed(1)}%"></i></div><div class="np-xp"></div>`;
+      plate.innerHTML = `<span class="np-rank">${rankBadge(r.rank)}</span><div class="np-text"><h2></h2><div class="np-sub"></div><div class="xp"><i style="width:${(r.progress * 100).toFixed(1)}%"></i></div><div class="np-xp"></div></div>`;
       plate.querySelector('h2').textContent = s.name;
-      plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]} · ${FACTIONS[s.faction].army}`;
-      plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP to ${rankTitle(s.faction, r.rank + 1)}`;
-      loadout(s, 'weapons');
-      // Bulletin.
-      const bul = main.querySelector('.fe-bulletin');
-      for (const [t, text] of BULLETIN) {
-        const item = el('div', 'bul-item');
-        item.appendChild(el('b')).textContent = t;
-        item.appendChild(el('span')).textContent = text;
-        bul.appendChild(item);
-      }
+      plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]}`;
+      plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP`;
+      const worn = badgeOf(s);
+      const bd = el('button', 'hx-badge', `${shield(worn ? '<path d="M27 15l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#e2ac46"/>' : '<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<span></span>`);
+      bd.querySelector('span').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Badge';
+      bd.title = worn ? BADGES[worn.id].does : 'Choose a combat badge';
+      bd.addEventListener('click', () => badgeWindow(s));
+      main.querySelector('.hx-badges').appendChild(bd);
+      loadoutColumn(s);
+      nextUp(s, main.querySelector('.hx-next'));
       readyBox(main.querySelector('.fe-ready'), s);
     }
 
-    function loadout(s, tab) {
-      const tabs = main.querySelector('.lo-tabs');
-      const body = main.querySelector('.lo-body');
-      const names = [
-        ['weapons', 'Weapons'],
-        ['vehicle', 'Vehicle'],
-        ['ribbons', 'Ribbons'],
-        ['badge', 'Badge'],
-        ['uniform', 'Uniform'],
+    const SLOT_LABELS = ['Primary', 'Sidearm', 'Equipment', 'Equipment', 'Equipment', 'Close combat', 'Binoculars'];
+    const shield = (inner) => `<svg viewBox="0 0 54 62" aria-hidden="true"><path d="M27 2 L51 10 V30 C51 45 40 55 27 60 C14 55 3 45 3 30 V10 Z" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>${inner}</svg>`;
+
+    // His loadout: buttons for his tank, badge and uniform, his equipment
+    // points as dots, a card for each thing he carries.
+    function loadoutColumn(s) {
+      const icons = main.querySelector('.hx-icons');
+      const tabs = [
+        [ICONS.rifle || '', 'Weapons', null],
+        ...(s.cls === 'tanker' ? [[ICONS.tank || '', 'Tank', () => vehicleWindow(s)]] : []),
+        [ICONS.shield || '', 'Badge', () => badgeWindow(s)],
+        [ICONS.shirt || '', 'Uniform', () => uniformWindow(s)],
       ];
-      tabs.innerHTML = '';
-      for (const [k, label] of names) {
-        const b = el('button', k === tab ? 'on' : '', label);
-        b.addEventListener('click', () => loadout(s, k));
-        tabs.appendChild(b);
+      for (const [icon, label, open] of tabs) {
+        const b = el('button', open ? '' : 'on', icon);
+        b.title = label;
+        if (open) b.addEventListener('click', open);
+        icons.appendChild(b);
       }
-      body.innerHTML = '';
-      if (tab === 'weapons') {
-        // His equipment points: what the loadout costs of what his class has.
-        const budget = CLASS_POINTS[s.cls];
-        const used = loadoutPoints(s.loadout);
-        const meter = el('div', 'pts-meter');
-        meter.innerHTML = '<span class="pts-l">Equipment points</span><span class="pts-v"></span><div class="pts-bar"></div>';
-        meter.querySelector('.pts-v').textContent = `${used} / ${budget}`;
-        const bar = meter.querySelector('.pts-bar');
-        for (let k = 0; k < budget; k++) bar.appendChild(el('i', k < used ? 'on' : ''));
-        body.appendChild(meter);
-        const labels = ['Primary', 'Sidearm', 'Equipment 1', 'Equipment 2', 'Equipment 3', 'Close combat', 'Binoculars'];
-        LOADOUT_SLOTS.forEach((slot, i) => {
-          // One card for each rifle; its scopes are chosen under it. Another
-          // army's guns show once he has begun to earn them (or has).
-          const taken = s.loadout.filter((id, j) => id && j !== i);
-          const options = families(s, slot).filter((w) => !taken.some((id) => baseOf(WEAPONS[id]) === w));
-          const cur = s.loadout[i] ? WEAPONS[s.loadout[i]] : null;
-          if (!cur && !options.length) return;
-          const pickWeapon = (id) => {
-            s.loadout[i] = id;
-            save();
-            if (i === 0) preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: id });
-            loadout(s, 'weapons');
-          };
-          // Points left for this slot: the budget less everything else.
-          const room = budget - used + (cur ? pointsOf(cur.id) : 0);
-          const box = el('div', 'slot');
-          box.appendChild(el('div', 'slot-label', `${labels[i]}<span>${cur ? `${pointsOf(cur.id)} pt` : 'empty'}</span>`));
-          const card = cur ? weaponCard(upgradedDef(cur.id, picksOf(s, cur.id)), true) : emptyCard(true);
-          box.appendChild(card);
-          if (options.length > (cur ? 1 : 0) || (cur && i > 0)) {
-            const pick = el('div', 'slot-pick');
-            pick.hidden = true;
-            for (const w of options) {
-              // Another rifle: plain if this soldier may carry it plain, else its first scope.
-              const id = cur && w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0]?.id || w.id;
-              const open = unlocked(s, id);
-              const fits = pointsOf(id) <= room;
-              const c = weaponCard(w, cur && w === baseOf(cur), open ? null : requirement(id, s.cls, s.faction), w.faction !== s.faction, open && !fits ? pointsOf(id) - room : 0);
-              if (open && fits) {
-                if (owns(s, id)) c.addEventListener('click', () => pickWeapon(id));
-                else shopCard(c, s, id, () => pickWeapon(id));
-              }
-              pick.appendChild(c);
-            }
-            // Any slot but the main weapon's may be left empty.
-            if (i > 0 && cur) {
-              const c = emptyCard(false);
-              c.addEventListener('click', () => pickWeapon(null));
-              pick.appendChild(c);
-            }
-            card.classList.add('opens');
-            card.title = 'Choose another';
-            card.addEventListener('click', () => {
-              const open = pick.hidden;
-              body.querySelectorAll('.slot-pick').forEach((p) => (p.hidden = true));
-              pick.hidden = !open;
-            });
-            box.appendChild(pick);
-          }
-          // Its scopes: none (where the plain rifle is allowed) and the ones
-          // really fitted to it, each with what it changes.
-          const scopes = cur ? scopeChoices(cur, s.cls) : [];
-          if (scopes.some((c) => c.scope)) {
-            const sc = el('div', 'scope-pick');
-            sc.appendChild(el('div', 'slot-label', `Scope<span>${scopes.length > 1 ? `${scopes.length} to choose from` : ''}</span>`));
-            for (const c of scopes) {
-              const b = el('button', `scope-opt${c.id === cur.id ? ' on' : ''}`);
-              b.appendChild(el('b')).textContent = c.scope ? c.scope.name : 'None';
-              b.appendChild(el('small')).textContent = c.note;
-              if (c.def.fitting) b.title = c.def.fitting.mount;
-              if (owns(s, c.id)) b.addEventListener('click', () => c.id !== cur.id && pickWeapon(c.id));
-              else shopCard(b, s, c.id, () => pickWeapon(c.id));
-              sc.appendChild(b);
-            }
-            box.appendChild(sc);
-          }
-          // His upgrades for this gun: the customization screen.
-          if (cur && upgradesOf(cur.id).length && owns(s, cur.id)) {
-            const n = Object.keys(picksOf(s, cur.id)).length;
-            const b = el('button', 'upg-open');
-            b.innerHTML = `${ICONS.wrench || ''}<span>Customize</span><small></small>`;
-            b.querySelector('small').textContent = n ? `${n} upgrade${n > 1 ? 's' : ''} fitted` : 'Ammunition, barrel, internal, sight, trigger';
-            b.addEventListener('click', () => customize(s, cur.id));
-            box.appendChild(b);
-          }
-          body.appendChild(box);
-        });
-        body.appendChild(el('div', 'lo-note', `As in the original game, everything he carries costs equipment points, and a ${CLASS_NAMES[s.cls].toLowerCase()} soldier has ${CLASS_POINTS[s.cls]}. Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab); once open, each is bought once with credits.`));
-      } else if (tab === 'vehicle') {
-        if (s.cls === 'tanker') {
-          if (!TANKS[s.faction].some((t) => t[0] === s.tank) || !tankUnlocked(s, s.tank)) s.tank = TANKS[s.faction][0][0];
-          for (const [id, name, note] of TANKS[s.faction]) {
-            const open = tankUnlocked(s, id);
-            const c = el('button', `veh-card${id === s.tank ? ' on' : ''}${open ? '' : ' locked'}`);
-            c.appendChild(el('b')).textContent = name;
-            c.appendChild(el('span')).textContent = note;
-            if (open)
-              c.addEventListener('click', () => {
-                s.tank = id;
-                save();
-                loadout(s, 'vehicle');
-              });
-            else c.appendChild(el('em')).textContent = lockLine(s, tankRequirement(id));
-            body.appendChild(c);
-          }
-          body.appendChild(el('div', 'lo-note', 'A tank crewman goes into battle in his tank, as its driver; the gunner and the other seats change with F1 to F4.'));
-        } else {
-          body.appendChild(el('div', 'lo-note', `${CLASS_NAMES[s.cls]} soldiers go into battle on foot. Jeeps, bicycles and motorcycles wait at the spawn points: walk up to one and press the get-in key. Recruit a tank crewman to fight in a tank.`));
+      const budget = CLASS_POINTS[s.cls];
+      const used = loadoutPoints(s.loadout);
+      const pts = main.querySelector('.hx-pts');
+      pts.title = `${used} of ${budget} equipment points`;
+      for (let k = 0; k < budget; k++) pts.appendChild(el('i', k < used ? 'on' : ''));
+      const slots = main.querySelector('.hx-slots');
+      const room = budget - used;
+      const shown = new Set();
+      s.loadout.forEach((id, i) => {
+        const kind = LOADOUT_SLOTS[i];
+        if (!id) {
+          // One line to add a thing of a kind, while he has points for it.
+          if (room < 1 || shown.has(kind) || !carriable(s, kind).length) return;
+          shown.add(kind);
+          const b = el('button', 'hx-slot empty', `<span>+ ${SLOT_LABELS[i]}</span><span class="left">${room} point${room > 1 ? 's' : ''} left</span>`);
+          b.addEventListener('click', () => slotWindow(s, i));
+          slots.appendChild(b);
+          return;
         }
-      } else if (tab === 'badge') {
-        // His combat badge, as in the original game: one worn, each with three
-        // tiers that open at levels of his ribbons.
+        const w = upgradedDef(id, picksOf(s, id));
+        const pic = preview?.gunPicture(id, 240, 70) || '';
+        const n = Object.keys(picksOf(s, id)).length;
+        const ups = upgradesOf(id).length ? `<span class="mods" title="${n} of 5 upgrade slots fitted">${[0, 1, 2, 3, 4].map((k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('')}</span>` : '';
+        const b = el('button', `hx-slot${i === 0 ? ' main' : ''}`, `<span class="lab">${SLOT_LABELS[i]}</span><span class="pt">${pointsOf(id)} pt</span>${pic ? `<img alt="" src="${pic}">` : ''}<b></b>${ups}`);
+        b.querySelector('b').textContent = w.name;
+        b.title = weaponStats(w);
+        b.addEventListener('click', () => slotWindow(s, i));
+        slots.appendChild(b);
+      });
+    }
+
+    // What a ribbon opens for this soldier, by level: guns and items, tanks,
+    // badge tiers, and on a gun's Specialist ribbon its upgrades (and, for
+    // another army's gun, leave to carry it at level 9).
+    function opensWith(s, key) {
+      const out = [];
+      if (key.startsWith('spec:')) {
+        const gun = key.slice(5);
+        for (const u of upgradesOf(gun)) out.push({ level: u.level, name: u.name, kind: 'upgrade', id: u.id, gun });
+        if (WEAPONS[gun]?.faction !== s.faction) out.push({ level: 9, name: `${WEAPONS[gun].name}: may carry it`, kind: 'gun', id: gun });
+      } else {
+        for (const slot of new Set(LOADOUT_SLOTS))
+          for (const w of weaponsFor(s.faction, s.cls, slot)) {
+            const r = requirement(w.id, s.cls, s.faction);
+            if (r?.ribbon === key && !w.base) out.push({ level: r.level, name: w.name, kind: 'gun', id: w.id });
+          }
+        if (s.cls === 'tanker')
+          for (const [id, name] of TANKS[s.faction]) {
+            const r = tankRequirement(id);
+            if (r?.ribbon === key) out.push({ level: r.level, name, kind: 'tank', id });
+          }
+      }
+      for (const [id, b] of Object.entries(BADGES))
+        for (const t of badgeTiers(s, id)) for (const a of t.alts) if (a.ribbon === key) out.push({ level: a.level, name: `${b.name} ${'I'.repeat(t.tier)}`, kind: 'badge', id });
+      return out.sort((a, b) => a.level - b.level);
+    }
+    // The ribbons this soldier works on: his class's, and each gun he has used.
+    const ribbonKeys = (s) => ribbonsFor(s.cls).concat(Object.keys(s.ribbons || {}).filter((k) => k.startsWith('spec:')));
+    // A picture of what a level opens.
+    function opensPicture(o, w = 150, h = 56) {
+      if (o.kind === 'badge') return shield('<path d="M27 15l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#e2ac46"/>');
+      if (o.kind === 'tank') return `<span class="hx-tankpic">${ICONS.tank || ''}</span>`;
+      const src = o.kind === 'upgrade' ? preview?.partPicture?.(o.gun, o.id, w, Math.round(h * 1.4)) : preview?.gunPicture(o.id, w, h);
+      return src ? `<img alt="" src="${src}">` : '';
+    }
+
+    // The three things he is nearest to opening, and the way to his ribbons.
+    function nextUp(s, box) {
+      box.innerHTML = '<h3>Next up</h3>';
+      const all = [];
+      for (const k of ribbonKeys(s)) {
+        const pts = s.ribbons?.[k] || 0;
+        const L = ribbonLevel(pts);
+        for (const o of opensWith(s, k)) if (o.level > L.level) all.push({ ...o, k, need: RIBBON_XP[o.level] - pts, done: (pts - RIBBON_XP[L.level]) / (RIBBON_XP[o.level] - RIBBON_XP[L.level]) });
+      }
+      all.sort((a, b) => a.need - b.need);
+      for (const o of all.slice(0, 3)) {
+        const row = el('button', 'hx-nx', `${ribbonSvg(o.k, o.level, { grey: false })}<span><b></b><small></small><i><em style="width:${Math.max(4, o.done * 100).toFixed(0)}%"></em></i></span>`);
+        row.querySelector('b').textContent = o.name;
+        row.querySelector('small').textContent = `${ribbonInfo(o.k).name} ${o.level} · ${fmt(o.need)} points to go`;
+        row.addEventListener('click', () => trackWindow(s, o.k, o.level));
+        box.appendChild(row);
+      }
+      const top = ribbonKeys(s).sort((a, b) => (s.ribbons?.[b] || 0) - (s.ribbons?.[a] || 0))[0];
+      const b = el('button', 'hx-ribbons', `${ribbonSvg(top, ribbonLevel(s.ribbons?.[top]).level)}<span>Ribbons</span>`);
+      b.addEventListener('click', () => ribbonsWindow(s));
+      box.appendChild(b);
+    }
+
+    // A window over the screen: { box, body, foot, close }. Esc or the cross
+    // closes it, and the screen behind is drawn afresh.
+    function openWindow(title, { sub = '', cls = '' } = {}) {
+      main.querySelector('.hx-dim')?.remove();
+      const dim = el('div', 'hx-dim');
+      dim.innerHTML = `<div class="hx-win ${cls}"><header><h2></h2><span class="hx-sub"></span><button class="x" title="Close">${ICONS.close}</button></header><div class="hx-wb"></div><footer><button class="ok">OK</button></footer></div>`;
+      dim.querySelector('h2').textContent = title;
+      dim.querySelector('.hx-sub').textContent = sub;
+      main.appendChild(dim);
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          close();
+        }
+      };
+      const close = () => {
+        window.removeEventListener('keydown', onKey, true);
+        dim.remove();
+        show('heroes');
+      };
+      window.addEventListener('keydown', onKey, true);
+      dim.querySelector('.x').addEventListener('click', close);
+      dim.querySelector('.ok').addEventListener('click', close);
+      dim.addEventListener('click', (e) => e.target === dim && close());
+      return { box: dim.querySelector('.hx-win'), body: dim.querySelector('.hx-wb'), foot: dim.querySelector('footer'), close, title: (t) => (dim.querySelector('h2').textContent = t) };
+    }
+
+    // Choosing what goes in a slot: what he owns, what is for sale to him, and
+    // (folded away) what his ribbons will open.
+    function slotWindow(s, i) {
+      const slot = LOADOUT_SLOTS[i];
+      const cur = s.loadout[i];
+      const budget = CLASS_POINTS[s.cls];
+      const room = budget - loadoutPoints(s.loadout) + (cur ? pointsOf(cur) : 0);
+      const W = openWindow(SLOT_LABELS[i] === 'Primary' ? 'Primary weapon' : SLOT_LABELS[i], { sub: `${room} of ${budget} points free for this slot`, cls: 'hx-pick' });
+      // Everything he may carry here, but not twice (another slot's gun or its scoped kin).
+      const taken = s.loadout.filter((id, j) => id && j !== i).map((id) => baseOf(WEAPONS[id]));
+      const foreignOk = (w) => w.faction === s.faction || w.anyArmy || w.faction === 'ALL' || unlocked(s, w.id) || (s.ribbons?.[requirement(w.id, s.cls, s.faction)?.ribbon] || 0) > 0;
+      const items = carriable(s, slot).filter((w) => !taken.includes(baseOf(w)) && foreignOk(w));
+      const pick = (id) => {
+        s.loadout[i] = id;
+        save();
+        W.close();
+      };
+      const yours = items.filter((w) => unlocked(s, w.id) && owns(s, w.id));
+      const sale = items.filter((w) => unlocked(s, w.id) && !owns(s, w.id));
+      const locked = items.filter((w) => !unlocked(s, w.id));
+      const card = (w) => {
+        const c = el('button', `hx-card${w.id === cur ? ' on' : ''}`);
+        const pic = preview?.gunPicture(w.id, 300, 90) || '';
+        c.innerHTML = `${pic ? `<img class="gun" alt="" src="${pic}">` : ''}<b>${w.faction !== s.faction && !w.anyArmy && w.faction !== 'ALL' ? `<span class="wpn-army">${emblem(w.faction)}</span>` : ''}<span class="wn"></span></b><small></small><span class="tag"></span>`;
+        c.querySelector('.wn').textContent = w.name;
+        c.querySelector('small').textContent = `${pointsOf(w.id)} point${pointsOf(w.id) > 1 ? 's' : ''}`;
+        c.title = weaponStats(w);
+        return c;
+      };
+      const section = (title, list, fill) => {
+        if (!list.length) return;
+        W.body.appendChild(el('h4', 'hx-ph', title));
+        const g = el('div', 'hx-pg');
+        for (const w of list) {
+          const c = card(w);
+          fill(c, w);
+          g.appendChild(c);
+        }
+        W.body.appendChild(g);
+      };
+      const tooMany = (c, w) => {
+        if (pointsOf(w.id) <= room) return false;
+        c.classList.add('short');
+        c.querySelector('small').textContent = `${pointsOf(w.id)} points: ${pointsOf(w.id) - room} more than he has free`;
+        return true;
+      };
+      section('Yours', yours, (c, w) => {
+        const tag = c.querySelector('.tag');
+        if (w.id === cur) {
+          tag.innerHTML = '<span class="own">✓ Carrying</span>';
+          if (upgradesOf(w.id).length) {
+            const cu = el('span', 'hx-cust', `${ICONS.wrench} Customize`);
+            cu.addEventListener('click', (e) => {
+              e.stopPropagation();
+              W.close();
+              customize(s, w.id);
+            });
+            tag.appendChild(cu);
+          }
+          c.addEventListener('click', () => W.close());
+          return;
+        }
+        tag.innerHTML = '<span class="own">Owned</span>';
+        if (!tooMany(c, w)) c.addEventListener('click', () => pick(w.id));
+      });
+      section('For sale', sale, (c, w) => {
+        if (tooMany(c, w)) {
+          c.querySelector('.tag').innerHTML = `<span class="price">${ICONS.coin}${fmt(priceOf(w.id))}</span>`;
+          return;
+        }
+        shopCard(c, s, w.id, () => pick(w.id));
+      });
+      if (locked.length) {
+        const more = el('button', 'hx-more', `<span>${locked.length} more open as his ribbons rise</span><span>Show ▸</span>`);
+        W.body.appendChild(more);
+        more.addEventListener('click', () => {
+          more.remove();
+          section('Opens with his ribbons', locked, (c, w) => {
+            const r = requirement(w.id, s.cls, s.faction);
+            c.classList.add('locked');
+            c.disabled = true;
+            if (r) {
+              c.querySelector('.tag').innerHTML = `<span class="hx-lock">${ribbonSvg(r.ribbon, r.level)}<em></em></span>`;
+              c.querySelector('em').textContent = `${RIBBONS[r.ribbon]?.name || ribbonInfo(r.ribbon)?.name} ${r.level}`;
+            }
+          });
+        });
+      }
+      if (i > 0 && cur) {
+        const empty = el('button', 'hx-empty', 'Leave empty');
+        empty.addEventListener('click', () => pick(null));
+        W.foot.prepend(empty);
+      }
+      if (!items.length) W.body.appendChild(el('div', 'lo-note', 'Nothing his class may carry here.'));
+    }
+
+    // His combat badge, as in the original game: one worn, each with three
+    // tiers that open at levels of his ribbons.
+    function badgeWindow(s) {
+      const W = openWindow('Combat badge', { sub: 'One worn; its tiers open with his ribbons', cls: 'hx-wide' });
+      const draw = () => {
+        W.body.innerHTML = '';
+        const grid = el('div', 'hx-badgegrid');
         const open = wearable(s);
         const worn = badgeOf(s);
         const none = el('button', `badge-card${worn ? '' : ' on'}`);
@@ -411,11 +538,10 @@ export function showFrontEnd(app) {
         none.addEventListener('click', () => {
           s.badge = null;
           save();
-          loadout(s, 'badge');
+          draw();
         });
-        body.appendChild(none);
-        const ids = Object.keys(BADGES).sort((a, b) => open.includes(b) - open.includes(a));
-        for (const id of ids) {
+        grid.appendChild(none);
+        for (const id of Object.keys(BADGES).sort((a, b) => open.includes(b) - open.includes(a))) {
           const b = BADGES[id];
           const tiers = badgeTiers(s, id);
           const can = open.includes(id);
@@ -435,121 +561,154 @@ export function showFrontEnd(app) {
             c.addEventListener('click', () => {
               s.badge = id;
               save();
-              loadout(s, 'badge');
+              draw();
             });
           else c.disabled = true;
-          body.appendChild(c);
+          grid.appendChild(c);
         }
-        body.appendChild(el('div', 'lo-note', 'The original game gives each badge\'s strength but not what it does; what each does here is read from its name.'));
-      } else if (tab === 'ribbons') {
-        // His ribbons, as the original game's: the level, how far to the next,
-        // and what the levels still to come open for him.
-        for (const k of ribbonsFor(s.cls)) {
-          const lv = ribbonLevel(s.ribbons?.[k]);
-          const box = el('div', 'rib-row');
-          box.innerHTML = '<div class="rib-head"><b></b><span class="rib-lv"></span></div><div class="rib-note"></div><div class="rib-bar"><i></i></div><div class="rib-next"></div>';
-          box.querySelector('b').textContent = RIBBONS[k].name;
-          box.querySelector('.rib-lv').textContent = `Level ${lv.level} of 12`;
-          box.querySelector('.rib-note').textContent = RIBBONS[k].note;
-          box.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
-          const pts = Math.round(s.ribbons?.[k] || 0);
-          const ahead = opensWith(s, k).filter((o) => o.level > lv.level);
-          box.querySelector('.rib-next').textContent =
-            (lv.next === null ? `${fmt(pts)} points: the highest level` : `${fmt(pts)} / ${fmt(lv.next)} points to level ${lv.level + 1}`) + (ahead.length ? ` · Next: ${ahead.map((o) => `${o.name} (${o.level})`).join(', ')}` : '');
-          body.appendChild(box);
+        W.body.appendChild(grid);
+      };
+      draw();
+    }
+
+    // A tank crewman's tank.
+    function vehicleWindow(s) {
+      const W = openWindow('Tank', { sub: 'He goes into battle in it, as its driver' });
+      const draw = () => {
+        W.body.innerHTML = '';
+        if (!TANKS[s.faction].some((t) => t[0] === s.tank) || !tankUnlocked(s, s.tank)) s.tank = TANKS[s.faction][0][0];
+        for (const [id, name, note] of TANKS[s.faction]) {
+          const open = tankUnlocked(s, id);
+          const c = el('button', `veh-card${id === s.tank ? ' on' : ''}${open ? '' : ' locked'}`);
+          c.appendChild(el('b')).textContent = name;
+          c.appendChild(el('span')).textContent = note;
+          if (open)
+            c.addEventListener('click', () => {
+              s.tank = id;
+              save();
+              draw();
+            });
+          else c.appendChild(el('em')).textContent = lockLine(s, tankRequirement(id));
+          W.body.appendChild(c);
         }
-        // Specialist ribbons: each gun he has used, its own.
-        const specs = Object.keys(s.ribbons || {}).filter((k) => k.startsWith('spec:'));
-        if (specs.length) {
-          body.appendChild(el('div', 'slot-label', 'Specialist ribbons<span>each gun its own</span>'));
-          specs.sort((a, b) => s.ribbons[b] - s.ribbons[a]);
-          for (const k of specs) {
-            const info = ribbonInfo(k);
-            const lv = ribbonLevel(s.ribbons[k]);
-            const foreign = WEAPONS[info.gun].faction !== s.faction;
-            const box = el('div', 'rib-row');
-            box.innerHTML = '<div class="rib-head"><b></b><span class="rib-lv"></span></div><div class="rib-bar"><i></i></div><div class="rib-next"></div>';
-            box.querySelector('b').textContent = info.name;
-            box.querySelector('.rib-lv').textContent = `Level ${lv.level} of 12`;
-            box.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
-            const pts = Math.round(s.ribbons[k]);
-            box.querySelector('.rib-next').textContent = (lv.next === null ? `${fmt(pts)} points: the highest level` : `${fmt(pts)} / ${fmt(lv.next)} points to level ${lv.level + 1}`) + (foreign ? (lv.level >= 9 ? ' · He may carry it' : ' · At level 9 he may carry it') : '');
-            body.appendChild(box);
-          }
-        }
-        body.appendChild(el('div', 'lo-note', 'Pick up another army\'s gun in battle and use it to earn its Specialist ribbon: at level 9 he may take it into battle.'));
-        body.appendChild(el('div', 'lo-note', 'As in the original game, a soldier earns each ribbon by what he does in battle (shots, hits, kills, headshots, vehicles knocked out), and his army\'s guns and tanks open at set ribbon levels. Rank still rises with experience.'));
-      } else {
-        const n = variantCount(s.faction, s.cls);
+        W.body.appendChild(el('div', 'lo-note', 'The gunner and the other seats change with F1 to F4.'));
+      };
+      draw();
+    }
+
+    function uniformWindow(s) {
+      const W = openWindow('Uniform', { sub: 'The period kit of his army and class' });
+      const draw = () => {
+        W.body.innerHTML = '';
         const grid = el('div', 'uni-grid');
-        for (let v = 0; v < n; v++) {
+        for (let v = 0; v < variantCount(s.faction, s.cls); v++) {
           const b = el('button', v === s.variant ? 'on' : '', `Uniform ${v + 1}`);
           b.addEventListener('click', () => {
             s.variant = v;
             save();
             preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: v, primary: s.loadout[0] });
-            loadout(s, 'uniform');
+            draw();
           });
           grid.appendChild(b);
         }
-        body.appendChild(grid);
-        body.appendChild(el('div', 'lo-note', 'Each uniform is a different set of the period kit of his army and class: jacket, helmet cover, webbing, pouches.'));
-      }
+        W.body.appendChild(grid);
+      };
+      draw();
     }
 
-    // The rifles (and other guns) of a slot to choose from: his army's, then
-    // another army's he has begun to earn or has earned.
-    function families(s, slot) {
-      const out = [];
-      for (const w of carriable(s, slot)) {
-        const b = baseOf(w);
-        if (out.includes(b)) continue;
-        if (b.faction !== s.faction) {
-          const r = requirement(b.id, s.cls, s.faction);
-          if (!unlocked(s, w.id) && !(s.ribbons?.[r.ribbon] > 0)) continue;
+    // All his ribbons, grouped as the original's overview: each as its
+    // ribbon with the stars of its level and how far to the next; the one
+    // picked out large, with what earns it.
+    function ribbonsWindow(s, pickKey = null) {
+      const W = openWindow('Ribbons overview', { cls: 'hx-wide' });
+      const keys = ribbonKeys(s);
+      let k0 = pickKey && keys.includes(pickKey) ? pickKey : keys.slice().sort((a, b) => (s.ribbons?.[b] || 0) - (s.ribbons?.[a] || 0))[0];
+      const draw = () => {
+        W.body.innerHTML = '<div class="hx-ovb"><div class="hx-sel"></div><div class="hx-groups"></div></div>';
+        const L = ribbonLevel(s.ribbons?.[k0]);
+        const info = ribbonInfo(k0);
+        const selBox = W.body.querySelector('.hx-sel');
+        selBox.innerHTML = `<h3></h3>${ribbonSvg(k0, L.level)}<div class="bar"><i style="width:${(L.progress * 100).toFixed(1)}%"></i></div><div class="pts"></div><p></p><button>View progression</button>`;
+        selBox.querySelector('h3').textContent = info.name;
+        selBox.querySelector('.pts').textContent = L.next === null ? `${fmt(s.ribbons?.[k0] || 0)}: the highest level` : `Level ${L.level} · ${fmt(s.ribbons?.[k0] || 0)} / ${fmt(L.next)}`;
+        selBox.querySelector('p').textContent = `${info.note}.`;
+        selBox.querySelector('button').addEventListener('click', () => trackWindow(s, k0));
+        const groups = W.body.querySelector('.hx-groups');
+        const specs = keys.filter((k) => k.startsWith('spec:'));
+        for (const g of [...RIBBON_GROUPS, { name: 'Specialist', keys: specs }]) {
+          const ks = g.keys.filter((k) => keys.includes(k));
+          if (!ks.length) continue;
+          const box = el('div', 'hx-grp', `<h4>${g.name}</h4>`);
+          const tiles = el('div', 'hx-tiles');
+          for (const k of ks) {
+            const l = ribbonLevel(s.ribbons?.[k]);
+            const t = el('button', `hx-tile${k === k0 ? ' on' : ''}`, `${ribbonSvg(k, l.level)}<div class="bar"><i style="width:${(l.progress * 100).toFixed(0)}%"></i></div><span></span>`);
+            t.querySelector('span').textContent = ribbonInfo(k).name.replace(' Specialist', '');
+            t.title = `${ribbonInfo(k).name}: level ${l.level} of 12`;
+            t.addEventListener('click', () => {
+              k0 = k;
+              draw();
+            });
+            tiles.appendChild(t);
+          }
+          box.appendChild(tiles);
+          groups.appendChild(box);
         }
-        out.push(b);
-      }
-      return out;
+      };
+      draw();
     }
 
-    // A weapon to choose; locked: what opens it, and how far he is. Another
-    // army's carries its emblem.
-    function weaponCard(w, on, lock = null, foreign = false, short = 0) {
-      const c = el('button', `wpn-card${on ? ' on' : ''}${lock || short ? ' locked' : ''}`);
-      const pic = preview?.gunPicture(w.id) || '';
-      c.innerHTML = `<span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><span class="wpn-text"><b>${foreign ? `<span class="wpn-army">${emblem(w.faction)}</span>` : ''}<span class="wn"></span></b><small></small></span>`;
-      c.querySelector('.wn').textContent = w.name;
-      c.querySelector('small').textContent = lock ? lockLine(selected(roster), lock) : short ? `${pointsOf(w.id)} points: ${short} more than he has left` : weaponStats(w);
-      if (lock || short) c.disabled = true;
-      return c;
-    }
-
-    // An empty slot (or the choice to leave it empty).
-    function emptyCard(on) {
-      const c = el('button', `wpn-card empty${on ? ' on' : ''}`);
-      c.innerHTML = '<span class="wpn-pic"></span><span class="wpn-text"><b>Empty</b><small>Nothing in this slot: its points stay free</small></span>';
-      return c;
+    // One ribbon's twelve levels: those reached in color, a marker under each
+    // level that opens something, and the level picked out below with what it
+    // opens.
+    function trackWindow(s, k, pickLevel = null) {
+      const info = ribbonInfo(k);
+      const W = openWindow(info.name, { cls: 'hx-wide' });
+      const pts = s.ribbons?.[k] || 0;
+      const L = ribbonLevel(pts);
+      const all = opensWith(s, k);
+      let sel = pickLevel || Math.min(12, L.level + 1);
+      const back = el('button', 'hx-empty', '‹ All ribbons');
+      back.addEventListener('click', () => ribbonsWindow(s, k));
+      W.foot.prepend(back);
+      const draw = () => {
+        W.body.innerHTML = `<p class="hx-note"></p><div class="hx-track"></div><div class="hx-detail"></div>`;
+        W.body.querySelector('.hx-note').textContent = `${info.note}.`;
+        const tr = W.body.querySelector('.hx-track');
+        for (let n = 1; n <= 12; n++) {
+          const got = n <= L.level;
+          const has = all.filter((o) => o.level === n);
+          const fillW = got ? 100 : n === L.level + 1 ? L.progress * 100 : 0;
+          const b = el('button', `hx-lv${n === sel ? ' on' : ''}`, `<span>${n}</span>${ribbonSvg(k, n, { grey: !got })}<span class="hx-line"><i style="width:${fillW.toFixed(0)}%"></i></span>${has.length ? `<span class="hx-mark${got ? ' got' : ''}">${has.length}</span>` : '<span class="hx-mark none"></span>'}`);
+          b.title = has.length ? has.map((o) => o.name).join(', ') : `Level ${n}`;
+          b.addEventListener('click', () => {
+            sel = n;
+            draw();
+          });
+          tr.appendChild(b);
+        }
+        if (L.level < 12) {
+          const cur = el('div', 'hx-cur', `Level ${L.level + 1}<b>${fmt(pts)} / ${fmt(L.next)}</b>`);
+          cur.style.left = `${((L.level + 0.5) / 12) * 100}%`;
+          tr.appendChild(cur);
+        }
+        const det = W.body.querySelector('.hx-detail');
+        const here = all.filter((o) => o.level === sel);
+        det.innerHTML = `<div>${ribbonSvg(k, sel, { grey: sel > L.level })}</div><div><h3>Level ${sel}</h3><div class="hx-dsub"></div><div class="hx-opens"></div></div>`;
+        det.querySelector('.hx-dsub').textContent = sel <= L.level ? 'Reached.' : `${fmt(RIBBON_XP[sel] - pts)} points to go.${here.length ? ' Opens:' : ''}`;
+        const op = det.querySelector('.hx-opens');
+        for (const o of here) {
+          const d = el('div', '', `${opensPicture(o)}<span></span>`);
+          d.querySelector('span').textContent = o.name;
+          op.appendChild(d);
+        }
+        if (!here.length) op.appendChild(el('div', 'hx-none', 'Nothing new at this level.'));
+      };
+      draw();
     }
 
     function lockLine(s, req) {
       return `Opens at ${requirementText(req)} (now level ${ribbonLevel(s.ribbons?.[req.ribbon]).level})`;
-    }
-
-    // What a ribbon opens for this soldier, by level.
-    function opensWith(s, key) {
-      const out = [];
-      for (const slot of new Set(LOADOUT_SLOTS))
-        for (const w of weaponsFor(s.faction, s.cls, slot)) {
-          const r = requirement(w.id, s.cls, s.faction);
-          if (r?.ribbon === key && !w.base) out.push({ name: w.name, level: r.level });
-        }
-      if (s.cls === 'tanker')
-        for (const [id, name] of TANKS[s.faction]) {
-          const r = tankRequirement(id);
-          if (r?.ribbon === key) out.push({ name, level: r.level });
-        }
-      return out.sort((a, b) => a.level - b.level);
     }
 
     function readyBox(box, s) {
@@ -609,7 +768,7 @@ export function showFrontEnd(app) {
       const close = () => {
         ov.remove();
         window.removeEventListener('keydown', onEsc, true);
-        loadout(s, 'weapons');
+        show('heroes');
       };
       const onEsc = (e) => {
         if (e.key === 'Escape') {

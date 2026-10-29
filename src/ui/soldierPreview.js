@@ -173,6 +173,7 @@ export class SoldierPreview {
   enableDrag(el) {
     let x0 = null;
     el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest?.('button')) return; // (a button over him: its click, not a turn)
       x0 = e.clientX;
       el.setPointerCapture?.(e.pointerId);
     });
@@ -236,9 +237,10 @@ export class SoldierPreview {
       if (b.width > 40 && b.height > 80) {
         cx = b.left + b.width / 2;
         top = b.top + b.height * 0.07;
-        // Feet above the name plate.
-        const plate = this.el.querySelector('.fe-nameplate')?.getBoundingClientRect();
-        bottom = plate && plate.height ? Math.min(b.bottom, plate.top + plate.height * 0.25) : b.bottom - b.height * 0.04;
+        // Feet above whatever sits under him (the name plate, or his badge),
+        // if it is in the lower half of the box.
+        const under = [...this.el.querySelectorAll('.fe-nameplate, .hx-badges')].map((e) => e.getBoundingClientRect()).filter((r) => r.height && r.top > b.top + b.height * 0.5);
+        bottom = under.length ? Math.min(b.bottom, ...under.map((r) => r.top + r.height * 0.25)) : b.bottom - b.height * 0.04;
       }
     }
     const cam = this.camera;
