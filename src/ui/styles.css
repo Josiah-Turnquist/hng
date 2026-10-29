@@ -1013,9 +1013,9 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .cb-l { color: var(--ink-dim); }
 .cb-track { position: relative; height: 7px; background: rgba(255, 255, 255, 0.08); }
 .cb-track i { position: absolute; left: 0; top: 0; bottom: 0; }
-.cb-now { background: rgba(255, 255, 255, 0.5); z-index: 1; }
-.cb-next.up { background: #9fc27a; z-index: 0; }
-.cb-next.down { background: #d58c70; z-index: 2; }
+.cb-now { background: rgba(255, 255, 255, 0.5); }
+.cb-diff.up { background: #9fc27a; }
+.cb-diff.down { background: #d58c70; }
 .cb-v { font-family: var(--cond); font-size: 13px; text-align: right; }
 .cd-bar.good .cb-v { color: #9fc27a; }
 .cd-bar.bad .cb-v { color: #d58c70; }

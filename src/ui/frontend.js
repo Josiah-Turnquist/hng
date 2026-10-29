@@ -12,7 +12,7 @@ import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices, LOADOUT_SLOTS, CLA
 import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
 import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
-import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, damageScale as scaleAt } from '../weapons/upgrades.js';
+import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, damageScale as scaleAt, SCOPE_FAMILIES } from '../weapons/upgrades.js';
 import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, picksOf, fit, loadoutUpgrades } from '../game/armory.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
@@ -101,7 +101,7 @@ function summary(gun, u) {
     .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
     .slice(0, 3)
     .map((x) => x.text);
-  if (u.family) return `${u.mag}x telescopic sight.`;
+  if (u.family) return `${SCOPE_FAMILIES[u.family].name} telescopic sight, ${u.name.match(/\((.*)\)/)?.[1] || 'its own'} reticle.`;
   if (!out.length) return 'Little change.';
   const t = out.join(', ');
   return `${t[0].toUpperCase()}${t.slice(1)}.`;
@@ -700,14 +700,17 @@ export function showFrontEnd(app) {
           const a = val(now, def),
             b = val(next, def);
           const row = el('div', 'cd-bar');
-          const w = (x) => `${Math.max(3, Math.min(100, x * 50)).toFixed(1)}%`;
+          // The part both share, then what this one adds (green) or takes away (red).
+          const pos = (x) => Math.max(2, Math.min(100, x * 50));
+          const lo = pos(Math.min(a, b)),
+            hi = pos(Math.max(a, b));
           const diff = Math.round((b / a - 1) * 100);
-          row.innerHTML = `<span class="cb-l"></span><span class="cb-track"><i class="cb-now" style="width:${w(a)}"></i><i class="cb-next ${b > a + 1e-6 ? 'up' : b < a - 1e-6 ? 'down' : ''}" style="width:${w(b)}"></i></span><span class="cb-v">${diff ? `${diff > 0 ? '+' : ''}${diff}%` : ''}</span>`;
+          row.innerHTML = `<span class="cb-l"></span><span class="cb-track"><i class="cb-now" style="width:${lo.toFixed(1)}%"></i><i class="cb-diff ${b > a ? 'up' : 'down'}" style="left:${lo.toFixed(1)}%;width:${(hi - lo).toFixed(1)}%"></i></span><span class="cb-v">${diff ? `${diff > 0 ? '+' : ''}${diff}%` : ''}</span>`;
           row.querySelector('.cb-l').textContent = label;
           if (diff) row.classList.add(diff > 0 ? 'good' : 'bad');
           bars.appendChild(row);
         }
-        if (next.scope && !now.scope) box.querySelector('.cd-line').textContent += ` ${next.scope.mag}x, set from ${next.sight.ranges[0]} to ${next.sight.ranges.at(-1)} ${next.sight.unit}.`;
+        if (next.scope && !now.scope) box.querySelector('.cd-line').textContent += ` ${next.scope.mag}x, ranges from ${next.sight.ranges[0]} to ${next.sight.ranges.at(-1)} ${next.sight.unit}.`;
         const act = box.querySelector('.cd-act');
         const have = !u || ownsUpgrade(s, gun, id);
         const fitted = (picks[slot] || null) === id;
