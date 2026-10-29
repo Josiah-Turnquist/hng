@@ -284,8 +284,9 @@ export function showFrontEnd(app) {
       plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]}`;
       plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP`;
       const worn = badgeOf(s);
-      const bd = el('button', 'hx-badge', `${worn ? badgeSvg(worn.id, worn.tier) : shield('<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<span></span>`);
-      bd.querySelector('span').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Badge';
+      // Like a loadout card: its label, the badge, its name.
+      const bd = el('button', 'hx-badge', `<span class="lab">Badge</span>${worn ? badgeSvg(worn.id, worn.tier) : shield('<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<b></b>`);
+      bd.querySelector('b').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Choose one';
       bd.title = worn ? BADGES[worn.id].does : 'Choose a combat badge';
       bd.addEventListener('click', () => badgeWindow(s));
       main.querySelector('.hx-badges').appendChild(bd);

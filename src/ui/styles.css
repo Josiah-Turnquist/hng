@@ -1052,11 +1052,11 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-stage .fe-nameplate .xp { height: 4px; margin: 5px 0 3px; }
 .hx-stage .stage-turn { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); }
 .hx-badges { align-self: center; display: flex; gap: 12px; margin-bottom: 4px; }
-.hx-badge { width: 130px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px 7px; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
-.hx-badge:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(226, 172, 70, 0.6); }
-.hx-badge svg { width: 54px; height: 62px; transition: transform 0.15s; }
-.hx-badge:hover svg { transform: scale(1.06); }
-.hx-badge span { font-family: var(--cond); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.88); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
+.hx-badge:hover { border-color: rgba(226, 172, 70, 0.6); }
+.hx-badge .lab { align-self: flex-start; font-family: var(--cond); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
+.hx-badge svg { width: 50px; height: 58px; }
+.hx-badge b { font-family: var(--cond); font-size: 14px; font-weight: 600; }
 .hx-head { display: flex; align-items: center; gap: 6px; min-height: 34px; }
 .hx-icons { display: flex; gap: 4px; }
 .hx-icons button { width: 34px; height: 32px; display: grid; place-items: center; font-size: 18px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--ink-dim); }
@@ -1184,8 +1184,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-right .ready-mission b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hx-right .rm-change { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 6px; }
 /* Badge art: under the soldier, and at the left of each badge's card. */
-.hx-badge .badge-art { width: 58px; height: auto; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); transition: transform 0.15s; }
-.hx-badge:hover .badge-art { transform: scale(1.06); }
+.hx-badge .badge-art { width: 50px; height: auto; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
 .hx-badgegrid .badge-card { grid-template-columns: 56px minmax(0, 1fr); column-gap: 12px; align-items: start; }
 .hx-badgegrid .badge-card > :not(.bdg-pic) { grid-column: 2; }
 .hx-badgegrid .badge-card .bdg-pic { grid-column: 1; grid-row: 1 / span 3; }
