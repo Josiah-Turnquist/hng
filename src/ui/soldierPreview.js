@@ -228,6 +228,7 @@ export class SoldierPreview {
     };
     const ground = new THREE.Mesh(g, groundMat);
     ground.receiveShadow = true;
+    ground.visible = false; // (no floor: he stands against the backdrop)
     scene.add(ground);
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 40);
     // Facing the camera (models face -z), turned a little toward the light.
