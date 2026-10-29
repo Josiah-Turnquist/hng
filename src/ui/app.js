@@ -9,6 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
+import { RIBBONS, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
 import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
 import { FACTIONS } from '../weapons/defs.js';
@@ -250,7 +251,9 @@ export class App {
     const captures = s.captures || 0;
     const xp = 100 + s.kills * 100 + captures * 150 + (won ? 400 : 0);
     const roster = loadRoster();
-    const res = awardBattle(roster, id, { xp, won, kills: s.kills, deaths: s.deaths, captures });
+    const cls = roster.soldiers.find((x) => x.id === id)?.cls || s.cls;
+    const ribbons = g.ribbonTally ? ribbonPoints(g.ribbonTally, cls) : {};
+    const res = awardBattle(roster, id, { xp, won, kills: s.kills, deaths: s.deaths, captures, ribbons });
     if (!res) return null;
     saveRoster(roster);
     const soldier = roster.soldiers.find((x) => x.id === id);
@@ -288,6 +291,8 @@ export class App {
             ? `<div class="br-rank">${rankBadge(rk.rank)}<div><b></b><small></small><div class="br-xp"><i style="width:${(rk.progress * 100).toFixed(1)}%"></i></div></div></div>`
             : ''
         }
+        ${r && Object.keys(r.gained || {}).length ? '<div class="br-ribbons"></div>' : ''}
+        ${r?.unlocks?.length ? '<div class="br-unlocks"><span>Now open to him</span><b></b></div>' : ''}
         <button class="cta">Back to headquarters</button>
       </div>`;
     el.querySelector('.br-why').textContent = why;
@@ -296,6 +301,21 @@ export class App {
       el.querySelector('.br-rank b').textContent = `${promoted ? 'Promoted: ' : ''}Rank ${rk.rank} ${rankTitle(f, rk.rank)}`;
       el.querySelector('.br-rank small').textContent = `${r.soldier.name} · ${r.soldier.xp.toLocaleString('en-US')} XP${rk.next ? ` · ${(rk.next - r.soldier.xp).toLocaleString('en-US')} to ${rankTitle(f, rk.rank + 1)}` : ''}`;
       el.querySelector('.br-rank').prepend(Object.assign(document.createElement('span'), { className: 'br-emb', innerHTML: emblem(f) }));
+      // His ribbons: what this battle earned each, its level and how far on.
+      const rb = el.querySelector('.br-ribbons');
+      for (const [k, pts] of Object.entries(r.gained || {})) {
+        const lv = ribbonLevel(r.soldier.ribbons[k]);
+        const up = r.ribbonUps.find((u) => u.key === k);
+        const row = document.createElement('div');
+        row.className = `br-ribbon${up ? ' up' : ''}`;
+        row.innerHTML = '<span class="n"></span><span class="l"></span><span class="p"></span><div class="bar"><i></i></div>';
+        row.querySelector('.n').textContent = RIBBONS[k].name;
+        row.querySelector('.l').textContent = up ? `Level ${up.from} → ${up.to}` : `Level ${lv.level}`;
+        row.querySelector('.p').textContent = `+${pts.toLocaleString('en-US')}`;
+        row.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
+        rb.appendChild(row);
+      }
+      if (r.unlocks?.length) el.querySelector('.br-unlocks b').textContent = r.unlocks.join(', ');
     }
     el.querySelector('.cta').addEventListener('click', () => location.reload());
     g.hud.root.appendChild(el);

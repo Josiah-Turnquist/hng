@@ -255,12 +255,13 @@ test("the Marine Corps' Unertl is pulled back after every shot", () => {
 
 test('the old scoped rifles still load, and loadouts remember the scope', () => {
   for (const id of ['m1903a4', 'kar98k_zf39', 'mosin_pu']) assert.ok(WEAPONS[id]?.scope, id);
-  assert.equal(DEFAULT_LOADOUT.US.recon[0], 'm1903a4');
+  assert.equal(DEFAULT_LOADOUT.US.recon[0], 'm1c_m81');
   const saved = new Map();
   const old = globalThis.localStorage;
   globalThis.localStorage = { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
-    const soldier = (id, faction, cls, gun) => ({ id, faction, cls, name: 'X Y', loadout: [gun, null, null] });
+    // (Ribbons high enough that every rifle is open to them: game/ribbons.js.)
+    const soldier = (id, faction, cls, gun) => ({ id, faction, cls, name: 'X Y', loadout: [gun, null, null], ribbons: { infantryAssault: 1e6 } });
     saved.set(
       'hng.roster.v1',
       JSON.stringify({
@@ -271,7 +272,7 @@ test('the old scoped rifles still load, and loadouts remember the scope', () => 
     const r = loadRoster();
     assert.deepEqual(
       r.soldiers.map((s) => s.loadout[0]),
-      ['kar98k_zf39', 'mosin_pu', 'm1c_m82', 'kar98k_zf41', 'kar98k', 'm1903a4'],
+      ['kar98k_zf39', 'mosin_pu', 'm1c_m82', 'kar98k_zf41', 'gewehr43', 'm1903a4'],
       'kept, except a scout scope on an infantryman (back to his default rifle)',
     );
   } finally {

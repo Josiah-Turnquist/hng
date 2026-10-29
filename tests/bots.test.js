@@ -138,7 +138,10 @@ test('a bot that spots an enemy close by makes for cover and fights from it', ()
   foe.body.z = c.threat.z;
   foe.body.y = ground(c.threat.x, c.threat.z);
   foe.brain = null; // stands there
-  bot.health = 1e6; // (whatever happens, the test is about where he goes)
+  // (Whatever happens, the test is about where he goes: neither falls, so the
+  // fight goes on.)
+  bot.health = 1e6;
+  foe.health = 1e6;
   const br = bot.brain;
   br.aware.set(foe, 1);
   br.lastSeen.set(foe, { x: foe.body.x, y: foe.body.y, z: foe.body.z, t: g.time, visible: true });

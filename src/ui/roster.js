@@ -1,14 +1,16 @@
 // The player's soldiers, as in the original game's Heroes screen: one infantry
 // soldier per army to begin with, more recruited from any army and class, each
-// with a name, a rank earned from experience (XP), a loadout, a uniform, and a
-// record of his battles. Kept in the browser (localStorage); without it the
+// with a name, a rank earned from experience (XP), his ribbons (which open his
+// weapons and tanks: game/ribbons.js), a loadout, a uniform, and a record of his
+// battles. Kept in the browser (localStorage); without it the
 // roster lives for this visit only.
 //
 //   const r = loadRoster();
 //   r.selected                       // the soldier going into battle
 //   recruit(r, { faction, cls, name }); select(r, id); dismiss(r, id); saveRoster(r);
-//   awardBattle(r, id, { xp, won, kills, deaths, captures })  // after a battle
-import { DEFAULT_LOADOUT, weaponsFor } from '../weapons/defs.js';
+//   awardBattle(r, id, { xp, won, kills, deaths, captures, ribbons })  // after a battle
+import { DEFAULT_LOADOUT, WEAPONS, weaponsFor } from '../weapons/defs.js';
+import { RIBBONS, ribbonLevel, unlocked, tankUnlocked } from '../game/ribbons.js';
 import { variantCount } from '../actors/soldierKit.js';
 import '../actors/soldierKitUS.js';
 import '../actors/soldierKitGE.js';
@@ -97,6 +99,7 @@ function makeSoldier(faction, cls, name, rng = Math.random) {
     variant: Math.floor(rng() * variantCount(faction, cls)),
     loadout: [...DEFAULT_LOADOUT[faction][cls]],
     tank: null,
+    ribbons: {},
     stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 },
   };
 }
@@ -105,11 +108,19 @@ function makeSoldier(faction, cls, name, rng = Math.random) {
 function check(s) {
   if (!DEFAULT_LOADOUT[s.faction]?.[s.cls]) return null;
   const def = DEFAULT_LOADOUT[s.faction][s.cls];
+  // Saved before ribbons: his past kills count toward his class's main ribbon
+  // (about what a rifle kill earns).
+  if (!s.ribbons || typeof s.ribbons !== 'object') {
+    const kills = Math.max(0, Number(s.stats?.kills) || 0);
+    s.ribbons = kills ? { [s.cls === 'tanker' ? 'armorAssault' : 'infantryAssault']: kills * 85 } : {};
+  }
+  for (const k of Object.keys(s.ribbons)) if (!RIBBONS[k] || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
   const slots = ['primary', 'sidearm', 'equipment'];
   s.loadout = slots.map((slot, i) => {
     const id = s.loadout?.[i];
-    return weaponsFor(s.faction, s.cls, slot).some((w) => w.id === id) ? id : def[i];
+    return weaponsFor(s.faction, s.cls, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
   });
+  if (s.tank && !tankUnlocked(s, s.tank)) s.tank = null;
   s.xp = Math.max(0, Number(s.xp) || 0);
   s.variant = Math.max(0, Math.floor(Number(s.variant) || 0)) % variantCount(s.faction, s.cls);
   s.seed = Number(s.seed) || 1;
@@ -181,16 +192,40 @@ export function dismiss(r, id) {
   return true;
 }
 
-// After a battle: experience and the record. Returns { before, after } ranks.
-export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0, captures = 0 } = {}) {
+// After a battle: experience, ribbon points and the record. Returns { before,
+// after } ranks, the ribbons that went up a level ({ key, from, to, points }),
+// and what that opened (weapons and tanks, by name).
+export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0, captures = 0, ribbons = {} } = {}) {
   const s = r.soldiers.find((x) => x.id === id);
   if (!s) return null;
   const before = rankOf(s.xp).rank;
+  s.ribbons ||= {};
+  const had = openedFor(s);
+  const ribbonUps = [];
+  const gained = {};
+  for (const [k, pts] of Object.entries(ribbons)) {
+    if (!RIBBONS[k] || !(pts > 0)) continue;
+    const from = ribbonLevel(s.ribbons[k]).level;
+    s.ribbons[k] = Math.round((s.ribbons[k] || 0) + pts);
+    gained[k] = Math.round(pts);
+    const to = ribbonLevel(s.ribbons[k]).level;
+    if (to > from) ribbonUps.push({ key: k, from, to });
+  }
+  const unlocks = openedFor(s).filter((n) => !had.includes(n));
   s.xp += Math.max(0, Math.round(xp));
   s.stats.battles++;
   if (won) s.stats.wins++;
   s.stats.kills += kills;
   s.stats.deaths += deaths;
   s.stats.captures += captures;
-  return { before, after: rankOf(s.xp).rank };
+  return { before, after: rankOf(s.xp).rank, ribbonUps, gained, unlocks };
+}
+
+// The names of the weapons and tanks a soldier may take into battle.
+const TANK_NAMES = { US: { m5a1_stuart: 'M5A1 Stuart', m4a1_sherman: 'M4A1 Sherman' }, GE: { panzer4_h: 'Panzer IV Ausf. H', tiger1: 'Tiger I' }, SU: { t34_76: 'T-34/76', t34_85: 'T-34-85' } };
+function openedFor(s) {
+  const out = [];
+  for (const slot of ['primary', 'sidearm', 'equipment']) for (const w of weaponsFor(s.faction, s.cls, slot)) if (unlocked(s, w.id)) out.push(WEAPONS[w.id].name);
+  if (s.cls === 'tanker') for (const [id, name] of Object.entries(TANK_NAMES[s.faction] || {})) if (tankUnlocked(s, id)) out.push(name);
+  return out;
 }

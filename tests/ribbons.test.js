@@ -1,0 +1,139 @@
+// Ribbons, as in the original game: what a battle earns each ribbon (the game's
+// own point values), the twelve levels, which ribbon level opens each of an
+// army's guns and tanks for each class, the kit a new soldier starts with, and
+// what a battle's results report.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { RibbonTally, ribbonPoints, ribbonLevel, requirement, unlocked, tankUnlocked, ribbonsFor, RIBBON_XP } from '../src/game/ribbons.js';
+import { newRoster, recruit, awardBattle, loadRoster } from '../src/ui/roster.js';
+import { WEAPONS, DEFAULT_LOADOUT, weaponsFor } from '../src/weapons/defs.js';
+
+const near = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
+
+test('a battle earns ribbon points at the original game values', () => {
+  const t = new RibbonTally();
+  const kar = WEAPONS.kar98k;
+  for (let i = 0; i < 10; i++) t.shot(kar, null);
+  t.damage(kar, null, 100);
+  t.kill(kar, null, false);
+  t.kill(kar, null, true);
+  const p = ribbonPoints(t, 'infantry');
+  // 10 shots x 7.398, 100 damage x 0.571, a kill 94.709, a headshot kill 212.654.
+  assert.ok(near(p.infantryAssault, 10 * 7.398 + 100 * 0.571 + 94.709 + 212.654), String(p.infantryAssault));
+  assert.equal(p.lmgAssault, undefined);
+
+  // A machine gun: Infantry Assault and LMG Assault both, for an infantryman only.
+  const m = new RibbonTally();
+  m.kill(WEAPONS.mg42, null);
+  assert.ok(near(ribbonPoints(m, 'infantry').lmgAssault, 100.065));
+  assert.ok(near(ribbonPoints(m, 'infantry').infantryAssault, 52.786));
+  assert.equal(ribbonPoints(m, 'paratrooper').lmgAssault, undefined);
+
+  // Grenades, launchers on tanks, a tank gun, driving, a jump.
+  const x = new RibbonTally();
+  x.kill(WEAPONS.mk2_grenade, null);
+  x.vehicleKill(WEAPONS.bazooka_m1a1, null);
+  assert.ok(near(ribbonPoints(x, 'infantry').explosives, 770.699));
+  assert.ok(near(ribbonPoints(x, 'infantry').tankDestruction, 253.925));
+  const tk = new RibbonTally();
+  tk.shot({ name: '75 mm', id: 'm4a1_sherman', vehicle: true }, null);
+  tk.vehicleKill({ name: '75 mm', id: 'm4a1_sherman', vehicle: true }, null);
+  tk.drive(1000);
+  const tp = ribbonPoints(tk, 'tanker');
+  assert.ok(near(tp.armorAssault, 4.475 + 152.552));
+  assert.ok(near(tp.armorDamage, 34.924));
+  assert.ok(near(tp.tankDriver, 196));
+  const j = new RibbonTally();
+  j.jump();
+  assert.ok(ribbonPoints(j, 'paratrooper').parachute > 150);
+  assert.equal(ribbonPoints(j, 'infantry').parachute, undefined);
+});
+
+test('twelve ribbon levels at the original thresholds', () => {
+  assert.equal(RIBBON_XP.length, 13);
+  assert.equal(ribbonLevel(0).level, 0);
+  assert.equal(ribbonLevel(499).level, 0);
+  assert.equal(ribbonLevel(500).level, 1);
+  assert.equal(ribbonLevel(15500).level, 5);
+  assert.equal(ribbonLevel(1e7).level, 12);
+  assert.equal(ribbonLevel(1e7).next, null);
+  assert.deepEqual(ribbonsFor('infantry').slice(0, 2), ['infantryAssault', 'lmgAssault']);
+  assert.ok(ribbonsFor('tanker').includes('armorAssault'));
+  assert.ok(!ribbonsFor('recon').includes('lmgAssault'));
+});
+
+test('guns open at the original ribbon levels, by class', () => {
+  const R = (id, cls) => requirement(id, cls);
+  assert.equal(R('m1_garand', 'infantry').level, 0);
+  assert.deepEqual(R('m3_greasegun', 'infantry'), { ribbon: 'infantryAssault', level: 1 });
+  assert.deepEqual(R('m3_greasegun', 'tanker'), { ribbon: 'armorDamage', level: 0 });
+  assert.deepEqual(R('m1_carbine', 'infantry'), { ribbon: 'infantryAssault', level: 5 });
+  assert.deepEqual(R('m1_carbine', 'paratrooper'), { ribbon: 'parachute', level: 4 });
+  assert.deepEqual(R('bar_m1918a2', 'infantry'), { ribbon: 'infantryAssault', level: 7 });
+  assert.deepEqual(R('thompson_m1a1', 'paratrooper'), { ribbon: 'smgAssault', level: 9 });
+  assert.deepEqual(R('kar98k', 'infantry'), { ribbon: 'infantryAssault', level: 6 });
+  assert.deepEqual(R('mg42', 'infantry'), { ribbon: 'lmgAssault', level: 12 });
+  assert.deepEqual(R('stg44', 'infantry'), { ribbon: 'infantryAssault', level: 12 });
+  assert.deepEqual(R('ptrd41', 'infantry'), { ribbon: 'tankDestruction', level: 5 });
+  // A scoped rifle opens with the plain rifle.
+  assert.deepEqual(R('kar98k_zf39', 'recon'), R('kar98k', 'recon'));
+  // Every own-army gun a class may carry has a requirement or is starting kit.
+  for (const f of ['US', 'GE', 'SU'])
+    for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker'])
+      for (const slot of ['primary', 'sidearm', 'equipment'])
+        for (const w of weaponsFor(f, cls, slot)) {
+          const r = requirement(w.id, cls);
+          assert.ok(r === null || (r.level >= 0 && r.level <= 12), `${w.id} ${cls}`);
+        }
+});
+
+test("a new soldier's kit is all open to him, and the next guns open as his ribbons rise", () => {
+  for (const f of ['US', 'GE', 'SU'])
+    for (const [cls, kit] of Object.entries(DEFAULT_LOADOUT[f])) {
+      const s = { faction: f, cls, ribbons: {} };
+      for (const id of kit) assert.ok(unlocked(s, id), `${f} ${cls} ${id}`);
+    }
+  assert.deepEqual(DEFAULT_LOADOUT.GE.infantry[0], 'gewehr43');
+  const s = { faction: 'US', cls: 'infantry', ribbons: {} };
+  assert.ok(!unlocked(s, 'm3_greasegun'));
+  s.ribbons.infantryAssault = 500;
+  assert.ok(unlocked(s, 'm3_greasegun'));
+  assert.ok(!unlocked(s, 'm1_carbine'));
+  const t = { faction: 'US', cls: 'tanker', ribbons: {} };
+  assert.ok(tankUnlocked(t, 'm5a1_stuart'));
+  assert.ok(!tankUnlocked(t, 'm4a1_sherman'));
+  t.ribbons.armorAssault = 29500;
+  assert.ok(tankUnlocked(t, 'm4a1_sherman'));
+});
+
+test('a battle adds ribbon points and reports the levels gained and what they opened', () => {
+  const r = newRoster();
+  const s = r.soldiers[0];
+  const res = awardBattle(r, s.id, { xp: 500, kills: 6, ribbons: { infantryAssault: 600, lmgAssault: 10 } });
+  assert.equal(s.ribbons.infantryAssault, 600);
+  assert.deepEqual(res.ribbonUps, [{ key: 'infantryAssault', from: 0, to: 1 }]);
+  assert.ok(res.unlocks.includes(WEAPONS.m3_greasegun.name), res.unlocks.join());
+  assert.equal(res.gained.infantryAssault, 600);
+  // A recruit has no ribbons yet.
+  const p = recruit(r, { faction: 'GE', cls: 'paratrooper' });
+  assert.deepEqual(p.ribbons, {});
+  assert.equal(p.loadout[0], 'gewehr43');
+});
+
+test('soldiers saved before ribbons keep credit for their kills; locked guns go back to the kit', () => {
+  const saved = {
+    soldiers: [{ id: 'a', faction: 'US', cls: 'infantry', name: 'Old Hand', xp: 60000, loadout: ['bar_m1918a2', 'm1911a1', 'mk2_grenade'], stats: { kills: 400 } }, { id: 'b', faction: 'GE', cls: 'infantry', name: 'New Boy', xp: 10, loadout: ['stg44', 'p38', 'stielhandgranate24'], stats: { kills: 2 } }],
+    selectedId: 'a',
+  };
+  const store = new Map([['hng.roster.v1', JSON.stringify(saved)]]);
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  try {
+    const r = loadRoster();
+    const [a, b] = r.soldiers;
+    assert.equal(a.ribbons.infantryAssault, 400 * 85);
+    assert.equal(a.loadout[0], 'bar_m1918a2', 'Infantry Assault 8: the BAR (7) stays');
+    assert.deepEqual(b.loadout, DEFAULT_LOADOUT.GE.infantry, 'the StG 44 and P38 were not open to him');
+  } finally {
+    delete globalThis.localStorage;
+  }
+});

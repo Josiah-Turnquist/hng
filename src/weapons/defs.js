@@ -1018,9 +1018,13 @@ export function scopeChoices(def, cls) {
   return out;
 }
 
-// Default loadouts per faction and class (primary, sidearm, equipment).
+// Default loadouts per faction and class (primary, sidearm, equipment): a new
+// soldier's kit, as in the original game: his army's first rifle (the M1
+// Garand, the Gewehr 43, the SVT-40; a scout's with a scope on it), a tank
+// crewman's first submachine gun, and the army's first pistol and grenade.
+// Everything else opens with his ribbons (game/ribbons.js).
 export const DEFAULT_LOADOUT = {
-  US: { infantry: ['m1_garand', 'm1911a1', 'mk2_grenade'], recon: ['m1903a4', 'm1911a1', 'mk2_grenade'], paratrooper: ['thompson_m1a1', 'm1911a1', 'mk2_grenade'], tanker: ['m3_greasegun', 'm1911a1', 'mk2_grenade'] },
-  GE: { infantry: ['kar98k', 'p38', 'stielhandgranate24'], recon: ['kar98k_zf39', 'p38', 'stielhandgranate24'], paratrooper: ['mp40', 'p38', 'stielhandgranate24'], tanker: ['mp40', 'p38', 'stielhandgranate24'] },
-  SU: { infantry: ['mosin_9130', 'tt33', 'rgd33'], recon: ['mosin_pu', 'tt33', 'rgd33'], paratrooper: ['ppsh41', 'tt33', 'rgd33'], tanker: ['pps43', 'tt33', 'rgd33'] },
+  US: { infantry: ['m1_garand', 'm1911a1', 'mk2_grenade'], recon: ['m1c_m81', 'm1911a1', 'mk2_grenade'], paratrooper: ['m1_garand', 'm1911a1', 'mk2_grenade'], tanker: ['m3_greasegun', 'm1911a1', 'mk2_grenade'] },
+  GE: { infantry: ['gewehr43', 'c96', 'stielhandgranate24'], recon: ['gewehr43_zf4', 'c96', 'stielhandgranate24'], paratrooper: ['gewehr43', 'c96', 'stielhandgranate24'], tanker: ['mp34', 'c96', 'stielhandgranate24'] },
+  SU: { infantry: ['svt40', 'tt33', 'rgd33'], recon: ['svt40_pu', 'tt33', 'rgd33'], paratrooper: ['svt40', 'tt33', 'rgd33'], tanker: ['ppd40', 'tt33', 'rgd33'] },
 };

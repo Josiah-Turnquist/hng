@@ -21,6 +21,7 @@ import { Pickups } from './pickups.js';
 import { PickupView } from './pickupView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
+import { RibbonTally } from './ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
 import { spawnVehicle } from '../vehicles/index.js';
@@ -108,6 +109,10 @@ export class Game {
     this.player = new PlayerController(this, player);
     this.player.look.yaw = spawn.yaw;
     attachSoldierModel(this, player);
+    // What the player does this battle, for his ribbons (game/ribbons.js). A
+    // paratrooper's every time into battle counts as a jump.
+    this.ribbonTally = new RibbonTally();
+    if (cls === 'paratrooper') this.ribbonTally.jump();
     this.mode.start();
     this.deploy = { t: 0, index: 0 };
 
@@ -209,6 +214,7 @@ export class Game {
     });
     p.ignoreTarget = v;
     if (owner) owner.lastShotTime = this.time;
+    if (owner && owner === this.player?.soldier) this.ribbonTally?.shot(p.weapon, owner);
     this.effects.muzzle(m.x, m.y, m.z, dd.x, dd.y, dd.z, 0.6);
     this.audio?.gunshot?.(d.sound, m.x, m.y, m.z, { isLocal: owner === this.player?.soldier, source: `v${v.id}` });
   }
@@ -235,6 +241,9 @@ export class Game {
       if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
     }
     this._playerDeploy(dt);
+    // (Tank Driver: the distance he drives his tank.)
+    const me = this.player.soldier;
+    if (me.alive && me.vehicle?.def.kind === 'tracked' && me.seat === 0) this.ribbonTally?.drive(Math.abs(me.vehicle.speed) * dt);
     this._footsteps();
     this._runOver();
     this.projectiles.update(dt);
@@ -335,6 +344,7 @@ export class Game {
       if (wait <= 0 && (input.hit('jump') || d.go)) {
         d.go = false;
         this.mode.spawnSoldier(s, o.point);
+        if (s.cls === 'paratrooper') this.ribbonTally?.jump();
         this.player.look.yaw = s.yaw;
         this.player.look.pitch = 0;
         s.current = -1; // (his gun may be a new one: see Soldier.rearm)
@@ -576,7 +586,10 @@ export class Game {
       this.hud?.hitMarker(2);
       // (Not for knocking out his own side's machine.)
       const foe = v.occupants?.some((o) => o && o.team !== attacker.team) || (v.def.faction && v.def.faction !== attacker.faction);
-      if (foe) this.hud?.killConfirm?.(v.def.name, { verb: 'Destroyed' });
+      if (foe) {
+        this.ribbonTally?.vehicleKill(v.lastWeapon, attacker);
+        this.hud?.killConfirm?.(v.def.name, { verb: 'Destroyed' });
+      }
     }
     // An ammunition explosion throws the turret off.
     if (cause === 'ammo' && v.model.parts?.turret) {
@@ -698,7 +711,9 @@ export class Game {
   }
 
   // The player hurt: a red flash at the edges, the view jolts, and he grunts.
-  onDamage(s, amount) {
+  onDamage(s, amount, cause) {
+    const a = cause?.attacker;
+    if (a && a === this.player?.soldier && a.team !== s.team) this.ribbonTally?.damage(cause.weapon, a, amount);
     if (s !== this.player?.soldier) return;
     this.hud?.damage(amount);
     this.player.flinch?.(amount);
@@ -715,6 +730,7 @@ export class Game {
         // The kill mark for the player however he killed (run over, blown up,
         // bled out), not only by a bullet.
         if (a === this.player?.soldier) {
+          this.ribbonTally?.kill(cause?.weapon, a, !!cause?.headshot);
           this.hud?.hitMarker(2);
           this.hud?.killConfirm?.(s.name, { points: 5, headshot: !!cause?.headshot });
         }

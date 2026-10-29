@@ -938,7 +938,10 @@ export class Vehicle {
   // A projectile hit one of our plates. The projectile system has already decided
   // whether it went through (info.kind: 'penetrate', 'nonpen', 'ricochet').
   onHit(info, p) {
-    if (p.owner) this.lastAttacker = p.owner;
+    if (p.owner) {
+      this.lastAttacker = p.owner;
+      this.lastWeapon = p.weapon; // (for the ribbons: game/ribbons.js)
+    }
     const ammo = p.ammo;
     const shell = ammo.diameter >= 0.019 || ammo.heat || ammo.explosive;
     const plate = info.plate || this.plates?.find((pl) => pl.name === info.part);

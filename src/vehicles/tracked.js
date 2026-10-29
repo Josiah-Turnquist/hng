@@ -521,6 +521,7 @@ export class TrackedVehicle extends Vehicle {
       tracer: true,
     });
     p.ignoreVehicle = this;
+    if (owner && owner === g.player?.soldier) g.ribbonTally?.shot(p.weapon, owner);
     // Recoil: shell and powder gas momentum pushes the whole tank (the recoil
     // system spreads it over a few tenths of a second).
     const impulse = shell.mass * mv + shell.mass * 0.45 * 1400;

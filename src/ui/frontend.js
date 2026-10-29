@@ -8,7 +8,8 @@
 //   Progression: the player's level, each soldier's rank and record, the ranks.
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
-import { FACTIONS, WEAPONS, baseOf, weaponFamilies, scopeChoices } from '../weapons/defs.js';
+import { FACTIONS, WEAPONS, baseOf, weaponFamilies, weaponsFor, scopeChoices } from '../weapons/defs.js';
+import { RIBBONS, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
@@ -19,8 +20,8 @@ import { BattleMap } from './battleMap.js';
 
 const TANKS = {
   US: [
-    ['m4a1_sherman', 'M4A1 Sherman', 'Medium tank, 75 mm gun, gyrostabilized. Five crew.'],
     ['m5a1_stuart', 'M5A1 Stuart', 'Light tank, 37 mm gun, fast. Four crew.'],
+    ['m4a1_sherman', 'M4A1 Sherman', 'Medium tank, 75 mm gun, gyrostabilized. Five crew.'],
   ],
   GE: [
     ['panzer4_h', 'Panzer IV Ausf. H', 'Medium tank, long 75 mm gun, 80 mm front. Five crew.'],
@@ -230,6 +231,7 @@ export function showFrontEnd(app) {
       const names = [
         ['weapons', 'Weapons'],
         ['vehicle', 'Vehicle'],
+        ['ribbons', 'Ribbons'],
         ['uniform', 'Uniform'],
       ];
       tabs.innerHTML = '';
@@ -263,9 +265,11 @@ export function showFrontEnd(app) {
             const pick = el('div', 'slot-pick');
             pick.hidden = true;
             for (const w of options) {
-              const c = weaponCard(w, w === baseOf(cur));
               // Another rifle: plain if this soldier may carry it plain, else its first scope.
-              c.addEventListener('click', () => pickWeapon(w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0].id));
+              const id = w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0].id;
+              const open = unlocked(s, id);
+              const c = weaponCard(w, w === baseOf(cur), open ? null : requirement(id, s.cls));
+              if (open) c.addEventListener('click', () => pickWeapon(id));
               pick.appendChild(c);
             }
             card.classList.add('opens');
@@ -295,25 +299,46 @@ export function showFrontEnd(app) {
           }
           body.appendChild(box);
         });
-        body.appendChild(el('div', 'lo-note', 'Every soldier also carries field dressings to bandage wounds.'));
+        body.appendChild(el('div', 'lo-note', 'Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab).'));
       } else if (tab === 'vehicle') {
         if (s.cls === 'tanker') {
-          if (!TANKS[s.faction].some((t) => t[0] === s.tank)) s.tank = TANKS[s.faction][0][0];
+          if (!TANKS[s.faction].some((t) => t[0] === s.tank) || !tankUnlocked(s, s.tank)) s.tank = TANKS[s.faction][0][0];
           for (const [id, name, note] of TANKS[s.faction]) {
-            const c = el('button', `veh-card${id === s.tank ? ' on' : ''}`);
+            const open = tankUnlocked(s, id);
+            const c = el('button', `veh-card${id === s.tank ? ' on' : ''}${open ? '' : ' locked'}`);
             c.appendChild(el('b')).textContent = name;
             c.appendChild(el('span')).textContent = note;
-            c.addEventListener('click', () => {
-              s.tank = id;
-              save();
-              loadout(s, 'vehicle');
-            });
+            if (open)
+              c.addEventListener('click', () => {
+                s.tank = id;
+                save();
+                loadout(s, 'vehicle');
+              });
+            else c.appendChild(el('em')).textContent = lockLine(s, tankRequirement(id));
             body.appendChild(c);
           }
           body.appendChild(el('div', 'lo-note', 'A tank crewman goes into battle in his tank, as its driver; the gunner and the other seats change with F1 to F4.'));
         } else {
           body.appendChild(el('div', 'lo-note', `${CLASS_NAMES[s.cls]} soldiers go into battle on foot. Jeeps, bicycles and motorcycles wait at the spawn points: walk up to one and press the get-in key. Recruit a tank crewman to fight in a tank.`));
         }
+      } else if (tab === 'ribbons') {
+        // His ribbons, as the original game's: the level, how far to the next,
+        // and what the levels still to come open for him.
+        for (const k of ribbonsFor(s.cls)) {
+          const lv = ribbonLevel(s.ribbons?.[k]);
+          const box = el('div', 'rib-row');
+          box.innerHTML = '<div class="rib-head"><b></b><span class="rib-lv"></span></div><div class="rib-note"></div><div class="rib-bar"><i></i></div><div class="rib-next"></div>';
+          box.querySelector('b').textContent = RIBBONS[k].name;
+          box.querySelector('.rib-lv').textContent = `Level ${lv.level} of 12`;
+          box.querySelector('.rib-note').textContent = RIBBONS[k].note;
+          box.querySelector('i').style.width = `${(lv.progress * 100).toFixed(1)}%`;
+          const pts = Math.round(s.ribbons?.[k] || 0);
+          const ahead = opensWith(s, k).filter((o) => o.level > lv.level);
+          box.querySelector('.rib-next').textContent =
+            (lv.next === null ? `${fmt(pts)} points: the highest level` : `${fmt(pts)} / ${fmt(lv.next)} points to level ${lv.level + 1}`) + (ahead.length ? ` · Next: ${ahead.map((o) => `${o.name} (${o.level})`).join(', ')}` : '');
+          body.appendChild(box);
+        }
+        body.appendChild(el('div', 'lo-note', 'As in the original game, a soldier earns each ribbon by what he does in battle (shots, hits, kills, headshots, vehicles knocked out), and his army\'s guns and tanks open at set ribbon levels. Rank still rises with experience.'));
       } else {
         const n = variantCount(s.faction, s.cls);
         const grid = el('div', 'uni-grid');
@@ -332,13 +357,35 @@ export function showFrontEnd(app) {
       }
     }
 
-    function weaponCard(w, on) {
-      const c = el('button', `wpn-card${on ? ' on' : ''}`);
+    // A weapon to choose; locked: what opens it, and how far he is.
+    function weaponCard(w, on, lock = null) {
+      const c = el('button', `wpn-card${on ? ' on' : ''}${lock ? ' locked' : ''}`);
       const pic = preview?.gunPicture(w.id) || '';
       c.innerHTML = `<span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><span class="wpn-text"><b></b><small></small></span>`;
       c.querySelector('b').textContent = w.name;
-      c.querySelector('small').textContent = weaponStats(w);
+      c.querySelector('small').textContent = lock ? lockLine(selected(roster), lock) : weaponStats(w);
+      if (lock) c.disabled = true;
       return c;
+    }
+
+    function lockLine(s, req) {
+      return `Opens at ${requirementText(req)} (now level ${ribbonLevel(s.ribbons?.[req.ribbon]).level})`;
+    }
+
+    // What a ribbon opens for this soldier, by level.
+    function opensWith(s, key) {
+      const out = [];
+      for (const slot of ['primary', 'sidearm', 'equipment'])
+        for (const w of weaponsFor(s.faction, s.cls, slot)) {
+          const r = requirement(w.id, s.cls);
+          if (r?.ribbon === key && !w.base) out.push({ name: w.name, level: r.level });
+        }
+      if (s.cls === 'tanker')
+        for (const [id, name] of TANKS[s.faction]) {
+          const r = tankRequirement(id);
+          if (r?.ribbon === key) out.push({ name, level: r.level });
+        }
+      return out.sort((a, b) => a.level - b.level);
     }
 
     function readyBox(box, s) {

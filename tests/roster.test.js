@@ -47,7 +47,9 @@ test('a battle adds experience and the record, and can promote', () => {
   const r = newRoster();
   const s = r.soldiers[0];
   const res = awardBattle(r, s.id, { xp: 1100, won: true, kills: 3, deaths: 1, captures: 2 });
-  assert.deepEqual(res, { before: 0, after: 2 });
+  assert.equal(res.before, 0);
+  assert.equal(res.after, 2);
+  assert.deepEqual(res.ribbonUps, []);
   assert.equal(s.xp, 1100);
   assert.deepEqual(s.stats, { battles: 1, wins: 1, kills: 3, deaths: 1, captures: 2 });
   assert.equal(playerLevel(r).level, 2);
