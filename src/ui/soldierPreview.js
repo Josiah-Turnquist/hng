@@ -78,11 +78,11 @@ function modelId(id) {
 // very blurred) to near (darker, less blurred). shapes: what stands in the haze.
 const BACKDROPS = {
   dark: { sky: ['#0d0e0c', '#0d0e0c', '#0d0e0c'], fog: '#0d0e0c', ground: '#000000', shapes: null },
-  smoke: { sky: ['#15161a', '#3a3a38', '#151512'], fog: '#2a2a28', ground: '#141412', shapes: ['trees', 'village', 'trees'], tone: ['#4a4a46', '#2e2e2b', '#1e1e1c'], blur: [26, 16, 9], vignette: 'medium' },
-  mist: { sky: ['#5c6266', '#a3a7a6', '#4a4c48'], fog: '#8d918f', ground: '#5d5f5a', shapes: ['trees', 'village', 'soldiers'], tone: ['#8a8e8d', '#6c706e', '#4c4f4c'], blur: [24, 14, 8], vignette: 'light', env: 0.42 },
-  dusk: { sky: ['#2a2018', '#b8814a', '#2a2218'], fog: '#7a5a3a', ground: '#2e241a', shapes: ['ruins', 'trees', 'tank'], tone: ['#8e6440', '#5a3e26', '#2c2016'], blur: [28, 16, 9], vignette: 'medium', env: 0.36 },
-  pale: { sky: ['#9a9a92', '#d6d3c8', '#8e8b80'], fog: '#c4c1b6', ground: '#8f8b7f', shapes: ['trees', 'village'], tone: ['#bdbaaf', '#a3a094'], blur: [30, 18], vignette: 'none', env: 0.5 },
-  night: { sky: ['#06080e', '#1c2433', '#07090c'], fog: '#151b26', ground: '#07080b', shapes: ['trees', 'village', 'trees'], tone: ['#2a3343', '#1a2130', '#10141c'], blur: [24, 14, 8], vignette: 'medium' },
+  smoke: { field: ['#3a3a36', '#0e0e0c'], sky: ['#15161a', '#3a3a38', '#151512'], fog: '#2a2a28', ground: '#141412', shapes: ['trees', 'village', 'trees'], tone: ['#4a4a46', '#2e2e2b', '#1e1e1c'], blur: [26, 16, 9], vignette: 'medium' },
+  mist: { field: ['#8a8d89', '#3a3c37'], sky: ['#5c6266', '#a3a7a6', '#4a4c48'], fog: '#8d918f', ground: '#5d5f5a', shapes: ['trees', 'village', 'soldiers'], tone: ['#8a8e8d', '#6c706e', '#4c4f4c'], blur: [24, 14, 8], vignette: 'light', env: 0.42 },
+  dusk: { field: ['#7a5636', '#1e160e'], sky: ['#2a2018', '#b8814a', '#2a2218'], fog: '#7a5a3a', ground: '#2e241a', shapes: ['ruins', 'trees', 'tank'], tone: ['#8e6440', '#5a3e26', '#2c2016'], blur: [28, 16, 9], vignette: 'medium', env: 0.36 },
+  pale: { field: ['#b8b5a9', '#76726a'], sky: ['#9a9a92', '#d6d3c8', '#8e8b80'], fog: '#c4c1b6', ground: '#8f8b7f', shapes: ['trees', 'village'], tone: ['#bdbaaf', '#a3a094'], blur: [30, 18], vignette: 'none', env: 0.5 },
+  night: { field: ['#1c2330', '#05060a'], sky: ['#06080e', '#1c2433', '#07090c'], fog: '#151b26', ground: '#07080b', shapes: ['trees', 'village', 'trees'], tone: ['#2a3343', '#1a2130', '#10141c'], blur: [24, 14, 8], vignette: 'medium' },
 };
 export const BACKDROP_NAMES = Object.keys(BACKDROPS);
 
@@ -167,6 +167,78 @@ function paintBackdrop(b) {
       }
     ctx.restore();
   });
+  // The ground running down from the horizon to the bottom of the picture:
+  // rolling fields in bands, paler and sharper far off, darker and more
+  // blurred near (out of focus in front of him), strewn with bushes, rocks,
+  // fence posts, shell craters and grass, bigger the nearer they are.
+  const far = b.field?.[0] || b.tone[0],
+    near = b.field?.[1] || b.sky[2];
+  const mix = (t) => {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const A = p(far),
+      B = p(near);
+    return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`;
+  };
+  const bands = 7;
+  for (let k = 0; k < bands; k++) {
+    const t = k / (bands - 1);
+    const y = horizon + 10 + Math.pow(t, 1.6) * (H - horizon);
+    ctx.save();
+    ctx.filter = `blur(${(6 + t * 22).toFixed(0)}px)`;
+    ctx.fillStyle = mix(t);
+    ctx.beginPath();
+    ctx.moveTo(-80, H + 80);
+    const amp = 10 + t * 40,
+      freq = 0.002 + rnd() * 0.004,
+      ph = rnd() * 10;
+    for (let x = -80; x <= W + 80; x += 40) ctx.lineTo(x, y + Math.sin(x * freq + ph) * amp + Math.sin(x * freq * 2.7 + ph * 2) * amp * 0.4);
+    ctx.lineTo(W + 80, H + 80);
+    ctx.fill();
+    ctx.restore();
+  }
+  // Things on the ground, near ones bigger and more blurred.
+  for (let i = 0; i < 70; i++) {
+    const t = Math.pow(rnd(), 0.8);
+    const y = horizon + 18 + t * (H - horizon);
+    const x = rnd() * W;
+    const s = 6 + t * 70;
+    ctx.save();
+    ctx.filter = `blur(${(4 + t * 16).toFixed(0)}px)`;
+    ctx.fillStyle = mix(Math.min(1, t + 0.25));
+    const kind = rnd();
+    ctx.beginPath();
+    if (kind < 0.4) {
+      // A bush or a clump of grass.
+      for (let k = 0; k < 4; k++) ctx.ellipse(x + (rnd() - 0.5) * s, y - s * 0.3, s * (0.4 + rnd() * 0.3), s * (0.25 + rnd() * 0.2), 0, 0, Math.PI * 2);
+    } else if (kind < 0.6) {
+      // A rock.
+      ctx.ellipse(x, y, s * 0.5, s * 0.25, 0, 0, Math.PI * 2);
+    } else if (kind < 0.75) {
+      // A shell crater: a dark hollow with a rim.
+      ctx.ellipse(x, y, s * 1.2, s * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = mix(Math.max(0, t - 0.3));
+      ctx.beginPath();
+      ctx.ellipse(x, y - s * 0.12, s * 1.3, s * 0.12, 0, Math.PI, Math.PI * 2);
+    } else if (kind < 0.88) {
+      // A fence post, leaning.
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((rnd() - 0.5) * 0.3);
+      ctx.fillRect(-s * 0.05, -s * 0.9, s * 0.1, s * 0.9);
+      ctx.restore();
+    } else {
+      // Tall grass.
+      for (let k = 0; k < 6; k++) {
+        const gx = x + (rnd() - 0.5) * s;
+        ctx.moveTo(gx, y);
+        ctx.lineTo(gx + (rnd() - 0.5) * s * 0.4, y - s * (0.6 + rnd() * 0.6));
+        ctx.lineTo(gx + s * 0.06, y);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
   // Haze over all of it, thickest along the horizon.
   const h = ctx.createLinearGradient(0, horizon - 260, 0, horizon + 140);
   h.addColorStop(0, 'rgba(0,0,0,0)');
