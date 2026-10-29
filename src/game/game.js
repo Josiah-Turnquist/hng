@@ -79,7 +79,10 @@ export class Game {
     const faction = this.opts.faction || 'GE';
     const cls = this.opts.cls || 'infantry';
     const def0 = DEFAULT_LOADOUT[faction][cls];
-    const loadout = (this.opts.loadout || def0).map((id, i) => id || def0[i]);
+    // A soldier's whole loadout (one item or none per slot, LOADOUT_SLOTS) as
+    // his roster has it; a partial one (the ?weapon= link) on his class's kit.
+    const given = this.opts.loadout;
+    const loadout = given?.length >= def0.length ? given.slice() : def0.map((d, i) => given?.[i] || d);
     const modeName = this.opts.mode && this.opts.mode !== 'auto' ? this.opts.mode : def.objectives ? 'assault' : 'range';
     let team = 0;
     if (modeName === 'assault' && def.objectives) {

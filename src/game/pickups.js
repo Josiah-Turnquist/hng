@@ -58,7 +58,7 @@ export class Pickups {
 
   // Which of the soldier's slots a weapon goes in.
   slotFor(w) {
-    return w.def.slot === 'sidearm' ? 1 : 0;
+    return { sidearm: 1, equipment: 2, closecombat: 5, binoculars: 6 }[w.def.slot] ?? 0;
   }
 
   // Pick it up: it goes in its slot, and what he had there is left in its place.

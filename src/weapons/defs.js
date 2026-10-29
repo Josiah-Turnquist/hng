@@ -24,6 +24,10 @@
 //   scope    { name, mag, reticle, fieldDeg, eyeRelief } of the scope
 //   irons    the rifle's own sight, when it can still be used beside the scope
 //   clipsBlocked  the scope covers the clip guide: loaded one round at a time
+import { MELEE } from './items/melee.js';
+import { BINOCULARS } from './items/binoculars.js';
+import { POCKET_PISTOLS } from './items/pocket.js';
+import { KITS } from './items/kits.js';
 import { AMMO } from './ammo.js';
 import { FITTINGS, scopedWeapon } from './scopes.js';
 
@@ -960,6 +964,9 @@ export const WEAPONS = {
 // Every rifle and scope fitting (scopes.js) is a weapon of its own.
 for (const id of Object.keys(FITTINGS)) WEAPONS[id] = scopedWeapon(id, WEAPONS[FITTINGS[id].rifle]);
 
+// Close-combat weapons, binoculars, pocket pistols and kits (weapons/items/).
+for (const set of [MELEE, BINOCULARS, POCKET_PISTOLS, KITS]) for (const [id, d] of Object.entries(set)) WEAPONS[id] = { id, ...d };
+
 // Fill in derived values once.
 for (const [id, w] of Object.entries(WEAPONS)) {
   w.id = id;
@@ -983,6 +990,38 @@ export const FACTIONS = {
   GE: { name: 'Germany', army: 'Wehrmacht', short: 'GE', tracer: [1.0, 0.75, 0.35] },
   SU: { name: 'Soviet Union', army: 'Red Army', short: 'SU', tracer: [0.5, 1.0, 0.35] },
 };
+
+// Equipment points, as in the original game: each class has a budget
+// (charactertemplate) and each item costs points (weapontemplate
+// equipmentPointsCost); a soldier's loadout must fit his budget. A scoped rifle
+// costs what the rifle does (the original's scopes were modifications, free of
+// points).
+export const CLASS_POINTS = { infantry: 10, paratrooper: 8, recon: 8, tanker: 6 };
+const POINTS = {
+  // United States
+  m1_garand: 5, m1_carbine: 5, m1a1_carbine: 4, m2_carbine: 6, m1903: 5, thompson_m1a1: 6, m3_greasegun: 6,
+  bar_m1918a2: 6, m1919a6: 7, johnson_lmg: 6, m1911a1: 2, m1917_revolver: 2, bazooka_m1a1: 5, mk2_grenade: 2,
+  // Germany
+  kar98k: 5, gewehr43: 5, mp40: 6, mp34: 6, stg44: 6, mg42: 7, mg34: 7, fg42: 6, p38: 2, luger_p08: 2, c96: 2,
+  panzerschreck: 5, panzerfaust60: 5, stielhandgranate24: 2,
+  // Soviet Union
+  mosin_9130: 5, svt40: 5, avs36: 6, ppsh41: 6, pps43: 6, ppd40: 6, dp28: 6, tt33: 2, nagant_m1895: 2, ptrd41: 7, rgd33: 2,
+};
+export function pointsOf(id) {
+  const def = WEAPONS[id];
+  if (!def) return 0;
+  return def.points ?? POINTS[def.base || id] ?? POINTS[id] ?? 0;
+}
+
+// The loadout's slots, in order (a soldier's weapons are indexed the same):
+// his main weapon, a sidearm, three equipment slots (grenades, kits, tools), a
+// close-combat weapon and binoculars, as in the original game. Any but the
+// first may be left empty.
+export const LOADOUT_SLOTS = ['primary', 'sidearm', 'equipment', 'equipment', 'equipment', 'closecombat', 'binoculars'];
+
+export function loadoutPoints(ids) {
+  return ids.reduce((n, id) => n + (id ? pointsOf(id) : 0), 0);
+}
 
 export function weaponsFor(faction, cls, slot) {
   return Object.values(WEAPONS).filter((w) => w.faction === faction && w.classes.includes(cls) && w.slot === slot);
@@ -1018,13 +1057,21 @@ export function scopeChoices(def, cls) {
   return out;
 }
 
-// Default loadouts per faction and class (primary, sidearm, equipment): a new
-// soldier's kit, as in the original game: his army's first rifle (the M1
-// Garand, the Gewehr 43, the SVT-40; a scout's with a scope on it), a tank
-// crewman's first submachine gun, and the army's first pistol and grenade.
+// Default loadouts per faction and class (by LOADOUT_SLOTS): a new soldier's
+// kit, as in the original game: his army's first rifle (the M1 Garand, the
+// Gewehr 43, the SVT-40; a scout's with a scope on it), or a tank crewman's
+// first submachine gun, and as much of the army's first pistol and grenade as
+// his equipment points allow (infantry 10: rifle 5, pistol 2, grenade 2;
+// paratroopers and scouts 8: rifle and pistol; tank crew 6: the gun alone).
 // Everything else opens with his ribbons (game/ribbons.js).
+const kit = (primary, pistol, grenade) => ({
+  infantry: [primary[0], pistol, grenade, null, null, null, null],
+  recon: [primary[1], pistol, null, null, null, null, null],
+  paratrooper: [primary[0], pistol, null, null, null, null, null],
+  tanker: [primary[2], null, null, null, null, null, null],
+});
 export const DEFAULT_LOADOUT = {
-  US: { infantry: ['m1_garand', 'm1911a1', 'mk2_grenade'], recon: ['m1c_m81', 'm1911a1', 'mk2_grenade'], paratrooper: ['m1_garand', 'm1911a1', 'mk2_grenade'], tanker: ['m3_greasegun', 'm1911a1', 'mk2_grenade'] },
-  GE: { infantry: ['gewehr43', 'c96', 'stielhandgranate24'], recon: ['gewehr43_zf4', 'c96', 'stielhandgranate24'], paratrooper: ['gewehr43', 'c96', 'stielhandgranate24'], tanker: ['mp34', 'c96', 'stielhandgranate24'] },
-  SU: { infantry: ['svt40', 'tt33', 'rgd33'], recon: ['svt40_pu', 'tt33', 'rgd33'], paratrooper: ['svt40', 'tt33', 'rgd33'], tanker: ['ppd40', 'tt33', 'rgd33'] },
+  US: kit(['m1_garand', 'm1c_m81', 'm3_greasegun'], 'm1911a1', 'mk2_grenade'),
+  GE: kit(['gewehr43', 'gewehr43_zf4', 'mp34'], 'c96', 'stielhandgranate24'),
+  SU: kit(['svt40', 'svt40_pu', 'ppd40'], 'tt33', 'rgd33'),
 };

@@ -219,15 +219,22 @@ export class PlayerController {
     }
     this.holdingBreath = s.aiming && input.is('sprint') && this.breathDebt <= 0;
 
-    if (input.hit('slot1')) this._requestSwitch(0);
-    if (input.hit('slot2')) this._requestSwitch(1);
-    if (input.hit('slot3')) this._requestSwitch(2);
+    // Slots 1 to 7 (game/defs LOADOUT_SLOTS); the wheel steps through those
+    // that hold something.
+    for (let k = 0; k < 7; k++) if (input.hit(`slot${k + 1}`)) this._requestSwitch(k);
     const wheel = input.takeWheel();
     if (wheel && w) {
-      if (s.aiming && w.sight.ranges.length > 1) {
+      if (s.aiming && w.sight?.ranges.length > 1) {
         if (w.changeZero(-Math.sign(wheel))) this.viewmodel.setZero(w.zeroIndex);
       } else {
-        this._requestSwitch((s.current + (wheel > 0 ? 1 : 2)) % 3);
+        const n = s.weapons.length;
+        for (let k = 1; k < n; k++) {
+          const i = (s.current + (wheel > 0 ? k : n - k)) % n;
+          if (s.weapons[i]) {
+            this._requestSwitch(i);
+            break;
+          }
+        }
       }
     }
     if (w && input.hit('zeroUp') && w.changeZero(1)) this.viewmodel.setZero(w.zeroIndex);

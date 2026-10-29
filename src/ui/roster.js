@@ -9,7 +9,7 @@
 //   r.selected                       // the soldier going into battle
 //   recruit(r, { faction, cls, name }); select(r, id); dismiss(r, id); saveRoster(r);
 //   awardBattle(r, id, { xp, won, kills, deaths, captures, ribbons })  // after a battle
-import { DEFAULT_LOADOUT, WEAPONS } from '../weapons/defs.js';
+import { DEFAULT_LOADOUT, WEAPONS, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 import { ribbonInfo, ribbonLevel, unlocked, tankUnlocked, carriable } from '../game/ribbons.js';
 import { variantCount } from '../actors/soldierKit.js';
 import '../actors/soldierKitUS.js';
@@ -107,7 +107,6 @@ function makeSoldier(faction, cls, name, rng = Math.random) {
 // Make a saved soldier whole again: known army and class, weapons he may carry.
 function check(s) {
   if (!DEFAULT_LOADOUT[s.faction]?.[s.cls]) return null;
-  const def = DEFAULT_LOADOUT[s.faction][s.cls];
   // Saved before ribbons: his past kills count toward his class's main ribbon
   // (about what a rifle kill earns).
   if (!s.ribbons || typeof s.ribbons !== 'object') {
@@ -115,11 +114,7 @@ function check(s) {
     s.ribbons = kills ? { [s.cls === 'tanker' ? 'armorAssault' : 'infantryAssault']: kills * 85 } : {};
   }
   for (const k of Object.keys(s.ribbons)) if (!ribbonInfo(k) || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
-  const slots = ['primary', 'sidearm', 'equipment'];
-  s.loadout = slots.map((slot, i) => {
-    const id = s.loadout?.[i];
-    return carriable(s, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
-  });
+  s.loadout = fitLoadout(s, s.loadout);
   if (s.tank && !tankUnlocked(s, s.tank)) s.tank = null;
   s.xp = Math.max(0, Number(s.xp) || 0);
   s.variant = Math.max(0, Math.floor(Number(s.variant) || 0)) % variantCount(s.faction, s.cls);
@@ -221,11 +216,29 @@ export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0,
   return { before, after: rankOf(s.xp).rank, ribbonUps, gained, unlocks };
 }
 
+// A loadout made whole for a soldier: one item (or none) per slot of
+// LOADOUT_SLOTS, each one he may carry and has opened (else his kit's for that
+// slot), none twice, his main weapon always; then within his equipment points,
+// giving up what comes last (binoculars, close combat, equipment, sidearm)
+// until it fits.
+export function fitLoadout(s, ids = []) {
+  const def = DEFAULT_LOADOUT[s.faction][s.cls];
+  const out = LOADOUT_SLOTS.map((slot, i) => {
+    const id = ids?.[i] ?? null;
+    if (!id) return i === 0 ? def[0] : null;
+    return carriable(s, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
+  });
+  for (let i = 1; i < out.length; i++) if (out[i] && out.indexOf(out[i]) < i) out[i] = null;
+  const budget = CLASS_POINTS[s.cls] ?? 10;
+  for (let i = out.length - 1; i > 0 && loadoutPoints(out) > budget; i--) out[i] = null;
+  return out;
+}
+
 // The names of the weapons and tanks a soldier may take into battle.
 const TANK_NAMES = { US: { m5a1_stuart: 'M5A1 Stuart', m4a1_sherman: 'M4A1 Sherman' }, GE: { panzer4_h: 'Panzer IV Ausf. H', tiger1: 'Tiger I' }, SU: { t34_76: 'T-34/76', t34_85: 'T-34-85' } };
 function openedFor(s) {
   const out = [];
-  for (const slot of ['primary', 'sidearm', 'equipment']) for (const w of carriable(s, slot)) if (unlocked(s, w.id)) out.push(WEAPONS[w.id].name);
+  for (const slot of new Set(LOADOUT_SLOTS)) for (const w of carriable(s, slot)) if (unlocked(s, w.id)) out.push(WEAPONS[w.id].name);
   if (s.cls === 'tanker') for (const [id, name] of Object.entries(TANK_NAMES[s.faction] || {})) if (tankUnlocked(s, id)) out.push(name);
   return out;
 }

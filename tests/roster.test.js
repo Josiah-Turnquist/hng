@@ -12,7 +12,7 @@ test('the roster starts with an infantryman of each army', () => {
   for (const s of r.soldiers) {
     assert.ok(s.name.split(' ').length >= 2, s.name);
     assert.equal(s.xp, 0);
-    assert.equal(s.loadout.length, 3);
+    assert.equal(s.loadout.length, 7);
   }
 });
 
@@ -74,4 +74,25 @@ test('without browser storage the roster still loads; bad saved data is repaired
     if (old === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = old;
   }
+});
+
+test("equipment points: a loadout fits the class's budget, as in the original game", async () => {
+  const { fitLoadout } = await import('../src/ui/roster.js');
+  const { CLASS_POINTS, DEFAULT_LOADOUT, loadoutPoints, pointsOf, LOADOUT_SLOTS } = await import('../src/weapons/defs.js');
+  assert.deepEqual(CLASS_POINTS, { infantry: 10, paratrooper: 8, recon: 8, tanker: 6 });
+  assert.equal(pointsOf('mg42'), 7);
+  assert.equal(pointsOf('kar98k_zf39'), pointsOf('kar98k'), 'a scope costs nothing');
+  for (const f of ['US', 'GE', 'SU'])
+    for (const [cls, kit] of Object.entries(DEFAULT_LOADOUT[f])) {
+      assert.equal(kit.length, LOADOUT_SLOTS.length);
+      assert.ok(loadoutPoints(kit) <= CLASS_POINTS[cls], `${f} ${cls}`);
+    }
+  // An MG 42 gunner (7) has room for his pistol (2) or a grenade (2), not both:
+  // what comes last gives way.
+  const s = { faction: 'GE', cls: 'infantry', ribbons: { lmgAssault: 1e6, handgunAssault: 1e6 } };
+  const l = fitLoadout(s, ['mg42', 'c96', 'stielhandgranate24', null, null, null, null]);
+  assert.deepEqual(l.slice(0, 3), ['mg42', 'c96', null]);
+  // Nothing twice; empty slots stay empty; the main weapon is always there.
+  assert.deepEqual(fitLoadout(s, ['gewehr43', null, 'stielhandgranate24', 'stielhandgranate24']).slice(0, 4), ['gewehr43', null, 'stielhandgranate24', null]);
+  assert.equal(fitLoadout(s, [])[0], 'gewehr43');
 });

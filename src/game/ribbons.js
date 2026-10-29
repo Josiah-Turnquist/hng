@@ -135,6 +135,16 @@ export class RibbonTally {
   jump() {
     this.jumps++;
   }
+
+  // First aid given ('self' or 'other'), a vehicle repaired (the Medic ribbon).
+  heal(who) {
+    if (who === 'other') this.healOther = (this.healOther || 0) + 1;
+    else this.healSelf = (this.healSelf || 0) + 1;
+  }
+
+  repair() {
+    this.repairs = (this.repairs || 0) + 1;
+  }
 }
 
 const score = (s, e) => s.shot * e.shot + s.dmg * e.dmg + (s.kill - s.head + (s.assist || 0)) * e.kill + s.head * (e.head || e.kill) + s.vkill * e.vkill;

@@ -8,7 +8,7 @@
 //   Progression: the player's level, each soldier's rank and record, the ranks.
 // Resolves with the battle options when the player goes into battle.
 import { MAPS } from '../world/maps.js';
-import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices } from '../weapons/defs.js';
+import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints } from '../weapons/defs.js';
 import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
 import { variantCount } from '../actors/soldierKit.js';
@@ -242,35 +242,51 @@ export function showFrontEnd(app) {
       }
       body.innerHTML = '';
       if (tab === 'weapons') {
-        const slots = [
-          ['primary', 'Primary'],
-          ['sidearm', 'Sidearm'],
-          ['equipment', 'Equipment'],
-        ];
-        slots.forEach(([slot, label], i) => {
+        // His equipment points: what the loadout costs of what his class has.
+        const budget = CLASS_POINTS[s.cls];
+        const used = loadoutPoints(s.loadout);
+        const meter = el('div', 'pts-meter');
+        meter.innerHTML = '<span class="pts-l">Equipment points</span><span class="pts-v"></span><div class="pts-bar"></div>';
+        meter.querySelector('.pts-v').textContent = `${used} / ${budget}`;
+        const bar = meter.querySelector('.pts-bar');
+        for (let k = 0; k < budget; k++) bar.appendChild(el('i', k < used ? 'on' : ''));
+        body.appendChild(meter);
+        const labels = ['Primary', 'Sidearm', 'Equipment 1', 'Equipment 2', 'Equipment 3', 'Close combat', 'Binoculars'];
+        LOADOUT_SLOTS.forEach((slot, i) => {
           // One card for each rifle; its scopes are chosen under it. Another
           // army's guns show once he has begun to earn them (or has).
-          const options = families(s, slot);
-          const cur = WEAPONS[s.loadout[i]];
+          const taken = s.loadout.filter((id, j) => id && j !== i);
+          const options = families(s, slot).filter((w) => !taken.some((id) => baseOf(WEAPONS[id]) === w));
+          const cur = s.loadout[i] ? WEAPONS[s.loadout[i]] : null;
+          if (!cur && !options.length) return;
           const pickWeapon = (id) => {
             s.loadout[i] = id;
             save();
             if (i === 0) preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: id });
             loadout(s, 'weapons');
           };
+          // Points left for this slot: the budget less everything else.
+          const room = budget - used + (cur ? pointsOf(cur.id) : 0);
           const box = el('div', 'slot');
-          box.appendChild(el('div', 'slot-label', `${label}<span>${options.length > 1 ? `${options.length} to choose from` : ''}</span>`));
-          const card = weaponCard(cur, true);
+          box.appendChild(el('div', 'slot-label', `${labels[i]}<span>${cur ? `${pointsOf(cur.id)} pt` : 'empty'}</span>`));
+          const card = cur ? weaponCard(cur, true) : emptyCard(true);
           box.appendChild(card);
-          if (options.length > 1) {
+          if (options.length > (cur ? 1 : 0) || (cur && i > 0)) {
             const pick = el('div', 'slot-pick');
             pick.hidden = true;
             for (const w of options) {
               // Another rifle: plain if this soldier may carry it plain, else its first scope.
-              const id = w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0].id;
+              const id = cur && w === baseOf(cur) ? cur.id : scopeChoices(w, s.cls)[0]?.id || w.id;
               const open = unlocked(s, id);
-              const c = weaponCard(w, w === baseOf(cur), open ? null : requirement(id, s.cls, s.faction), w.faction !== s.faction);
-              if (open) c.addEventListener('click', () => pickWeapon(id));
+              const fits = pointsOf(id) <= room;
+              const c = weaponCard(w, cur && w === baseOf(cur), open ? null : requirement(id, s.cls, s.faction), w.faction !== s.faction, open && !fits ? pointsOf(id) - room : 0);
+              if (open && fits) c.addEventListener('click', () => pickWeapon(id));
+              pick.appendChild(c);
+            }
+            // Any slot but the main weapon's may be left empty.
+            if (i > 0 && cur) {
+              const c = emptyCard(false);
+              c.addEventListener('click', () => pickWeapon(null));
               pick.appendChild(c);
             }
             card.classList.add('opens');
@@ -284,7 +300,7 @@ export function showFrontEnd(app) {
           }
           // Its scopes: none (where the plain rifle is allowed) and the ones
           // really fitted to it, each with what it changes.
-          const scopes = scopeChoices(cur, s.cls);
+          const scopes = cur ? scopeChoices(cur, s.cls) : [];
           if (scopes.some((c) => c.scope)) {
             const sc = el('div', 'scope-pick');
             sc.appendChild(el('div', 'slot-label', `Scope<span>${scopes.length > 1 ? `${scopes.length} to choose from` : ''}</span>`));
@@ -300,7 +316,7 @@ export function showFrontEnd(app) {
           }
           body.appendChild(box);
         });
-        body.appendChild(el('div', 'lo-note', 'Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab).'));
+        body.appendChild(el('div', 'lo-note', `As in the original game, everything he carries costs equipment points, and a ${CLASS_NAMES[s.cls].toLowerCase()} soldier has ${CLASS_POINTS[s.cls]}. Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab).`));
       } else if (tab === 'vehicle') {
         if (s.cls === 'tanker') {
           if (!TANKS[s.faction].some((t) => t[0] === s.tank) || !tankUnlocked(s, s.tank)) s.tank = TANKS[s.faction][0][0];
@@ -396,13 +412,20 @@ export function showFrontEnd(app) {
 
     // A weapon to choose; locked: what opens it, and how far he is. Another
     // army's carries its emblem.
-    function weaponCard(w, on, lock = null, foreign = false) {
-      const c = el('button', `wpn-card${on ? ' on' : ''}${lock ? ' locked' : ''}`);
+    function weaponCard(w, on, lock = null, foreign = false, short = 0) {
+      const c = el('button', `wpn-card${on ? ' on' : ''}${lock || short ? ' locked' : ''}`);
       const pic = preview?.gunPicture(w.id) || '';
       c.innerHTML = `<span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><span class="wpn-text"><b>${foreign ? `<span class="wpn-army">${emblem(w.faction)}</span>` : ''}<span class="wn"></span></b><small></small></span>`;
       c.querySelector('.wn').textContent = w.name;
-      c.querySelector('small').textContent = lock ? lockLine(selected(roster), lock) : weaponStats(w);
-      if (lock) c.disabled = true;
+      c.querySelector('small').textContent = lock ? lockLine(selected(roster), lock) : short ? `${pointsOf(w.id)} points: ${short} more than he has left` : weaponStats(w);
+      if (lock || short) c.disabled = true;
+      return c;
+    }
+
+    // An empty slot (or the choice to leave it empty).
+    function emptyCard(on) {
+      const c = el('button', `wpn-card empty${on ? ' on' : ''}`);
+      c.innerHTML = '<span class="wpn-pic"></span><span class="wpn-text"><b>Empty</b><small>Nothing in this slot: its points stay free</small></span>';
       return c;
     }
 
@@ -413,7 +436,7 @@ export function showFrontEnd(app) {
     // What a ribbon opens for this soldier, by level.
     function opensWith(s, key) {
       const out = [];
-      for (const slot of ['primary', 'sidearm', 'equipment'])
+      for (const slot of new Set(LOADOUT_SLOTS))
         for (const w of weaponsFor(s.faction, s.cls, slot)) {
           const r = requirement(w.id, s.cls, s.faction);
           if (r?.ribbon === key && !w.base) out.push({ name: w.name, level: r.level });
