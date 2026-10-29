@@ -1200,3 +1200,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .fe.stage[data-backdrop="pale"] { background: radial-gradient(ellipse 75% 85% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.12) 70%, rgba(8, 9, 7, 0.4) 100%); }
 /* Every card on the Heroes screen at the badge card's 10% background, the backdrop showing through. */
 .fe-heroes .soldier-card, .fe-heroes .hx-slot:not(.empty), .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission { background: rgba(16, 17, 14, 0.4); box-shadow: none; }
+/* Their borders strong enough to see on the light backdrop. */
+.fe-heroes .soldier-card:not(.on), .fe-heroes .hx-slot, .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission, .fe-heroes .hx-badge, .fe-heroes .hx-ribbons, .fe-heroes .hx-select { border-color: rgba(255, 255, 255, 0.2); }
+.fe-heroes .hx-slot:hover, .fe-heroes .hx-badge:hover, .fe-heroes .hx-select:hover { border-color: rgba(226, 172, 70, 0.6); }
+.fe-heroes .hx-ribbons:hover { border-color: var(--amber); }
