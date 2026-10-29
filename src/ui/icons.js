@@ -15,15 +15,50 @@ function star(cx, cy, r, inner = 0.382) {
   return p.join(' ');
 }
 
+// Battle wear for an emblem or a coin: a mask of fine scratches, small chips
+// and grit (each kind its own, the same every time), so the drawing shows the
+// dark ground through them.
+function wearMask(id, seed) {
+  let x = seed;
+  const rnd = () => ((x = (x * 16807) % 2147483647) - 1) / 2147483646;
+  const n = (v) => v.toFixed(2);
+  let marks = '';
+  for (let i = 0; i < 16; i++) {
+    // A scratch: short, fine, slightly bent, mostly running one way (the way
+    // the thing was dragged), a few across.
+    const ax = 2 + rnd() * 20,
+      ay = 2 + rnd() * 20,
+      a = (i < 11 ? 0.5 : 2.1) + (rnd() - 0.5) * 0.7,
+      l = 1.2 + rnd() * 3.4;
+    const bx = ax + Math.cos(a) * l,
+      by = ay + Math.sin(a) * l;
+    const cx = (ax + bx) / 2 + (rnd() - 0.5) * 0.6,
+      cy = (ay + by) / 2 + (rnd() - 0.5) * 0.6;
+    marks += `<path d="M${n(ax)} ${n(ay)}Q${n(cx)} ${n(cy)} ${n(bx)} ${n(by)}" stroke="#000" stroke-width="${n(0.1 + rnd() * 0.16)}" stroke-opacity="${n(0.35 + rnd() * 0.4)}" stroke-linecap="round" fill="none"/>`;
+  }
+  for (let i = 0; i < 9; i++) {
+    // A chip, mostly near the edge where things get knocked.
+    const a = rnd() * Math.PI * 2,
+      r = 7 + rnd() * 4.5;
+    marks += `<circle cx="${n(12 + Math.cos(a) * r)}" cy="${n(12 + Math.sin(a) * r)}" r="${n(0.15 + rnd() * 0.3)}" fill="#000" fill-opacity="${n(0.5 + rnd() * 0.4)}"/>`;
+  }
+  for (let i = 0; i < 40; i++) {
+    // Fine grit: the paint and plating rubbed thin.
+    marks += `<circle cx="${n(1 + rnd() * 22)}" cy="${n(1 + rnd() * 22)}" r="${n(0.08 + rnd() * 0.12)}" fill="#000" fill-opacity="${n(0.2 + rnd() * 0.3)}"/>`;
+  }
+  return `<defs><mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/>${marks}</mask></defs>`;
+}
+const worn = (id, seed, body) => `${wearMask(id, seed)}<g mask="url(#${id})">${body}</g>`;
+
 export function emblem(faction) {
   if (faction === 'GE')
     // Balkenkreuz: a black cross edged in white.
-    return svg('<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="#f2f0ea"/><path d="M10.4 3.4h3.2v7h7v3.2h-7v7h-3.2v-7h-7v-3.2h7z" fill="#151515"/>', '0 0 24 24', 'emblem');
+    return svg(worn('wear-ge', 911, '<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="#e4e1d8"/><path d="M10.4 3.4h3.2v7h7v3.2h-7v7h-3.2v-7h-7v-3.2h7z" fill="#151515"/>'), '0 0 24 24', 'emblem');
   if (faction === 'SU')
     // The Red Army star, edged in gold.
-    return svg(`<polygon points="${star(12, 12.8, 11)}" fill="#d9a441"/><polygon points="${star(12, 12.8, 9.3)}" fill="#b8261f"/>`, '0 0 24 24', 'emblem');
+    return svg(worn('wear-su', 4242, `<polygon points="${star(12, 12.8, 11)}" fill="#c99a40"/><polygon points="${star(12, 12.8, 9.3)}" fill="#a8241d"/>`), '0 0 24 24', 'emblem');
   // US: the white star in a white ring on olive drab.
-  return svg(`<circle cx="12" cy="12" r="11" fill="#4b5228"/><circle cx="12" cy="12" r="9.6" fill="none" stroke="#f2f0ea" stroke-width="1.4"/><polygon points="${star(12, 12.6, 8.1)}" fill="#f2f0ea"/>`, '0 0 24 24', 'emblem');
+  return svg(worn('wear-us', 1944, `<circle cx="12" cy="12" r="11" fill="#4b5228"/><circle cx="12" cy="12" r="9.6" fill="none" stroke="#e4e1d8" stroke-width="1.4"/><polygon points="${star(12, 12.6, 8.1)}" fill="#e4e1d8"/>`), '0 0 24 24', 'emblem');
 }
 
 export function classIcon(cls) {
@@ -74,9 +109,18 @@ export const ICONS = {
   screen: svg('<path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" fill="none" stroke="currentColor" stroke-width="2.2"/>'),
   info: svg('<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="2.2" height="7.5" fill="currentColor"/><circle cx="12.1" cy="7" r="1.4" fill="currentColor"/>'),
   plus: svg('<path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2.6"/>'),
-  // A gold coin standing on another (the stack shows its thickness), a raised
-  // rim and a star struck in the middle.
-  coin: svg('<circle cx="12" cy="14.2" r="8.4" fill="currentColor" opacity="0.45"/><circle cx="12" cy="11.6" r="8.4" fill="currentColor"/><circle cx="12" cy="11.6" r="6.5" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="1"/><path d="M12 7.7 L13.03 10.48 L15.99 10.6 L13.66 12.44 L14.47 15.3 L12 13.65 L9.53 15.3 L10.34 12.44 L8.01 10.6 L10.97 10.48Z" fill="#000" fill-opacity="0.32"/>'),
+  // A coin in outline, in a darker gold: the rim, its edge showing below as a
+  // band (the coin's thickness), an inner ring and a star struck in the
+  // middle, worn and scratched like the emblems.
+  coin: svg(
+    worn(
+      'wear-coin',
+      1337,
+      '<path d="M3.8 11.4A8.2 8.2 0 0 0 20.2 11.4V13.6A8.2 8.2 0 0 1 3.8 13.6Z" fill="#8a6626"/>' +
+        '<g fill="none" stroke="#c4923a"><circle cx="12" cy="11.4" r="8.2" stroke-width="1.7"/><circle cx="12" cy="11.4" r="5.9" stroke-width="0.8"/></g>' +
+        `<polygon points="${star(12, 11.8, 4.1)}" fill="#c4923a"/>`,
+    ),
+  ),
   wrench: svg('<path d="M14.5 3.5a5 5 0 0 0-4.6 6.9L3.5 16.8a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4a5 5 0 0 0 6.9-4.6l-3 3-2.6-.6-.6-2.6 3-3a5 5 0 0 0-1.8-.8z" fill="currentColor"/>'),
   close: svg('<path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.4"/>'),
   turn: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M18 2v5h-5M6 22v-5h5" fill="none" stroke="currentColor" stroke-width="2"/>'),
