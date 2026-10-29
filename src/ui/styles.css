@@ -1052,7 +1052,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-stage .fe-nameplate .xp { height: 4px; margin: 5px 0 3px; }
 .hx-stage .stage-turn { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); }
 .hx-badges { align-self: center; display: flex; gap: 12px; margin-bottom: 4px; }
-.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.88); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
+.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.1); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
 .hx-badge:hover { border-color: rgba(226, 172, 70, 0.6); }
 .hx-badge .lab { align-self: flex-start; font-family: var(--cond); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
 .hx-badge svg { width: 50px; height: 58px; }
