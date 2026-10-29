@@ -677,7 +677,7 @@ canvas.game {
 .fe-status { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .fe-level { position: relative; height: 44px; display: flex; align-items: center; gap: 6px; line-height: 1; }
 .fe-level b { width: 44px; text-align: center; font-family: var(--cond); font-size: 19px; font-weight: 700; }
-.fe-level span { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
+.fe-level span { font-family: var(--cond); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
 .fe-level i { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border-radius: 50%; background: conic-gradient(var(--amber) calc(var(--p) * 1turn), rgba(255, 255, 255, 0.14) 0); -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%); mask: radial-gradient(circle, transparent 60%, #000 62%); }
 .fe-army { display: flex; align-items: center; gap: 8px; padding: 0 10px; font-family: var(--cond); font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; border-left: 1px solid rgba(255, 255, 255, 0.1); border-right: 1px solid rgba(255, 255, 255, 0.1); }
 .fe-army .ico { font-size: 24px; }
@@ -1028,3 +1028,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
   .cs-slot { min-width: 150px; }
   .cust-detail { position: static; }
 }
+/* The top bar's numbers and their labels centered on the letters themselves,
+   not on the fonts' line boxes (which differ between fonts and computers). */
+.fe-credits b, .fe-credits span, .fe-level b, .fe-level span { text-box: trim-both cap alphabetic; }
