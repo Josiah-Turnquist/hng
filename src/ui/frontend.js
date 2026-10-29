@@ -13,6 +13,7 @@ import { FACTIONS, WEAPONS, baseOf, weaponsFor, LOADOUT_SLOTS, CLASS_POINTS, poi
 import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
 import { RIBBONS, RIBBON_XP, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { ribbonSvg, RIBBON_GROUPS } from './ribbonArt.js';
+import { badgeSvg } from './badgeArt.js';
 import { AMMO } from '../weapons/ammo.js';
 import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, damageScale as scaleAt, SCOPE_FAMILIES } from '../weapons/upgrades.js';
 import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, picksOf, fit, loadoutUpgrades } from '../game/armory.js';
@@ -283,7 +284,7 @@ export function showFrontEnd(app) {
       plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]}`;
       plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP`;
       const worn = badgeOf(s);
-      const bd = el('button', 'hx-badge', `${shield(worn ? '<path d="M27 15l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#e2ac46"/>' : '<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<span></span>`);
+      const bd = el('button', 'hx-badge', `${worn ? badgeSvg(worn.id, worn.tier) : shield('<path d="M27 22v18M18 31h18" stroke="rgba(255,255,255,0.45)" stroke-width="3"/>')}<span></span>`);
       bd.querySelector('span').textContent = worn ? `${BADGES[worn.id].name} ${'I'.repeat(worn.tier)}` : 'Badge';
       bd.title = worn ? BADGES[worn.id].does : 'Choose a combat badge';
       bd.addEventListener('click', () => badgeWindow(s));
@@ -365,14 +366,14 @@ export function showFrontEnd(app) {
           }
       }
       for (const [id, b] of Object.entries(BADGES))
-        for (const t of badgeTiers(s, id)) for (const a of t.alts) if (a.ribbon === key) out.push({ level: a.level, name: `${b.name} ${'I'.repeat(t.tier)}`, kind: 'badge', id });
+        for (const t of badgeTiers(s, id)) for (const a of t.alts) if (a.ribbon === key) out.push({ level: a.level, name: `${b.name} ${'I'.repeat(t.tier)}`, kind: 'badge', id, tier: t.tier });
       return out.sort((a, b) => a.level - b.level);
     }
     // The ribbons this soldier works on: his class's, and each gun he has used.
     const ribbonKeys = (s) => ribbonsFor(s.cls).concat(Object.keys(s.ribbons || {}).filter((k) => k.startsWith('spec:')));
     // A picture of what a level opens.
     function opensPicture(o, w = 150, h = 56) {
-      if (o.kind === 'badge') return shield('<path d="M27 15l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#e2ac46"/>');
+      if (o.kind === 'badge') return badgeSvg(o.id, o.tier);
       if (o.kind === 'tank') return `<span class="hx-tankpic">${ICONS.tank || ''}</span>`;
       const src = o.kind === 'upgrade' ? preview?.partPicture?.(o.gun, o.id, w, Math.round(h * 1.4)) : preview?.gunPicture(o.id, w, h);
       return src ? `<img alt="" src="${src}">` : '';
@@ -548,9 +549,9 @@ export function showFrontEnd(app) {
           const tiers = badgeTiers(s, id);
           const can = open.includes(id);
           const c = el('button', `badge-card${worn?.id === id ? ' on' : ''}${can ? '' : ' locked'}`);
-          c.innerHTML = '<div class="bdg-head"><b></b><span class="bdg-tier"></span></div><div class="bdg-does"></div><div class="bdg-tiers"></div>';
-          c.querySelector('b').textContent = b.name;
           const top = tiers.filter((t) => t.open).pop();
+          c.innerHTML = `<span class="bdg-pic">${badgeSvg(id, top?.tier || 1, { grey: !can })}</span><div class="bdg-head"><b></b><span class="bdg-tier"></span></div><div class="bdg-does"></div><div class="bdg-tiers"></div>`;
+          c.querySelector('b').textContent = b.name;
           c.querySelector('.bdg-tier').textContent = top ? `Tier ${'I'.repeat(top.tier)}` : 'Locked';
           c.querySelector('.bdg-does').textContent = b.does;
           const tl = c.querySelector('.bdg-tiers');

@@ -1183,3 +1183,14 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-right .ready-mission { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
 .hx-right .ready-mission b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hx-right .rm-change { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 6px; }
+/* Badge art: under the soldier, and at the left of each badge's card. */
+.hx-badge .badge-art { width: 58px; height: auto; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); transition: transform 0.15s; }
+.hx-badge:hover .badge-art { transform: scale(1.06); }
+.hx-badgegrid .badge-card { grid-template-columns: 56px minmax(0, 1fr); column-gap: 12px; align-items: start; }
+.hx-badgegrid .badge-card > :not(.bdg-pic) { grid-column: 2; }
+.hx-badgegrid .badge-card .bdg-pic { grid-column: 1; grid-row: 1 / span 3; }
+.hx-badgegrid .badge-card.on .bdg-head b { color: var(--amber); }
+.bdg-pic .badge-art { width: 56px; height: auto; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.hx-badgegrid .badge-card:first-child { grid-template-columns: minmax(0, 1fr); }
+.hx-badgegrid .badge-card:first-child > * { grid-column: 1; }
+.hx-opens .badge-art { width: 48px; height: auto; display: block; margin: 0 auto; }
