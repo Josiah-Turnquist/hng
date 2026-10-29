@@ -1042,7 +1042,9 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-filter { display: flex; gap: 6px; align-items: center; }
 .hx-filter button { width: 34px; height: 34px; display: grid; place-items: center; font-size: 22px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); opacity: 0.45; }
 .hx-filter button.on { opacity: 1; border-color: var(--amber); }
-.hx-select { flex: 1; min-width: 0; height: 34px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--ink); background: rgba(20, 21, 18, 0.95); border: 1px solid rgba(255, 255, 255, 0.12); }
+.hx-select { flex: 1; min-width: 0; height: 34px; padding: 0 30px 0 10px; font: inherit; font-size: 12px; color: var(--ink); background: rgba(16, 17, 14, 0.4) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23c9c4b4' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 11px center / 11px 8px; border: 1px solid rgba(255, 255, 255, 0.12); -webkit-appearance: none; appearance: none; cursor: pointer; }
+.hx-select:hover { border-color: rgba(226, 172, 70, 0.6); }
+.hx-select option { background: #1c1d1a; color: var(--ink); }
 .hx-stage { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; }
 .hx-stage .fe-nameplate { position: static; transform: none; width: auto; min-width: 280px; max-width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; background: rgba(13, 14, 12, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); pointer-events: none; }
 .hx-stage .fe-nameplate .np-rank .ico { font-size: 34px; }
@@ -1052,7 +1054,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-stage .fe-nameplate .xp { height: 4px; margin: 5px 0 3px; }
 .hx-stage .stage-turn { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); }
 .hx-badges { align-self: center; display: flex; gap: 12px; margin-bottom: 4px; }
-.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.2); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
+.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
 .hx-badge:hover { border-color: rgba(226, 172, 70, 0.6); }
 .hx-badge .lab { align-self: flex-start; font-family: var(--cond); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
 .hx-badge svg { width: 50px; height: 58px; }
@@ -1197,4 +1199,4 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .fe.stage[data-backdrop="mist"], .fe.stage[data-backdrop="dusk"], .fe.stage[data-backdrop="smoke"], .fe.stage[data-backdrop="night"] { background: radial-gradient(ellipse 70% 80% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.2) 65%, rgba(8, 9, 7, 0.6) 100%); }
 .fe.stage[data-backdrop="pale"] { background: radial-gradient(ellipse 75% 85% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.12) 70%, rgba(8, 9, 7, 0.4) 100%); }
 /* Every card on the Heroes screen at the badge card's 10% background, the backdrop showing through. */
-.fe-heroes .soldier-card, .fe-heroes .hx-slot:not(.empty), .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission { background: rgba(16, 17, 14, 0.2); box-shadow: none; }
+.fe-heroes .soldier-card, .fe-heroes .hx-slot:not(.empty), .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission { background: rgba(16, 17, 14, 0.4); box-shadow: none; }
