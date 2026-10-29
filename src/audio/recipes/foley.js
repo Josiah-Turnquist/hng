@@ -604,6 +604,20 @@ const MECH = {
       rattle(out, rng, sr, 0.45, 0.55, 30, 0.08);
     },
   },
+  // An adjustable wrench at work on a nut: the jaws biting with a knock, the
+  // pull (the nut creaks round under the load), and the jaws slipped back for
+  // the next bite with a light rattle of the loose jaw.
+  wrench: {
+    dur: 0.6,
+    level: 0.2,
+    make(out, rng, sr) {
+      strike(out, rng, sr, 0.005, { amp: 0.8, f: rng.range(1700, 2100), tau: 0.012, modes: 4, click: 0.5, thump: 0.25 });
+      scrape(out, rng, sr, { at: 0.05, dur: 0.22, amp: 0.12, f: 1300, grains: 40 });
+      thud(out, rng, sr, { at: 0.06, amp: 0.25, f: 160, tau: 0.03, fc: 700 });
+      strike(out, rng, sr, rng.range(0.36, 0.4), { amp: 0.35, f: rng.range(2600, 3000), tau: 0.008, modes: 3, click: 0.4 });
+      rattle(out, rng, sr, 0.4, 0.5, 40, 0.06);
+    },
+  },
   // Raising a scoped rifle: a short rustle, the cheek meeting the stock, a tick.
   scopeIn: {
     dur: 0.35,

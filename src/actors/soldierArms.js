@@ -51,7 +51,8 @@ export function weaponInfo(gun, kind) {
   const meta = gun.userData?.meta || gun.meta || {};
   const parts = gun.userData?.parts || gun.parts || {};
   const get = (n, d) => (a[n] ? a[n].clone() : d ? V(...d) : null);
-  const pistolLike = kind === 'pistol' || kind === 'grenade' || kind === 'melee' || kind === 'binoculars';
+  // (Kits and the wrench are held like a grenade: in the fist, nothing at the shoulder.)
+  const pistolLike = kind === 'pistol' || kind === 'grenade' || kind === 'melee' || kind === 'binoculars' || kind === 'kit' || kind === 'wrench';
   const anchors = {
     gripR: get('gripR', pistolLike ? [0, -0.05, 0.02] : [0, -0.045, 0.07]),
     gripL: get('gripL', null),
@@ -659,11 +660,13 @@ export class SoldierArms {
         holder = holder === 'left' ? 'left' : 'right-free';
       }
     } else if (act === 'bandage' || act === 'use') {
-      // Sling the weapon over the back; both hands work in front.
+      // Sling the weapon over the back; both hands work in front. A kit or
+      // tool (meta.handheld) is what they work with: it stays in the hand.
+      const handheld = !!info.meta.handheld;
       const S = this._sling(this.tmp3 || (this.tmp3 = new Xf()));
       const e = env(t, 0.15, 0.85);
-      G.lerp(S, e);
-      holder = e > 0.5 ? 'sling' : 'right';
+      if (!handheld) G.lerp(S, e);
+      holder = e > 0.5 && !handheld ? 'sling' : 'right';
       const wob = Math.sin(t * TAU * 4);
       handRT = this.handR;
       handLT = this.handL;
@@ -685,6 +688,7 @@ export class SoldierArms {
       const gripH = handFromGun(G, info.qHG, info.tHG, new Xf());
       handRT = gripH.lerp(handRT, wR);
       if (info.qLG) handLT = handFromGun(G, info.qLG, info.tLG, new Xf()).lerp(handLT, wL);
+      if (handheld) G.copy(gunFromHand(handRT, info.qHG, info.tHG, new Xf()));
       holder = holder === 'sling' ? 'sling' : 'right-free';
     } else if (info.magPart) info.magPart.visible = true;
     if (act !== 'reload' && act !== 'bolt') this._bolt(0, null);

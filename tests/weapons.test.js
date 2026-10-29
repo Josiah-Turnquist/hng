@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Weapon } from '../src/weapons/weapon.js';
 import { WEAPONS } from '../src/weapons/defs.js';
+import { KIT_TYPES } from '../src/weapons/items/kits.js';
 
 const DT = 1 / 120;
 
@@ -24,7 +25,8 @@ test('every weapon definition is complete and sane', () => {
   for (const [id, d] of Object.entries(WEAPONS)) {
     assert.ok(d.name && d.faction && d.type && d.slot, `${id} basics`);
     assert.ok(d.mass > 0 && d.mass < 25, `${id} mass`);
-    if (d.type === 'grenade' || d.type === 'binoculars') continue; // (nothing fired: tests/binoculars.test.js)
+    // (Grenades, binoculars and kits fire nothing: tests/binoculars.test.js, tests/kits.test.js.)
+    if (d.type === 'grenade' || d.type === 'binoculars' || KIT_TYPES.has(d.type)) continue;
     if (d.type === 'melee') {
       // Close-combat weapons fire nothing (game/melee.js).
       assert.ok(d.reach >= 0.8 && d.reach <= 1.5 && d.attack.hit < d.attack.period && d.damage.head > 0, `${id} blow`);

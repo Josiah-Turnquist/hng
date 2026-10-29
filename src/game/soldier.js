@@ -15,6 +15,7 @@ import { WEAPONS } from '../weapons/defs.js';
 import { clamp } from '../core/math.js';
 import { updateThrow } from './throwing.js';
 import { updateMelee } from './melee.js';
+import { updateKit, endKit } from './kits.js';
 
 export const ZONES = {
   head: 4.0,
@@ -76,7 +77,9 @@ export class Soldier {
     this.yaw = 0;
     this.pitch = 0;
     this.aiming = false;
-    this.action = null; // bandage, first aid
+    this.action = null; // bandage, firstaid, kit (a kit from his equipment: kits.js), repair
+    this.kitUse = null; // a treatment under way with a kit (kits.js)
+    this.repair = null; // a spell of work on a vehicle with the wrench (kits.js)
     this.actionT = 0;
     this.throwing = null; // a grenade throw under way (throwing.js)
     this.lastThrowTime = -100;
@@ -157,10 +160,12 @@ export class Soldier {
         this.body.legWound *= 0.5;
         this.armWound *= 0.5;
         this.action = null;
-      }
+      } else if (this.action === 'kit') updateKit(this.game, this, dt);
       // Moving interrupts treatment.
       if (this.action && this.body.moving > 1.2) this.action = null;
     }
+    // A treatment with a kit stopped (by moving, a hit, or a weapon change).
+    if (this.kitUse && this.action !== 'kit') endKit(this.game, this);
 
     updateThrow(this.game, this, dt);
     updateMelee(this.game, this, dt);
@@ -237,6 +242,9 @@ export class Soldier {
     this.deaths++;
     this.killer = cause?.attacker || null;
     this.melee = null;
+    this.action = null;
+    this.kitUse = null;
+    this.repair = null;
     for (const w of this.weapons) w?.setTrigger(false);
     // His main weapon falls beside him, for anyone to pick up.
     this.game.pickups?.dropFrom(this);
@@ -276,6 +284,11 @@ export class Soldier {
     const extra = i === 0 ? badgeValue(this, 'hoarder', 0) : w.def.type === 'grenade' ? badgeValue(this, 'dynamiteLover', 0) : 0;
     if (extra) {
       w.extraReserve = extra;
+      w.fill();
+    }
+    // Combat Medic: more uses of a first-aid kit or medic pouch.
+    if (w.kit && w.def.uses != null && badgeValue(this, 'combatMedic', 0)) {
+      w.extraUses = badgeValue(this, 'combatMedic', 0);
       w.fill();
     }
     w.reloadMul = badgeValue(this, 'fastReload', 1);

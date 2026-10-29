@@ -62,6 +62,8 @@ Grenades: hold the fire button to pull the pin and draw back (holding it longer 
 
 Close combat: a soldier may carry his army's entrenching spade, a knife or bayonet, or a baseball bat (the Soviets a lapta bat), each at its real length and weight. The fire button thrusts a knife or bayonet and swings a spade or bat; a blow lands on whoever is within reach in front of you (about 1 m for a knife, 1.3 m for a spade or bayonet, 1.4 m for a bat), and as in the original game one stab kills, as does a spade or bat to the head (two blows to the body). T strikes once with it from whatever you hold and goes back to it. Bots with one use it on an enemy within 2 m now and then.
 
+Kits, in an equipment slot as in the original game: a first-aid kit (3 uses) or a medic pouch (6, more health and faster) treats the wounded man of your side you look at within 2 m when you fire, or else yourself: it stops the bleeding and gives back about 40 (60) health over a few seconds, during which you can't shoot. The adjustable wrench (any army, meant for drivers and tank crews) repairs the vehicle you stand at while you hold fire, about 5% of it a second, and puts broken tracks, tires and engines right; not while it burns. The uses left show where the rounds would, and a line under the sights says what you did ("Healed Pvt. Weber", "Repairing Willys MB 64%").
+
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
 
 ### Scopes

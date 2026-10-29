@@ -4,7 +4,8 @@
 // the real ammunition (ammo.js) and the physics engine.
 //
 // Fields:
-//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade | melee
+//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade | melee | binoculars
+//            (kits: firstaid | medkit | wrench, items/kits.js)
 //   feed     how it is loaded: box (detachable magazine), drum, pan, belt, enbloc (M1 Garand
 //            clip), stripper (internal magazine filled from 5-round clips or single rounds),
 //            gate (revolver loaded one round at a time), moon (revolver half-moon clips),
@@ -27,7 +28,7 @@
 import { MELEE } from './items/melee.js';
 import { BINOCULARS } from './items/binoculars.js';
 import { POCKET_PISTOLS } from './items/pocket.js';
-import { KITS } from './items/kits.js';
+import { KITS, KIT_TYPES } from './items/kits.js';
 import { AMMO } from './ammo.js';
 import { FITTINGS, scopedWeapon } from './scopes.js';
 
@@ -971,6 +972,22 @@ for (const set of [MELEE, BINOCULARS, POCKET_PISTOLS, KITS]) for (const [id, d] 
 for (const [id, w] of Object.entries(WEAPONS)) {
   w.id = id;
   w.model = w.model || id;
+  // Kits and the wrench fire nothing and carry no ammunition: a sight, fire
+  // mode and feed of their own so the code that walks every weapon (Weapon, the
+  // viewmodel, the HUD) still finds them; their uses stand in for the magazine.
+  if (KIT_TYPES.has(w.type)) {
+    w.sight = { kind: 'none', unit: 'm', ranges: [0], zero: 0 };
+    w.modes = ['semi'];
+    w.feed = 'kit';
+    w.capacity = w.uses ?? 0;
+    w.reserve = 0;
+    w.rpm = 60;
+    w.reload = {};
+    w.accuracy = 0;
+    w.hipError = 0;
+    w.loadedMass = w.mass;
+    continue;
+  }
   if (w.type === 'grenade') {
     w.sight = { kind: 'none', unit: 'm', ranges: [0], zero: 0 };
     w.modes = ['semi'];
@@ -1052,8 +1069,9 @@ export function loadoutPoints(ids) {
   return ids.reduce((n, id) => n + (id ? pointsOf(id) : 0), 0);
 }
 
+// (An item every army may carry, def.anyArmy, counts as each army's own.)
 export function weaponsFor(faction, cls, slot) {
-  return Object.values(WEAPONS).filter((w) => w.faction === faction && w.classes.includes(cls) && w.slot === slot);
+  return Object.values(WEAPONS).filter((w) => (w.faction === faction || w.anyArmy) && w.classes.includes(cls) && w.slot === slot);
 }
 
 // The rifle a weapon is built on (itself, for a gun without a scope).

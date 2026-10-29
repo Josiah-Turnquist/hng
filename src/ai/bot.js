@@ -28,6 +28,7 @@ import { findRide } from './riderBot.js';
 import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt, leavesBetween } from './tactics.js';
 import { grenadeOf, startThrow, releasePoint, throwSpeed } from '../game/throwing.js';
 import { meleeOf, startAttack, canAttack } from '../game/melee.js';
+import { healKitOf, useKit } from '../game/kits.js';
 
 const _hit = new RayHit();
 const _eye = { x: 0, y: 0, z: 0 };
@@ -643,14 +644,18 @@ export class BotBrain {
         if (seen && !ducked && d > 40 && b.targetStance !== STANCE.PRONE) b.setStance(STANCE.PRONE);
         this._startTreat();
       }
-    } else if (s.health < 45 && !t && this.game.time - s.lastHitTime > 4) this._startTreat();
+    } else if (s.health < (healKitOf(s) ? 50 : 45) && !t && this.game.time - s.lastHitTime > 4) this._startTreat();
   }
 
-  // Stop, then treat (on the move it would be interrupted at once).
+  // Stop, then treat (on the move it would be interrupted at once): badly
+  // hurt with a first-aid kit (or medic pouch) in his kit, he uses that on
+  // himself (it stops the bleeding too); else a bandage.
   _startTreat() {
-    if (this.s.body.moving < 0.6) {
+    const s = this.s;
+    if (s.body.moving < 0.6) {
       this.treatT = 0;
-      this.s.startBandage();
+      const kit = s.health < 50 ? healKitOf(s) : null;
+      if (!kit || !useKit(this.game, s, kit, s)) s.startBandage();
     } else this.treatT = this.game.time + 0.8;
   }
 

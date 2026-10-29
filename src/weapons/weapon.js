@@ -21,7 +21,10 @@
 // A close-combat weapon (def.type 'melee': knife, bayonet, spade, bat) has no
 // ammunition and never fires; its blows are game/melee.js's. It is a Weapon so
 // that it sits in a loadout slot like the rest.
+// Kits and the wrench (items/kits.js) have no mechanism: they never fire or
+// reload here, and only count their uses (game/kits.js works them).
 import { getAmmo } from './ammo.js';
+import { KIT_TYPES } from './items/kits.js';
 
 // How much faster than the original game's reload times every reload runs.
 export const RELOAD_SPEED = 1.5;
@@ -32,7 +35,8 @@ export class Weapon {
     this.melee = def.type === 'melee';
     // (Binoculars hold no ammunition: they never fire or load.)
     this.optic = def.type === 'binoculars';
-    this.ammo = this.melee || this.optic ? null : getAmmo(def.ammo);
+    this.kit = KIT_TYPES.has(def.type);
+    this.ammo = this.melee || this.optic || this.kit ? null : getAmmo(def.ammo);
     this.modeIndex = 0;
     this.trigger = false;
     this.triggerWasDown = false;
@@ -108,6 +112,14 @@ export class Weapon {
 
   fill() {
     const d = this.def;
+    if (this.kit) {
+      // Uses left (none counted for the wrench); nothing in a magazine.
+      this.uses = d.uses == null ? null : d.uses + (this.extraUses || 0);
+      this.mag = 0;
+      this.chambered = false;
+      this.spareMags = [];
+      return;
+    }
     this.mag = d.capacity;
     this.chambered = false;
     if (this.melee || this.optic) {
@@ -191,7 +203,7 @@ export class Weapon {
   // Can a reload start right now (and is there anything to load)?
   canReload() {
     const d = this.def;
-    if (this.state === 'reloading' || this.melee || this.optic) return false;
+    if (this.state === 'reloading' || this.melee || this.optic || this.kit) return false;
     if (d.feed === 'disposable' || d.type === 'grenade') return false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       const room = d.capacity - this.mag - (d.feed === 'enbloc' && this.chambered ? 0 : 0);
@@ -451,7 +463,7 @@ export class Weapon {
   // --- firing ------------------------------------------------------------------
   // Advance timers; returns the number of shots fired during this step (0 or 1).
   update(dt) {
-    if (this.melee) {
+    if (this.melee || this.kit) {
       this.triggerWasDown = this.trigger;
       return 0;
     }
@@ -573,7 +585,8 @@ export class Weapon {
   resupply() {
     const d = this.def;
     if (this.melee || this.optic) return;
-    if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = this.reserveCount;
+    if (this.kit) this.uses = d.uses == null ? null : d.uses + (this.extraUses || 0);
+    else if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = this.reserveCount;
     else if (d.feed === 'gate') this.loose = this.reserveCount;
     else if (d.feed === 'moon') this.clips = this.reserveCount;
     else if (this.spareMags) this.spareMags = new Array(this.reserveCount).fill(d.capacity);

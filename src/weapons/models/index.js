@@ -1,4 +1,5 @@
-// Registry of procedural gun models: id -> builder(b: GunBuilder).
+// Registry of procedural gun models: id -> builder(b: GunBuilder). The kits
+// and the wrench (kits.js) are built the same way.
 import * as german from './german.js';
 import * as us from './us.js';
 import * as soviet from './soviet.js';
@@ -6,6 +7,7 @@ import * as melee from './melee.js';
 import * as pocket from './pocket.js';
 import * as binoculars from './binoculars.js';
 import { UPGRADE_MODELS } from './upgradeScopes.js';
+import * as kits from './kits.js';
 import { GunBuilder } from './kit.js';
 
 export const MODELS = {
@@ -16,6 +18,7 @@ export const MODELS = {
   ...pocket,
   ...binoculars,
   ...UPGRADE_MODELS, // rifles with a scope upgrade: `${rifle}+${family}`
+  ...kits,
 };
 
 // Levels of detail: 0 = first person (30k-60k triangles), 1 = soldiers nearby

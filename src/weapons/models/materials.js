@@ -214,6 +214,11 @@ const PRESETS = {
   gunLeatherBlack: { mat: 'gunLeather', world: 0.2, a: lin(0.11, 0.095, 0.085) },
   gunWebbing: { mat: 'gunWebbing', world: 0.1, a: lin(0.46, 0.42, 0.29) },
   gunCanvas: { mat: 'gunWebbing', world: 0.1, a: lin(0.38, 0.36, 0.24) },
+  gunCanvasSoviet: { mat: 'gunWebbing', world: 0.1, a: lin(0.4, 0.4, 0.27) }, // Red Army khaki canvas, greener than the US
+  // Painted marks on kits: the red cross on its white field.
+  gunPaintRed: { mat: 'paintedMetal', world: 0.3, a: lin(0.62, 0.1, 0.08), b: lin(0.6, 0.12, 0.1) },
+  gunPaintFeldgrau: { mat: 'paintedMetal', world: 0.3, a: lin(0.36, 0.38, 0.33), b: lin(0.55, 0.52, 0.45) }, // field grey tinplate
+  gunPaintWhite: { mat: 'paintedMetal', world: 0.3, a: lin(0.86, 0.84, 0.78), b: lin(0.8, 0.78, 0.72) },
   // Paint: the yellow band of a US high-explosive grenade.
   gunPaintYellow: { mat: 'paintedMetal', world: 0.3, a: lin(0.72, 0.6, 0.22), b: lin(0.7, 0.62, 0.4) },
   // Unfinished beech of grenade handles.
@@ -400,6 +405,10 @@ const LOW = {
   leatherBlack: [0.012, 0.01, 0.009],
   webbing: [0.25, 0.21, 0.11],
   canvas: [0.19, 0.17, 0.08],
+  canvasSoviet: [0.2, 0.2, 0.09],
+  redPaint: [0.4, 0.02, 0.015],
+  whitePaint: [0.7, 0.68, 0.6],
+  feldgrau: [0.1, 0.11, 0.085],
   olive: [0.06, 0.07, 0.035],
   germanGrey: [0.05, 0.055, 0.06],
   germanYellow: [0.3, 0.24, 0.1],
@@ -463,6 +472,10 @@ export function makeGunMaterials(textures, { size = 512, firstPerson = false } =
     leatherBlack: plastic('gunLeatherBlack'),
     webbing: std('gunWebbing'),
     canvas: std('gunCanvas'),
+    canvasSoviet: std('gunCanvasSoviet'),
+    redPaint: patchGun(std('gunPaintRed'), { kind: 1, wear: 0.4 }),
+    feldgrau: patchGun(std('gunPaintFeldgrau'), { kind: 1, wear: 0.5 }),
+    whitePaint: patchGun(std('gunPaintWhite'), { kind: 1, wear: 0.4 }),
     olive: patchGun(std('paintOD'), { kind: 1 }), // painted launch tubes etc.
     germanGrey: patchGun(std('paintGermanGrey'), { kind: 1 }),
     germanYellow: patchGun(std('paintGerman'), { kind: 1 }),
@@ -531,6 +544,8 @@ export const STAMPS = {
   pzfWarn: { lines: ['Achtung!', 'Feuerstrahl!'], w: 300, h: 116 },
   m24Head: { lines: ['Vor Gebrauch', 'Sprengkapsel', 'einsetzen'], w: 300, h: 124 },
   ptrdRing: { lines: ['^', '1942'], w: 160, h: 128 },
+  // Stamped in ink on the flap of a US pouch.
+  usInk: { lines: ['U.S.'], w: 200, h: 100 },
 };
 const STAMP_SLOTS = (() => {
   const out = {};
