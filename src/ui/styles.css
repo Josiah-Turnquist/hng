@@ -1052,7 +1052,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-stage .fe-nameplate .xp { height: 4px; margin: 5px 0 3px; }
 .hx-stage .stage-turn { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); }
 .hx-badges { align-self: center; display: flex; gap: 12px; margin-bottom: 4px; }
-.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.1); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
+.hx-badge { width: 140px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px 7px; text-align: center; background: rgba(16, 17, 14, 0.2); border: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; }
 .hx-badge:hover { border-color: rgba(226, 172, 70, 0.6); }
 .hx-badge .lab { align-self: flex-start; font-family: var(--cond); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
 .hx-badge svg { width: 50px; height: 58px; }
@@ -1197,4 +1197,4 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .fe.stage[data-backdrop="mist"], .fe.stage[data-backdrop="dusk"], .fe.stage[data-backdrop="smoke"], .fe.stage[data-backdrop="night"] { background: radial-gradient(ellipse 70% 80% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.2) 65%, rgba(8, 9, 7, 0.6) 100%); }
 .fe.stage[data-backdrop="pale"] { background: radial-gradient(ellipse 75% 85% at 50% 52%, rgba(10, 11, 9, 0) 0%, rgba(10, 11, 9, 0.12) 70%, rgba(8, 9, 7, 0.4) 100%); }
 /* Every card on the Heroes screen at the badge card's 10% background, the backdrop showing through. */
-.fe-heroes .soldier-card, .fe-heroes .hx-slot:not(.empty), .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission { background: rgba(16, 17, 14, 0.1); box-shadow: none; }
+.fe-heroes .soldier-card, .fe-heroes .hx-slot:not(.empty), .hx-stage .fe-nameplate, .fe-heroes .hx-next, .fe-heroes .ready-mission { background: rgba(16, 17, 14, 0.2); box-shadow: none; }
