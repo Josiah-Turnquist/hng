@@ -53,6 +53,8 @@ Where to go: a marker floats over each point your side should take or hold next,
 
 Who not to shoot: a green dot floats over the head of everyone on your side, through walls and smoke too, smaller and fainter with distance (Settings > Screen > Teammate markers).
 
+A kill: a short chime, the hit mark turns red, and a small line under the sights names who you killed ("Killed Pvt. Brandt +5", with Headshot when it was one, and a count when kills come close together; "Destroyed" for a vehicle). It fades after a couple of seconds.
+
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
 
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.

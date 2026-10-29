@@ -35,6 +35,7 @@ export class Hud {
       <div class="hud-killfeed"></div>
       <div class="hud-msg"></div>
       <div class="hud-center"><div class="hud-cross"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="c"></i></div><div class="hitmark"></div></div>
+      <div class="hud-kill"></div>
       <div class="hud-left">
         <div class="hud-health"><div class="bar"><div class="fill"></div></div><span class="label">Health</span><span class="bleed">Bleeding (X to bandage)</span></div>
         <div class="hud-stamina"><div class="bar"><div class="fill"></div></div><span class="label">Stamina</span></div>
@@ -86,6 +87,7 @@ export class Hud {
     this.killfeedEl = this.el('.hud-killfeed');
     this.compassStrip = this.el('.hud-compass .strip');
     this.hitEl = this.el('.hitmark');
+    this.killEl = this.el('.hud-kill');
     this.crossEl = this.el('.hud-cross');
     this.cross = { a: 0, r: 12, shown: -1 };
     this.hintEl = this.el('.hud-hint');
@@ -119,6 +121,7 @@ export class Hud {
     this.damageFlash = 0;
     this.msgT = 0;
     this.hitT = 0;
+    this.killT = 0;
     this._buildCompass();
     this.lastScope = null;
     const k = (a) => game.input.keys(a);
@@ -252,6 +255,22 @@ export class Hud {
     this.hitEl.classList.toggle('kill', kind === 2);
   }
 
+  // The player killed an enemy (or knocked out a vehicle): a short chime and a
+  // small line under the sights that fades. Kills close together count up.
+  killConfirm(name, { verb = 'Killed', points = 0, headshot = false } = {}) {
+    const now = this.game.time;
+    this.killStreak = now - (this.killLast ?? -99) < 4 ? (this.killStreak || 1) + 1 : 1;
+    this.killLast = now;
+    const el = this.killEl;
+    el.innerHTML = `<span class="v">${verb}</span> <span class="n"></span>${headshot ? ' <span class="h">Headshot</span>' : ''}${points ? ` <span class="p">+${points}</span>` : ''}${this.killStreak > 1 ? ` <span class="x">×${this.killStreak}</span>` : ''}`;
+    el.querySelector('.n').textContent = name ?? '';
+    this.killT = 2;
+    el.classList.remove('pop');
+    void el.offsetWidth; // (restart the animation)
+    el.classList.add('pop');
+    this.game.audio?.play?.('killConfirm', null, { volume: 0.6 });
+  }
+
   damage(amount) {
     this.damageFlash = Math.min(1, this.damageFlash + amount / 50);
   }
@@ -336,6 +355,8 @@ export class Hud {
     this.hintEl.style.opacity = this.hintT > 0 ? Math.min(1, this.hintT) : 0;
     this.hitT -= dt;
     this.hitEl.style.opacity = this.hitT > 0 ? 1 : 0;
+    this.killT -= dt;
+    this.killEl.style.opacity = this.killT > 0 ? Math.min(1, this.killT / 0.6) : 0;
     this.damageFlash = damp(this.damageFlash, s.health < 30 ? 0.35 : 0, 1.5, dt);
     this.deadEl.style.display = s.alive || this.deployState ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;

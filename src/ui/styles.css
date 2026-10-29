@@ -229,6 +229,32 @@ canvas.game {
   -webkit-mask-image: radial-gradient(circle, transparent 30%, #000 31%);
 }
 .hud-center .hitmark.kill { filter: sepia(1) saturate(6) hue-rotate(-30deg); }
+/* A kill: a small line under the sights that fades. */
+.hud-kill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% + 44px);
+  text-align: center;
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  opacity: 0;
+  pointer-events: none;
+}
+.hud-kill .n { color: var(--ink); font-weight: 600; }
+.hud-kill .h,
+.hud-kill .p { color: var(--amber); }
+.hud-kill .x { color: var(--ink-dim); font-size: 12px; }
+.hud-kill.pop { animation: hud-kill-pop 0.22s ease-out; }
+@keyframes hud-kill-pop {
+  from { transform: translateY(5px) scale(0.96); }
+  to { transform: none; }
+}
 /* Next to a vehicle on foot: the key that gets you in. */
 .hud-use {
   position: absolute;

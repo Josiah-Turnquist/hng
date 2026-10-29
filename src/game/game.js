@@ -572,7 +572,12 @@ export class Game {
       charModel(v);
     }
     this.hud?.killFeed(attacker, { name: v.def.name, faction: v.def.faction }, { kind: 'vehicle', weapon: { name: cause } });
-    if (attacker === this.player?.soldier) this.hud?.hitMarker(2);
+    if (attacker === this.player?.soldier) {
+      this.hud?.hitMarker(2);
+      // (Not for knocking out his own side's machine.)
+      const foe = v.occupants?.some((o) => o && o.team !== attacker.team) || (v.def.faction && v.def.faction !== attacker.faction);
+      if (foe) this.hud?.killConfirm?.(v.def.name, { verb: 'Destroyed' });
+    }
     // An ammunition explosion throws the turret off.
     if (cause === 'ammo' && v.model.parts?.turret) {
       v.turretFly = { vy: 9 + Math.random() * 5, vx: (Math.random() - 0.5) * 3, vz: (Math.random() - 0.5) * 3, spin: (Math.random() - 0.5) * 4 };
@@ -709,7 +714,10 @@ export class Game {
         a.score += 5;
         // The kill mark for the player however he killed (run over, blown up,
         // bled out), not only by a bullet.
-        if (a === this.player?.soldier) this.hud?.hitMarker(2);
+        if (a === this.player?.soldier) {
+          this.hud?.hitMarker(2);
+          this.hud?.killConfirm?.(s.name, { points: 5, headshot: !!cause?.headshot });
+        }
       } else a.score -= 10;
     } else if (a === s) s.score -= 1;
     this.hud?.killFeed(a, s, cause);

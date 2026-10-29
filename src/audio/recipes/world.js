@@ -1056,6 +1056,29 @@ export const UI = {
         0.4,
       ),
   },
+  // The player killed an enemy: a soft low knock under a crisp tick, then a
+  // bright two-note chime that rises a fourth (G6 to C7), short and clean, so
+  // it reads as "got him" without covering the gunfire.
+  killConfirm: {
+    dur: 0.42,
+    make(rng, sr) {
+      const out = buffer(0.42, sr);
+      tone(out, sr, { at: 0.001, f: 150, f1: 85, glide: 0.03, attack: 0.001, decay: 0.035, amp: 0.55, h2: 0.3 });
+      strike(out, rng, sr, 0.001, { amp: 0.45, f: 3400, ratios: [1, 1.78, 2.73], tau: 0.004, modes: 3, click: 0.8 });
+      // Each note a soft bell: the fundamental, a quieter octave and an
+      // inharmonic shimmer that dies away first.
+      const bell = (at, f, amp, tau) => {
+        const i = nSamples(at, sr);
+        addMode(out, i, f, amp, tau, sr, 0);
+        addMode(out, i, f * 2, amp * 0.22, tau * 0.5, sr, 0);
+        addMode(out, i, f * 2.76, amp * 0.08, tau * 0.25, sr, 0);
+      };
+      bell(0.012, 1568, 0.42, 0.05);
+      bell(0.07, 2093, 0.5, 0.085);
+      lowpass1(out, sr, 9000);
+      return finish(out, sr, 0.32, 0.06, 60);
+    },
+  },
   hitMarker: {
     dur: 0.08,
     make(rng, sr) {
