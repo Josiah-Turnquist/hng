@@ -292,7 +292,8 @@ export class ViewModel {
       this.gun = null;
       return;
     }
-    const key = variant === 'code' ? def.id : `${def.id}:${variant}`;
+    // (Upgrades change the model and the sight, not the id.)
+    const key = `${def.id}|${def.model}|${def.scope?.name ?? ''}|${def.irons?.ranges.length ?? ''}|${variant}`;
     let entry = this.cache.get(key);
     if (!entry) {
       const modelId = MODELS[def.model] ? def.model : fallbackModel(def);
