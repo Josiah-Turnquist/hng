@@ -23,9 +23,14 @@ export class PickupView {
     const box = new THREE.Box3().setFromObject(gun.root);
     const c = box.getCenter(new THREE.Vector3());
     gun.root.position.sub(c);
+    g.add(gun.root);
+    if (gun.meta.binoculars) {
+      // (Binoculars lie flat, as they would.)
+      g.userData.lift = Math.max(c.y - box.min.y, 0.02);
+      return g;
+    }
     gun.root.rotation.z = Math.PI / 2;
     gun.root.position.applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
-    g.add(gun.root);
     g.userData.lift = Math.max(-box.min.x, box.max.x, 0.02);
     // (A launcher's rocket went with the shot or is still in it, as it was.)
     return g;

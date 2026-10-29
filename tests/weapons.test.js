@@ -24,7 +24,7 @@ test('every weapon definition is complete and sane', () => {
   for (const [id, d] of Object.entries(WEAPONS)) {
     assert.ok(d.name && d.faction && d.type && d.slot, `${id} basics`);
     assert.ok(d.mass > 0 && d.mass < 25, `${id} mass`);
-    if (d.type === 'grenade') continue;
+    if (d.type === 'grenade' || d.type === 'binoculars') continue; // (nothing fired: tests/binoculars.test.js)
     if (d.type === 'melee') {
       // Close-combat weapons fire nothing (game/melee.js).
       assert.ok(d.reach >= 0.8 && d.reach <= 1.5 && d.attack.hit < d.attack.period && d.damage.head > 0, `${id} blow`);

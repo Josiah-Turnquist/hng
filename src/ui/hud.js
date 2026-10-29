@@ -338,6 +338,11 @@ export class Hud {
         this.loadedEl.textContent = '';
         this.reserveEl.textContent = '';
         this.modeEl.textContent = d.style === 'stab' ? 'Close combat: LMB to stab' : 'Close combat: LMB to strike';
+      } else if (d.type === 'binoculars') {
+        // Nothing to count: how to use them instead.
+        this.loadedEl.textContent = '';
+        this.reserveEl.textContent = '';
+        this.modeEl.textContent = `${d.optic.mag}x · ${g.input.key('aim')} to raise, ${g.input.key('fire')} to spot`;
       } else {
         this.loadedEl.textContent = `${w.loaded}`;
         const unit = d.feed === 'stripper' ? 'clips' : d.feed === 'enbloc' ? 'clips' : d.feed === 'belt' ? 'belts' : d.feed === 'drum' ? 'drums' : d.feed === 'pan' ? 'pans' : d.feed === 'single' ? 'rounds' : d.feed === 'gate' ? 'rounds' : d.feed === 'moon' ? 'clips' : 'mags';
@@ -387,11 +392,12 @@ export class Hud {
     const nades = this._nearGrenades(p);
     const objs = this._objectives(p);
     const allies = this._allies(p);
-    if (!marks.length && !nades.length && !objs && !allies && !this.shotsDrawn) return;
+    const spots = this._spotted(p);
+    if (!marks.length && !nades.length && !objs && !allies && !spots && !this.shotsDrawn) return;
     const c = this.shotsCanvas;
     const ctx = this.shotsCtx;
     ctx.clearRect(0, 0, c.width, c.height);
-    this.shotsDrawn = marks.length > 0 || nades.length > 0 || !!objs || !!allies;
+    this.shotsDrawn = marks.length > 0 || nades.length > 0 || !!objs || !!allies || !!spots;
     if (!this.shotsDrawn) return;
     const f = _cv.set(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
     const camYaw = Math.atan2(-f.x, -f.z);
@@ -400,6 +406,7 @@ export class Hud {
       cy = c.height / 2;
     const R = Math.max(70, Math.min(c.width, c.height) * 0.16);
     if (allies) this._drawAllies(ctx, allies);
+    if (spots) this._drawSpotted(ctx, spots);
     if (objs) this._drawObjectives(ctx, objs, camYaw);
     if (nades.length) this._drawGrenades(ctx, nades, b, camYaw, cx, cy, R);
     ctx.lineCap = 'butt';
@@ -471,6 +478,58 @@ export class Hud {
       ctx.arc(x, y, clamp(8 - d / 50, 4, 8) * k, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // --- spotted enemies ---------------------------------------------------------------
+  // The enemies someone on the player's side has spotted through binoculars
+  // (game/spotting.js), while their marks last.
+  _spotted(p) {
+    const me = p.soldier;
+    const list = me.alive ? this.game.spotting?.marked(me.team) : null;
+    return list?.length ? list : null;
+  }
+
+  // A red mark over each spotted enemy's head, in view through walls and smoke
+  // as the teammate dots are (that is what spotting tells the side): a point
+  // down at him, his distance under it far off, fading in its last two seconds.
+  _drawSpotted(ctx, list) {
+    const c = this.shotsCanvas;
+    const w = c.width,
+      h = c.height;
+    const cam = this.game.camera;
+    const cp = cam.position;
+    const k = Math.max(0.8, Math.min(w, h) / 1080);
+    ctx.save();
+    ctx.lineWidth = 1.5 * k;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = `600 ${Math.round(10 * k)}px sans-serif`;
+    for (const { e, t } of list) {
+      e.body.eyePosition(_cv);
+      const d = Math.hypot(_cv.x - cp.x, _cv.y - cp.y, _cv.z - cp.z);
+      if (d < 1.5) continue;
+      _cv.y += 0.4 + d * 0.004;
+      const v = _cv.project(cam);
+      if (v.z >= 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue;
+      const x = (v.x * 0.5 + 0.5) * w,
+        y = (0.5 - v.y * 0.5) * h;
+      const s = clamp(9 - d / 60, 5, 9) * k;
+      ctx.globalAlpha = Math.min(1, t / 2) * 0.95;
+      ctx.fillStyle = 'rgb(222, 46, 32)';
+      ctx.beginPath();
+      ctx.moveTo(x, y + s);
+      ctx.lineTo(x - s, y - s * 0.7);
+      ctx.lineTo(x + s, y - s * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (d > 60) {
+        ctx.fillStyle = 'rgba(255, 214, 200, 0.95)';
+        ctx.fillText(`${Math.round(d / 10) * 10} m`, x, y + s + 3 * k);
+      }
     }
     ctx.restore();
   }
@@ -719,7 +778,7 @@ export class Hud {
       if (s.alive && !s.vehicle && this.game.cameraMode === 'first') {
         const pick = p.nearestPickup?.();
         const near = pick ? null : p.nearestVehicle();
-        if (pick) text = pick.w.def.type === 'melee' ? `Pick up: ${pick.w.def.name}` : `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
+        if (pick) text = pick.w.def.type === 'melee' || pick.w.def.type === 'binoculars' ? `Pick up: ${pick.w.def.name}` : `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
         else if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
       }
       const key = text && !text.endsWith('no free seat') ? this.game.input.key('use') : '';
@@ -746,7 +805,7 @@ export class Hud {
     const vm = p.viewmodel;
     const cam = p.camera;
     let want = 0;
-    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && w.def.type !== 'melee' && vm.gun && vm.visible) {
+    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && w.def.type !== 'melee' && w.def.type !== 'binoculars' && vm.gun && vm.visible) {
       want = clamp01(1 - vm.aim * 2) * (1 - vm.sprint) * vm.swap * (1 - vm.blocked) * (vm.action ? 0.5 : 1);
     }
     c.a = damp(c.a, want, 16, dt);
@@ -917,6 +976,10 @@ export class Hud {
     this.scope.style.display = show ? 'block' : 'none';
     if (!show) return;
     const sc = w.scope;
+    if (w.def.type === 'binoculars') {
+      drawBinocularView(c, W, H, sc);
+      return;
+    }
     // Apparent field of view: true field x magnification, relative to the 31.6 deg "1x" view.
     const apparent = Math.min(0.9, (sc.fieldDeg * sc.mag) / 31.6);
     const R = (H * apparent) / 2;
@@ -1088,4 +1151,111 @@ function drawTankSight(c, W, H, sd, v, fovDeg) {
     c.textAlign = 'right';
     c.fillText(sd.name || '', cx + R * 0.62, cy + R * 0.72);
   }
+}
+
+// The view through binoculars raised to the eyes: the classic figure-eight of
+// the two eyepieces, black round it, and the army's reticle. The camera shows
+// the real magnification (player.js, as for a scope); the two circles together
+// span the glasses' true field of view across (8.5 degrees for a 6x30), each
+// as tall as the screen allows. The reticle sits in one eyepiece of the real
+// glasses, but with both eyes open it is seen over the one picture the eyes
+// make of the two, in its middle: drawn so here, over both circles, at the
+// center of the view (where spotting looks). Mils: 1/6400 of a circle (US and
+// German, the "Strich"); the Red Army's thousandths: 1/6000.
+function drawBinocularView(c, W, H, sc) {
+  const fov = 2 * Math.atan(Math.tan((31.6 * Math.PI) / 360) / sc.mag); // (player.js: 31.6 deg is "1x")
+  const f = H / 2 / Math.tan(fov / 2); // pixels per radian at the center
+  let r = H * 0.47;
+  const span = Math.min(W * 0.98, 2 * f * Math.tan((sc.fieldDeg * Math.PI) / 360));
+  if (span < 2.3 * r) r = span / 2.3; // (a narrow window: smaller circles, still two)
+  const off = span / 2 - r;
+  const cx = W / 2,
+    cy = H / 2;
+  const circles = [cx - off, cx + off];
+  const union = () => {
+    c.beginPath();
+    for (const x of circles) {
+      c.moveTo(x + r, cy);
+      c.arc(x, cy, r, 0, Math.PI * 2);
+    }
+  };
+  c.save();
+  c.fillStyle = '#000';
+  c.fillRect(0, 0, W, H);
+  c.globalCompositeOperation = 'destination-out';
+  union();
+  c.fill('nonzero');
+  c.globalCompositeOperation = 'source-over';
+  // The dark rim of each eyepiece, but not across the other's picture.
+  circles.forEach((x, i) => {
+    const o = circles[1 - i];
+    c.save();
+    c.beginPath();
+    c.rect(0, 0, W, H);
+    c.arc(o, cy, r, 0, Math.PI * 2);
+    c.clip('evenodd');
+    const g = c.createRadialGradient(x, cy, r * 0.84, x, cy, r);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.9)');
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(x, cy, r, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  });
+  // The reticle, inside the picture only.
+  union();
+  c.clip('nonzero');
+  const mil = f * ((2 * Math.PI) / (sc.reticle === 'binoSU' ? 6000 : 6400));
+  const ink = 'rgba(10,10,10,0.9)';
+  c.strokeStyle = ink;
+  c.fillStyle = ink;
+  c.lineWidth = Math.max(1, mil * 0.1);
+  c.textAlign = 'center';
+  c.textBaseline = 'bottom';
+  c.font = `${Math.max(9, Math.round(mil * 1.5))}px sans-serif`;
+  const line = (x0, y0, x1, y1) => {
+    c.beginPath();
+    c.moveTo(cx + x0 * mil, cy + y0 * mil);
+    c.lineTo(cx + x1 * mil, cy + y1 * mil);
+    c.stroke();
+  };
+  const label = (x, y, text) => c.fillText(text, cx + x * mil, cy + y * mil);
+  if (sc.reticle === 'binoUS') {
+    // M3 (TM 9-575): a horizontal mil scale, a mark every 10 mils from 50 left
+    // to 50 right of the center, numbered in tens.
+    line(-50, 0, 50, 0);
+    for (let m = -50; m <= 50; m += 10) {
+      const long = m === 0 ? 4 : 2;
+      line(m, -long, m, long);
+      if (m) label(m, -2.4, `${Math.abs(m / 10)}`);
+    }
+  } else if (sc.reticle === 'binoGE') {
+    // Dienstglas "Strichplatte" (est. from photos): a horizontal scale with a
+    // mark every 5 Strich (longer at the tens) and a vertical one rising from
+    // the middle, for widths and heights to judge range by.
+    line(-50, 0, 50, 0);
+    for (let m = -50; m <= 50; m += 5) {
+      const long = m % 10 ? 1 : 2;
+      line(m, 0, m, -long);
+      if (m && m % 20 === 0) label(m, -2.6, `${Math.abs(m / 10)}`);
+    }
+    line(0, 0, 0, -25);
+    for (let m = 5; m <= 25; m += 5) line(-(m % 10 ? 1 : 2), -m, m % 10 ? 1 : 2, -m);
+  } else {
+    // Soviet B-6 (est.): a horizontal scale in thousandths, a mark every 0-05
+    // (longer at each 0-10), a vertical scale at its middle and one at its
+    // left end, rising to 0-20.
+    line(-40, 0, 40, 0);
+    for (let m = -40; m <= 40; m += 5) {
+      const long = m % 10 ? 1.2 : 2.4;
+      line(m, -long / 2, m, long / 2);
+      if (m && m % 20 === 0) label(m, -1.8, `${Math.abs(m / 10)}`);
+    }
+    for (const x of [0, -40]) {
+      line(x, 0, x, -20);
+      for (let m = 5; m <= 20; m += 5) line(x - (m % 10 ? 0.8 : 1.6), -m, x + (m % 10 ? 0.8 : 1.6), -m);
+    }
+  }
+  c.restore();
 }

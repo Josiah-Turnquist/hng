@@ -101,7 +101,7 @@ export class Soldier {
   _updateLoad() {
     // Kit (helmet, webbing, canteen, entrenching tool...) about 12 kg plus weapons and ammo.
     let kg = 12;
-    for (const w of this.weapons) if (w) kg += w.def.loadedMass + (w.ammo ? w.reserveRounds * w.ammo.mass * 2.2 : 0);
+    for (const w of this.weapons) if (w) kg += w.def.loadedMass + (w.ammo ? w.reserveRounds * w.ammo.mass * 2.2 : 0); // (binoculars carry no rounds)
     this.body.load = kg;
   }
 

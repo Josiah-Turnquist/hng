@@ -500,13 +500,13 @@ export class FirstPersonArms {
     if (an.gripL) {
       const L = an.gripL;
       if (info.leftGrip === 'vertical') {
-        const gl = _v3.set(0, -Math.cos(0.3), Math.sin(0.3));
-        set(0, _a.copy(L).addScaledVector(gl, -0.045), _b.copy(L).addScaledVector(gl, 0.045), 0.017);
+        const gl = _v3.set(0, -Math.cos(info.vertRake), Math.sin(info.vertRake));
+        set(0, _a.copy(L).addScaledVector(gl, -0.045), _b.copy(L).addScaledVector(gl, 0.045), info.vertRadius);
       } else {
         const c = info.leftGrip === 'tube' ? _c.set(0, 0, L.z) : _c.copy(L);
         set(0, _a.copy(c).setZ(c.z + 0.11), _b.copy(c).setZ(c.z - 0.11), info.foreRadius);
       }
-      if (info.leftGrip !== 'tube' && info.kind !== 'pistol') set(2, _a.copy(an.gripR).lerp(L, 0.15), _b.copy(an.gripR).lerp(L, 0.85), 0.02);
+      if (info.leftGrip !== 'tube' && info.kind !== 'pistol' && info.kind !== 'binoculars') set(2, _a.copy(an.gripR).lerp(L, 0.15), _b.copy(an.gripR).lerp(L, 0.85), 0.02);
       else u[4].w = 0;
     } else {
       u[0].w = 0;
@@ -622,7 +622,7 @@ export class FirstPersonArms {
     // the thumb along its side.
     let c = target.curl || [1, 0.55, 0.8];
     if (fore) c = [Math.max(c[0], 0.95), Math.max(c[1], 0.92), 1];
-    const wrap = target.mode === 'grip' && info ? (side > 0 ? info.gripRadius : fore ? this.fore.r : info.leftGrip === 'vertical' ? 0.017 : info.foreRadius) : 0;
+    const wrap = target.mode === 'grip' && info ? (side > 0 ? info.gripRadius : fore ? this.fore.r : info.leftGrip === 'vertical' ? info.vertRadius : info.foreRadius) : 0;
     poseHand(this.pose, side, c[0], c[1], c[2], 0, wrap, fore ? { cy: FORE_Y, cup: FORE_CUP, tilt, thumbAlong: true } : undefined);
     if (target.mode === 'grip' && info && G && (side > 0 || fore)) this._clearFingers(side, H, G, `${side > 0 ? 'R' : `L${this._holdKey}`}|${c.join(',')}`);
     for (const name of ['thumb', 'index', 'middle', 'ring', 'pinky']) {

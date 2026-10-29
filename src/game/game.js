@@ -18,6 +18,7 @@ import { attachSoldierModel, updateSoldierView } from './soldierView.js';
 import { ThrownView } from './thrownView.js';
 import { ProjectileView } from './projectileView.js';
 import { Pickups } from './pickups.js';
+import { Spotting } from './spotting.js';
 import { PickupView } from './pickupView.js';
 import { gaussRandom } from '../core/math.js';
 import { Casings } from '../render/casings.js';
@@ -65,6 +66,7 @@ export class Game {
     this.pipeline.setSky(this.world.sky.skyCube);
     this.effects = new Effects(this.world);
     this.pickups = new Pickups(this);
+    this.spotting = new Spotting(this); // enemies marked through binoculars
     this.casings = new Casings(this.world, this.audio);
     this.projectiles = new ProjectileSystem({
       world: this.world.collision,
@@ -250,6 +252,7 @@ export class Game {
     this._runOver();
     this.projectiles.update(dt);
     this.pickups?.update();
+    this.spotting?.update(dt);
     this._guard(this.mode, () => this.mode.update?.(dt));
   }
 

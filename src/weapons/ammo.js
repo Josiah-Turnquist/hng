@@ -120,15 +120,39 @@ export const AMMO = {
     drag: 'G1',
     powder: 0.00025,
   },
+  // Pocket pistol rounds (weapons/items/pocket.js): each cartridge's standard
+  // round-nosed ball load. Velocities are the published ones from a test barrel
+  // of about 4 in (each pistol sets its own for its barrel). Sources in
+  // docs/research/weapons.md, section 10.
   '32 ACP': {
-    name: '.32 ACP Ball',
-    caliber: '.32 ACP / 7.65 mm Browning',
-    diameter: 0.00794,
-    mass: 0.0047,
-    mv: 285,
-    bc: 0.11,
+    name: '7.65 mm Browning ball',
+    caliber: '.32 ACP / 7.65x17mm Browning SR',
+    diameter: 0.00794, // .3125 in
+    mass: 71 * GR,
+    mv: 276, // 905 ft/s
+    bc: 0.134, // G1, as the maker gives it for its 71 gr ball
     drag: 'G1',
-    powder: 0.00017,
+    powder: 2.3 * GR, // est.
+  },
+  '380 ACP': {
+    name: '9 mm Corto M34 ball',
+    caliber: '9x17mm Browning Short (.380 ACP)',
+    diameter: 0.00902, // .355 in
+    mass: 95 * GR,
+    mv: 280, // 920 ft/s from a 3.75 in barrel; the Italian M34 load a little slower (est.)
+    bc: 0.09, // G1 (est.: short round nose, between the .32 and .25 figures by its sectional density)
+    drag: 'G1',
+    powder: 3 * GR, // est.
+  },
+  '25 ACP': {
+    name: '6.35 mm Browning ball',
+    caliber: '.25 ACP / 6.35x15.5mm Browning SR',
+    diameter: 0.00638, // .251 in
+    mass: 50 * GR,
+    mv: 230, // 755 ft/s
+    bc: 0.09, // G1, as the maker gives it for its 50 gr ball
+    drag: 'G1',
+    powder: 1.4 * GR, // est.
   },
   '50 M2': {
     name: '.50 Ball M2',

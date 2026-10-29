@@ -67,6 +67,9 @@ const POSES = {
   // of the view, a spade or bat raised over the right shoulder.
   stab: { hip: [0.14, -0.14, -0.36], dir: [0.3, 0.7, -0.35], sprint: [0.12, -0.3, -0.22] },
   swing: { hip: [0.19, -0.16, -0.38], dir: [0.15, 1.0, -0.3], sprint: [0.14, -0.32, -0.2] },
+  // Binoculars (hip = their eyecups): in both hands low in front, tipped down
+  // so their top and eyecups face the eye; aimed, up at the eyes.
+  binoculars: { hip: [0.005, -0.098, -0.3], dir: [0, -0.3, 0.02], sprint: [0.06, -0.3, -0.2] },
 };
 // Throwing a grenade, in camera space: [x, y, z (m), pitch, yaw, roll (rad)].
 const THROW = {
@@ -179,6 +182,8 @@ function poseKind(def) {
       return 'grenade';
     case 'melee':
       return def.style === 'swing' ? 'swing' : 'stab';
+    case 'binoculars':
+      return 'binoculars';
     default:
       return 'rifle';
   }

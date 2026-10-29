@@ -19,7 +19,7 @@ import { partOf, partKey, buildPart } from '../weapons/models/upgradeParts.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 
-const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade' };
+const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', binoculars: 'binoculars' };
 const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
 
 // A perspective camera looking at obj along dir (from obj toward the camera),
@@ -271,6 +271,9 @@ export class SoldierPreview {
     const mid = modelId(id);
     if (!mid) return '';
     const gun = buildGun(mid, this.gunMats, { lod: 0 });
+    // Binoculars read best from behind and a little to the side and above (the
+    // two eyecups side by side, the halves running off behind them).
+    if (gun.meta.binoculars) gun.root.rotation.set(0.35, Math.PI / 2 - 0.6, 0, 'YXZ');
     const scene = this._pictureScene(gun.root);
     const box = new THREE.Box3().setFromObject(gun.root);
     const c = box.getCenter(new THREE.Vector3());

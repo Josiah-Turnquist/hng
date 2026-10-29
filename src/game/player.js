@@ -265,6 +265,11 @@ export class PlayerController {
       // that one is done while it is held (melee.js).
       if (input.is('fire') && this.viewmodel.swap > 0.9) startAttack(s, w);
       w.setTrigger(false);
+    } else if (w && w.def.type === 'binoculars') {
+      // Binoculars: raised to the eyes, fire spots the enemy in the middle of
+      // the view for the whole side (spotting.js).
+      w.setTrigger(false);
+      if (input.hit('fire')) this._spot();
     } else if (w) {
       w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
@@ -289,6 +294,16 @@ export class PlayerController {
     this._equip(i);
     this.viewmodel.swap = 0.6;
     startAttack(s, m, { back });
+  }
+
+  // Spot through the binoculars, if they are up at the eyes: the line under
+  // the sights names him.
+  _spot() {
+    const g = this.game;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const e = g.spotting?.trySpot(this.soldier, { eye: this.eye, dir, raised: this.viewmodel.aim });
+    if (e) g.hud?.killConfirm(e.name, { verb: 'Spotted', quiet: true });
+    return e;
   }
 
   _requestSwitch(i) {

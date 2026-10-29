@@ -43,7 +43,7 @@ export class Xf {
   }
 }
 
-// Precompute how the hands hold a gun model. kind: rifle|smg|lmg|pistol|launcher|grenade|melee.
+// Precompute how the hands hold a gun model. kind: rifle|smg|lmg|pistol|launcher|grenade|melee|binoculars.
 // (A close-combat weapon's handle runs along its length, through the fist:
 // its model gives gripRake, about 90 degrees.)
 export function weaponInfo(gun, kind) {
@@ -51,7 +51,7 @@ export function weaponInfo(gun, kind) {
   const meta = gun.userData?.meta || gun.meta || {};
   const parts = gun.userData?.parts || gun.parts || {};
   const get = (n, d) => (a[n] ? a[n].clone() : d ? V(...d) : null);
-  const pistolLike = kind === 'pistol' || kind === 'grenade' || kind === 'melee';
+  const pistolLike = kind === 'pistol' || kind === 'grenade' || kind === 'melee' || kind === 'binoculars';
   const anchors = {
     gripR: get('gripR', pistolLike ? [0, -0.05, 0.02] : [0, -0.045, 0.07]),
     gripL: get('gripL', null),
@@ -63,6 +63,7 @@ export function weaponInfo(gun, kind) {
     clipGuide: get('clipGuide', null),
     magWell: get('magWell', null),
     trigger: get('trigger', [0, -0.05, 0]),
+    eyepiece: get('scopeEye', null), // (binoculars: held to the eyes there)
   };
   if (!anchors.shoulder && !pistolLike) anchors.shoulder = V(0, -0.08, 0.3);
   // Right hand: the grip runs down and back through the fist.
@@ -84,6 +85,10 @@ export function weaponInfo(gun, kind) {
     tLG = null,
     leftGrip = null;
   let foreRadius = meta.foreRadius ?? (kind === 'smg' ? 0.018 : 0.021);
+  // An upright front grip leans forward by vertRake (rad from vertical) and is
+  // vertRadius thick; binoculars give theirs (each half held round its length).
+  const vertRake = meta.foregripRake ?? 0.3,
+    vertRadius = meta.foregripRadius ?? 0.017;
   if (anchors.gripL) {
     const gl0 = anchors.gripL;
     const off = Math.hypot(gl0.x, gl0.y);
@@ -96,9 +101,9 @@ export function weaponInfo(gun, kind) {
     let H;
     let palm;
     if (vertical) {
-      const gl = V(0, -Math.cos(0.3), Math.sin(0.3));
+      const gl = V(0, -Math.cos(vertRake), Math.sin(vertRake));
       H = quatFromAxes(V(1, 0, 0), new THREE.Vector3().crossVectors(gl, V(1, 0, 0)), gl, new THREE.Quaternion());
-      palm = gripCenter(-1, 0.017);
+      palm = gripCenter(-1, vertRadius);
     } else {
       // Fore-end lying across the palm, the fingers curling up its right side
       // and the thumb along its left: the palm faces up and a little right.
@@ -121,6 +126,8 @@ export function weaponInfo(gun, kind) {
     gripRadius,
     gripAxis: g, // the grip's slope through gripR (gun space: down and back)
     foreRadius,
+    vertRake,
+    vertRadius,
     leftGrip,
     straightPull: !a.boltHandle,
     anchors,
@@ -266,6 +273,14 @@ export class SoldierArms {
     } else if (info.kind === 'melee') {
       this._meleePose(s, an, L);
       A.copy(L);
+    } else if (info.kind === 'binoculars') {
+      // In use (aiming): up at the eyes, looking where he looks. Otherwise in
+      // both hands in front of the chest, tipped down a little.
+      const eye = this.cp(0, 0.42, -0.1, _v3);
+      _v.set(0, 0, -1).applyQuaternion(A.q);
+      A.placeAnchor(an.eyepiece || an.gripR, _v2.copy(eye).addScaledVector(_v, 0.015));
+      L.q.setFromAxisAngle(AY, cy).multiply(qAxis(_q, AX, -0.35));
+      L.placeAnchor(an.eyepiece || an.gripR, this.cp(0, 0.1, -0.3, _v));
     } else if (info.kind === 'grenade') {
       A.q.copy(mp.q[B.chest]).multiply(qAxis(_q, AX, 0.4));
       A.placeAnchor(an.gripR, this.cp(0.24, 0.3, 0.06, _v));
@@ -708,7 +723,7 @@ export class SoldierArms {
     else if (!onGun) this.grip(1, act === 'bandage' || act === 'use' ? 0.55 : 0.7, act === 'bandage' ? 0.45 : 0.62, 0.62);
     else this.grip(1, 1, info.kind === 'melee' ? 1 : act === 'bolt' || act === 'reload' ? 0.75 : 0.55, 0.82, info.gripRadius);
     if (handLT && wL > 0.5) this.grip(-1, act === 'bandage' || act === 'use' ? 0.5 : 0.7, 0.6, 0.5);
-    else if (info.qLG) this.grip(-1, vertical ? 1 : 0.95, vertical ? 1 : 0.9, vertical ? 0.75 : 0.45, vertical ? 0.017 : info.foreRadius);
+    else if (info.qLG) this.grip(-1, vertical ? 1 : 0.95, vertical ? 1 : 0.9, vertical ? 0.75 : 0.45, vertical ? info.vertRadius : info.foreRadius);
     else this.grip(-1, 0.38, 0.3, 0.25);
     this.applyFingers(pose, dt);
     // Sight line for the head (cheek weld).
