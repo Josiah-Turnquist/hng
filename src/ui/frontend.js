@@ -541,7 +541,9 @@ export function showFrontEnd(app) {
           draw();
         });
         grid.appendChild(none);
-        for (const id of Object.keys(BADGES).sort((a, b) => open.includes(b) - open.includes(a))) {
+        // The ones he may wear; the rest folded away until asked for.
+        const shut = Object.keys(BADGES).filter((id) => !open.includes(id));
+        for (const id of [...open, ...(showShut ? shut : [])]) {
           const b = BADGES[id];
           const tiers = badgeTiers(s, id);
           const can = open.includes(id);
@@ -567,7 +569,16 @@ export function showFrontEnd(app) {
           grid.appendChild(c);
         }
         W.body.appendChild(grid);
+        if (shut.length && !showShut) {
+          const more = el('button', 'hx-more', `<span>${shut.length} more open as his ribbons rise</span><span>Show ▸</span>`);
+          more.addEventListener('click', () => {
+            showShut = true;
+            draw();
+          });
+          W.body.appendChild(more);
+        }
       };
+      let showShut = false;
       draw();
     }
 
