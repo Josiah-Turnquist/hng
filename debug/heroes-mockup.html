@@ -1,0 +1,382 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Heroes screen mockup</title>
+<link rel="stylesheet" href="../src/ui/styles.css">
+<style>
+html, body { margin: 0; height: 100%; background: #0d0e0c; overflow: hidden; }
+canvas.mk-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.fe { z-index: 1; }
+.ribbon { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+
+/* Heroes screen, laid out as the original's */
+.mk-heroes { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px 300px 236px; grid-template-rows: minmax(0, 1fr); gap: 12px; height: 100%; box-sizing: border-box; }
+.mk-col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.mk-col > * { flex: none; }
+.mk-col > .roster-list { flex: 1; overflow: auto; }
+.mk-filter { display: flex; gap: 6px; align-items: center; }
+.mk-filter button { width: 34px; height: 34px; display: grid; place-items: center; font-size: 22px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); opacity: 0.55; }
+.mk-filter button.on { opacity: 1; border-color: var(--amber); }
+.mk-select { flex: 0 0 34px; height: 34px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--ink-dim); }
+.mk-stage { position: relative; display: flex; flex-direction: column; justify-content: space-between; }
+.mk-plate { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: rgba(13, 14, 12, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); align-self: flex-start; min-width: 280px; }
+.mk-plate .ico { font-size: 34px; }
+.mk-plate h2 { margin: 0; font-family: var(--cond); font-size: 24px; letter-spacing: 0.04em; }
+.mk-plate small { display: block; color: var(--ink-dim); font-size: 11px; }
+.mk-plate .xp { height: 4px; background: rgba(255, 255, 255, 0.1); margin-top: 5px; }
+.mk-plate .xp i { display: block; height: 100%; background: var(--amber); }
+.mk-badges { display: flex; gap: 12px; align-self: center; margin-bottom: 4px; }
+.mk-badge { width: 120px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; }
+.mk-badge svg { width: 54px; height: 62px; }
+.mk-badge span { font-family: var(--cond); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.mk-icons { display: flex; gap: 4px; }
+.mk-icons button { width: 34px; height: 32px; display: grid; place-items: center; font-size: 19px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--ink-dim); }
+.mk-icons button.on { background: var(--amber); color: #15130d; border-color: var(--amber); }
+.mk-pts { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+.mk-pts i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); }
+.mk-pts i.on { background: var(--amber); }
+.mk-pts b { margin-left: 6px; font-family: var(--cond); font-size: 13px; color: var(--ink-dim); font-weight: 500; }
+.mk-head { display: flex; align-items: center; gap: 6px; min-height: 34px; }
+.mk-slots, .mk-gear { display: flex; flex-direction: column; gap: 5px; overflow: auto; min-height: 0; flex: 1; padding-right: 2px; }
+.mk-slot { position: relative; display: grid; grid-template-columns: 1fr; padding: 6px 8px 7px; text-align: left; background: rgba(16, 17, 14, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); min-height: 64px; }
+.mk-slot.on { border-color: var(--amber); box-shadow: inset 3px 0 0 var(--amber); }
+.mk-slot .lab { font-family: var(--cond); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
+.mk-slot img { height: 40px; justify-self: center; max-width: 100%; }
+.mk-slot b { font-family: var(--cond); font-size: 14px; font-weight: 600; }
+.mk-slot .pt { position: absolute; right: 8px; top: 6px; font-family: var(--cond); font-size: 12px; color: var(--amber); }
+.mk-slot.empty { place-items: center; color: var(--ink-dim); font-size: 12px; min-height: 40px; }
+.mk-slot .mods { position: absolute; right: 8px; bottom: 6px; display: flex; gap: 3px; }
+.mk-slot .mods i { width: 7px; height: 7px; background: rgba(255, 255, 255, 0.15); }
+.mk-slot .mods i.on { background: #9fc27a; }
+.mk-card { position: relative; display: grid; grid-template-columns: 1fr; padding: 7px 8px 8px; text-align: left; background: rgba(30, 31, 27, 0.92); border: 1px solid rgba(255, 255, 255, 0.08); }
+.mk-card.on { border-color: var(--amber); }
+.mk-card img.gun { height: 54px; justify-self: center; max-width: 100%; }
+.mk-card small { font-size: 10px; color: var(--ink-dim); letter-spacing: 0.04em; }
+.mk-card b { font-family: var(--cond); font-size: 15px; font-weight: 600; }
+.mk-card .tag { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-family: var(--cond); font-size: 13px; }
+.mk-card .tag .price { color: var(--amber); display: flex; align-items: center; gap: 4px; }
+.mk-card .tag .own { color: #9fc27a; }
+.mk-card .lock { position: absolute; right: 8px; bottom: 8px; width: 64px; }
+.mk-card .lock em { white-space: nowrap; }
+.mk-card .lock em { display: block; text-align: right; font-style: normal; font-family: var(--cond); font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+.mk-card.locked img.gun, .mk-card.locked b { opacity: 0.5; }
+.mk-card .eye { position: absolute; right: 8px; top: 6px; font-size: 13px; color: var(--ink-dim); }
+.mk-next { display: flex; flex-direction: column; gap: 8px; }
+.mk-next h3 { margin: 0; }
+.mk-ov { display: flex; align-items: center; gap: 8px; padding: 6px 8px; white-space: nowrap; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); font-family: var(--cond); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
+.mk-ov .ribbon { width: 34px; }
+.mk-un { display: grid; grid-template-columns: 84px 1fr; gap: 8px; align-items: center; padding: 6px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); }
+.mk-un .pic { height: 46px; display: grid; place-items: center; }
+.mk-un .pic img { max-height: 46px; max-width: 100%; }
+.mk-un .pic svg { height: 46px; width: auto; }
+.mk-un .pic .ico { font-size: 34px; color: var(--ink-dim); }
+.mk-un .txt { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--ink-dim); }
+.mk-un .txt b { color: var(--ink); font-family: var(--cond); font-size: 13px; font-weight: 600; }
+.mk-un .bar { grid-column: 1 / -1; height: 3px; background: rgba(255, 255, 255, 0.1); }
+.mk-un .bar i { display: block; height: 100%; background: #6f97c8; }
+.mk-right { justify-content: space-between; }
+.mk-battle { display: flex; flex-direction: column; gap: 6px; }
+.mk-battle .rm { padding: 8px 10px; background: rgba(13, 14, 12, 0.86); border: 1px solid rgba(255, 255, 255, 0.08); }
+.mk-battle .rm span { font-family: var(--cond); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); }
+.mk-battle .rm b { display: block; font-family: var(--cond); font-size: 17px; }
+.mk-battle .rm small { color: var(--ink-dim); font-size: 11px; }
+.mk-go { padding: 16px 0; font-family: var(--cond); font-size: 26px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; background: linear-gradient(180deg, #4f8a33, #376b22); color: #f2f0e6; border: 1px solid #6fae4c; }
+
+/* Ribbon overview and track (overlays) */
+.mk-dim { position: absolute; inset: 0; background: rgba(6, 7, 5, 0.72); display: grid; place-items: center; z-index: 10; }
+.mk-win { width: min(1080px, 92%); max-height: 88%; display: flex; flex-direction: column; background: rgba(28, 29, 26, 0.97); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.mk-win header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.mk-win header h2 { margin: 0; font-family: var(--cond); font-size: 30px; letter-spacing: 0.04em; text-transform: uppercase; }
+.mk-win header .x { margin-left: auto; width: 34px; height: 34px; display: grid; place-items: center; background: #8a2a22; border: 0; font-size: 16px; }
+.mk-win footer { display: flex; justify-content: center; padding: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.mk-win footer button { padding: 8px 40px; font-family: var(--cond); font-size: 18px; letter-spacing: 0.12em; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); }
+.mk-ovb { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; padding: 16px; overflow: auto; }
+.mk-sel { display: flex; flex-direction: column; gap: 8px; text-align: center; }
+.mk-sel h3 { margin: 0; font-family: var(--cond); font-size: 22px; text-transform: uppercase; letter-spacing: 0.04em; }
+.mk-sel .ribbon { width: 240px; margin: 0 auto; }
+.mk-sel .bar, .mk-tile .bar { height: 5px; background: #23324a; }
+.mk-sel .bar i, .mk-tile .bar i { display: block; height: 100%; background: #6f97c8; }
+.mk-sel p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.mk-sel button { align-self: center; padding: 8px 18px; font-family: var(--cond); font-size: 16px; letter-spacing: 0.06em; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); }
+.mk-grp h4 { margin: 0 0 8px; padding: 6px; text-align: center; font-family: var(--cond); font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(255, 255, 255, 0.07); }
+.mk-tiles { display: grid; grid-template-columns: repeat(auto-fill, 104px); gap: 10px 8px; margin-bottom: 14px; }
+.mk-tile { display: flex; flex-direction: column; gap: 3px; background: none; border: 1px solid transparent; padding: 2px; }
+.mk-tile.on { border-color: var(--amber); }
+.mk-tile span { font-size: 11px; text-align: center; color: var(--ink); }
+.mk-tr { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 6px; }
+.mk-tr p { margin: 0 0 6px; font-size: 13px; }
+.mk-track { position: relative; display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; padding-top: 70px; }
+.mk-lv { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; padding: 0; }
+.mk-lv > span { font-family: var(--cond); font-size: 15px; }
+.mk-lv .ribbon { width: 100%; }
+.mk-line { position: relative; height: 4px; width: 100%; background: #23324a; margin-top: 6px; }
+.mk-line i { position: absolute; left: 0; top: 0; bottom: 0; background: #6f97c8; }
+.mk-mark { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; margin-top: 6px; background: #13233a; border: 2px solid #6f97c8; font-size: 13px; color: #e8eef6; }
+.mk-mark.got { background: #6f97c8; color: #10192a; }
+.mk-cur { position: absolute; top: 0; transform: translateX(-50%); padding: 4px 8px; background: linear-gradient(180deg, #3a5a8a, #24406a); border: 1px solid #6f97c8; text-align: center; font-family: var(--cond); font-size: 12px; letter-spacing: 0.08em; white-space: nowrap; }
+.mk-cur b { display: block; font-size: 15px; }
+.mk-detail { display: grid; grid-template-columns: 260px 1fr; gap: 22px; margin-top: 16px; padding: 16px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.07); }
+.mk-detail .ribbon { width: 240px; }
+.mk-detail h3 { margin: 0 0 4px; font-family: var(--cond); font-size: 22px; text-transform: uppercase; }
+.mk-opens { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.mk-opens div { width: 150px; padding: 6px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; text-align: center; }
+.mk-opens img { width: 100%; height: 56px; object-fit: contain; display: block; }
+.mk-opens .ico { font-size: 40px; color: var(--amber); display: block; margin: 8px auto; }
+
+/* Battle results with ribbons */
+.mk-res { width: 640px; padding: 22px 26px; background: rgba(16, 17, 14, 0.96); border: 1px solid rgba(226, 172, 70, 0.4); }
+.mk-res h2 { margin: 0; font-family: var(--cond); font-size: 40px; letter-spacing: 0.1em; color: #9fc27a; text-transform: uppercase; }
+.mk-res .sub { color: var(--ink-dim); font-size: 13px; margin-bottom: 14px; }
+.mk-rr { display: grid; grid-template-columns: 96px 1fr 70px; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.mk-rr b { font-family: var(--cond); font-size: 16px; }
+.mk-rr .bar { height: 5px; background: #23324a; margin-top: 4px; position: relative; }
+.mk-rr .bar i { position: absolute; top: 0; bottom: 0; background: #6f97c8; }
+.mk-rr .bar i.new { background: #e2ac46; }
+.mk-rr em { font-style: normal; font-family: var(--cond); font-size: 17px; color: var(--amber); text-align: right; }
+.mk-rr .up { display: inline-block; margin-left: 8px; padding: 1px 6px; font-family: var(--cond); font-size: 11px; letter-spacing: 0.1em; background: #e2ac46; color: #15130d; }
+.mk-res .unl { margin-top: 12px; display: flex; gap: 10px; align-items: center; padding: 8px 10px; background: rgba(159, 194, 122, 0.1); border: 1px solid rgba(159, 194, 122, 0.35); font-size: 13px; }
+.mk-res .unl img { height: 40px; }
+</style>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<script type="module">
+// Mockup of the Heroes screen and the ribbon screens laid out after the
+// original game's, for review before they replace the real ones. It uses the
+// real ribbon rules, prices, pictures and 3D soldier, on a sample soldier.
+// Usage: debug/heroes-mockup.html?screen=heroes | overview | track | results
+import * as THREE from 'three';
+import { SoldierPreview } from '../src/ui/soldierPreview.js';
+import { ribbonSvg, RIBBON_GROUPS } from '../src/ui/ribbonArt.js';
+import { emblem, classIcon, rankBadge, ICONS } from '../src/ui/icons.js';
+import { WEAPONS, LOADOUT_SLOTS, CLASS_POINTS, pointsOf, loadoutPoints, baseOf } from '../src/weapons/defs.js';
+import { RIBBONS, RIBBON_XP, ribbonInfo, ribbonLevel, ribbonsFor, requirement, unlocked, carriable } from '../src/game/ribbons.js';
+import { BADGES, badgeTiers } from '../src/game/badges.js';
+import { priceOf, owns } from '../src/game/armory.js';
+import { upgradesOf } from '../src/weapons/upgrades.js';
+
+const screen = new URLSearchParams(location.search).get('screen') || 'heroes';
+const canvas = document.createElement('canvas');
+canvas.className = 'mk-canvas';
+document.body.appendChild(canvas);
+const renderer = new THREE.WebGLRenderer({ canvas, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const pv = new SoldierPreview(renderer);
+
+// The sample soldier.
+const s = {
+  faction: 'US', cls: 'infantry', name: 'Walt Kowalski', xp: 46000, seed: 7, variant: 0,
+  loadout: ['m1_garand', 'm1911a1', 'mk2_grenade', null, null, 'spade_m1910', null],
+  ribbons: { infantryAssault: 9200, combatMovement: 2982, physicalTraining: 6100, tactical: 2400, defense: 800, smgAssault: 1900, handgunAssault: 600, explosives: 1200, closeCombat: 300, medic: 420, recon: 150, 'spec:m1_garand': 16400, 'spec:thompson_m1a1': 1800 },
+  armory: { m1_garand: { bought: ['u42'], picks: { barrel: 'u42' } }, m1903: { bought: [], picks: {} } },
+  badge: 'quickdraw',
+};
+const credits = 112499;
+const el = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h !== undefined) e.innerHTML = h; return e; };
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+const pic = (id, w = 240, h = 80) => pv.gunPicture(id, w, h);
+const lv = (k) => ribbonLevel(s.ribbons[k] || 0);
+const keysFor = () => ribbonsFor(s.cls).concat(Object.keys(s.ribbons).filter((k) => k.startsWith('spec:')));
+
+// What each level of a ribbon opens for him: guns and items, badge tiers,
+// and for a gun's Specialist ribbon its upgrades.
+function opens(k) {
+  const out = [];
+  if (k.startsWith('spec:')) {
+    const gun = k.slice(5);
+    for (const u of upgradesOf(gun)) out.push({ level: u.level, name: u.name, kind: 'upgrade', id: u.id, gun });
+  } else {
+    for (const slot of new Set(LOADOUT_SLOTS))
+      for (const w of carriable(s, slot)) {
+        const r = requirement(w.id, s.cls, s.faction);
+        if (r?.ribbon === k && !w.base) out.push({ level: r.level, name: w.name, kind: 'gun', id: w.id });
+      }
+  }
+  for (const [id, b] of Object.entries(BADGES))
+    for (const t of badgeTiers(s, id)) for (const a of t.alts) if (a.ribbon === k) out.push({ level: a.level, name: `${b.name} ${'I'.repeat(t.tier)}`, kind: 'badge', id });
+  return out.sort((a, b) => a.level - b.level);
+}
+const shield = (inner = '') => `<svg viewBox="0 0 54 62"><path d="M27 2 L51 10 V30 C51 45 40 55 27 60 C14 55 3 45 3 30 V10 Z" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.35)" stroke-width="2"/>${inner}</svg>`;
+const thing = (o, w = 160, h = 56) => (o.kind === 'badge' ? shield('<path d="M27 16l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#e2ac46"/>') : o.kind === 'upgrade' ? `<img alt="" src="${pv.partPicture(o.gun, o.id, w, Math.round(h * 1.4))}">` : `<img alt="" src="${pic(o.id, w, h)}">`);
+
+function topBar(root) {
+  root.innerHTML = `<header class="fe-top"><div class="fe-brand">HNG<span>Heroes &amp; Generals tribute</span></div><nav class="fe-tabs"><button class="on">Heroes</button><button>Generals</button><button>Progression</button></nav>
+  <div class="fe-status"><div class="fe-credits">${ICONS.coin}<b>${fmt(credits)}</b><span>Credits</span></div><div class="fe-level"><b>9</b><span>Level</span><i style="--p:0.4"></i></div><div class="fe-army">${emblem('US')}<span>US Army</span></div><button class="fe-icon">${ICONS.gear}</button><button class="fe-icon">${ICONS.screen}</button><button class="fe-icon">${ICONS.info}</button></div></header><main class="fe-main"></main>`;
+  return root.querySelector('.fe-main');
+}
+
+const root = el('div', 'fe stage');
+document.body.appendChild(root);
+const main = topBar(root);
+
+function heroes() {
+  main.innerHTML = '';
+  const g = el('div', 'mk-heroes');
+  main.appendChild(g);
+  // Roster with army and class filters.
+  const left = el('div', 'mk-col');
+  left.innerHTML = `<div class="mk-filter"><button class="on">${emblem('US')}</button><button class="on">${emblem('GE')}</button><button class="on">${emblem('SU')}</button></div><div class="mk-select"><span>Showing: all soldiers</span><span>▾</span></div>`;
+  const list = el('div', 'roster-list');
+  const roster = [[s.faction, s.cls, s.name, 9], ['GE', 'recon', 'Karl Weber', 6], ['SU', 'tanker', 'Ivan Petrov', 4], ['US', 'paratrooper', 'Joe Hale', 2]];
+  roster.forEach(([f, c, n, r], i) => {
+    const card = el('button', `soldier-card${i === 0 ? ' on' : ''}`);
+    card.innerHTML = `<span class="sc-emb">${emblem(f)}</span><span class="sc-text"><b>${n}</b><small>Rank ${r}</small></span><span class="sc-rank">${rankBadge(r)}<i>${r}</i></span><span class="sc-class">${classIcon(c)}</span>`;
+    list.appendChild(card);
+  });
+  list.appendChild(el('button', 'soldier-card recruit', `<span class="sc-emb">${ICONS.plus}</span><span class="sc-text"><b>Recruit a soldier</b><small>Any army, any class</small></span>`));
+  left.appendChild(list);
+  g.appendChild(left);
+  // The soldier: name plate, and his badge slot under him.
+  const stage = el('div', 'mk-stage');
+  stage.innerHTML = `<div class="mk-plate">${rankBadge(9)}<div style="flex:1"><h2>${s.name}</h2><small>Rank 9 · Staff Sergeant · Infantry</small><div class="xp"><i style="width:45%"></i></div><small>46,000 / 52,500 XP</small></div></div>
+    <div class="mk-badges"><button class="mk-badge">${shield('<path d="M18 22 L27 40 L36 22" fill="none" stroke="#e2ac46" stroke-width="3"/>')}<span>Quickdraw III</span></button></div>`;
+  g.appendChild(stage);
+  // His loadout: icon tabs, point dots, one card per slot.
+  const mid = el('div', 'mk-col');
+  const used = loadoutPoints(s.loadout), budget = CLASS_POINTS[s.cls];
+  mid.innerHTML = `<div class="mk-head"><div class="mk-icons"><button class="on" title="Weapons">${gunIcon}</button><button title="Vehicle">${carIcon}</button><button title="Badge">${badgeIcon}</button><button title="Uniform">${shirtIcon}</button></div><div class="mk-pts" title="${used} of ${budget} equipment points">${Array.from({ length: budget }, (_, k) => `<i class="${k < used ? 'on' : ''}"></i>`).join('')}</div></div>`;
+  const slots = el('div', 'mk-slots');
+  const labels = ['Primary', 'Sidearm', 'Equipment', 'Equipment', 'Equipment', 'Close combat', 'Binoculars'];
+  s.loadout.forEach((id, i) => {
+    if (!id) {
+      slots.appendChild(el('button', 'mk-slot empty', `<span class="lab">${labels[i]}</span>Empty`));
+      return;
+    }
+    const w = WEAPONS[id];
+    const n = Object.keys(s.armory[id]?.picks || {}).length;
+    const ups = upgradesOf(id).length ? `<span class="mods">${[0, 1, 2, 3, 4].map((k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('')}</span>` : '';
+    slots.appendChild(el('button', `mk-slot${i === 0 ? ' on' : ''}`, `<span class="lab">${labels[i]}</span><span class="pt">${pointsOf(id)} pt</span><img alt="" src="${pic(id, 220, i === 0 ? 70 : 60)}"><b>${w.name}</b>${ups}`));
+  });
+  mid.appendChild(slots);
+  g.appendChild(mid);
+  // What he could carry in the chosen slot: owned, for sale, or locked by a ribbon.
+  const gear = el('div', 'mk-col');
+  gear.innerHTML = `<div class="mk-head"><div class="mk-icons"><button class="on">${gunIcon}</button><button>${pistolIcon}</button><button>${nadeIcon}</button><button>${knifeIcon}</button><button>${binoIcon}</button></div><span style="margin-left:auto;font-size:11px;color:var(--ink-dim)">Primary</span></div>`;
+  const gl = el('div', 'mk-gear');
+  const fams = [];
+  for (const w of carriable(s, 'primary')) {
+    const b = baseOf(w);
+    if (!fams.includes(b) && b.faction === s.faction) fams.push(b);
+  }
+  for (const w of fams) {
+    const open = unlocked(s, w.id), have = owns(s, w.id), r = requirement(w.id, s.cls, s.faction);
+    const c = el('button', `mk-card${w.id === s.loadout[0] ? ' on' : ''}${open ? '' : ' locked'}`);
+    c.innerHTML = `<small>${w.type === 'semi' ? 'Semi-automatic rifle' : w.type === 'rifle' ? 'Bolt-action rifle' : w.type === 'smg' ? 'Submachine gun' : w.type === 'lmg' ? 'Light machine gun' : w.type === 'carbine' ? 'Carbine' : w.type === 'assault' ? 'Assault rifle' : 'Weapon'}</small><img class="gun" alt="" src="${pic(w.id, 240, 72)}"><b>${w.name}</b>`;
+    if (!open) c.innerHTML += `<span class="lock">${ribbonSvg(r.ribbon, r.level)}<em>Level ${r.level}</em></span>`;
+    else c.innerHTML += `<span class="tag">${have ? '<span class="own">✓ Owned</span>' : `<span class="price">${ICONS.coin}${fmt(priceOf(w.id))}</span>`}<span style="color:var(--ink-dim);font-size:11px">${pointsOf(w.id)} pt</span></span>`;
+    gl.appendChild(c);
+  }
+  gear.appendChild(gl);
+  g.appendChild(gear);
+  // Next unlocks and the battle.
+  const right = el('div', 'mk-col mk-right');
+  const next = el('div', 'fe-panel mk-next');
+  next.innerHTML = `<h3>Next unlocks</h3><button class="mk-ov">${ribbonSvg('infantryAssault', lv('infantryAssault').level)}Ribbon overview</button>`;
+  const all = [];
+  for (const k of keysFor()) {
+    const L = lv(k);
+    for (const o of opens(k)) if (o.level > L.level) all.push({ ...o, k, need: RIBBON_XP[o.level] - (s.ribbons[k] || 0), from: RIBBON_XP[L.level], to: RIBBON_XP[o.level] });
+  }
+  all.sort((a, b) => a.need - b.need);
+  for (const o of all.slice(0, 3)) {
+    const row = el('div', 'mk-un');
+    const done = ((s.ribbons[o.k] || 0) - o.from) / (o.to - o.from);
+    row.innerHTML = `${ribbonSvg(o.k, o.level, { grey: false })}<span class="pic">${thing(o, 120, 46)}</span><span class="txt"><b>${o.name}</b><span>${fmt(o.need)} pts</span></span><span class="bar"><i style="width:${Math.max(4, done * 100).toFixed(0)}%"></i></span>`;
+    next.appendChild(row);
+  }
+  right.appendChild(next);
+  const bat = el('div', 'mk-battle');
+  bat.innerHTML = `<div class="rm"><span>Assault</span><b>Saint-Aubin-sur-Lenne</b><small>Attacking · 24 per side · 20 min</small></div><button class="mk-go">To battle!</button>`;
+  right.appendChild(bat);
+  g.appendChild(right);
+  pv.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0] });
+  pv.frame(stage);
+  pv.start();
+}
+
+// Small line icons for the tabs.
+const ic = (d) => `<svg class="ico" viewBox="0 0 24 24"><path d="${d}" fill="currentColor"/></svg>`;
+const gunIcon = ic('M2 10h14l1-2h5v3h-3l-1 2H9l-2 5H4l1-5H2z');
+const pistolIcon = ic('M3 7h15v4h-6l-1 2H9l-1 5H5l1-7H3z');
+const nadeIcon = ic('M12 5a6 6 0 1 1 0 14a6 6 0 0 1 0-14zM10 2h4v3h-4z');
+const knifeIcon = ic('M3 20l9-9 2 2-9 9zM12 11l8-9c1 3 0 6-3 9l-3 2z');
+const binoIcon = ic('M4 9h6v9H4zM14 9h6v9h-6zM10 11h4v3h-4zM5 5h4v4H5zM15 5h4v4h-4z');
+const carIcon = ic('M3 14l2-5h10l3 4h3v4H3zM6 18a2 2 0 1 0 0 .1zM17 18a2 2 0 1 0 0 .1z');
+const badgeIcon = ic('M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z');
+const shirtIcon = ic('M8 3l4 2 4-2 5 4-3 3-2-1v12H8V9L6 10 3 7z');
+
+function overview() {
+  heroes();
+  const k0 = 'combatMovement';
+  const d = el('div', 'mk-dim');
+  const L = lv(k0);
+  d.innerHTML = `<div class="mk-win"><header><h2>Ribbons overview</h2><button class="x">✕</button></header><div class="mk-ovb"><div class="mk-sel"><h3>${RIBBONS[k0].name}</h3>${ribbonSvg(k0, L.level)}<div class="bar"><i style="width:${(L.progress * 100).toFixed(1)}%"></i></div><div>${fmt(s.ribbons[k0])} / ${fmt(L.next)}</div><p>${RIBBONS[k0].note}.</p><button>View progression</button></div><div class="mk-groups"></div></div><footer><button>OK</button></footer></div>`;
+  const groups = d.querySelector('.mk-groups');
+  const mine = ribbonsFor(s.cls);
+  for (const grp of [...RIBBON_GROUPS, { name: 'Specialist', keys: Object.keys(s.ribbons).filter((k) => k.startsWith('spec:')) }]) {
+    const keys = grp.keys.filter((k) => mine.includes(k) || k.startsWith('spec:'));
+    if (!keys.length) continue;
+    const box = el('div', 'mk-grp', `<h4>${grp.name}</h4>`);
+    const tiles = el('div', 'mk-tiles');
+    for (const k of keys) {
+      const L = lv(k);
+      tiles.appendChild(el('button', `mk-tile${k === k0 ? ' on' : ''}`, `${ribbonSvg(k, L.level)}<div class="bar"><i style="width:${(L.progress * 100).toFixed(0)}%"></i></div><span>${ribbonInfo(k).name.replace(' Specialist', '')}</span>`));
+    }
+    box.appendChild(tiles);
+    groups.appendChild(box);
+  }
+  root.appendChild(d);
+}
+
+function track() {
+  heroes();
+  const k = 'infantryAssault';
+  const L = lv(k);
+  const all = opens(k);
+  const d = el('div', 'mk-dim');
+  d.innerHTML = `<div class="mk-win"><header><h2>${RIBBONS[k].name}</h2><button class="x">✕</button></header><div class="mk-tr"><p>${RIBBONS[k].note}: points for every shot that hits, every man put down, and more for a headshot.</p><div class="mk-track"></div><div class="mk-detail"></div></div><footer><button>OK</button></footer></div>`;
+  const tr = d.querySelector('.mk-track');
+  for (let n = 1; n <= 12; n++) {
+    const got = n <= L.level;
+    const has = all.filter((o) => o.level === n);
+    const b = el('button', 'mk-lv', `<span>${n}</span>${ribbonSvg(k, n, { grey: !got })}<span class="mk-line"><i style="width:${got ? 100 : n === L.level + 1 ? (L.progress * 100).toFixed(0) : 0}%"></i></span>${has.length ? `<span class="mk-mark${got ? ' got' : ''}">${has.some((o) => o.kind === 'gun') ? '✦' : '◆'}</span>` : ''}`);
+    tr.appendChild(b);
+  }
+  // "Complete level" box over the level in progress.
+  const cur = el('div', 'mk-cur', `Level ${L.level + 1}<b>${fmt(s.ribbons[k])} / ${fmt(L.next)}</b>`);
+  cur.style.left = `${((L.level + 0.5) / 12) * 100}%`;
+  tr.appendChild(cur);
+  const sel = L.level + 1;
+  const det = d.querySelector('.mk-detail');
+  det.innerHTML = `<div>${ribbonSvg(k, sel, { grey: false })}</div><div><h3>Level ${sel}</h3><div style="font-size:13px;color:var(--ink-dim)">${fmt(RIBBON_XP[sel] - s.ribbons[k])} points to go. Opens:</div><div class="mk-opens"></div></div>`;
+  const op = det.querySelector('.mk-opens');
+  for (const o of all.filter((o) => o.level === sel).concat(all.filter((o) => o.level === sel + 1)).slice(0, 4)) op.appendChild(el('div', '', `${thing(o, 150, 56)}${o.name}${o.level !== sel ? ` <small style="color:var(--ink-dim)">(level ${o.level})</small>` : ''}`));
+  root.appendChild(d);
+}
+
+function results() {
+  heroes();
+  const d = el('div', 'mk-dim');
+  const gains = [['infantryAssault', 1850, 9200], ['combatMovement', 640, 2982], ['physicalTraining', 410, 6100], ['tactical', 1120, 2400], ['spec:m1_garand', 2300, 16400]];
+  const res = el('div', 'mk-res', `<h2>Victory</h2><div class="sub">Saint-Aubin-sur-Lenne taken · 11 enemies down · 2 points taken · +2,050 XP · +7,585 credits</div>`);
+  for (const [k, gain, now] of gains) {
+    const a = ribbonLevel(now - gain), b = ribbonLevel(now);
+    const up = b.level > a.level;
+    const row = el('div', 'mk-rr');
+    const from = up ? 0 : a.progress;
+    row.innerHTML = `${ribbonSvg(k, b.level)}<div><b>${ribbonInfo(k).name}</b>${up ? `<span class="up">Level ${b.level}!</span>` : ''}<div class="bar"><i style="left:0;width:${(from * 100).toFixed(1)}%"></i><i class="new" style="left:${(from * 100).toFixed(1)}%;width:${((b.progress - from) * 100).toFixed(1)}%"></i></div></div><em>+${fmt(gain)}</em>`;
+    res.appendChild(row);
+  }
+  res.appendChild(el('div', 'unl', `<img alt="" src="${pic('m1903', 160, 40)}"><span><b>Now open:</b> M1903 Springfield (Infantry Assault 6)</span>`));
+  d.appendChild(res);
+  root.appendChild(d);
+}
+
+({ heroes, overview, track, results })[screen]();
+window.done = true;
+</script>
+</body>
+</html>
