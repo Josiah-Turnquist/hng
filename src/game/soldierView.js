@@ -8,6 +8,7 @@ import { SoldierModel } from '../actors/soldierModel.js';
 import { buildGun, gunLodForDistance, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
 import { throwActionT } from './throwing.js';
+import { meleeActionT } from './melee.js';
 
 const KIND = {
   rifle: 'rifle',
@@ -22,6 +23,7 @@ const KIND = {
   revolver: 'pistol',
   launcher: 'launcher',
   grenade: 'grenade',
+  melee: 'melee',
 };
 
 // The primary weapon decides the ammunition pouches on the belt.
@@ -169,6 +171,10 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   st.seated = !!v;
   // Bicycles and motorcycles pose their riders (saddle, grips, pedals, lean).
   st.ride = v?.riderPose && s.alive ? v.riderPose(s.seat, s.view.ride) : null;
+  // A close-combat weapon's carry and blow (soldierArms.js).
+  const md = s.weapon?.def;
+  st.meleeStyle = md?.type === 'melee' ? md.style : null;
+  st.meleeHit = md?.type === 'melee' ? md.attack.hit / md.attack.period : 0;
   if (st.ride) st.seated = false;
   // Actions.
   const w = s.weapon;
@@ -182,6 +188,9 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   } else if (s.throwing) {
     st.action = 'throw';
     st.actionT = throwActionT(s.throwing);
+  } else if (s.melee) {
+    st.action = 'melee';
+    st.actionT = meleeActionT(s.melee);
   } else if (w?.sequence) {
     st.action = w.sequence.kind === 'cycle' ? 'bolt' : 'reload';
     const steps = w.sequence.steps;

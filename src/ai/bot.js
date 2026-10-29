@@ -14,7 +14,8 @@
 // It fights like an infantryman (tactics.js): it makes for cover when a fight
 // starts and shoots from it, popping up or leaning out and ducking back down
 // (lower and longer under heavy fire), reloads and bandages from behind it,
-// lobs a grenade at an enemy who has gone to ground close by, keeps its eyes
+// lobs a grenade at an enemy who has gone to ground close by, strikes with its
+// knife, bayonet, spade or bat at one who comes within arm's reach, keeps its eyes
 // on where an enemy disappeared and, attacking, goes to look for him. It calls
 // out what it sees to comrades nearby. Fireteams of three come at an objective
 // from different sides; holding a point, a bot takes a post facing the enemy.
@@ -26,6 +27,7 @@ import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { findRide } from './riderBot.js';
 import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt, leavesBetween } from './tactics.js';
 import { grenadeOf, startThrow, releasePoint, throwSpeed } from '../game/throwing.js';
+import { meleeOf, startAttack, canAttack } from '../game/melee.js';
 
 const _hit = new RayHit();
 const _eye = { x: 0, y: 0, z: 0 };
@@ -383,6 +385,7 @@ export class BotBrain {
       else if ((!this.target || ducked) && w.loaded < w.def.capacity * (ducked ? 0.6 : 0.4) && w.canReload() && g.time - (s.lastShotTime ?? -99) > (ducked ? 0.5 : 2)) w.startReload();
     }
     this._grenade();
+    this._melee();
     if (this.target) {
       this._fight();
       return;
@@ -697,6 +700,27 @@ export class BotBrain {
     }
   }
 
+  // An enemy within 2 m: now and then a blow with the close-combat weapon (if
+  // it has one) instead of a shot, taken up for the blow and put away after
+  // (game/melee.js), stepping in to him as it comes (_move).
+  _melee() {
+    const s = this.s;
+    const t = this.target;
+    if (!t || t.isVehicle || !t.alive || !t.body || this.game.time < (this.meleeT ?? 0)) return;
+    const w = meleeOf(s);
+    if (!w || !canAttack(s)) return;
+    const b = s.body;
+    if (Math.hypot(t.body.x - b.x, t.body.z - b.z) > 2 || Math.abs(t.body.y - b.y) > 1.2) return;
+    if (Math.random() > 0.4) return;
+    this.meleeT = this.game.time + w.def.attack.period + 0.4 + Math.random();
+    const i = s.weapons.indexOf(w);
+    const back = s.current;
+    s.weapon?.setTrigger(false);
+    if (s.weapon?.state === 'reloading') s.weapon.cancelReload();
+    s.current = i;
+    startAttack(s, w, { back: back === i ? -1 : back });
+  }
+
   _inGoal() {
     const g = this.goal;
     return g && Math.hypot(this.s.body.x - g.x, this.s.body.z - g.z) < g.radius * 0.85;
@@ -763,6 +787,17 @@ export class BotBrain {
         dz = spot.z - b.z;
       const d = Math.hypot(dx, dz);
       if (d > 0.35 && d < 4) {
+        wx = dx / d;
+        wz = dz / d;
+      }
+    }
+    // A blow with a close-combat weapon: step in to him as it comes.
+    const tb = s.melee && this.target?.body;
+    if (tb) {
+      const dx = tb.x - b.x,
+        dz = tb.z - b.z;
+      const d = Math.hypot(dx, dz);
+      if (d > s.melee.def.reach * 0.6) {
         wx = dx / d;
         wz = dz / d;
       }

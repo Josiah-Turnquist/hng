@@ -58,6 +58,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 
 function weaponStats(w) {
+  if (w.type === 'melee' || !w.ammo) return `${w.length ? `${Math.round(w.length * 100)} cm · ` : ''}${w.mass.toFixed(2)} kg`;
   const am = AMMO[w.ammo];
   if (w.type === 'grenade') return [am?.name || w.name, am?.fuseTime ? `${am.fuseTime} s fuse` : '', `${w.mass.toFixed(2)} kg`].filter(Boolean).join(' · ');
   const parts = [am?.name || w.ammo, `${Math.round(w.mv)} m/s`];

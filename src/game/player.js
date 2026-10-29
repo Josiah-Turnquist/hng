@@ -7,6 +7,7 @@ import { ViewModel } from '../weapons/viewmodel.js';
 import { VehicleController } from './vehicleControl.js';
 import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
 import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
+import { meleeOf, startAttack, canAttack } from './melee.js';
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
@@ -212,7 +213,7 @@ export class PlayerController {
     // --- Weapon handling ---------------------------------------------------------------------
     // Aiming: while the aim key is held or (Settings > Controls) from one press to
     // the next. Sprinting, reloading a long gun or a grenade in hand lowers the gun.
-    const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && w.def.type === 'grenade');
+    const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && (w.def.type === 'grenade' || w.def.type === 'melee'));
     if (this.settings.get('aimToggle')) {
       if (input.hit('aim')) this.aimToggled = !this.aimToggled;
       if (!canAim) this.aimToggled = false;
@@ -251,6 +252,7 @@ export class PlayerController {
       else w.startReload();
     }
     if (input.hit('bandage')) s.startBandage();
+    if (input.hit('melee')) this._quickMelee();
 
     // Trigger. A grenade: press to pull the pin and draw back (holding cooks
     // it), let go to throw (throwing.js).
@@ -258,15 +260,41 @@ export class PlayerController {
       if (input.hit('fire') && !s.throwing && startThrow(s, w)) this.backAfterThrow = true;
       if (s.throwing && !input.is('fire')) releaseThrow(s, lookAim);
       w.setTrigger(false);
+    } else if (w && w.def.type === 'melee') {
+      // A close-combat weapon: a blow on the fire button, another as soon as
+      // that one is done while it is held (melee.js).
+      if (input.is('fire') && this.viewmodel.swap > 0.9) startAttack(s, w);
+      w.setTrigger(false);
     } else if (w) {
       w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
   }
 
+  // The melee key: one blow with the close-combat weapon from whatever is in
+  // the hands, then back to it (melee.js), as in the original game. It comes
+  // up as the arm draws back for the blow.
+  _quickMelee() {
+    const s = this.soldier;
+    const m = meleeOf(s);
+    if (!m || !canAttack(s)) return;
+    const i = s.weapons.indexOf(m);
+    if (i === s.current) {
+      startAttack(s, m);
+      return;
+    }
+    const back = s.current;
+    const cur = s.weapon;
+    if (cur?.state === 'reloading') cur.cancelReload();
+    cur?.setTrigger(false);
+    this._equip(i);
+    this.viewmodel.swap = 0.6;
+    startAttack(s, m, { back });
+  }
+
   _requestSwitch(i) {
     const s = this.soldier;
-    // (Not with a grenade's pin pulled.)
-    if (i === s.current || !s.weapons[i] || s.throwing) return;
+    // (Not with a grenade's pin pulled, nor in the middle of a blow.)
+    if (i === s.current || !s.weapons[i] || s.throwing || s.melee) return;
     const cur = s.weapon;
     if (cur?.state === 'reloading') cur.cancelReload();
     cur?.setTrigger(false);
@@ -540,6 +568,7 @@ export class PlayerController {
       light: this.lightLevel,
       ambient: this.ambientLevel,
       throwing: s.throwing,
+      melee: s.melee,
       empty: w?.def.type === 'grenade' && !hasGrenade(w) && !s.throwing,
       emptyTube: w?.def.type === 'launcher' && w.loaded === 0 && w.state !== 'reloading',
     });

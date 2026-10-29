@@ -1,4 +1,5 @@
-// Bullet impacts on materials and the close, quiet mechanical sounds of weapons.
+// Bullet impacts on materials, the close, quiet mechanical sounds of weapons,
+// and the swish and blow of close-combat weapons.
 // Impacts layer a transient (the strike), the material's response (thump of soil,
 // knock of wood modes, ring of steel plates), and what flies off (soil grains,
 // splinters, stone chips, glass shards, droplets). Mechanical sounds are built
@@ -611,6 +612,77 @@ const MECH = {
       cloth(out, rng, sr, { at: 0, dur: 0.22, amp: 0.25, f: 1800 });
       thud(out, rng, sr, { at: 0.15, amp: 0.4, f: 180, tau: 0.012, fc: 600 });
       strike(out, rng, sr, 0.19, { amp: 0.12, f: 3200, tau: 0.006, modes: 3 });
+    },
+  },
+
+  // --- Close combat (game/melee.js): the swish of the blow and what it meets.
+  // A thrust with a knife or bayonet: a short, high rush of air past the blade
+  // and the sleeve's rustle.
+  swishLight: {
+    dur: 0.35,
+    level: 0.22,
+    make(out, rng, sr) {
+      cloth(out, rng, sr, { at: 0, dur: 0.18, amp: 0.25, f: 2200, motion: 20 });
+      noiseBurst(out, rng, sr, { at: 0.03, attack: 0.05, decay: 0.035, amp: 0.8, filter: 'bp', f: rng.range(2200, 2800), f1: 1100, glide: 0.08, q: 1.3 });
+    },
+  },
+  // A spade or bat swung from the shoulder: a longer, lower whoosh rising to
+  // its fastest just before it lands.
+  swishHeavy: {
+    dur: 0.6,
+    level: 0.26,
+    make(out, rng, sr) {
+      cloth(out, rng, sr, { at: 0, dur: 0.3, amp: 0.3, f: 1800, motion: 14 });
+      noiseBurst(out, rng, sr, { at: 0.12, attack: 0.14, decay: 0.06, amp: 0.9, filter: 'bp', f: rng.range(500, 650), f1: 1100, glide: 0.14, q: 1.6 });
+      noiseBurst(out, rng, sr, { at: 0.2, attack: 0.06, decay: 0.04, amp: 0.35, filter: 'bp', f: 2400, q: 1.2 });
+    },
+  },
+  // A blade going in: the blow through the cloth, the thud of the body.
+  stabHit: {
+    dur: 0.3,
+    level: 0.5,
+    make(out, rng, sr) {
+      noiseBurst(out, rng, sr, { at: 0.001, attack: 0.001, decay: 0.012, amp: 0.45, filter: 'bp', f: rng.range(2600, 3400), q: 1.1 });
+      thud(out, rng, sr, { at: 0.004, amp: 0.9, f: rng.range(95, 125), tau: 0.03, fc: 550, noise: 0.8 });
+      noiseBurst(out, rng, sr, { at: 0.012, attack: 0.004, decay: 0.03, amp: 0.25, filter: 'lp', f: 700, q: 0.8 });
+    },
+  },
+  // A spade's edge striking a man: a heavy thud and a dull ring of the blade.
+  spadeHit: {
+    dur: 0.45,
+    level: 0.55,
+    make(out, rng, sr) {
+      thud(out, rng, sr, { at: 0.001, amp: 1, f: rng.range(80, 100), tau: 0.035, fc: 600, noise: 0.9 });
+      strike(out, rng, sr, 0.002, { amp: 0.18, f: rng.range(700, 900), tau: 0.06, modes: 5, click: 0.3 });
+      noiseBurst(out, rng, sr, { at: 0.002, attack: 0.001, decay: 0.01, amp: 0.3, filter: 'bp', f: 2200, q: 1 });
+    },
+  },
+  // A bat striking a man: the knock of the wood over the thud.
+  batHit: {
+    dur: 0.4,
+    level: 0.55,
+    make(out, rng, sr) {
+      thud(out, rng, sr, { at: 0.001, amp: 1, f: rng.range(85, 110), tau: 0.03, fc: 650, noise: 0.85 });
+      strike(out, rng, sr, 0.001, { amp: 0.4, f: rng.range(420, 520), ratios: RATIOS.wood, tau: 0.025, modes: 4, click: 0.5 });
+    },
+  },
+  // Steel on a wall: the ringing clang of a blade or spade and a scrape.
+  bladeWall: {
+    dur: 0.6,
+    level: 0.4,
+    make(out, rng, sr) {
+      strike(out, rng, sr, 0.001, { amp: 0.8, f: rng.range(1500, 2100), tau: 0.08, modes: 6, click: 0.9 });
+      scrape(out, rng, sr, { at: 0.004, dur: 0.08, amp: 0.15, f: 3200, f1: 2400, q: 1.2 });
+      thud(out, rng, sr, { at: 0.001, amp: 0.4, f: 140, tau: 0.012, fc: 900 });
+    },
+  },
+  // Wood on a wall: a hollow knock.
+  batWall: {
+    dur: 0.4,
+    level: 0.4,
+    make(out, rng, sr) {
+      strike(out, rng, sr, 0.001, { amp: 0.8, f: rng.range(300, 380), ratios: RATIOS.wood, tau: 0.04, modes: 5, click: 0.7, thump: 0.6, thumpF: 160 });
+      noiseBurst(out, rng, sr, { at: 0.002, attack: 0.001, decay: 0.015, amp: 0.25, filter: 'bp', f: 2600, q: 1 });
     },
   },
 };

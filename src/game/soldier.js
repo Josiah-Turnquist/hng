@@ -14,6 +14,7 @@ import { Weapon } from '../weapons/weapon.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { clamp } from '../core/math.js';
 import { updateThrow } from './throwing.js';
+import { updateMelee } from './melee.js';
 
 export const ZONES = {
   head: 4.0,
@@ -79,6 +80,7 @@ export class Soldier {
     this.actionT = 0;
     this.throwing = null; // a grenade throw under way (throwing.js)
     this.lastThrowTime = -100;
+    this.melee = null; // a blow with a close-combat weapon under way (melee.js)
     this.kills = 0;
     this.deaths = 0;
     this.score = 0;
@@ -99,7 +101,7 @@ export class Soldier {
   _updateLoad() {
     // Kit (helmet, webbing, canteen, entrenching tool...) about 12 kg plus weapons and ammo.
     let kg = 12;
-    for (const w of this.weapons) if (w) kg += w.def.loadedMass + w.reserveRounds * w.ammo.mass * 2.2;
+    for (const w of this.weapons) if (w) kg += w.def.loadedMass + (w.ammo ? w.reserveRounds * w.ammo.mass * 2.2 : 0);
     this.body.load = kg;
   }
 
@@ -161,6 +163,7 @@ export class Soldier {
     }
 
     updateThrow(this.game, this, dt);
+    updateMelee(this.game, this, dt);
     for (const w of this.weapons) if (w && w !== this.weapon) w.update(0);
   }
 
@@ -233,6 +236,7 @@ export class Soldier {
     this.deathTime = 0;
     this.deaths++;
     this.killer = cause?.attacker || null;
+    this.melee = null;
     for (const w of this.weapons) w?.setTrigger(false);
     // His main weapon falls beside him, for anyone to pick up.
     this.game.pickups?.dropFrom(this);

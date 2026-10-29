@@ -25,6 +25,11 @@ test('every weapon definition is complete and sane', () => {
     assert.ok(d.name && d.faction && d.type && d.slot, `${id} basics`);
     assert.ok(d.mass > 0 && d.mass < 25, `${id} mass`);
     if (d.type === 'grenade') continue;
+    if (d.type === 'melee') {
+      // Close-combat weapons fire nothing (game/melee.js).
+      assert.ok(d.reach >= 0.8 && d.reach <= 1.5 && d.attack.hit < d.attack.period && d.damage.head > 0, `${id} blow`);
+      continue;
+    }
     assert.ok(d.mv > 20 && d.mv < 1300, `${id} muzzle velocity`);
     assert.ok(d.capacity >= 1 && d.capacity <= 100, `${id} capacity`);
     assert.ok(d.sight.ranges.includes(d.sight.zero), `${id} default zero must be a sight setting`);

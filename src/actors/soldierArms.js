@@ -43,13 +43,15 @@ export class Xf {
   }
 }
 
-// Precompute how the hands hold a gun model. kind: rifle|smg|lmg|pistol|launcher|grenade.
+// Precompute how the hands hold a gun model. kind: rifle|smg|lmg|pistol|launcher|grenade|melee.
+// (A close-combat weapon's handle runs along its length, through the fist:
+// its model gives gripRake, about 90 degrees.)
 export function weaponInfo(gun, kind) {
   const a = gun.userData?.anchors || gun.anchors || {};
   const meta = gun.userData?.meta || gun.meta || {};
   const parts = gun.userData?.parts || gun.parts || {};
   const get = (n, d) => (a[n] ? a[n].clone() : d ? V(...d) : null);
-  const pistolLike = kind === 'pistol' || kind === 'grenade';
+  const pistolLike = kind === 'pistol' || kind === 'grenade' || kind === 'melee';
   const anchors = {
     gripR: get('gripR', pistolLike ? [0, -0.05, 0.02] : [0, -0.045, 0.07]),
     gripL: get('gripL', null),
@@ -64,7 +66,7 @@ export function weaponInfo(gun, kind) {
   };
   if (!anchors.shoulder && !pistolLike) anchors.shoulder = V(0, -0.08, 0.3);
   // Right hand: the grip runs down and back through the fist.
-  const rake = meta.gripRake ?? (kind === 'rifle' ? 0.9 : kind === 'grenade' ? 0 : 0.42);
+  const rake = meta.gripRake ?? (kind === 'rifle' ? 0.9 : kind === 'grenade' ? 0 : kind === 'melee' ? Math.PI / 2 : 0.42);
   const g = V(0, -Math.cos(rake), Math.sin(rake)).normalize();
   const Xh = V(1, 0, 0),
     Zh = g.clone(),
@@ -72,7 +74,7 @@ export function weaponInfo(gun, kind) {
   const qHG = quatFromAxes(Xh, Yh, Zh, new THREE.Quaternion()).invert();
   // The grip lies against the palm: its center sits its radius in front of it
   // (rifle wrist ~3.8 cm thick, pistol and SMG grips ~3 x 5 cm; est.).
-  const gripRadius = meta.gripRadius ?? (kind === 'pistol' ? 0.015 : kind === 'smg' ? 0.017 : kind === 'grenade' ? 0.016 : 0.019);
+  const gripRadius = meta.gripRadius ?? (kind === 'pistol' ? 0.015 : kind === 'smg' ? 0.017 : kind === 'grenade' ? 0.016 : kind === 'melee' ? 0.014 : 0.019);
   const tHG = gripCenter(1, gripRadius).sub(anchors.gripR.clone().applyQuaternion(qHG));
   // Left hand: under the fore-end (cupped), around a vertical front grip, or
   // (a launcher without one: bazooka M1A1, Panzerfaust) cupping the tube itself,
@@ -158,6 +160,21 @@ function keys(t, ks, out) {
   }
   return out.copy(ks[ks.length - 1][1]);
 }
+
+// A close-combat weapon in the right hand, chest frame (m; rad: pitch raising
+// the point, yaw turning it left, roll): carried low with the point up and
+// forward; a thrust drawn back (cock) and driven out (out); a swing raised over
+// the shoulder (raise), brought down in front (strike) and followed through low
+// to the left (follow). The blow lands at the action's `hit` fraction.
+const MELEE_KEYS = {
+  carry: { stab: [0.2, -0.27, -0.24, 0.85, 0.2, -0.3], swing: [0.2, -0.27, -0.2, 1.1, 0.1, -0.2] },
+  cock: [0.23, -0.17, -0.06, 0.25, 0.1, -0.1],
+  out: [0.06, 0.0, -0.5, 0.0, 0.05, 0],
+  raise: [0.25, 0.3, 0.04, 1.95, -0.3, -0.4],
+  strike: [0.05, 0.04, -0.48, 0.1, 0.4, 0.7],
+  follow: [-0.12, -0.3, -0.34, -0.8, 0.6, 0.9],
+};
+const _mk = [new Xf(), new Xf()];
 
 export class SoldierArms {
   constructor(anim) {
@@ -246,6 +263,9 @@ export class SoldierArms {
       A.placeAnchor(an.gripR, _v2);
       L.q.setFromAxisAngle(AY, cy + 0.15).multiply(qAxis(_q, AX, -0.85));
       L.placeAnchor(an.gripR, this.cp(0.09, -0.06, -0.3, _v));
+    } else if (info.kind === 'melee') {
+      this._meleePose(s, an, L);
+      A.copy(L);
     } else if (info.kind === 'grenade') {
       A.q.copy(mp.q[B.chest]).multiply(qAxis(_q, AX, 0.4));
       A.placeAnchor(an.gripR, this.cp(0.24, 0.3, 0.06, _v));
@@ -302,6 +322,46 @@ export class SoldierArms {
     }
     this.anim.bladeAngle = info.shouldered ? 0.62 : 0;
     return out;
+  }
+
+  // A close-combat weapon: carried, or in a blow (action 'melee', actionT 0..1,
+  // meleeStyle 'stab' | 'swing', meleeHit the fraction where it lands).
+  _meleePose(s, an, out) {
+    const style = s.meleeStyle === 'swing' ? 'swing' : 'stab';
+    const K = MELEE_KEYS;
+    const key = (k, x) => {
+      const cq = this.anim.mp.q[B.chest];
+      x.q.copy(cq).multiply(qAxis(_q, AY, k[4])).multiply(qAxis(_q2, AX, k[3])).multiply(qAxis(_q, AZ, k[5]));
+      return x.placeAnchor(an.gripR, this.cp(k[0], k[1], k[2], _v));
+    };
+    const carry = K.carry[style];
+    if (s.action !== 'melee') return key(carry, out);
+    const t = clamp(s.actionT || 0, 0, 1),
+      h = clamp(s.meleeHit ?? 0.4, 0.1, 0.9);
+    const [a, b] = _mk;
+    const seg = (k0, k1, t0, t1, ease) => {
+      key(k0, a);
+      key(k1, b);
+      const u = clamp((t - t0) / Math.max(1e-6, t1 - t0), 0, 1);
+      return out.copy(a).lerp(b, ease(u));
+    };
+    const sm = (u) => u * u * (3 - 2 * u),
+      inQ = (u) => u * u,
+      outQ = (u) => 1 - (1 - u) * (1 - u);
+    if (style === 'stab') {
+      const tc = h * 0.45,
+        tb = h + (1 - h) * 0.3;
+      if (t < tc) return seg(carry, K.cock, 0, tc, sm);
+      if (t < h) return seg(K.cock, K.out, tc, h, inQ);
+      if (t < tb) return key(K.out, out);
+      return seg(K.out, carry, tb, 1, sm);
+    }
+    const tr = h * 0.55,
+      tf = h + (1 - h) * 0.3;
+    if (t < tr) return seg(carry, K.raise, 0, tr, sm);
+    if (t < h) return seg(K.raise, K.strike, tr, h, inQ);
+    if (t < tf) return seg(K.strike, K.follow, h, tf, outQ);
+    return seg(K.follow, carry, tf, 1, sm);
   }
 
   // Elbow poles (model space): out and down when shouldering, down at low
@@ -646,7 +706,7 @@ export class SoldierArms {
     const onGun = !(handRT && wR > 0.5);
     if (info.kind === 'grenade') this.grip(1, this.released ? 0.2 : 0.85, this.released ? 0.15 : 0.8, this.released ? 0.2 : 0.8);
     else if (!onGun) this.grip(1, act === 'bandage' || act === 'use' ? 0.55 : 0.7, act === 'bandage' ? 0.45 : 0.62, 0.62);
-    else this.grip(1, 1, act === 'bolt' || act === 'reload' ? 0.75 : 0.55, 0.82, info.gripRadius);
+    else this.grip(1, 1, info.kind === 'melee' ? 1 : act === 'bolt' || act === 'reload' ? 0.75 : 0.55, 0.82, info.gripRadius);
     if (handLT && wL > 0.5) this.grip(-1, act === 'bandage' || act === 'use' ? 0.5 : 0.7, 0.6, 0.5);
     else if (info.qLG) this.grip(-1, vertical ? 1 : 0.95, vertical ? 1 : 0.9, vertical ? 0.75 : 0.45, vertical ? 0.017 : info.foreRadius);
     else this.grip(-1, 0.38, 0.3, 0.25);

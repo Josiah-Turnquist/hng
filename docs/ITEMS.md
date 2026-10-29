@@ -49,6 +49,16 @@ The ids are fixed (the ribbons that open them are set in `src/game/ribbons.js`):
   `medic_ge`, `medic_su` (medic pouch, 2 points), `wrench` (adjustable wrench,
   any army, 1 point).
 
+## Close combat
+
+The close-combat weapons are defined in `src/weapons/items/melee.js` (style,
+reach, timing and damage of a blow), modeled in `src/weapons/models/melee.js`,
+and their blows are `src/game/melee.js`'s (`startAttack`, `updateMelee`): the
+fire button, the quick-blow key (`melee`, T) for the player, and bots with an
+enemy within 2 m. A blow is a short reach test from the eyes against the same
+hit zones bullets use, and hurts with `target.damage(amount, { kind: 'melee',
+attacker, weapon: def, part })`.
+
 ## Ribbon points
 
 The player's actions with these items feed his ribbons through

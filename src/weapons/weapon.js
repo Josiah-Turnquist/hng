@@ -17,12 +17,17 @@
 //
 // A scoped rifle whose iron sights stay usable (def.irons) aims with one or the
 // other (toggleSights); each keeps its own range setting.
+//
+// A close-combat weapon (def.type 'melee': knife, bayonet, spade, bat) has no
+// ammunition and never fires; its blows are game/melee.js's. It is a Weapon so
+// that it sits in a loadout slot like the rest.
 import { getAmmo } from './ammo.js';
 
 export class Weapon {
   constructor(def) {
     this.def = def;
-    this.ammo = getAmmo(def.ammo);
+    this.melee = def.type === 'melee';
+    this.ammo = this.melee ? null : getAmmo(def.ammo);
     this.modeIndex = 0;
     this.trigger = false;
     this.triggerWasDown = false;
@@ -99,6 +104,10 @@ export class Weapon {
     const d = this.def;
     this.mag = d.capacity;
     this.chambered = false;
+    if (this.melee) {
+      this.spareMags = [];
+      return;
+    }
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       this.clips = this.reserveCount; // full clips
       this.loose = 0; // loose rounds (from partly used clips)
@@ -176,7 +185,7 @@ export class Weapon {
   // Can a reload start right now (and is there anything to load)?
   canReload() {
     const d = this.def;
-    if (this.state === 'reloading') return false;
+    if (this.state === 'reloading' || this.melee) return false;
     if (d.feed === 'disposable' || d.type === 'grenade') return false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       const room = d.capacity - this.mag - (d.feed === 'enbloc' && this.chambered ? 0 : 0);
@@ -434,6 +443,10 @@ export class Weapon {
   // --- firing ------------------------------------------------------------------
   // Advance timers; returns the number of shots fired during this step (0 or 1).
   update(dt) {
+    if (this.melee) {
+      this.triggerWasDown = this.trigger;
+      return 0;
+    }
     // Keep the leftover fraction of a step so the cyclic rate is exact at any tick rate.
     this.cooldown -= dt;
     if (this.cooldown < 0 && !this.trigger) this.cooldown = 0;
@@ -546,6 +559,7 @@ export class Weapon {
   // Refill ammunition (ammo crates).
   resupply() {
     const d = this.def;
+    if (this.melee) return;
     if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = this.reserveCount;
     else if (d.feed === 'gate') this.loose = this.reserveCount;
     else if (d.feed === 'moon') this.clips = this.reserveCount;

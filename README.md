@@ -40,6 +40,7 @@ These are the keys the game starts with. Every one can be changed in Settings > 
 | Sight range up / down | Mouse wheel while aiming, or Page Up / Page Down |
 | Reload or work the bolt; fire mode, or scope and iron sights on a scoped rifle that keeps them | R; B (or middle mouse) |
 | Weapons, grenade, bandage | 1 2 3, G, X |
+| Close-combat weapon (6), or a quick blow with it from whatever is in your hands | 6, T |
 | Get in or out of a vehicle (walk up to it; a prompt shows when you can) | F |
 | Drive | W / S (S brakes, then reverses), A / D, Space handbrake (jeeps). The camera turns with a jeep or bike and swings in behind it when you leave the mouse alone; in a tank it stays where you aim the gun |
 | Ride a bicycle or motorcycle | W / S, A / D (you lean into the turn), Space rear brake, Shift pedal hard (bicycle); in the sidecar the mouse lays the machine gun |
@@ -56,6 +57,8 @@ Who not to shoot: a green dot floats over the head of everyone on your side, thr
 A kill: a short chime, the hit mark turns red, and a small line under the sights names who you killed ("Killed Pvt. Brandt +5", with Headshot when it was one, and a count when kills come close together; "Destroyed" for a vehicle). It fades after a couple of seconds.
 
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
+
+Close combat: a soldier may carry his army's entrenching spade, a knife or bayonet, or a baseball bat (the Soviets a lapta bat), each at its real length and weight. The fire button thrusts a knife or bayonet and swings a spade or bat; a blow lands on whoever is within reach in front of you (about 1 m for a knife, 1.3 m for a spade or bayonet, 1.4 m for a bat), and as in the original game one stab kills, as does a spade or bat to the head (two blows to the body). T strikes once with it from whatever you hold and goes back to it. Bots with one use it on an enemy within 2 m now and then.
 
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
 

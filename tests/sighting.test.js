@@ -27,7 +27,7 @@ function aimed(id, rangeIndex) {
 
 for (const id of Object.keys(WEAPONS)) {
   const def = WEAPONS[id];
-  if (def.type === 'grenade' || !MODELS[def.model] || def.sight.kind === 'scope' || def.sight.kind === 'post') continue;
+  if (def.type === 'grenade' || def.type === 'melee' || !MODELS[def.model] || def.sight.kind === 'scope' || def.sight.kind === 'post') continue;
   test(`${id}: sights line up with the eye and the bore is zeroed`, () => {
     const ranges = def.sight.ranges;
     for (const i of [0, Math.floor(ranges.length / 2), ranges.length - 1]) {

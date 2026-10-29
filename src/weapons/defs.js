@@ -4,7 +4,7 @@
 // the real ammunition (ammo.js) and the physics engine.
 //
 // Fields:
-//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade
+//   type     rifle | semi | carbine | smg | assault | lmg | pistol | revolver | sniper | atRifle | launcher | grenade | melee
 //   feed     how it is loaded: box (detachable magazine), drum, pan, belt, enbloc (M1 Garand
 //            clip), stripper (internal magazine filled from 5-round clips or single rounds),
 //            gate (revolver loaded one round at a time), moon (revolver half-moon clips),
@@ -978,6 +978,20 @@ for (const [id, w] of Object.entries(WEAPONS)) {
     w.rpm = 60;
     w.reload = {};
   }
+  if (w.type === 'melee') {
+    // A close-combat weapon fires nothing: what the rest of the game reads off
+    // a gun (sights, fire modes, magazine) is there but empty. Its blows are
+    // game/melee.js's.
+    w.sight = { kind: 'none', unit: 'm', ranges: [0], zero: 0 };
+    w.modes = ['semi'];
+    w.feed = 'melee';
+    w.capacity = 0;
+    w.reserve = 0;
+    w.reload = {};
+    w.rpm = 60 / w.attack.period;
+    w.loadedMass = w.mass;
+    continue;
+  }
   const a = AMMO[w.ammo];
   if (!a) throw new Error(`weapon ${id}: unknown ammo ${w.ammo}`);
   w.ammoData = a;
@@ -1061,17 +1075,18 @@ export function scopeChoices(def, cls) {
 // kit, as in the original game: his army's first rifle (the M1 Garand, the
 // Gewehr 43, the SVT-40; a scout's with a scope on it), or a tank crewman's
 // first submachine gun, and as much of the army's first pistol and grenade as
-// his equipment points allow (infantry 10: rifle 5, pistol 2, grenade 2;
-// paratroopers and scouts 8: rifle and pistol; tank crew 6: the gun alone).
+// his equipment points allow, and his army's spade (infantry 10: rifle 5,
+// pistol 2, grenade 2, spade 1; paratroopers and scouts 8: rifle, pistol and
+// spade; tank crew 6: the gun alone).
 // Everything else opens with his ribbons (game/ribbons.js).
-const kit = (primary, pistol, grenade) => ({
-  infantry: [primary[0], pistol, grenade, null, null, null, null],
-  recon: [primary[1], pistol, null, null, null, null, null],
-  paratrooper: [primary[0], pistol, null, null, null, null, null],
+const kit = (primary, pistol, grenade, spade) => ({
+  infantry: [primary[0], pistol, grenade, null, null, spade, null],
+  recon: [primary[1], pistol, null, null, null, spade, null],
+  paratrooper: [primary[0], pistol, null, null, null, spade, null],
   tanker: [primary[2], null, null, null, null, null, null],
 });
 export const DEFAULT_LOADOUT = {
-  US: kit(['m1_garand', 'm1c_m81', 'm3_greasegun'], 'm1911a1', 'mk2_grenade'),
-  GE: kit(['gewehr43', 'gewehr43_zf4', 'mp34'], 'c96', 'stielhandgranate24'),
-  SU: kit(['svt40', 'svt40_pu', 'ppd40'], 'tt33', 'rgd33'),
+  US: kit(['m1_garand', 'm1c_m81', 'm3_greasegun'], 'm1911a1', 'mk2_grenade', 'spade_m1910'),
+  GE: kit(['gewehr43', 'gewehr43_zf4', 'mp34'], 'c96', 'stielhandgranate24', 'spade_ge'),
+  SU: kit(['svt40', 'svt40_pu', 'ppd40'], 'tt33', 'rgd33', 'spade_mpl50'),
 };
