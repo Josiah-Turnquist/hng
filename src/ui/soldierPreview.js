@@ -1,23 +1,71 @@
 // The chosen soldier in 3D on the Heroes screen, standing at ease with his weapon
 // in a pool of warm evening light, turned by dragging. Drawn with the game's own
 // renderer into its canvas behind the menus, only while the menus show. It also
-// takes side-view pictures of guns for the weapon cards.
+// takes side-view pictures of guns for the weapon cards, and pictures of the
+// parts their upgrades fit.
 //
 //   const pv = new SoldierPreview(app.renderer);
 //   pv.show({ faction, cls, seed, variant, primary });   // weapon id
 //   pv.frame(el);          // where on the page he stands (the middle of el)
 //   pv.start(); pv.stop(); pv.dispose();
 //   const url = pv.gunPicture('m1_garand');   // data: URL, cached
+//   pv.partPicture('kar98k', 'u80');          // the part an upgrade fits, the same
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../render/textures.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
 import { MODELS, buildGun } from '../weapons/models/index.js';
+import { partOf, partKey, buildPart } from '../weapons/models/upgradeParts.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 
 const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade' };
 const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
+
+// A perspective camera looking at obj along dir (from obj toward the camera),
+// as close as it can be with obj inside `fill` of the picture both ways,
+// centered. In the camera's own axes (z toward the camera) a point (x, y, z)
+// is in view when |x - cx| <= a (cz - z) with a = tan(fov / 2) * aspect * fill,
+// and likewise for y: the nearest camera (cx, cy, cz) follows directly from the
+// extremes of z +- x / a and z +- y / b. focus = [z0, z1]: frame only the part
+// of obj between those z (its own), the rest may run out of the picture.
+function frameView(obj, dir, fov, aspect, fill, focus = null) {
+  const cam = new THREE.PerspectiveCamera(fov, aspect, 0.001, 50);
+  cam.position.set(...dir);
+  cam.lookAt(0, 0, 0);
+  const inv = cam.quaternion.clone().invert();
+  const tan = Math.tan((fov * Math.PI) / 360);
+  const a = tan * aspect * fill,
+    b = tan * fill;
+  let A = -Infinity,
+    B = -Infinity,
+    C = -Infinity,
+    D = -Infinity,
+    zMin = Infinity,
+    zMax = -Infinity;
+  const v = new THREE.Vector3();
+  obj.traverse((o) => {
+    if (!o.isMesh) return;
+    const p = o.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      if (focus && (v.z < focus[0] || v.z > focus[1])) continue;
+      v.applyQuaternion(inv);
+      A = Math.max(A, v.z + v.x / a);
+      B = Math.max(B, v.z - v.x / a);
+      C = Math.max(C, v.z + v.y / b);
+      D = Math.max(D, v.z - v.y / b);
+      zMin = Math.min(zMin, v.z);
+      zMax = Math.max(zMax, v.z);
+    }
+  });
+  const cz = Math.max((A + B) / 2, (C + D) / 2);
+  cam.position.set((a * (A - B)) / 2, (b * (C - D)) / 2, cz).applyQuaternion(cam.quaternion);
+  cam.near = Math.max(0.0005, (cz - zMax) * 0.5);
+  cam.far = cz - zMin + 3; // (what runs out of focus goes on behind)
+  cam.updateProjectionMatrix();
+  return cam;
+}
 
 function modelId(id) {
   const d = WEAPONS[id];
@@ -222,17 +270,8 @@ export class SoldierPreview {
     if (this.pictures.has(key)) return this.pictures.get(key);
     const mid = modelId(id);
     if (!mid) return '';
-    const r = this.renderer;
     const gun = buildGun(mid, this.gunMats, { lod: 0 });
-    const scene = new THREE.Scene();
-    scene.environment = this.env;
-    scene.environmentIntensity = 0.6;
-    const k = new THREE.DirectionalLight(0xfff0dc, 2.4);
-    k.position.set(2, 3, 1);
-    const f = new THREE.DirectionalLight(0xc0d0e8, 0.8);
-    f.position.set(2, -1, -2);
-    scene.add(k, f, new THREE.AmbientLight(0xffffff, 0.25), gun.root);
-    gun.root.updateMatrixWorld(true);
+    const scene = this._pictureScene(gun.root);
     const box = new THREE.Box3().setFromObject(gun.root);
     const c = box.getCenter(new THREE.Vector3());
     const s = box.getSize(new THREE.Vector3());
@@ -241,9 +280,50 @@ export class SoldierPreview {
     const cam = new THREE.OrthographicCamera(-len / 2, len / 2, (len * h) / w / 2, (-len * h) / w / 2, 0.01, 10);
     cam.position.set(c.x + 3, c.y, c.z);
     cam.lookAt(c);
+    const url = this._snapshot(scene, cam, w, h);
+    this.pictures.set(key, url);
+    return url;
+  }
+
+  // The part an upgrade (u...) or a round (a...) fits to this gun (barrel, bolt,
+  // spring, trigger group, sights, scope, cartridge), seen from three quarters
+  // and filling a picture on a clear background (data: URL). Guns that take the
+  // same part share its picture.
+  partPicture(gun, upgradeId, w = 160, h = 110) {
+    const part = partOf(gun, upgradeId);
+    if (!part) return '';
+    const key = `part:${partKey(part)}@${w}x${h}`;
+    if (this.pictures.has(key)) return this.pictures.get(key);
+    const built = buildPart(part, this.gunMats, { lod: 0 });
+    const scene = this._pictureScene(built.root);
+    const view = built.meta.view || {};
+    const cam = frameView(built.root, view.dir || [0.7, 0.5, 0.5], view.fov || 20, w / h, 0.88, view.focus);
+    const url = this._snapshot(scene, cam, w, h);
+    this.pictures.set(key, url);
+    return url;
+  }
+
+  // A scene for a picture: obj under a warm key light and a cool fill.
+  _pictureScene(obj) {
+    const scene = new THREE.Scene();
+    scene.environment = this.env;
+    scene.environmentIntensity = 0.6;
+    const k = new THREE.DirectionalLight(0xfff0dc, 2.4);
+    k.position.set(2, 3, 1);
+    const f = new THREE.DirectionalLight(0xc0d0e8, 0.8);
+    f.position.set(2, -1, -2);
+    scene.add(k, f, new THREE.AmbientLight(0xffffff, 0.25), obj);
+    obj.updateMatrixWorld(true);
+    return scene;
+  }
+
+  // Render a picture scene on a clear background (data: URL), then free its
+  // geometry.
+  _snapshot(scene, cam, w, h) {
+    const r = this.renderer;
     // Twice the size, scaled down for smooth edges.
     const rt = new THREE.WebGLRenderTarget(w * 2, h * 2, { colorSpace: THREE.SRGBColorSpace });
-    const saved = { tm: r.toneMapping, clear: r.getClearColor(new THREE.Color()), alpha: r.getClearAlpha() };
+    const saved = { clear: r.getClearColor(new THREE.Color()), alpha: r.getClearAlpha() };
     r.setRenderTarget(rt);
     r.setClearColor(0x000000, 0);
     r.clear();
@@ -268,9 +348,7 @@ export class SoldierPreview {
     const octx = out.getContext('2d');
     octx.imageSmoothingQuality = 'high';
     octx.drawImage(big, 0, 0, w, h);
-    const url = out.toDataURL('image/png');
-    this.pictures.set(key, url);
-    return url;
+    return out.toDataURL('image/png');
   }
 
   dispose() {
