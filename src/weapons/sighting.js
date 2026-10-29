@@ -61,7 +61,9 @@ export class Sighting {
     const mz = a.muzzle ? a.muzzle.z : -0.6;
     const ahead = Math.max(0, (this.sightKind === 'scope' ? this.scopeEye.z : this.rear.z) + this.eyeRelief - mz);
     const slope = Math.max(0, (scoped ? this.scopeFront.z : this.front.z) - mz);
+    // (Nothing to fly for a kit or tool without ammunition: the bore stays level.)
     this.angles = def.sight.ranges.map((r) => {
+      if (!def.ammoData) return 0;
       const R = Math.max(1, r * toM - ahead);
       const t = solveZero(def.ammoData, def.mv, this.sightHeight, R, atm);
       return t - (slope * Math.tan(t)) / R;

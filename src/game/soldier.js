@@ -12,6 +12,7 @@ import { Weapon } from '../weapons/weapon.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { clamp } from '../core/math.js';
 import { updateThrow } from './throwing.js';
+import { updateKit, endKit } from './kits.js';
 
 export const ZONES = {
   head: 4.0,
@@ -70,7 +71,9 @@ export class Soldier {
     this.yaw = 0;
     this.pitch = 0;
     this.aiming = false;
-    this.action = null; // bandage, first aid
+    this.action = null; // bandage, firstaid, kit (a kit from his equipment: kits.js), repair
+    this.kitUse = null; // a treatment under way with a kit (kits.js)
+    this.repair = null; // a spell of work on a vehicle with the wrench (kits.js)
     this.actionT = 0;
     this.throwing = null; // a grenade throw under way (throwing.js)
     this.lastThrowTime = -100;
@@ -94,7 +97,7 @@ export class Soldier {
   _updateLoad() {
     // Kit (helmet, webbing, canteen, entrenching tool...) about 12 kg plus weapons and ammo.
     let kg = 12;
-    for (const w of this.weapons) if (w) kg += w.def.loadedMass + w.reserveRounds * w.ammo.mass * 2.2;
+    for (const w of this.weapons) if (w) kg += w.def.loadedMass + (w.ammo ? w.reserveRounds * w.ammo.mass * 2.2 : 0);
     this.body.load = kg;
   }
 
@@ -148,10 +151,12 @@ export class Soldier {
         this.body.legWound *= 0.5;
         this.armWound *= 0.5;
         this.action = null;
-      }
+      } else if (this.action === 'kit') updateKit(this.game, this, dt);
       // Moving interrupts treatment.
       if (this.action && this.body.moving > 1.2) this.action = null;
     }
+    // A treatment with a kit stopped (by moving, a hit, or a weapon change).
+    if (this.kitUse && this.action !== 'kit') endKit(this.game, this);
 
     updateThrow(this.game, this, dt);
     for (const w of this.weapons) if (w && w !== this.weapon) w.update(0);
@@ -223,6 +228,9 @@ export class Soldier {
     this.deathTime = 0;
     this.deaths++;
     this.killer = cause?.attacker || null;
+    this.action = null;
+    this.kitUse = null;
+    this.repair = null;
     for (const w of this.weapons) w?.setTrigger(false);
     // His main weapon falls beside him, for anyone to pick up.
     this.game.pickups?.dropFrom(this);

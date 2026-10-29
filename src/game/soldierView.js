@@ -21,6 +21,10 @@ const KIND = {
   revolver: 'pistol',
   launcher: 'launcher',
   grenade: 'grenade',
+  // Kits and the wrench are carried in the hand like a grenade.
+  firstaid: 'grenade',
+  medkit: 'grenade',
+  wrench: 'grenade',
 };
 
 // The primary weapon decides the ammunition pouches on the belt.
@@ -176,6 +180,15 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   if (s.action === 'bandage' || s.action === 'firstaid') {
     st.action = 'bandage';
     st.actionT = Math.min(1, s.actionT / (s.action === 'bandage' ? 3.2 : 4.5));
+  } else if (s.action === 'kit' && s.kitUse) {
+    // A kit: on himself as a bandage, on another man both hands out in front.
+    st.action = s.kitUse.target === s ? 'bandage' : 'use';
+    st.actionT = Math.min(1, s.actionT / s.kitUse.dur);
+  } else if (s.action === 'repair') {
+    // Working the wrench: the hands go back and forth in front of him.
+    const u = (s.actionT * 0.4) % 1;
+    st.action = 'use';
+    st.actionT = 0.3 + 0.4 * (u < 0.5 ? u * 2 : 2 - u * 2);
   } else if (v && s.seat === 0 && !st.ride) {
     st.action = 'use';
   } else if (s.throwing) {

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Weapon } from '../src/weapons/weapon.js';
 import { WEAPONS } from '../src/weapons/defs.js';
+import { KIT_TYPES } from '../src/weapons/items/kits.js';
 
 const DT = 1 / 120;
 
@@ -24,7 +25,8 @@ test('every weapon definition is complete and sane', () => {
   for (const [id, d] of Object.entries(WEAPONS)) {
     assert.ok(d.name && d.faction && d.type && d.slot, `${id} basics`);
     assert.ok(d.mass > 0 && d.mass < 25, `${id} mass`);
-    if (d.type === 'grenade') continue;
+    // (Grenades, and kits that fire nothing: tests/kits.test.js.)
+    if (d.type === 'grenade' || KIT_TYPES.has(d.type)) continue;
     assert.ok(d.mv > 20 && d.mv < 1300, `${id} muzzle velocity`);
     assert.ok(d.capacity >= 1 && d.capacity <= 100, `${id} capacity`);
     assert.ok(d.sight.ranges.includes(d.sight.zero), `${id} default zero must be a sight setting`);

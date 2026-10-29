@@ -1,13 +1,16 @@
-// Registry of procedural gun models: id -> builder(b: GunBuilder).
+// Registry of procedural gun models: id -> builder(b: GunBuilder). The kits
+// and the wrench (kits.js) are built the same way.
 import * as german from './german.js';
 import * as us from './us.js';
 import * as soviet from './soviet.js';
+import * as kits from './kits.js';
 import { GunBuilder } from './kit.js';
 
 export const MODELS = {
   ...us,
   ...german,
   ...soviet,
+  ...kits,
 };
 
 // Levels of detail: 0 = first person (30k-60k triangles), 1 = soldiers nearby

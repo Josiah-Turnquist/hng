@@ -6,6 +6,7 @@ import { ViewModel } from '../weapons/viewmodel.js';
 import { VehicleController } from './vehicleControl.js';
 import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
 import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
+import { useKit, workWrench, endRepair } from './kits.js';
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
@@ -38,6 +39,8 @@ export class PlayerController {
     this.switchTo = -1;
     this.lastWeapon = -1; // to go back to after throwing the last grenade
     this.backAfterThrow = false;
+    this.backAfterKit = false; // used the last of a kit: back to the gun after
+    this.wrenchHeld = false; // fire held with the wrench in hand
     this.toggleCrouchState = false;
     this.camShake = 0;
     this.kick = { p: 0, y: 0, vp: 0, vy: 0 }; // view jolt from being hit (rad, rad/s)
@@ -124,6 +127,9 @@ export class PlayerController {
     if (w?.state === 'reloading') w.cancelReload();
     w?.setTrigger(false);
     s.aiming = false;
+    if (s.action === 'kit' || s.action === 'repair') s.action = null;
+    endRepair(this.game, s);
+    this.wrenchHeld = false;
     if (!best.enter(s, seat)) return false;
     this.vehicleCtl.entered(best);
     this.game.hud?.flash(`${best.def.name}: ${best.seats[seat].name}`);
@@ -209,7 +215,7 @@ export class PlayerController {
     // --- Weapon handling ---------------------------------------------------------------------
     // Aiming: while the aim key is held or (Settings > Controls) from one press to
     // the next. Sprinting, reloading a long gun or a grenade in hand lowers the gun.
-    const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && w.def.type === 'grenade');
+    const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && (w.def.type === 'grenade' || w.kit));
     if (this.settings.get('aimToggle')) {
       if (input.hit('aim')) this.aimToggled = !this.aimToggled;
       if (!canAim) this.aimToggled = false;
@@ -255,6 +261,12 @@ export class PlayerController {
       if (input.hit('fire') && !s.throwing && startThrow(s, w)) this.backAfterThrow = true;
       if (s.throwing && !input.is('fire')) releaseThrow(s, lookAim);
       w.setTrigger(false);
+    } else if (w?.kit) {
+      // A kit: press to treat the man in front of you, or yourself; the
+      // wrench: hold at a vehicle to work on it (kits.js).
+      if (w.def.type === 'wrench') this.wrenchHeld = input.is('fire') && !b.sprinting;
+      else if (input.hit('fire') && useKit(this.game, s, w)) this.backAfterKit = true;
+      w.setTrigger(false);
     } else if (w) {
       w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
     }
@@ -267,6 +279,9 @@ export class PlayerController {
     const cur = s.weapon;
     if (cur?.state === 'reloading') cur.cancelReload();
     cur?.setTrigger(false);
+    // Putting a kit or the wrench away stops the work.
+    if (s.action === 'kit' || s.action === 'repair') s.action = null;
+    this.wrenchHeld = false;
     this._equip(i);
   }
 
@@ -290,6 +305,14 @@ export class PlayerController {
     if (this.backAfterThrow && !s.throwing) {
       this.backAfterThrow = false;
       if (w.def.type === 'grenade' && !hasGrenade(w)) this._requestSwitch(this.lastWeapon >= 0 && s.weapons[this.lastWeapon] ? this.lastWeapon : 0);
+    }
+
+    // The wrench at work while fire is held; a used-up kit put away once done.
+    if (w.def.type === 'wrench') workWrench(this.game, s, w, dt, this.wrenchHeld);
+    else if (s.repair) endRepair(this.game, s);
+    if (this.backAfterKit && s.action !== 'kit') {
+      this.backAfterKit = false;
+      if (w.kit && w.uses === 0) this._requestSwitch(this.lastWeapon >= 0 && s.weapons[this.lastWeapon] ? this.lastWeapon : 0);
     }
 
     const shots = w.update(dt);
@@ -538,6 +561,10 @@ export class PlayerController {
       throwing: s.throwing,
       empty: w?.def.type === 'grenade' && !hasGrenade(w) && !s.throwing,
       emptyTube: w?.def.type === 'launcher' && w.loaded === 0 && w.state !== 'reloading',
+      // A kit at work: treating (on himself or the man in front), or the
+      // wrench turning (kits.js).
+      kitUse: s.action === 'kit' && s.kitUse ? { self: s.kitUse.target === s, t: s.actionT, dur: s.kitUse.dur } : null,
+      repairing: s.action === 'repair',
     });
     this.lastLook = [0, 0];
     this.viewmodel.camera.fov = 52;

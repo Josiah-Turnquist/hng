@@ -61,6 +61,18 @@ const POSES = {
   pistol: { hip: [0.16, -0.1, -0.42], dir: [0, 0.05, 0.06], sprint: [0.12, -0.26, -0.22] },
   launcher: { hip: [0.17, -0.13, 0.04], dir: [0, 0.05, 0.06], sprint: [0.12, -0.2, 0.0] },
   grenade: { hip: [0.16, -0.2, -0.3], dir: [0.006, 0.008, 0.06], sprint: [0.12, -0.26, -0.22] },
+  // A kit in the right hand by its edge, its face toward you; the wrench
+  // upright like a hammer, the jaws leaning away (models/kits.js).
+  kit: { hip: [0.15, -0.14, -0.36], dir: [-0.45, -0.4, 0.05], sprint: [0.14, -0.3, -0.24] },
+  wrench: { hip: [0.16, -0.21, -0.4], dir: [0.1, -0.45, 0.3], sprint: [0.14, -0.3, -0.24] },
+};
+// At work, in camera space as THROW: a kit held low in front of the chest to
+// treat yourself, or out ahead for the man in front of you; the wrench out at
+// the vehicle.
+const WORK = {
+  self: [0.06, -0.12, -0.4, -0.7, 0.1, 0.05],
+  other: [0.05, -0.15, -0.44, -0.45, 0.12, 0.05],
+  wrench: [0.09, -0.15, -0.42, -0.5, 0.15, 0.4],
 };
 // Throwing a grenade, in camera space: [x, y, z (m), pitch, yaw, roll (rad)].
 const THROW = {
@@ -112,6 +124,11 @@ function poseKind(def) {
       return 'launcher';
     case 'grenade':
       return 'grenade';
+    case 'firstaid':
+    case 'medkit':
+      return 'kit';
+    case 'wrench':
+      return 'wrench';
     default:
       return 'rifle';
   }
@@ -359,6 +376,15 @@ export class ViewModel {
     const hd = poses.dir;
     const hipQ = _q.setFromEuler(_e.set(hd[1], hd[0], hd[2]));
     const hipPos = _v.fromArray(poses.hip);
+    // A kit wider than a first-aid pouch (7.5 cm) is held lower, further out
+    // and more to the side. (models/kits.js puts muzzle.x at its middle, 12 mm
+    // in from its right edge: the width is 0.024 - 2 muzzle.x.)
+    const big = (this._big ||= new THREE.Vector3()).set(0, 0, 0);
+    if (this.kind === 'kit' && this.gun.anchors.muzzle) {
+      const extra = Math.max(0, 0.024 - 2 * this.gun.anchors.muzzle.x - 0.075);
+      big.set(extra * 0.6, -extra * 0.45, -extra * 0.9);
+      hipPos.add(big);
+    }
     const gl = this.gun.anchors.gripL;
     if (poses.support && gl && gl.z < -0.25) hipPos.fromArray(poses.support).sub(_v2.copy(gl).applyQuaternion(hipQ));
     // Turn that carries hip shots from the bore to the point of convergence.
@@ -406,6 +432,19 @@ export class ViewModel {
       this.swap = 0;
     }
     if (this.kind === 'grenade' && ctx.empty) this.swap = 0;
+
+    // A kit at work (treating yourself or the man ahead), or the wrench at a
+    // vehicle: brought out to its working pose (and back when it's done).
+    const kitUse = this.kind === 'kit' ? ctx.kitUse : null;
+    const working = !!kitUse || (this.kind === 'wrench' && !!ctx.repairing);
+    if (kitUse) this.workSelf = kitUse.self;
+    this.workW = approach(this.workW || 0, working ? 1 : 0, dt / 0.35);
+    this.workT = working ? (this.workT || 0) + dt : 0;
+    if (this.workW > 0) {
+      const carry = { p: hip.p.clone(), q: hip.q.clone() };
+      throwPose(carry, this.kind === 'wrench' ? WORK.wrench : this.workSelf ? WORK.self : WORK.other, smooth(this.workW), hip.p, hip.q);
+      hip.p.addScaledVector(big, smooth(this.workW));
+    }
     this.gun.root.visible = !(th?.phase === 'follow' || (this.kind === 'grenade' && ctx.empty));
 
     // Reload / bolt motions tilt the gun to show the action.
@@ -440,6 +479,16 @@ export class ViewModel {
     finalP.z += this.kickBack.x + this.blocked * 0.12;
     finalP.x += bx;
     finalP.y += by - lower - this.reloadTilt * 0.04;
+    // The wrench turning: it swings to and fro in its own plane about the nut
+    // in its jaws (a pull, then back for a fresh bite).
+    if (this.kind === 'wrench' && this.workW > 0 && this.gun.anchors.jaw) {
+      const ph = (this.workT * 0.9) % 1;
+      const swing = (ph < 0.6 ? smooth(ph / 0.6) : 1 - smooth((ph - 0.6) / 0.4)) * 0.55 - 0.2;
+      const jaw = this.gun.anchors.jaw.clone().applyQuaternion(finalQ).add(finalP);
+      const turn = _q2.setFromAxisAngle(_v2.set(1, 0, 0).applyQuaternion(finalQ), swing * this.workW);
+      finalQ.premultiply(turn);
+      finalP.sub(jaw).applyQuaternion(turn).add(jaw);
+    }
 
     // Place in the world, attached to the camera.
     this.camera.position.copy(cam.position);
@@ -621,11 +670,27 @@ export class ViewModel {
         left = anchors.coverHinge.clone().add(new THREE.Vector3(0, 0.02, -0.06));
       }
     }
+    // Kits and the wrench are held in the right hand alone; at work on a kit,
+    // the left hand comes up to take a dressing out and works it round.
+    const oneHand = this.kind === 'kit' || this.kind === 'wrench';
+    let leftAt = null;
+    if (this.kind === 'kit' && anchors.work && this.workW > 0.3) {
+      const a = this.workT * Math.PI * 2 * 1.4;
+      leftAt = anchors.work.clone().add(new THREE.Vector3(0.016 * Math.cos(a), 0.01 * Math.sin(a), 0.004 * Math.sin(a * 0.5)));
+    }
     // Without a support grip the left hand cups the right (a point below it).
-    if (!left && !anchors.gripL) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
+    if (!left && !anchors.gripL && !oneHand) left = (anchors.gripR || new THREE.Vector3(0, -0.05, 0.05)).clone().add(new THREE.Vector3(-0.03, -0.04, 0));
     // Throwing: the left hand pulls the pin, then drops away out of sight.
     const th = this.throwState;
     let leftWorld = null;
+    // One hand on the kit or wrench: the other one down, out of sight, or at
+    // work on the kit, the fingers to its face.
+    let leftG = null;
+    if (oneHand) {
+      const low = cam.position.clone().addScaledVector(camRight, -0.12).addScaledVector(camUp, -0.45).addScaledVector(camFwd, 0.3);
+      leftWorld = leftAt ? low.lerp(toWorld(leftAt), smooth(clamp((this.workW - 0.3) / 0.7, 0, 1))) : low;
+      leftG = { q: gunRoot.quaternion.clone().multiply(_q3.setFromAxisAngle(_v3.set(1, 0, 0), Math.PI / 2)), p: gunRoot.position };
+    }
     if (th) {
       const grip = anchors.gripR || new THREE.Vector3();
       const cup = toWorld(left || grip);
@@ -645,10 +710,11 @@ export class ViewModel {
       const S = shoulder(sgn);
       const [pr, pu, pf = 0] = set(sgn).pole;
       const pole = new THREE.Vector3().addScaledVector(camRight, pr).addScaledVector(camUp, pu).addScaledVector(camFwd, pf);
-      if (sgn < 0 && leftWorld) arms.place(sgn, S, G, { mode: 'point', point: leftWorld, pole, curl: pinch });
+      if (sgn < 0 && leftWorld) arms.place(sgn, S, leftG || G, { mode: 'point', point: leftWorld, pole, curl: pinch });
       else if (target) arms.place(sgn, S, G, { mode: 'point', point: toWorld(target), pole, curl: pinch });
       else if (sgn > 0 && th?.phase === 'follow') arms.place(sgn, S, G, { mode: 'grip', pole, curl: [0.2, 0.15, 0.25] }); // let go: hand open
-      else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? [1, 0.55, 0.82] : [0.95, 0.9, 0.45] });
+      // (A kit or the wrench in the fist: no trigger, the index closes too.)
+      else arms.place(sgn, S, G, { mode: 'grip', pole, curl: sgn > 0 ? (oneHand ? [1, 0.95, 0.7] : [1, 0.55, 0.82]) : [0.95, 0.9, 0.45] });
     }
   }
 }

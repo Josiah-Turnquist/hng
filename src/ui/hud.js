@@ -9,6 +9,7 @@ import { damp, clamp, clamp01, DEG, wrapAngle } from '../core/math.js';
 import { HIP_CONVERGE } from '../weapons/viewmodel.js';
 import { BattleMap } from './battleMap.js';
 import { healthStage } from '../vehicles/effects.js';
+import { healTarget, repairTarget, isHealKit } from '../game/kits.js';
 
 const _cv = new THREE.Vector3();
 
@@ -265,6 +266,7 @@ export class Hud {
       this.killLast = now;
     }
     const streak = quiet ? 1 : this.killStreak;
+    this.workVerb = null;
     const el = this.killEl;
     el.innerHTML = `<span class="v">${verb}</span> <span class="n"></span>${headshot ? ' <span class="h">Headshot</span>' : ''}${points ? ` <span class="p">+${points}</span>` : ''}${streak > 1 ? ` <span class="x">×${streak}</span>` : ''}`;
     el.querySelector('.n').textContent = name ?? '';
@@ -273,6 +275,19 @@ export class Hud {
     void el.offsetWidth; // (restart the animation)
     el.classList.add('pop');
     if (!quiet) this.game.audio?.play?.('killConfirm', null, { volume: 0.6 });
+  }
+
+  // What a kit or the wrench is doing, on the same small line under the sights
+  // ("Repairing Willys MB 64%"): quiet, and updated in place while the work
+  // goes on rather than popping up again each time.
+  workLine(verb, name) {
+    if (this.workVerb === verb && this.killT > 0) {
+      this.killEl.querySelector('.n').textContent = name ?? '';
+      this.killT = 2;
+      return;
+    }
+    this.killConfirm(name, { verb, quiet: true });
+    this.workVerb = verb;
   }
 
   damage(amount) {
@@ -325,11 +340,16 @@ export class Hud {
     this.bleedEl.style.display = s.bleed > 0 ? 'inline' : 'none';
     this.stamFill.style.width = `${b.stamina}%`;
     this.stamFill.style.opacity = b.staminaLock ? 0.35 : 1;
-    const act = s.action === 'bandage' ? ' · bandaging' : s.action === 'firstaid' ? ' · first aid' : '';
+    const act = s.action === 'bandage' ? ' · bandaging' : s.action === 'firstaid' || s.action === 'kit' ? ' · first aid' : s.action === 'repair' ? ' · repairing' : '';
     this.stanceEl.textContent = `${STANCE_NAMES[b.targetStance]}${b.sprinting ? ' · sprinting' : ''}${p.holdingBreath ? ' · holding breath' : ''}${act}`;
     if (w) {
       const d = w.def;
-      if (d.type === 'grenade') {
+      if (w.kit) {
+        // Kits: the uses left where the rounds would be (the wrench has none).
+        this.loadedEl.textContent = w.uses === null ? '' : `${w.uses}`;
+        this.reserveEl.textContent = w.uses === null ? '' : w.uses === 1 ? ' use' : ' uses';
+        this.modeEl.textContent = d.type === 'wrench' ? 'Hold fire at a damaged vehicle to repair it' : 'Fire: treat the wounded man in front of you, or yourself';
+      } else if (d.type === 'grenade') {
         this.loadedEl.textContent = `${(w.chambered ? 1 : 0) + (w.spareMags?.length || 0)}`;
         this.reserveEl.textContent = '';
         this.modeEl.textContent = 'Hold LMB to cook, release to throw';
@@ -703,21 +723,39 @@ export class Hud {
     }
   }
 
-  // On foot next to a vehicle or bike: which key gets you in, and where you'd sit.
+  // On foot next to a vehicle or bike: which key gets you in, and where you'd
+  // sit. With a kit in hand, who it would treat; with the wrench, the damaged
+  // vehicle it would mend (the fire key).
   _updateUse(p, dt) {
     const u = this.use;
     const s = p.soldier;
     u.t -= dt;
     if (u.t <= 0) {
       u.t = 0.15;
-      let text = '';
+      let text = '',
+        key = '';
       if (s.alive && !s.vehicle && this.game.cameraMode === 'first') {
+        const input = this.game.input;
+        const w = s.weapon;
         const pick = p.nearestPickup?.();
         const near = pick ? null : p.nearestVehicle();
-        if (pick) text = `Pick up: ${pick.w.def.name} (${pick.w.loaded + pick.w.reserveRounds} rounds)`;
-        else if (near) text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
+        const man = !pick && isHealKit(w?.def) && w.uses > 0 && !s.action ? healTarget(this.game, s, w.def.reach) : null;
+        const v = !pick && w?.def.type === 'wrench' && s.action !== 'repair' ? repairTarget(this.game, s, w.def.reach) : null;
+        const damaged = v?.alive && (v.hp < v.maxHp || Object.values(v.modules || {}).some((m) => m < 1));
+        if (pick) {
+          text = `Pick up: ${pick.w.def.name} (${pick.w.kit ? `${pick.w.uses ?? 'no'} uses` : `${pick.w.loaded + pick.w.reserveRounds} rounds`})`;
+          key = input.key('use');
+        } else if (man) {
+          text = `Treat ${man.name}`;
+          key = input.key('fire');
+        } else if (damaged) {
+          text = v.fire > 0 ? `${v.def.name} is burning` : `Repair ${v.def.name}`;
+          key = v.fire > 0 ? '' : input.key('fire');
+        } else if (near && s.action !== 'repair') {
+          text = near.seat < 0 ? `${near.v.def.name}: no free seat` : `Get in: ${near.v.def.name} (${near.v.seats[near.seat].name})`;
+          key = near.seat < 0 ? '' : input.key('use');
+        }
       }
-      const key = text && !text.endsWith('no free seat') ? this.game.input.key('use') : '';
       if (text !== u.text || key !== u.key) {
         u.text = text;
         u.key = key;
@@ -741,7 +779,7 @@ export class Hud {
     const vm = p.viewmodel;
     const cam = p.camera;
     let want = 0;
-    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && vm.gun && vm.visible) {
+    if (this.game.settings.get('crosshair') && this.game.cameraMode === 'first' && s.alive && !s.vehicle && w && w.def.type !== 'grenade' && !w.kit && vm.gun && vm.visible) {
       want = clamp01(1 - vm.aim * 2) * (1 - vm.sprint) * vm.swap * (1 - vm.blocked) * (vm.action ? 0.5 : 1);
     }
     c.a = damp(c.a, want, 16, dt);

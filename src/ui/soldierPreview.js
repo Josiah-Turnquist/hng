@@ -16,7 +16,7 @@ import { MODELS, buildGun } from '../weapons/models/index.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 
-const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade' };
+const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', firstaid: 'grenade', medkit: 'grenade', wrench: 'grenade' };
 const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
 
 function modelId(id) {
@@ -232,6 +232,9 @@ export class SoldierPreview {
     const f = new THREE.DirectionalLight(0xc0d0e8, 0.8);
     f.position.set(2, -1, -2);
     scene.add(k, f, new THREE.AmbientLight(0xffffff, 0.25), gun.root);
+    // (A kit or tool is modeled as the hand holds it: meta.picture turns it to
+    // show its face, lying along.)
+    if (gun.meta.picture) gun.root.rotation.set(...gun.meta.picture);
     gun.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(gun.root);
     const c = box.getCenter(new THREE.Vector3());

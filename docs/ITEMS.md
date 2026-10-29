@@ -47,7 +47,11 @@ The ids are fixed (the ribbons that open them are set in `src/game/ribbons.js`):
 - Kits (`type: 'firstaid' | 'medkit' | 'wrench'`): `firstaid_us`,
   `firstaid_ge`, `firstaid_su` (first-aid kit, 1 point), `medic_us`,
   `medic_ge`, `medic_su` (medic pouch, 2 points), `wrench` (adjustable wrench,
-  any army, 1 point).
+  any army, 1 point). The wrench is defined with `faction: 'US'` and
+  `anyArmy: true`; `weaponsFor()` in `defs.js` lists it for every army, and
+  code that keeps another army's weapons apart (`requirement()` and
+  `carriable()` in `ribbons.js`) should treat an `anyArmy` item as the
+  soldier's own. How the kits work: `src/game/kits.js`.
 
 ## Ribbon points
 

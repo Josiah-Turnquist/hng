@@ -15,6 +15,7 @@
 //   lod=0|1|2       level of detail (default 0)
 //   anchors=0       hide the anchor dots
 //   view=hip        the first-person hip view (as the game holds a rifle)
+//   view=fp&gun=firstaid_us&work=self|other|repair&t=2   a kit or the wrench at work
 //   view=close&at=x,y,z&from=x,y,z&fov=30   a close-up camera in gun space
 //   view=right|left|top|front|back            one big orthographic view (zoom, focus=z,y)
 //   sight=1&range=300  the sight picture through the iron sights
@@ -100,10 +101,25 @@ if (view === 'fp') {
   cam.rotation.set((lpitch * Math.PI) / 180, (lyaw * Math.PI) / 180, 0, 'YXZ');
   cam.updateMatrixWorld();
   const ctx = { aiming: params.get('aim') === '1', sprinting: false, speed: 0, onGround: true, stance: 0, lookDelta: [0, 0], sway: { yaw: 0, pitch: 0 }, blocked: false, sunDir: sky.sunDir, sunColor: sky.sun.color, sunIntensity: sky.sun.intensity, light: 1, ambient: 1 };
-  for (let i = 0; i < 150; i++) vm.update(1 / 60, cam, ctx);
+  // A kit or the wrench at work: work=self|other|repair, for t seconds (default 1.5).
+  const work = params.get('work');
+  const frames = Math.round(Number(params.get('t') || 2.5) * 60);
+  for (let i = 0; i < frames; i++) {
+    ctx.kitUse = work === 'self' || work === 'other' ? { self: work === 'self', t: i / 60, dur: 4 } : null;
+    ctx.repairing = work === 'repair';
+    vm.update(1 / 60, cam, ctx);
+  }
   vm.camera.fov = 52;
   vm.camera.aspect = W / H;
   vm.camera.updateProjectionMatrix();
+  // peek=x,y,z: look at the gun and hands from that offset (m, camera space) instead.
+  if (params.get('peek')) {
+    const g = vm.gun.root.getWorldPosition(new THREE.Vector3());
+    vm.camera.position.copy(cam.position).add(new THREE.Vector3(...vec(params.get('peek'))).applyQuaternion(cam.quaternion));
+    vm.camera.lookAt(g);
+    vm.camera.fov = 30;
+    vm.camera.updateProjectionMatrix();
+  }
   renderer.toneMappingExposure = Number(params.get('exposure') || 1.1); // the game's exposure outdoors (base 1/0.6, eye adaptation -0.6 stops)
   renderer.setViewport(0, 0, W, H);
   renderer.setScissor(0, 0, W, H);

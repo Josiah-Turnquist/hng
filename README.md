@@ -57,6 +57,8 @@ A kill: a short chime, the hit mark turns red, and a small line under the sights
 
 Grenades: hold the fire button to pull the pin and draw back (holding it longer cooks the grenade, its fuse burning), let go to throw. The grenade flies, bounces and rolls (further on stone than on soft ground) and goes off when its fuse runs out. A live grenade that lands within 12 m of you gets a mark on screen, red when it is close enough to hurt you (Settings > Screen > Grenade warning). A bandage is used up only once you have finished putting it on: move and you stop, but keep it.
 
+Kits, in an equipment slot as in the original game: a first-aid kit (3 uses) or a medic pouch (6, more health and faster) treats the wounded man of your side you look at within 2 m when you fire, or else yourself: it stops the bleeding and gives back about 40 (60) health over a few seconds, during which you can't shoot. The adjustable wrench (any army, meant for drivers and tank crews) repairs the vehicle you stand at while you hold fire, about 5% of it a second, and puts broken tracks, tires and engines right; not while it burns. The uses left show where the rounds would, and a line under the sights says what you did ("Healed Pvt. Weber", "Repairing Willys MB 64%").
+
 Fallen soldiers drop their main weapon, with whatever ammunition they had left; walk up to one and press the use key (F) to pick it up, leaving the gun you had in that slot in its place. Weapons on the ground stay for two minutes. Taking a hit flashes the edges of the screen red, jolts your view, and you hear it; bleeding hard blurs the edges of your view until you bandage.
 
 ### Scopes

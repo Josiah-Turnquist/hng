@@ -17,12 +17,17 @@
 //
 // A scoped rifle whose iron sights stay usable (def.irons) aims with one or the
 // other (toggleSights); each keeps its own range setting.
+//
+// Kits and the wrench (items/kits.js) have no mechanism: they never fire or
+// reload here, and only count their uses (game/kits.js works them).
 import { getAmmo } from './ammo.js';
+import { KIT_TYPES } from './items/kits.js';
 
 export class Weapon {
   constructor(def) {
     this.def = def;
-    this.ammo = getAmmo(def.ammo);
+    this.kit = KIT_TYPES.has(def.type);
+    this.ammo = this.kit ? null : getAmmo(def.ammo);
     this.modeIndex = 0;
     this.trigger = false;
     this.triggerWasDown = false;
@@ -79,6 +84,14 @@ export class Weapon {
   // Start fully loaded.
   fill() {
     const d = this.def;
+    if (this.kit) {
+      // Uses left (none counted for the wrench); nothing in a magazine.
+      this.uses = d.uses ?? null;
+      this.mag = 0;
+      this.chambered = false;
+      this.spareMags = [];
+      return;
+    }
     this.mag = d.capacity;
     this.chambered = false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
@@ -414,6 +427,10 @@ export class Weapon {
   // --- firing ------------------------------------------------------------------
   // Advance timers; returns the number of shots fired during this step (0 or 1).
   update(dt) {
+    if (this.kit) {
+      this.triggerWasDown = this.trigger;
+      return 0;
+    }
     // Keep the leftover fraction of a step so the cyclic rate is exact at any tick rate.
     this.cooldown -= dt;
     if (this.cooldown < 0 && !this.trigger) this.cooldown = 0;
@@ -526,7 +543,8 @@ export class Weapon {
   // Refill ammunition (ammo crates).
   resupply() {
     const d = this.def;
-    if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = d.reserve;
+    if (this.kit) this.uses = d.uses ?? null;
+    else if (d.feed === 'stripper' || d.feed === 'enbloc') this.clips = d.reserve;
     else if (d.feed === 'gate') this.loose = d.reserve;
     else if (d.feed === 'moon') this.clips = d.reserve;
     else if (this.spareMags) this.spareMags = new Array(d.reserve).fill(d.capacity);
