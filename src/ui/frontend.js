@@ -584,7 +584,7 @@ export function showFrontEnd(app) {
         const key = specialistKey(gun);
         const lv = key ? ribbonLevel(s.ribbons?.[key]).level : null;
         const pic = preview?.gunPicture(gun) || '';
-        ov.innerHTML = `<div class="cust-head"><span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><div class="cust-credits">${ICONS.coin}<b>${fmt(roster.credits || 0)}</b><span>Credits</span></div><button class="cust-close">Done</button></div><div class="cust-cols"></div><div class="cust-stats"></div><div class="lo-note"></div>`;
+        ov.innerHTML = `<div class="cust-head"><span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><button class="cust-close">Done</button></div><div class="cust-cols"></div><div class="cust-stats"></div><div class="lo-note"></div>`;
         ov.querySelector('h2').textContent = def.name;
         ov.querySelector('.cust-title small').textContent = key ? `${ribbonInfo(key).name}: level ${lv} of 12. Its upgrades open as it rises.` : 'Every upgrade is open for this gun.';
         ov.querySelector('.cust-close').addEventListener('click', close);
