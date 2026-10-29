@@ -382,7 +382,7 @@ export class ViewModel {
     const big = (this._big ||= new THREE.Vector3()).set(0, 0, 0);
     if (this.kind === 'kit' && this.gun.anchors.muzzle) {
       const extra = Math.max(0, 0.024 - 2 * this.gun.anchors.muzzle.x - 0.075);
-      big.set(extra * 0.6, -extra * 0.45, -extra * 0.9);
+      big.set(extra * 0.75, -extra * 0.8, -extra * 0.9);
       hipPos.add(big);
     }
     const gl = this.gun.anchors.gripL;
