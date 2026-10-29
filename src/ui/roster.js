@@ -13,6 +13,7 @@ import { wearable } from '../game/badges.js';
 import { DEFAULT_LOADOUT, WEAPONS, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 import { ribbonInfo, ribbonLevel, unlocked, tankUnlocked, carriable } from '../game/ribbons.js';
 import { variantCount } from '../actors/soldierKit.js';
+import { owns, checkArmory, battleCredits } from '../game/armory.js';
 import '../actors/soldierKitUS.js';
 import '../actors/soldierKitGE.js';
 import '../actors/soldierKitSU.js';
@@ -101,6 +102,7 @@ function makeSoldier(faction, cls, name, rng = Math.random) {
     loadout: [...DEFAULT_LOADOUT[faction][cls]],
     tank: null,
     ribbons: {},
+    armory: {},
     stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 },
   };
 }
@@ -115,6 +117,7 @@ function check(s) {
     s.ribbons = kills ? { [s.cls === 'tanker' ? 'armorAssault' : 'infantryAssault']: kills * 85 } : {};
   }
   for (const k of Object.keys(s.ribbons)) if (!ribbonInfo(k) || !(s.ribbons[k] >= 0)) delete s.ribbons[k];
+  checkArmory(s);
   s.loadout = fitLoadout(s, s.loadout);
   if (s.tank && !tankUnlocked(s, s.tank)) s.tank = null;
   if (s.badge && !wearable(s).includes(s.badge)) s.badge = null;
@@ -132,7 +135,7 @@ export const BATTLE_SIZE = 24;
 // The starting roster: an infantry soldier of each army.
 export function newRoster(rng = Math.random) {
   const soldiers = ['US', 'GE', 'SU'].map((f) => makeSoldier(f, 'infantry', null, rng));
-  return { soldiers, selectedId: soldiers[0].id, mission: { map: 'town', side: 'attack', enemy: null, bots: BATTLE_SIZE, minutes: 20, size: 2 } };
+  return { soldiers, selectedId: soldiers[0].id, credits: 0, mission: { map: 'town', side: 'attack', enemy: null, bots: BATTLE_SIZE, minutes: 20, size: 2 } };
 }
 
 export function loadRoster() {
@@ -146,6 +149,8 @@ export function loadRoster() {
   r.soldiers = r.soldiers.map(check).filter(Boolean);
   if (!r.soldiers.length) return newRoster();
   if (!r.soldiers.some((s) => s.id === r.selectedId)) r.selectedId = r.soldiers[0].id;
+  // Saved before credits: what his soldiers' experience would have earned.
+  if (!(r.credits >= 0)) r.credits = battleCredits(r.soldiers.reduce((n, s) => n + s.xp, 0));
   r.mission = { map: 'town', side: 'attack', enemy: null, bots: BATTLE_SIZE, minutes: 20, ...(r.mission || {}) };
   // Saved before battles grew: the old default of 10 a side becomes the new one.
   if (!r.mission.size) {
@@ -189,7 +194,7 @@ export function dismiss(r, id) {
   return true;
 }
 
-// After a battle: experience, ribbon points and the record. Returns { before,
+// After a battle: experience, ribbon points, credits and the record. Returns { before,
 // after } ranks, the ribbons that went up a level ({ key, from, to, points }),
 // and what that opened (weapons and tanks, by name).
 export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0, captures = 0, ribbons = {} } = {}) {
@@ -215,11 +220,13 @@ export function awardBattle(r, id, { xp = 0, won = false, kills = 0, deaths = 0,
   s.stats.kills += kills;
   s.stats.deaths += deaths;
   s.stats.captures += captures;
-  return { before, after: rankOf(s.xp).rank, ribbonUps, gained, unlocks };
+  const credits = battleCredits(xp);
+  r.credits = (r.credits || 0) + credits;
+  return { before, after: rankOf(s.xp).rank, ribbonUps, gained, unlocks, credits };
 }
 
 // A loadout made whole for a soldier: one item (or none) per slot of
-// LOADOUT_SLOTS, each one he may carry and has opened (else his kit's for that
+// LOADOUT_SLOTS, each one he may carry, has opened and owns (else his kit's for that
 // slot), none twice, his main weapon always; then within his equipment points,
 // giving up what comes last (binoculars, close combat, equipment, sidearm)
 // until it fits.
@@ -228,7 +235,7 @@ export function fitLoadout(s, ids = []) {
   const out = LOADOUT_SLOTS.map((slot, i) => {
     const id = ids?.[i] ?? null;
     if (!id) return i === 0 ? def[0] : null;
-    return carriable(s, slot).some((w) => w.id === id) && unlocked(s, id) ? id : def[i];
+    return carriable(s, slot).some((w) => w.id === id) && unlocked(s, id) && owns(s, id) ? id : def[i];
   });
   for (let i = 1; i < out.length; i++) if (out[i] && out.indexOf(out[i]) < i) out[i] = null;
   const budget = CLASS_POINTS[s.cls] ?? 10;

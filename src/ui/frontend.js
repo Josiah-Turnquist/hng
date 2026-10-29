@@ -12,6 +12,8 @@ import { FACTIONS, WEAPONS, baseOf, weaponsFor, scopeChoices, LOADOUT_SLOTS, CLA
 import { BADGES, badgeOf, badgeTiers, wearable } from '../game/badges.js';
 import { RIBBONS, ribbonInfo, ribbonLevel, ribbonsFor, requirement, requirementText, unlocked, carriable, tankRequirement, tankUnlocked } from '../game/ribbons.js';
 import { AMMO } from '../weapons/ammo.js';
+import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, describe, damageScale as scaleAt } from '../weapons/upgrades.js';
+import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, picksOf, fit, loadoutUpgrades } from '../game/armory.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
 import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
@@ -82,6 +84,7 @@ export function showFrontEnd(app) {
           <button data-screen="progression">Progression</button>
         </nav>
         <div class="fe-status">
+          <div class="fe-credits"></div>
           <div class="fe-level" title="Player level"></div>
           <div class="fe-army"></div>
           <button class="fe-icon" data-screen="settings" title="Settings">${ICONS.gear}</button>
@@ -121,6 +124,7 @@ export function showFrontEnd(app) {
         tank: s.cls === 'tanker' ? s.tank || TANKS[s.faction][0][0] : null,
         loadout: [...s.loadout],
         badge: badgeOf(s),
+        upgrades: loadoutUpgrades(s, s.loadout),
         bots: m.bots,
         minutes: m.minutes,
         soldier: { id: s.id, name: s.name, seed: s.seed, variant: s.variant },
@@ -132,6 +136,9 @@ export function showFrontEnd(app) {
       const lv = playerLevel(roster);
       root.querySelector('.fe-level').innerHTML = `<b>${lv.level}</b><span>Level</span><i style="--p:${lv.progress.toFixed(3)}"></i>`;
       root.querySelector('.fe-level').title = `Player level ${lv.level}: ${fmt(lv.xp)} XP from all your soldiers`;
+      const cr = root.querySelector('.fe-credits');
+      cr.innerHTML = `${ICONS.coin || ''}<b>${fmt(roster.credits || 0)}</b><span>Credits</span>`;
+      cr.title = 'Credits, shared by all your soldiers: earned in battle, spent on guns and upgrades';
       root.querySelector('.fe-army').innerHTML = `${emblem(s.faction)}<span>${FACTIONS[s.faction].army}</span>`;
       root.querySelectorAll('.fe-tabs button, .fe-icon[data-screen]').forEach((b) => b.classList.toggle('on', b.dataset.screen === screen));
     };
@@ -272,7 +279,7 @@ export function showFrontEnd(app) {
           const room = budget - used + (cur ? pointsOf(cur.id) : 0);
           const box = el('div', 'slot');
           box.appendChild(el('div', 'slot-label', `${labels[i]}<span>${cur ? `${pointsOf(cur.id)} pt` : 'empty'}</span>`));
-          const card = cur ? weaponCard(cur, true) : emptyCard(true);
+          const card = cur ? weaponCard(upgradedDef(cur.id, picksOf(s, cur.id)), true) : emptyCard(true);
           box.appendChild(card);
           if (options.length > (cur ? 1 : 0) || (cur && i > 0)) {
             const pick = el('div', 'slot-pick');
@@ -283,7 +290,10 @@ export function showFrontEnd(app) {
               const open = unlocked(s, id);
               const fits = pointsOf(id) <= room;
               const c = weaponCard(w, cur && w === baseOf(cur), open ? null : requirement(id, s.cls, s.faction), w.faction !== s.faction, open && !fits ? pointsOf(id) - room : 0);
-              if (open && fits) c.addEventListener('click', () => pickWeapon(id));
+              if (open && fits) {
+                if (owns(s, id)) c.addEventListener('click', () => pickWeapon(id));
+                else shopCard(c, s, id, () => pickWeapon(id));
+              }
               pick.appendChild(c);
             }
             // Any slot but the main weapon's may be left empty.
@@ -312,14 +322,24 @@ export function showFrontEnd(app) {
               b.appendChild(el('b')).textContent = c.scope ? c.scope.name : 'None';
               b.appendChild(el('small')).textContent = c.note;
               if (c.def.fitting) b.title = c.def.fitting.mount;
-              b.addEventListener('click', () => c.id !== cur.id && pickWeapon(c.id));
+              if (owns(s, c.id)) b.addEventListener('click', () => c.id !== cur.id && pickWeapon(c.id));
+              else shopCard(b, s, c.id, () => pickWeapon(c.id));
               sc.appendChild(b);
             }
             box.appendChild(sc);
           }
+          // His upgrades for this gun: the customization screen.
+          if (cur && upgradesOf(cur.id).length && owns(s, cur.id)) {
+            const n = Object.keys(picksOf(s, cur.id)).length;
+            const b = el('button', 'upg-open');
+            b.innerHTML = `${ICONS.wrench || ''}<span>Customize</span><small></small>`;
+            b.querySelector('small').textContent = n ? `${n} upgrade${n > 1 ? 's' : ''} fitted` : 'Ammunition, barrel, internal, sight, trigger';
+            b.addEventListener('click', () => customize(s, cur.id));
+            box.appendChild(b);
+          }
           body.appendChild(box);
         });
-        body.appendChild(el('div', 'lo-note', `As in the original game, everything he carries costs equipment points, and a ${CLASS_NAMES[s.cls].toLowerCase()} soldier has ${CLASS_POINTS[s.cls]}. Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab).`));
+        body.appendChild(el('div', 'lo-note', `As in the original game, everything he carries costs equipment points, and a ${CLASS_NAMES[s.cls].toLowerCase()} soldier has ${CLASS_POINTS[s.cls]}. Every soldier also carries field dressings to bandage wounds. More weapons open as his ribbons rise (the Ribbons tab); once open, each is bought once with credits.`));
       } else if (tab === 'vehicle') {
         if (s.cls === 'tanker') {
           if (!TANKS[s.faction].some((t) => t[0] === s.tank) || !tankUnlocked(s, s.tank)) s.tank = TANKS[s.faction][0][0];
@@ -503,6 +523,158 @@ export function showFrontEnd(app) {
       box.querySelector('small').textContent = what;
       box.querySelector('.rm-change').addEventListener('click', () => show('generals'));
       box.querySelector('.ready-btn').addEventListener('click', go);
+    }
+
+    // A gun, sight or item he has opened but not bought: its price, and a
+    // second click to buy it with the player's credits.
+    function shopCard(c, s, id, after) {
+      c.classList.add('shop');
+      const tag = c.appendChild(el('em', 'price'));
+      const price = priceOf(id);
+      const idle = () => {
+        c.classList.remove('confirm');
+        tag.textContent = `${fmt(price)} credits`;
+      };
+      idle();
+      c.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const can = canBuy(roster, s, id);
+        if (!can.ok) {
+          tag.textContent = can.why === 'credits' ? `${fmt(price)} credits: ${fmt(price - (roster.credits || 0))} more than you have` : 'Not open yet';
+          return;
+        }
+        if (!c.classList.contains('confirm')) {
+          c.classList.add('confirm');
+          tag.textContent = `Buy for ${fmt(price)} credits? Click again`;
+          setTimeout(idle, 4000);
+          return;
+        }
+        buy(roster, s, id);
+        save();
+        topBar();
+        after();
+      });
+    }
+
+    // The customization screen, as in the original game: the gun's five upgrade
+    // slots, the upgrades for each with what they change, which are open (by
+    // the gun's Specialist ribbon), bought and fitted, and the gun as fitted.
+    function customize(s, gun) {
+      const def = WEAPONS[gun];
+      const entry = GUN_UPGRADES[gun] || GUN_UPGRADES[def.base];
+      main.querySelector('.cust')?.remove();
+      const ov = el('div', 'cust');
+      main.appendChild(ov);
+      const close = () => {
+        ov.remove();
+        window.removeEventListener('keydown', onEsc, true);
+        loadout(s, 'weapons');
+      };
+      const onEsc = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          close();
+        }
+      };
+      window.addEventListener('keydown', onEsc, true);
+      let asking = null; // the upgrade waiting for a second click to buy
+      const draw = () => {
+        const picks = picksOf(s, gun);
+        const now = upgradedDef(gun, picks);
+        const key = specialistKey(gun);
+        const lv = key ? ribbonLevel(s.ribbons?.[key]).level : null;
+        const pic = preview?.gunPicture(gun) || '';
+        ov.innerHTML = `<div class="cust-head"><span class="wpn-pic">${pic ? `<img alt="" src="${pic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><div class="cust-credits">${ICONS.coin}<b>${fmt(roster.credits || 0)}</b><span>Credits</span></div><button class="cust-close">Done</button></div><div class="cust-cols"></div><div class="cust-stats"></div><div class="lo-note"></div>`;
+        ov.querySelector('h2').textContent = def.name;
+        ov.querySelector('.cust-title small').textContent = key ? `${ribbonInfo(key).name}: level ${lv} of 12. Its upgrades open as it rises.` : 'Every upgrade is open for this gun.';
+        ov.querySelector('.cust-close').addEventListener('click', close);
+        const cols = ov.querySelector('.cust-cols');
+        for (const slot of UPGRADE_SLOTS) {
+          const col = el('div', 'cust-col');
+          col.appendChild(el('h4')).textContent = SLOT_NAMES[slot];
+          const std = slot === 'ammo' ? AMMO_TYPES[entry?.ammo]?.name || 'Service ammunition' : slot === 'sight' ? (def.scope ? def.scope.name : 'Iron sights') : 'Standard';
+          const t0 = el('button', `upg${picks[slot] ? '' : ' on'}`);
+          t0.appendChild(el('b')).textContent = std;
+          t0.appendChild(el('small')).textContent = slot === 'ammo' ? 'Standard issue' : 'As issued';
+          t0.addEventListener('click', () => {
+            fit(s, gun, slot, null);
+            save();
+            draw();
+          });
+          col.appendChild(t0);
+          const list = upgradesOf(gun)
+            .filter((u) => u.slot === slot)
+            .sort((a, b) => a.level - b.level || a.credits - b.credits);
+          if (!list.length) col.appendChild(el('div', 'upg-none', 'Nothing for this gun'));
+          for (const u of list) {
+            const have = ownsUpgrade(s, gun, u.id);
+            const open = upgradeOpen(s, gun, u.id);
+            const t = el('button', `upg${picks[slot] === u.id ? ' on' : ''}${open ? '' : ' locked'}${have ? ' owned' : ''}`);
+            t.appendChild(el('b')).textContent = u.name;
+            if (u.cartridge) t.appendChild(el('i')).textContent = u.cartridge;
+            const fx = t.appendChild(el('span', 'upg-fx'));
+            for (const d of describe(gun, u.id)) fx.appendChild(el('span', d.good ? 'good' : 'bad')).textContent = d.text;
+            const state = t.appendChild(el('small'));
+            if (picks[slot] === u.id) state.textContent = 'Fitted';
+            else if (have) state.textContent = 'Owned: click to fit';
+            else if (!open) state.textContent = `Opens at Specialist level ${u.level}`;
+            else if (asking === u.id) state.textContent = `Buy for ${fmt(u.credits)} credits? Click again`;
+            else state.textContent = `${fmt(u.credits)} credits`;
+            if (!have && open && (roster.credits || 0) < u.credits) t.classList.add('short');
+            t.addEventListener('click', () => {
+              if (have) {
+                fit(s, gun, slot, u.id);
+                save();
+              } else if (open) {
+                const can = canBuyUpgrade(roster, s, gun, u.id);
+                if (!can.ok) {
+                  state.textContent = can.why === 'credits' ? `${fmt(u.credits)} credits: ${fmt(u.credits - (roster.credits || 0))} more than you have` : 'Not available';
+                  return;
+                }
+                if (asking !== u.id) {
+                  asking = u.id;
+                  draw();
+                  return;
+                }
+                asking = null;
+                buyUpgrade(roster, s, gun, u.id);
+                fit(s, gun, slot, u.id);
+                save();
+                topBar();
+              } else return;
+              draw();
+            });
+            col.appendChild(t);
+          }
+          cols.appendChild(col);
+        }
+        // The gun as fitted against the gun as issued.
+        const st = ov.querySelector('.cust-stats');
+        const row = (label, a, b, unit, better, digits = 0) => {
+          const r = el('div', 'cs-row');
+          const same = Math.abs(a - b) < 1e-6;
+          const good = better > 0 ? b > a : b < a;
+          r.innerHTML = `<span></span><b></b>`;
+          r.querySelector('span').textContent = label;
+          r.querySelector('b').textContent = same ? `${a.toFixed(digits)}${unit}` : `${a.toFixed(digits)} → ${b.toFixed(digits)}${unit}`;
+          if (!same) r.classList.add(good ? 'good' : 'bad');
+          st.appendChild(r);
+        };
+        const dmg = (d, x) => 100 * scaleAt(d, x);
+        row('Damage close in', 100, dmg(now, 0), '%', 1);
+        row('Damage at 300 m', 100, dmg(now, 300), '%', 1);
+        row('Muzzle velocity', def.mv, now.mv, ' m/s', 1);
+        if (def.bolt?.cycle) row('Working the bolt', def.bolt.cycle, now.bolt.cycle, ' s', -1, 2);
+        else if (def.rpm) row('Rate of fire', def.rpm, now.rpm, ' rounds/min', 1);
+        row('Spread aimed', def.accuracy, now.accuracy, ' MOA', -1, 1);
+        row('Spread from the hip', def.hipError, now.hipError * (now.hipStance?.stand ?? 1), '°', -1, 1);
+        row('Kick', (def.recoil?.rise ?? 1) * 100, (now.recoil?.rise ?? 1) * 100, '%', -1);
+        row('Weight', def.mass, now.mass, ' kg', -1, 2);
+        if (now.scope && !def.scope) row('Scope', 1, now.scope.mag, 'x', 1, 1);
+        ov.querySelector('.lo-note').textContent =
+          'The upgrades, ammunition and prices are the original game\'s, and so are their numbers. Each is bought once with credits and can be fitted or taken off at any time. The levels that open them are ours: the original\'s own tables for them did not survive in a form that matches.';
+      };
+      draw();
     }
 
     function recruitPanel() {

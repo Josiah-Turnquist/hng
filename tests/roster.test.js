@@ -89,7 +89,7 @@ test("equipment points: a loadout fits the class's budget, as in the original ga
     }
   // An MG 42 gunner (7) has room for his pistol (2) or a grenade (2), not both:
   // what comes last gives way.
-  const s = { faction: 'GE', cls: 'infantry', ribbons: { lmgAssault: 1e6, handgunAssault: 1e6 } };
+  const s = { faction: 'GE', cls: 'infantry', ribbons: { lmgAssault: 1e6, handgunAssault: 1e6 }, armory: { mg42: { bought: [], picks: {} } } };
   const l = fitLoadout(s, ['mg42', 'c96', 'stielhandgranate24', null, null, null, null]);
   assert.deepEqual(l.slice(0, 3), ['mg42', 'c96', null]);
   // Nothing twice; empty slots stay empty; the main weapon is always there.

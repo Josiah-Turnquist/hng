@@ -344,10 +344,12 @@ export class ViewModel {
     this.lagYaw.x = clamp(this.lagYaw.x, -0.08, 0.08);
     this.lagPitch.x = clamp(this.lagPitch.x, -0.06, 0.06);
 
-    this.kickBack.step(dt);
-    this.kickPitch.step(dt);
-    this.kickYaw.step(dt);
-    this.kickRoll.step(dt);
+    // The kick settles faster or slower with the gun's upgrades (recoilSettle).
+    const kt = dt * (def.recoilSettle ?? 1);
+    this.kickBack.step(kt);
+    this.kickPitch.step(kt);
+    this.kickYaw.step(kt);
+    this.kickRoll.step(kt);
 
     // Walking bob (smaller when aiming).
     const moving = ctx.onGround ? Math.min(1, ctx.speed / 3.5) : 0;

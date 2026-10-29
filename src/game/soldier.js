@@ -7,6 +7,7 @@
 // bandaged; leg wounds slow you down, arm wounds make your aim shakier.
 // Like the original game, health recovers on its own up to the top of the
 // current third once you stop bleeding.
+import { upgradedDef, damageScale } from '../weapons/upgrades.js';
 import { badgeValue } from './badges.js';
 import { Body, STANCE } from '../actors/body.js';
 import { Weapon } from '../weapons/weapon.js';
@@ -44,7 +45,7 @@ export function bulletDamage(energyJ, diameterM) {
 let nextSoldierId = 1;
 
 export class Soldier {
-  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badge = null }) {
+  constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badge = null, upgrades = null }) {
     this.id = nextSoldierId++;
     this.game = game;
     this.faction = faction;
@@ -59,6 +60,7 @@ export class Soldier {
     this.loadout = loadout.slice(); // the weapons he set out with (ids): he has them again each time he comes back
     this.badge = badge; // the combat badge he wears: { id, tier, value } (game/badges.js)
     this.body.staminaRegenMul = badgeValue(this, 'marathonMan', 1);
+    this.upgrades = upgrades; // the upgrades fitted to his guns: { gun: { slot: id } } (weapons/upgrades.js)
     this.weapons = loadout.map((id, i) => this._arm(id, i));
     this.current = 0;
     this.health = 100;
@@ -182,7 +184,7 @@ export class Soldier {
     if (!this.alive) return 0;
     const ammo = projectile.ammo;
     const zone = ZONES[info.part] ?? 1;
-    let dmg = bulletDamage(info.energy, ammo.diameter) * zone;
+    let dmg = bulletDamage(info.energy, ammo.diameter) * zone * damageScale(projectile.weapon, projectile.distance);
     if (ammo.explosive && !ammo.thrown) dmg = Math.max(dmg, 150);
     this.lastHitTime = this.game.time;
     this.lastHitDir = { x: -info.dirX, z: -info.dirZ };
@@ -261,12 +263,12 @@ export class Soldier {
     this._updateLoad();
   }
 
-  // A weapon of his loadout, as his combat badge has it: Hoarder's spare
-  // magazines for his main weapon, Dynamite Lover's extra grenades, Fast
-  // Reload (game/badges.js).
+  // A weapon of his loadout, with the upgrades he fitted to it, and as his
+  // combat badge has it: Hoarder's spare magazines for his main weapon,
+  // Dynamite Lover's extra grenades, Fast Reload (game/badges.js).
   _arm(id, i) {
     if (!id || !WEAPONS[id]) return null;
-    const w = new Weapon(WEAPONS[id]);
+    const w = new Weapon(upgradedDef(id, this.upgrades?.[id]));
     const extra = i === 0 ? badgeValue(this, 'hoarder', 0) : w.def.type === 'grenade' ? badgeValue(this, 'dynamiteLover', 0) : 0;
     if (extra) {
       w.extraReserve = extra;

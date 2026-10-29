@@ -287,6 +287,7 @@ export class App {
           <div><b>${s.deaths}</b><span>Times fallen</span></div>
           <div><b>${s.captures || 0}</b><span>Points taken</span></div>
           <div class="xp"><b>${r ? `+${r.xp.toLocaleString('en-US')}` : '0'}</b><span>Experience</span></div>
+          <div class="br-credits"><b>${r ? `+${(r.credits || 0).toLocaleString('en-US')}` : '0'}</b><span>Credits</span></div>
         </div>
         ${
           r

@@ -437,7 +437,7 @@ export class Weapon {
     // Keep the leftover fraction of a step so the cyclic rate is exact at any tick rate.
     this.cooldown -= dt;
     if (this.cooldown < 0 && !this.trigger) this.cooldown = 0;
-    this.heat = Math.max(0, this.heat - dt * (this.heat > 100 ? 0.9 : 0.6));
+    this.heat = Math.max(0, this.heat - dt * (this.heat > 100 ? 0.9 : 0.6) * (this.def.heatSettle ?? 1));
 
     if (this.sequence) {
       this.stepT += dt;

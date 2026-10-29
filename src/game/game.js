@@ -107,7 +107,7 @@ export class Game {
       });
     } else this.mode = new RangeMode(this);
     const spawn = this.mode.playerSpawn();
-    const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z, badge: this.opts.badge || null });
+    const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z, badge: this.opts.badge || null, upgrades: this.opts.upgrades || null });
     player.yaw = spawn.yaw;
     this.soldiers.push(player);
     this.player = new PlayerController(this, player);

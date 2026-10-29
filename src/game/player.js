@@ -402,7 +402,8 @@ export class PlayerController {
   spread(w, aimed) {
     const s = this.soldier;
     const d = w.def;
-    let err = aimed ? 0 : d.hipError * DEG * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.8 : 1) * (1 + s.body.moving * 0.25) * badgeValue(s, 'pointShooter', 1);
+    const hs = d.hipStance;
+    let err = aimed ? 0 : d.hipError * DEG * 0.5 * (s.body.stance === STANCE.PRONE ? 0.6 * (hs?.prone ?? 1) : s.body.stance === STANCE.CROUCH ? 0.8 * (hs?.crouch ?? 1) : hs?.stand ?? 1) * (1 + s.body.moving * 0.25) * badgeValue(s, 'pointShooter', 1);
     err = Math.hypot(err, (d.accuracy || 0) * 0.000291 * 0.42);
     if (w.heat > 120) err *= 1 + (w.heat - 120) / 150;
     return err;
