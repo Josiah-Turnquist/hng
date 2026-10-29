@@ -138,12 +138,11 @@ export function showFrontEnd(app) {
     let preview = null;
     try {
       preview = new SoldierPreview(app.renderer);
-      // (Trying out backdrops: ?backdrop=dark|smoke|mist|dusk|pale|night.)
-      const bd = app.params?.get?.('backdrop');
-      if (bd) {
-        preview.setBackdrop(bd);
-        root.dataset.backdrop = bd;
-      }
+      // The backdrop behind him: Mist (the others kept to compare, by
+      // ?backdrop=dark|smoke|mist|dusk|pale|night).
+      const bd = app.params?.get?.('backdrop') || 'mist';
+      preview.setBackdrop(bd);
+      root.dataset.backdrop = bd;
     } catch (e) {
       console.warn('No soldier preview', e);
     }
