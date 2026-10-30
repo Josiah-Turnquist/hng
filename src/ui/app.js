@@ -9,6 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
 import { connect, OnlineBattle } from '../net/online.js';
+import { syncProgress } from '../net/progress.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
@@ -96,6 +97,13 @@ export class App {
       // Played from the game server: sign in first (no guests). Offline (a
       // file, the claude.ai copy): straight in.
       this.account ??= await signInScreen(this.root);
+      // Signed in: his soldiers and war from the server (and kept there from now on).
+      if (this.account && !this.progressSynced) {
+        const note = this._note('Loading your soldiers...');
+        this.progressSynced = await syncProgress(this.account).catch(() => false);
+        note.remove();
+        if (!this.progressSynced) console.warn('Progress is kept in this browser only for now');
+      }
       // An online battle: joined before the map loads (the server says the
       // side, the armies and the battle's dice). If it can't be joined, back
       // to the menu with the reason.

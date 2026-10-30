@@ -17,6 +17,7 @@ import { owns, checkArmory, battleCredits } from '../game/armory.js';
 import '../actors/soldierKitUS.js';
 import '../actors/soldierKitGE.js';
 import '../actors/soldierKitSU.js';
+import { saved } from '../core/saved.js';
 
 const KEY = 'hng.roster.v1';
 
@@ -170,6 +171,7 @@ export function saveRoster(r) {
   } catch {
     /* storage unavailable: the roster lasts for this visit */
   }
+  saved('roster');
 }
 
 export function selected(r) {

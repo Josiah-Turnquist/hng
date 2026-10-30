@@ -2,8 +2,9 @@
 //
 //   /         the game (index.html and its files: src/, assets/, three.js)
 //   /health   "ok", for Railway's health check
-//   /api/config     { online: true, protocol, devNames }: the page asks, to know it can play online
+//   /api/config     { online: true, protocol, devNames, progress }: the page asks, to know it can play online
 //   /api/auth/...   sign-in, passed on to Neon Auth (src/server/authProxy.js)
+//   /api/progress   a signed-in player's soldiers and war, saved in the database (src/server/progress.js)
 //   /play     the WebSocket a player's browser plays over
 //
 // A player's first message says who he is and which soldier he brings:
@@ -19,6 +20,8 @@
 // NEON_AUTH_BASE_URL (Neon Auth; the game's own by default), NEON_AUTH_JWKS_URL
 // (its public keys; worked out from the base by default), NEON_AUTH_ISSUER (optional),
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
+// DATABASE_URL (Neon's Postgres, for saved progress; without it progress
+// stays in each browser),
 // BATTLE_SIZE (bots and players a side, default 12).
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
@@ -30,6 +33,8 @@ import { WebSocketServer } from 'ws';
 import { BattleRoom } from '../src/server/room.js';
 import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
+import { progressHandler } from '../src/server/progress.js';
+import { openProgressStore } from '../src/server/progressStore.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -37,8 +42,9 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, log = console.log } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
   let room = null;
+  const progress = progressHandler({ store, check, log });
   let opening = null;
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
@@ -82,13 +88,18 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname === '/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
-      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION, devNames }));
+      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION, devNames, progress: !!store }));
       if (url.pathname.startsWith('/api/auth/')) {
         // (How long each sign-in step takes, in the server's log: no names or addresses.)
         const t0 = performance.now();
         const path = url.pathname.slice('/api/auth/'.length);
         await proxyAuth(req, res, path, authBase);
         return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
+      }
+      if (url.pathname === '/api/progress') {
+        const t0 = performance.now();
+        await progress(req, res);
+        return log(`progress ${req.method}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
       }
       let path = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '') || 'index.html';
       if (!PUBLIC.some((p) => path === p || path.startsWith(p + sep) || path.startsWith(p + '/'))) return res.writeHead(404).end('Not found');
@@ -151,7 +162,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => room, close: () => new Promise((done) => { room?.close(); wss.close(); http.close(done); }) });
+      ok({ http, wss, port: http.address().port, room: () => room, close: () => new Promise((done) => { room?.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }

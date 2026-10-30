@@ -409,6 +409,26 @@ Neon database and Neon Auth (email, Google, GitHub). Soldiers, loadouts and
 unlocks saved on the server; experience and credits awarded by the server at the
 end of each battle. A guest can turn into an account without losing progress.
 
+*Phase 2 so far.* Each account's progress is kept in Neon's Postgres: one
+row an account in a `progress` table (made by the server the first time it
+is needed) with his soldiers (the roster: experience, credits, guns,
+upgrades, ribbons, badges, loadouts) and his war, as JSON, and a revision
+number. The game server answers `/api/progress` (`src/server/progress.js`,
+`src/server/progressStore.js`): GET loads, PUT saves, signed in with the same
+Neon Auth token as battles; a save based on an older revision is refused
+with what is there now. In the browser (`src/net/progress.js`) the game
+still reads and writes its soldiers and war as before; signing in loads the
+server's copy first, every save (`src/core/saved.js`) goes to the server two
+seconds later (at once when the page closes), and a newer copy saved from
+another computer wins and the page reloads to show it. A new account takes
+the progress already played in that browser, unless another account claimed
+it first. Settings (graphics, keys) stay with each computer. On Railway it
+needs `DATABASE_URL` (Neon's connection string, pooled); without it the
+server says so and progress stays in each browser as before. Tests:
+`tests/progress.test.js` (with `TEST_DATABASE_URL` it also runs against a
+real Postgres). Still to come: the server working out each online battle's
+experience and credits itself, so they can't be faked.
+
 **Phase 3: the shared war (about 2 weeks).**
 The war service on Railway with the war kept in Neon. Generals (chosen by hand
 for the beta) give orders from the Generals tab; everyone sees the same map.

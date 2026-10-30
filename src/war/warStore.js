@@ -6,6 +6,7 @@
 // best rank among his soldiers of the army he leads counts.
 import { save, load } from './war.js';
 import { rankOf } from '../ui/roster.js';
+import { saved } from '../core/saved.js';
 
 const KEY = 'hng.war.v1';
 
@@ -23,6 +24,7 @@ export function saveWar(war) {
   } catch {
     /* no storage: the war lasts as long as the page */
   }
+  saved('war');
 }
 
 // Who may lead the war. In the original a soldier of rank 18 could be made a
