@@ -215,6 +215,12 @@ bool vegHide = vegDd < uVegShadow.x || vegDd > uVegShadow.y;`);
   return { material: m, depth, uniforms: own };
 }
 
+// A standing impostor card fades out between these values of |cos| of the angle
+// between its face and the eye (seen from above). The two cards stand at right
+// angles, so one of them always faces the eye at least at cos 45 degrees: the end
+// of the fade must stay below that, or a tree could thin out.
+export const IMPOSTOR_EDGE_FADE = [0.12, 0.3];
+
 // Far trees: three crossed cards with baked views (InstancedBufferGeometry from
 // impostorGeometry). Per instance: iPos (x, y, z, yaw), iSize (width, height,
 // variant, 0). imp.rects: atlas rect (u, v, du, dv) per variant and card; imp.info
@@ -288,8 +294,17 @@ vec3 objectNormal = vegCard < 0.5 ? vImpZ : ( vegCard < 1.5 ? vImpX : vec3( 0.0,
 vVegIn = smoothstep( vegInfo.y, vegInfo.z, vegD );
 vVegOut = 1.0 - smoothstep( vegInfo.w * 0.88, vegInfo.w, vegD );
 {
-  float vegUp = abs( normalize( uVegCam - ( iPos.xyz + vec3( 0.0, iSize.y * vegInfo.x, 0.0 ) ) ).y );
+  vec3 vegTo = uVegCam - ( iPos.xyz + vec3( 0.0, iSize.y * vegInfo.x, 0.0 ) );
+  float vegUp = abs( normalize( vegTo ).y );
   vVegOut *= vegCard > 1.5 ? smoothstep( 0.3, 0.55, vegUp ) : 1.0 - smoothstep( 0.8, 0.95, vegUp );
+  // A standing card seen almost edge on squeezes the whole picture into a line a
+  // pixel or two wide (and the mipmap alpha boost makes it solid): a dark vertical
+  // stroke through the tree. Fade it out there; the other card then faces the eye.
+  if ( vegCard < 1.5 ) {
+    vec2 vegH = normalize( vegTo.xz + vec2( 1e-6, 0.0 ) );
+    vec2 vegCn = vegCard < 0.5 ? vec2( vegS, vegC ) : vec2( vegC, -vegS );
+    vVegOut *= smoothstep( ${IMPOSTOR_EDGE_FADE[0].toFixed(3)}, ${IMPOSTOR_EDGE_FADE[1].toFixed(3)}, abs( dot( vegH, vegCn ) ) );
+  }
 }
 vVegTint = vegTintOf( iPos.xz );
 vVegWarm = smoothstep( 0.8, 0.97, vegHash( iPos.xz * 0.61 + 3.7 ) ) * 0.6;
