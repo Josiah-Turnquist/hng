@@ -1333,7 +1333,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .fe-nameplate h2 { display: inline; }
 .np-pen { pointer-events: auto; margin-left: 8px; padding: 2px 4px; font-size: 15px; line-height: 1; vertical-align: 2px; color: var(--ink-dim); background: none; border: 1px solid transparent; cursor: pointer; }
 .np-pen:hover { color: var(--amber); border-color: rgba(226, 172, 70, 0.5); }
-.np-name { pointer-events: auto; width: 100%; box-sizing: border-box; font-family: var(--cond); font-size: 22px; letter-spacing: 0.04em; color: inherit; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--amber); padding: 0 6px; outline: none; }
+.fe .np-name, .fe .np-name:focus-visible { pointer-events: auto; display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 0 0 1px; font-family: var(--cond); font-size: 24px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.2; color: var(--ink); background: none; border: 0; border-bottom: 2px solid var(--amber); border-radius: 0; outline: none; }
 .np-promote:hover { background: rgba(226, 172, 70, 0.22); }
 .wr-lockline { color: var(--ink); }
 .wr-hire:disabled { opacity: 0.5; cursor: default; }
