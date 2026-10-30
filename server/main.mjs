@@ -121,7 +121,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         // (How long each sign-in step takes, in the server's log: no names or addresses.)
         const t0 = performance.now();
         const path = url.pathname.slice('/api/auth/'.length);
-        await proxyAuth(req, res, path, authBase);
+        await proxyAuth(req, res, path, authBase, { log });
         return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
       }
       if (url.pathname === '/api/progress') {

@@ -11,13 +11,16 @@
 // SameSite=Lax, with no Domain and not partitioned, so it is the game
 // address's own.
 //
-//   await proxyAuth(req, res, path, baseUrl)    // path: what follows /api/auth/
+//   await proxyAuth(req, res, path, baseUrl, { log })    // path: what follows /api/auth/
+//
+// Neon not reached (a dropped connection, its service waking up) is tried once
+// more at once; why it failed goes to the log.
 export const NEON_AUTH_COOKIE_PREFIX = '__Secure-neon-auth';
 const REQUEST_HEADERS = ['user-agent', 'authorization', 'referer', 'content-type', 'x-neon-client-info'];
 const ANSWER_HEADERS = ['content-type', 'content-encoding', 'date', 'set-auth-jwt', 'set-auth-token', 'x-neon-ret-request-id'];
 const MAX_BODY = 64 * 1024;
 
-export async function proxyAuth(req, res, path, baseUrl) {
+export async function proxyAuth(req, res, path, baseUrl, { log = console.log } = {}) {
   // Only Neon Auth's own paths (letters, numbers, dashes and slashes).
   if (!/^[a-z0-9][a-z0-9/_-]*$/i.test(path) || path.includes('..')) return res.writeHead(404).end();
   const query = new URL(req.url, 'http://x').search;
@@ -34,8 +37,17 @@ export async function proxyAuth(req, res, path, baseUrl) {
   let answer;
   try {
     // (Ten seconds at most: a player never waits on a service that is down.)
-    answer = await fetch(`${baseUrl.replace(/\/$/, '')}/${path}${query}`, { method: req.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(10000) });
-  } catch {
+    const ask = () => fetch(`${baseUrl.replace(/\/$/, '')}/${path}${query}`, { method: req.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    try {
+      answer = await ask();
+    } catch (e) {
+      log(`sign-in: Neon Auth not reached (${why(e)}), trying again`);
+      if (e.name === 'TimeoutError') throw e;
+      await new Promise((r) => setTimeout(r, 400));
+      answer = await ask();
+    }
+  } catch (e) {
+    log(`sign-in: Neon Auth not reached (${why(e)})`);
     res.writeHead(502, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'The sign-in service could not be reached', code: 'NETWORK_ERROR' }));
   }
@@ -93,4 +105,10 @@ function readBody(req) {
     req.on('end', () => ok(Buffer.concat(parts)));
     req.on('error', () => ok(null));
   });
+}
+
+// Why a request failed, in a few words (the network's reason, not the request).
+function why(e) {
+  const c = e?.cause;
+  return [e?.name === 'TimeoutError' ? 'no answer in 10 s' : e?.message, c?.code, c?.message].filter(Boolean).join(': ').slice(0, 200);
 }
