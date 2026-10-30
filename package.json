@@ -13,6 +13,8 @@
     "replay": "node server/replay.mjs"
   },
   "dependencies": {
+    "@neon/config": "^1.9.6",
+    "@neon/env": "^1.6.6",
     "three": "0.180.0"
   },
   "devDependencies": {
