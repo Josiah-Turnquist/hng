@@ -15,7 +15,8 @@
 //   there (takeServerCopy).
 //
 //   await syncProgress(account)       // before the menus open; false if it could not
-//   await saveNow()                   // what is waiting goes now (before a battle)
+//   await saveNow({ all })            // what is waiting goes now (all: everything kept
+//                                     // here, changed or not); true once the server has it
 //   takeServerCopy({ roster, rev })   // the server's newer copy
 import { token } from './auth.js';
 import { onSaved } from '../core/saved.js';
@@ -89,11 +90,13 @@ export async function syncProgress(account) {
   return true;
 }
 
-export async function saveNow() {
+export async function saveNow({ all = false } = {}) {
   const s = sync;
-  if (!s) return;
+  if (!s) return false;
   for (let i = 0; i < 20 && s.busy; i++) await new Promise((r) => setTimeout(r, 100));
+  if (all) for (const what of Object.keys(KEYS)) if (store.get(KEYS[what])) s.dirty.add(what);
   await flush(s);
+  return !s.dirty.size;
 }
 
 export function takeServerCopy({ roster, rev }) {

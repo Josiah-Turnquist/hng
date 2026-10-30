@@ -23,7 +23,8 @@
 //   stateHash(game)         // a short fingerprint of the battle, for record and playback
 import { DEFAULT_BINDINGS } from '../core/input.js';
 
-export const PROTOCOL_VERSION = 1;
+// (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.)
+export const PROTOCOL_VERSION = 2;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
 

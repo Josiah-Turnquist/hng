@@ -132,7 +132,11 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       const f = await fileFor(path);
       if (!f) return res.writeHead(404).end('Not found');
       // Squeezed when the browser takes it, and not sent again while unchanged.
-      const headers = { 'Content-Type': f.type, 'Cache-Control': path === 'index.html' ? 'no-cache' : 'public, max-age=300', ETag: f.etag, Vary: 'Accept-Encoding' };
+      // The page and its code are checked with the server each time (an
+      // unchanged file costs a short "not modified"), so a reload always gets
+      // the latest game; three.js and the models may be kept a while.
+      const fresh = path === 'index.html' || path.startsWith(`src${sep}`) || path.startsWith('src/');
+      const headers = { 'Content-Type': f.type, 'Cache-Control': fresh ? 'no-cache' : 'public, max-age=300', ETag: f.etag, Vary: 'Accept-Encoding' };
       if (req.headers['if-none-match'] === f.etag) return res.writeHead(304, headers).end();
       const gz = f.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       if (gz) headers['Content-Encoding'] = 'gzip';
@@ -146,8 +150,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   const wss = new WebSocketServer({ server: http, path: '/play', maxPayload: 16 * 1024, perMessageDeflate: { threshold: 256 } });
   wss.on('connection', (ws) => {
     let joined = null;
-    const refuse = (why) => {
-      if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why }));
+    // (retry: a passing trouble; the browser tries again on its own.)
+    const refuse = (why, retry = false) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify(retry ? { k: 'x', why, retry } : { k: 'x', why }));
       ws.close(4000, 'refused');
     };
     // Ten seconds to say who you are.
@@ -167,7 +172,11 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       if (m.k !== 'h' || joined === false) return;
       joined = false; // (one hello)
       clearTimeout(helloTimer);
-      if (m.v !== PROTOCOL_VERSION) return refuse('Please reload the page: the game has been updated');
+      // An older copy of the game in his browser: it reloads itself (reload).
+      if (m.v !== PROTOCOL_VERSION) {
+        if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'The game has been updated. Please refresh the page.', reload: true }));
+        return ws.close(4000, 'refused');
+      }
       try {
         const who = await check(m);
         const s = m.soldier || {};
@@ -175,15 +184,19 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         // Soldiers kept here: his army, class and what he may carry are the
         // kept soldier's, not what the browser says.
         if (store) {
-          let row;
-          try {
-            row = await store.get(who.id);
-          } catch (e) {
-            log(`progress: ${e.message}`);
-            return refuse('Your soldiers could not be loaded. Try again in a moment.');
+          // (A save on its way may land a moment after the hello: looked for again.)
+          let kept = null;
+          for (let i = 0; i < 3 && !kept; i++) {
+            if (i) await new Promise((r) => setTimeout(r, 600));
+            try {
+              const row = await store.get(who.id);
+              kept = row?.roster?.soldiers?.find((x) => x && x.id === me.soldierId) || null;
+            } catch (e) {
+              log(`progress: ${e.message}`);
+            }
           }
-          const kept = row?.roster?.soldiers?.find((x) => x && x.id === me.soldierId);
-          if (!kept) return refuse('This soldier is not saved on the server yet. Go back and try again in a moment.');
+          if (ws.readyState !== 1) return;
+          if (!kept) return refuse('Your soldier could not be loaded. Try again in a moment.', true);
           me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout), tank: kept.cls === 'tanker' ? tankFor(kept, s.tank) : null };
         }
         const r = await roomFor(me.faction);

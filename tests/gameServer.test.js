@@ -79,7 +79,9 @@ test('players join a battle over the network, move, see each other, and leave to
     // An old page is refused.
     const e = await connect(srv.port);
     e.ws.send(JSON.stringify({ k: 'h', v: 0, dev: 'Easy' }));
-    assert.match((await e.next((m) => m.k === 'x')).why, /reload/);
+    const old = await e.next((m) => m.k === 'x');
+    assert.equal(old.reload, true, 'an older copy of the game is told to reload itself');
+    assert.match(old.why, /refresh/);
     // Baker leaves: a bot takes his soldier.
     b.ws.close();
     const r2 = await a.next((m) => m.k === 'r' && m.s.some((x) => x[0] === wb.you && /\(bot\)/.test(x[2])));
@@ -111,7 +113,8 @@ test("online battle rewards are worked out by the server and kept with his soldi
     // A soldier not kept on the server can't join.
     const x = await connect(srv.port);
     x.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 'nobody', faction: 'US', cls: 'infantry' } }));
-    assert.match((await x.next((m) => m.k === 'x')).why, /not saved/);
+    const missing = await x.next((m) => m.k === 'x');
+    assert.equal(missing.retry, true, 'the browser saves and tries again on its own');
     // His army and class are the kept soldier's, whatever the browser says.
     const a = await connect(srv.port);
     a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 's1', faction: 'GE', cls: 'tanker', loadout: ['mg42', null, null, null, null, null, null] } }));
@@ -147,7 +150,9 @@ test('the game files are handed out, and nothing else', async () => {
     const page = await get('/');
     assert.equal(page.status, 200);
     assert.match(await page.text(), /importmap/);
-    assert.equal((await get('/src/main.js')).status, 200);
+    const code = await get('/src/main.js');
+    assert.equal(code.status, 200);
+    assert.equal(code.headers.get('cache-control'), 'no-cache', 'the game code is checked each time: a reload gets the latest');
     assert.equal((await get('/node_modules/three/build/three.module.js')).status, 200);
     for (const p of ['/package.json', '/docs/MULTIPLAYER.md', '/.env.local', '/server/main.mjs', '/src/../package.json', '/node_modules/ws/index.js']) assert.equal((await get(p)).status, 404, p);
   } finally {

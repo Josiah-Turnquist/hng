@@ -8,6 +8,8 @@ import { AudioSystem } from '../audio/audio.js';
 import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
+import { serverConfig } from '../net/auth.js';
+import { PROTOCOL_VERSION } from '../net/protocol.js';
 import { connect, OnlineBattle } from '../net/online.js';
 import { syncProgress, saveNow, takeServerCopy } from '../net/progress.js';
 import { battleReward } from '../game/rewards.js';
@@ -97,6 +99,9 @@ export class App {
     } else {
       // Played from the game server: sign in first (no guests). Offline (a
       // file, the claude.ai copy): straight in.
+      // An older copy of the game than the server's: the new one, at once.
+      const cfg = await serverConfig().catch(() => null);
+      if (cfg?.protocol && cfg.protocol !== PROTOCOL_VERSION && this._reloadForUpdate()) return;
       this.account ??= await signInScreen(this.root);
       // Signed in: his soldiers and war from the server (and kept there from now on).
       if (this.account && !this.progressSynced) {
@@ -113,9 +118,20 @@ export class App {
         if (!opts.online) break;
         const note = this._note('Joining the online battle...');
         try {
-          // (The server goes by the soldier it keeps: anything changed just now first.)
-          await saveNow().catch(() => {});
-          this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank }, { dev: this.account?.dev || null });
+          // The server goes by the soldiers it keeps: they go to it first. A
+          // passing trouble (a save not there yet, the server waking up) is
+          // tried again quietly; only one that lasts is shown.
+          for (let attempt = 1; ; attempt++) {
+            try {
+              await saveNow({ all: true }).catch(() => false);
+              this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank }, { dev: this.account?.dev || null });
+              break;
+            } catch (e) {
+              if (e.reload && this._reloadForUpdate()) return;
+              if (!e.retry || attempt >= 4) throw e;
+              await new Promise((r) => setTimeout(r, 1000 * attempt));
+            }
+          }
           note.remove();
           const w = this.conn.welcome;
           opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: null };
@@ -360,6 +376,22 @@ export class App {
     war.funds[war.army] += funds;
     saveWar(war);
     return funds;
+  }
+
+  // The game was updated on the server: reload into the new version (not over
+  // and over: once in a minute at most; then the player is asked to). True if
+  // reloading.
+  _reloadForUpdate() {
+    try {
+      const last = Number(sessionStorage.getItem('hng.updateReload')) || 0;
+      if (Date.now() - last < 60000) return false;
+      sessionStorage.setItem('hng.updateReload', String(Date.now()));
+    } catch {
+      return false;
+    }
+    this._note('Updating the game...');
+    location.reload();
+    return true;
   }
 
   // Leave the battle (pause menu): keep the experience, back to the Heroes screen.

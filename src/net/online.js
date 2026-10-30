@@ -34,9 +34,9 @@ export async function connect(soldier, { dev = null, url = null } = {}) {
   const inbox = [];
   return new Promise((ok, fail) => {
     let welcome = null;
-    const timer = setTimeout(() => fail(new Error('The game server did not answer. Try again in a moment.')), 30000);
+    const timer = setTimeout(() => fail(Object.assign(new Error('The game server did not answer. Try again in a moment.'), { retry: true })), 30000);
     ws.onopen = () => ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, token: t, dev, soldier }));
-    ws.onerror = () => fail(new Error('Could not reach the game server.'));
+    ws.onerror = () => fail(Object.assign(new Error('Could not reach the game server.'), { retry: true }));
     ws.onclose = (e) => {
       clearTimeout(timer);
       if (!welcome) fail(new Error(e.reason && e.reason !== 'refused' ? e.reason : 'The game server closed the connection.'));
@@ -45,7 +45,8 @@ export async function connect(soldier, { dev = null, url = null } = {}) {
       const m = JSON.parse(e.data);
       if (m.k === 'x') {
         clearTimeout(timer);
-        return fail(new Error(m.why));
+        // (retry: worth trying again in a moment, without troubling the player.)
+        return fail(Object.assign(new Error(m.why), { retry: !!m.retry, reload: !!m.reload }));
       }
       if (m.k === 'w') welcome = m;
       else inbox.push(m);

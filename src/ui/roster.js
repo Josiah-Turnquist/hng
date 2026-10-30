@@ -150,9 +150,9 @@ export function loadRoster() {
   } catch {
     r = null;
   }
-  if (!r || !Array.isArray(r.soldiers)) return newRoster();
+  if (!r || !Array.isArray(r.soldiers)) return startRoster();
   r.soldiers = r.soldiers.map(check).filter(Boolean);
-  if (!r.soldiers.length) return newRoster();
+  if (!r.soldiers.length) return startRoster();
   if (!r.soldiers.some((s) => s.id === r.selectedId)) r.selectedId = r.soldiers[0].id;
   // Saved before credits: what his soldiers' experience would have earned.
   if (!(r.credits >= 0)) r.credits = battleCredits(r.soldiers.reduce((n, s) => n + s.xp, 0));
@@ -162,6 +162,14 @@ export function loadRoster() {
     if (r.mission.bots <= 10) r.mission.bots = BATTLE_SIZE;
     r.mission.size = 2;
   }
+  return r;
+}
+
+// A first roster is kept at once (its soldiers stay the same from visit to
+// visit, and go to the server for a signed-in player before his first battle).
+function startRoster() {
+  const r = newRoster();
+  saveRoster(r);
   return r;
 }
 
