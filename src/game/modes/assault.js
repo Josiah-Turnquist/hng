@@ -446,7 +446,13 @@ export class AssaultMode {
       if (holds(DEF)) this._end(DEF, 'The defenders held out.');
       else this.suddenDeath = true;
     }
-    // Respawns.
+    // Respawns. (A bot a player took the place of is gone once he falls: server/battle.js addPlayer.)
+    const gone = g.soldiers.filter((s) => s.retire && !s.alive && s.deathTime > 3);
+    for (const s of gone) {
+      g.soldiers.splice(g.soldiers.indexOf(s), 1);
+      s.model?.root.removeFromParent();
+      g.rosterChanged = true;
+    }
     for (const s of g.soldiers) {
       if (s.alive || s.isPlayer) continue;
       if (s.respawnT === undefined || s.respawnT === null) s.respawnT = this._spawnDelay(this.points[0], s.team);

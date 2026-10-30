@@ -157,6 +157,11 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
 // a soldier with the player's controls and no screen. Returns his controller;
 // his soldier's number is what his messages and the snapshots name him by.
 export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player' } = {}) {
+  // A bot on his side makes room: he fights on until he falls, then is gone
+  // (game/modes/assault.js). A fallen one goes first, and tank crews last.
+  const bots = g.soldiers.filter((b) => b.team === team && b.brain && !b.remote && !b.retire);
+  const bot = bots.find((b) => !b.alive && !b.tankCrew) || bots.find((b) => !b.tankCrew) || bots[0];
+  if (bot) bot.retire = true;
   const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
   s.remote = true;
   g.soldiers.push(s);

@@ -3,7 +3,7 @@
 // after a switch, the sights up) is kept apart from the first-person drawing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeBattle, addPlayer } from '../src/server/battle.js';
+import { makeBattle, addPlayer, step } from '../src/server/battle.js';
 import { encodeInput, watchEvents } from '../src/net/protocol.js';
 import { Recorder, replay, TICK, CHECK_EVERY } from '../src/server/record.js';
 import { GunHold } from '../src/game/gunHold.js';
@@ -92,4 +92,21 @@ test('a battle with a player in it records and plays back the same', async () =>
   const r = await replay(JSON.parse(JSON.stringify(rec)));
   assert.equal(r.ok, true, JSON.stringify(r.mismatch));
   assert.equal(r.checked, 12);
+});
+
+test('a player takes a bot\'s place: the bot fights on until he falls, then is gone for good', async () => {
+  const g = await makeBattle({ perSide: 4, seed: 5 });
+  const side = (t) => g.soldiers.filter((s) => s.team === t).length;
+  const before = side(1);
+  const pc = addPlayer(g, { name: 'Tester', faction: 'US', cls: 'infantry', team: 1 });
+  const bot = g.soldiers.find((s) => s.retire);
+  assert.ok(bot && bot.team === 1 && bot !== pc.soldier, 'one bot on his side makes room');
+  assert.equal(side(1), before + 1, 'still there until he falls');
+  bot.die({ type: 'test' });
+  step(g, 5);
+  assert.ok(!g.soldiers.includes(bot), 'gone once down');
+  assert.equal(g.rosterChanged, true);
+  assert.equal(side(1), before, 'the side is back to its size');
+  step(g, 20);
+  assert.ok(!g.soldiers.includes(bot), 'and never back');
 });

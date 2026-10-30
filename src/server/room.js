@@ -80,6 +80,7 @@ export class BattleRoom {
     const s = p.pc.soldier;
     g.remotePlayers = g.remotePlayers.filter((x) => x !== p.pc);
     s.remote = false;
+    s.retire = false;
     s.name = `${s.name} (bot)`;
     s.brain = new BotBrain(g, s);
     this._broadcast(JSON.stringify(roster(g)));
@@ -116,6 +117,11 @@ export class BattleRoom {
       if (this.tick % 60 === 0) p.budget = INPUTS_PER_SECOND;
     }
     g.update(TICK);
+    // Someone gone from the battle (a bot that made room for a player): everyone is told.
+    if (g.rosterChanged) {
+      g.rosterChanged = false;
+      this._broadcast(JSON.stringify(roster(g)));
+    }
     if (this.rec && this.tick % CHECK_EVERY === 0) this.rec.check(this.tick, g);
     if (this.tick % SNAP_EVERY === 0) {
       const snap = snapshot(g, this.tick, { events: this.events.take() });

@@ -360,9 +360,11 @@ nothing online). Getting into a vehicle happens at once on the page and
 follows the server if it disagrees for half a second. Down, he is back in
 after 10 seconds where the server puts him. `node tools/online.mjs` plays it
 with two browsers on one computer (the server with `ALLOW_DEV_NAMES=1`,
-`?dev=Name` instead of an account). Next: bots stepping aside as players
-join, choosing where to come back in, battle sizes by map, and trying it on
-Railway.
+`?dev=Name` instead of an account). A joining player takes a bot's place:
+one bot on his side (a fallen one first, tank crews last) fights on until he
+falls and is then gone for good, so the sides keep their size; a player who
+leaves is taken over by a bot. Next: choosing where to come back in, battle
+sizes by map, and trying it on Railway.
 
 *Neon is set up (October 2026).* What there is now:
 
