@@ -162,7 +162,7 @@ export class VehicleController {
   }
 
   _ammo(v, i) {
-    if (v.selectAmmo(i)) this.game.hud?.flash(`Loading ${v.nextAmmo}`);
+    if (v.selectAmmo(i)) this.player.hud?.flash(`Loading ${v.nextAmmo}`);
   }
 
   // Fixed-step part: controls go to the vehicle, guns fire.
@@ -184,7 +184,7 @@ export class VehicleController {
         if (s.seat === 0) v.driverInput(0, 0, true);
         if (v.switchSeat(s, to)) {
           this.view = 'third';
-          this.game.hud?.flash(v.seats[to].name);
+          this.player.hud?.flash(v.seats[to].name);
         }
       }
     }

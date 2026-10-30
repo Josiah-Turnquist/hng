@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { Game } from '../game/game.js';
 import { generateTerrain } from '../world/terrainGen.js';
 import { MAPS } from '../world/maps.js';
-import { CollisionWorld } from '../physics/collision.js';
+import { CollisionWorld, RayHit } from '../physics/collision.js';
 import { Atmosphere } from '../ballistics/atmosphere.js';
 import { RNG, useStream } from '../core/math.js';
 import { ProjectileSystem } from '../ballistics/projectiles.js';
@@ -20,6 +20,8 @@ import { AssaultMode, ATT, DEF } from '../game/modes/assault.js';
 import { Soldier } from '../game/soldier.js';
 import { BotBrain } from '../ai/bot.js';
 import { DEFAULT_LOADOUT } from '../weapons/defs.js';
+import { PlayerController } from '../game/player.js';
+import { RemoteInput, decodeInput } from '../net/protocol.js';
 
 // Minimal browser stand-ins for the village's canvas-painted signs and the HUD.
 const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : typeof k === 'string' && /^(create|measure)/.test(k) ? () => ({ addColorStop() {}, width: 10 }) : () => {}), set: (t, k, v) => ((t[k] = v), true) });
@@ -106,6 +108,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1 } = {}) {
     stats: { kills: [0, 0], shots: 0 },
     seed,
     rng: new RNG(seed),
+    tmpHit: new RayHit(),
   });
   useStream(g.rng);
   const noop = () => {};
@@ -138,8 +141,40 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1 } = {}) {
       const p = g.mode._spawnPoints(ps.team)[0];
       if (p) g.mode.spawnSoldier(ps, p);
     }
+    // Players back in after 10 seconds (choosing where comes with the browser side).
+    for (const pc of g.remotePlayers || []) if (!pc.soldier.alive && pc.soldier.deathTime > 10) deployPlayer(g, pc);
+  };
+  // A player's input message, on the step it arrives (record.js keeps them).
+  g.applyInput = (id, msg) => {
+    const pc = g.remotePlayers?.find((p) => p.soldier.id === id);
+    const frame = decodeInput(msg);
+    return !!(pc && frame && pc.input.apply(frame));
   };
   return g;
+}
+
+// A player in the battle, driven by his input messages (net/protocol.js):
+// a soldier with the player's controls and no screen. Returns his controller;
+// his soldier's number is what his messages and the snapshots name him by.
+export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player' } = {}) {
+  const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
+  s.remote = true;
+  g.soldiers.push(s);
+  const pc = new PlayerController(g, s, { input: new RemoteInput(), view: false });
+  (g.remotePlayers ??= []).push(pc);
+  deployPlayer(g, pc);
+  return pc;
+}
+
+function deployPlayer(g, pc) {
+  const s = pc.soldier;
+  const p = g.mode._spawnPoints(s.team)[0];
+  if (!p) return;
+  g.mode.spawnSoldier(s, p);
+  pc.look.yaw = s.yaw;
+  pc.look.pitch = 0;
+  s.current = -1;
+  pc._equip(0);
 }
 
 export function step(g, seconds, dt = 1 / 60, onTick = null) {

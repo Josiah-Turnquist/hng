@@ -7,11 +7,12 @@
 // from another battle.
 //
 //   const rec = new Recorder(opts)          // opts as for makeBattle
+//   rec.join(tick, playerOpts, id)          // a player joining (addPlayer's options; his soldier's number)
 //   rec.input(tick, playerId, message)      // each input as it is applied
 //   rec.check(tick, game)                   // a fingerprint (the runner does it every second)
 //   JSON.stringify(rec)                     // to a file
 //   await replay(recording)                 // -> { ok, ticks, checked, mismatch }
-import { makeBattle } from './battle.js';
+import { makeBattle, addPlayer } from './battle.js';
 import { stateHash } from '../net/protocol.js';
 
 export const TICK = 1 / 60;
@@ -19,7 +20,10 @@ export const CHECK_EVERY = 60;
 
 export class Recorder {
   constructor(opts) {
-    this.data = { v: 1, opts, inputs: [], checks: [] };
+    this.data = { v: 1, opts, joins: [], inputs: [], checks: [] };
+  }
+  join(tick, playerOpts, id) {
+    this.data.joins.push([tick, playerOpts, id]);
   }
   input(tick, playerId, message) {
     this.data.inputs.push([tick, playerId, message]);
@@ -36,11 +40,15 @@ export async function replay(rec, { upTo = Infinity } = {}) {
   const g = await makeBattle(rec.opts);
   const checks = new Map(rec.checks.map(([t, h]) => [t, h]));
   const last = Math.min(upTo, rec.checks.length ? rec.checks[rec.checks.length - 1][0] : 0);
+  const joins = rec.joins || [];
   let k = 0,
+    j = 0,
     checked = 0;
+  // Players who joined before the first step.
+  while (j < joins.length && joins[j][0] <= 0) addPlayer(g, joins[j++][1]);
   for (let tick = 1; tick <= last; tick++) {
-    // (Players driven by input arrive in Phase 1; the inputs are kept and
-    // handed to the battle on the step they were used.)
+    // Players joining, then their inputs, on the step they were used.
+    while (j < joins.length && joins[j][0] === tick) addPlayer(g, joins[j++][1]);
     while (k < rec.inputs.length && rec.inputs[k][0] === tick) {
       const [, id, msg] = rec.inputs[k++];
       g.applyInput?.(id, msg);

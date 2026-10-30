@@ -4,6 +4,7 @@ import { badgeValue } from './badges.js';
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
+import { GunHold } from './gunHold.js';
 import { VehicleController } from './vehicleControl.js';
 import { clamp, damp, gaussRandom, DEG, rand } from '../core/math.js';
 import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
@@ -15,13 +16,19 @@ const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor 
 const _nv = new THREE.Vector3();
 
 export class PlayerController {
-  constructor(game, soldier) {
+  // input: the keyboard and mouse (core/input.js), or on a game server the
+  // player's input messages (net/protocol.js RemoteInput). view: false on a
+  // server: no camera and no first-person gun; the gun's state the rules need
+  // is kept in this.hold, its sway stepped with the battle.
+  constructor(game, soldier, { input = game.input, view = true } = {}) {
     this.game = game;
     this.soldier = soldier;
-    this.input = game.input;
-    this.camera = game.camera;
+    this.input = input;
+    this.camera = view ? game.camera : null;
     this.settings = game.settings;
-    this.viewmodel = new ViewModel(game.world.textures, soldier.faction, game.world.scene.environment);
+    this.hud = view ? game.hud : null; // the screen's messages are the local player's only
+    this.hold = new GunHold();
+    this.viewmodel = view ? new ViewModel(game.world.textures, soldier.faction, game.world.scene.environment) : null;
     this.look = { yaw: soldier.yaw, pitch: 0 };
     this.sway = { yaw: 0, pitch: 0 };
     this.swayT = rand() * 100;
@@ -83,7 +90,7 @@ export class PlayerController {
     this.kick.vp += (0.8 + rand() * 0.6) * k;
     this.kick.vy += (rand() - 0.5) * 1.4 * k;
     // The gun in your hands is knocked once too, and springs back.
-    this.viewmodel.jolt(k);
+    this.viewmodel?.jolt(k);
   }
 
   // A weapon on the ground within reach, unless a vehicle is nearer.
@@ -110,7 +117,7 @@ export class PlayerController {
     s.current = -1; // (so the equip below counts as a change)
     this._equip(slot);
     this.lastWeapon = prev;
-    this.game.hud?.flash(`Picked up ${s.weapon.def.name}`, 1.5);
+    this.hud?.flash(`Picked up ${s.weapon.def.name}`, 1.5);
     this.game.audio?.play?.('weaponHandling', null, { volume: 0.8 });
     return true;
   }
@@ -122,7 +129,7 @@ export class PlayerController {
     if (!near) return false;
     const { v: best, seat } = near;
     if (seat < 0) {
-      this.game.hud?.flash('No free seat');
+      this.hud?.flash('No free seat');
       return false;
     }
     const w = s.weapon;
@@ -134,7 +141,7 @@ export class PlayerController {
     this.wrenchHeld = false;
     if (!best.enter(s, seat)) return false;
     this.vehicleCtl.entered(best);
-    this.game.hud?.flash(`${best.def.name}: ${best.seats[seat].name}`);
+    this.hud?.flash(`${best.def.name}: ${best.seats[seat].name}`);
     this.game.audio?.play?.('weaponHandling', best.body.position, { volume: 0.8, rate: 0.7 });
     return true;
   }
@@ -149,7 +156,7 @@ export class PlayerController {
 
   get baseFov() {
     // Settings store a horizontal-feeling FOV; convert to vertical for a 16:9 screen.
-    const h = this.settings.get('fov') * DEG;
+    const h = (this.settings?.get('fov') ?? 90) * DEG;
     return (2 * Math.atan(Math.tan(h / 2) / (16 / 9))) / DEG + 12;
   }
 
@@ -158,13 +165,18 @@ export class PlayerController {
     const w = s.weapons[index];
     if (!w) return;
     // (Quickdraw: game/badges.js.)
-    this.viewmodel.swapRate = 3.2 / badgeValue(s, 'quickdraw', 1);
+    this.hold.swapRate = 3.2 / badgeValue(s, 'quickdraw', 1);
     if (index !== s.current) this.lastWeapon = s.current;
     s.current = index;
-    this.viewmodel.setWeapon(w.def, this.game.world.atmosphere);
-    this.viewmodel.setIrons(w.useIrons);
-    this.viewmodel.setZero(w.zeroIndex);
-    this.game.hud?.weaponChanged(w);
+    this.hold.lower(0);
+    const vm = this.viewmodel;
+    if (vm) {
+      vm.swapRate = this.hold.swapRate;
+      vm.setWeapon(w.def, this.game.world.atmosphere);
+      vm.setIrons(w.useIrons);
+      vm.setZero(w.zeroIndex);
+    }
+    this.hud?.weaponChanged(w);
   }
 
   // Called once per rendered frame before the fixed-step simulation runs.
@@ -185,15 +197,26 @@ export class PlayerController {
     if (input.hit('use') && (this._tryPickup() || this._tryEnterVehicle())) return;
     const w = s.weapon;
     // --- Looking -------------------------------------------------------------------
-    const [mx, my] = input.takeMouse();
-    const zoom = this.baseFov / this.fovCurrent;
-    let sens = BASE_SENS * this.settings.get('mouseSensitivity') / zoom;
-    if (s.aiming) sens *= this.settings.get('adsSensitivity');
-    const inv = this.settings.get('invertY') ? -1 : 1;
-    const dyaw = -mx * sens;
-    const dpitch = -my * sens * inv;
-    this.look.yaw += dyaw;
-    this.look.pitch = clamp(this.look.pitch + dpitch, -1.45, 1.45);
+    // From the mouse here, or (on a server) where the player's browser says he
+    // faces: his sensitivity settings stay in his browser.
+    let dyaw = 0,
+      dpitch = 0;
+    if (input.look) {
+      dyaw = input.look[0] - this.look.yaw;
+      dpitch = input.look[1] - this.look.pitch;
+      this.look.yaw = input.look[0];
+      this.look.pitch = clamp(input.look[1], -1.45, 1.45);
+    } else {
+      const [mx, my] = input.takeMouse();
+      const zoom = this.baseFov / this.fovCurrent;
+      let sens = BASE_SENS * this.settings.get('mouseSensitivity') / zoom;
+      if (s.aiming) sens *= this.settings.get('adsSensitivity');
+      const inv = this.settings.get('invertY') ? -1 : 1;
+      dyaw = -mx * sens;
+      dpitch = -my * sens * inv;
+      this.look.yaw += dyaw;
+      this.look.pitch = clamp(this.look.pitch + dpitch, -1.45, 1.45);
+    }
     // Lying prone limits how far up you can look.
     if (s.body.stance === STANCE.PRONE) this.look.pitch = clamp(this.look.pitch, -0.6, 0.55);
     this.lastLook = [dyaw / Math.max(dt, 1e-3) * 0.02, dpitch / Math.max(dt, 1e-3) * 0.02];
@@ -220,7 +243,8 @@ export class PlayerController {
     // Aiming: while the aim key is held or (Settings > Controls) from one press to
     // the next. Sprinting, reloading a long gun or a grenade in hand lowers the gun.
     const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && (w.def.type === 'grenade' || w.def.type === 'melee' || w.kit));
-    if (this.settings.get('aimToggle')) {
+    // (A browser playing online sends the aim key as held while toggled on.)
+    if (this.settings?.get('aimToggle') && !input.look) {
       if (input.hit('aim')) this.aimToggled = !this.aimToggled;
       if (!canAim) this.aimToggled = false;
       s.aiming = this.aimToggled;
@@ -235,7 +259,7 @@ export class PlayerController {
     const wheel = input.takeWheel();
     if (wheel && w) {
       if (s.aiming && w.sight?.ranges.length > 1) {
-        if (w.changeZero(-Math.sign(wheel))) this.viewmodel.setZero(w.zeroIndex);
+        if (w.changeZero(-Math.sign(wheel))) this.viewmodel?.setZero(w.zeroIndex);
       } else {
         const n = s.weapons.length;
         for (let k = 1; k < n; k++) {
@@ -247,8 +271,8 @@ export class PlayerController {
         }
       }
     }
-    if (w && input.hit('zeroUp') && w.changeZero(1)) this.viewmodel.setZero(w.zeroIndex);
-    if (w && input.hit('zeroDown') && w.changeZero(-1)) this.viewmodel.setZero(w.zeroIndex);
+    if (w && input.hit('zeroUp') && w.changeZero(1)) this.viewmodel?.setZero(w.zeroIndex);
+    if (w && input.hit('zeroDown') && w.changeZero(-1)) this.viewmodel?.setZero(w.zeroIndex);
     // The fire mode key: on a rifle with one fire mode and a scope that leaves
     // the iron sights clear, it switches between the scope and the irons.
     if (w && input.hit('fireMode') && (w.def.modes.length > 1 || !w.toggleSights())) w.cycleMode();
@@ -269,7 +293,7 @@ export class PlayerController {
     } else if (w && w.def.type === 'melee') {
       // A close-combat weapon: a blow on the fire button, another as soon as
       // that one is done while it is held (melee.js).
-      if (input.is('fire') && this.viewmodel.swap > 0.9) startAttack(s, w);
+      if (input.is('fire') && this.hold.up) startAttack(s, w);
       w.setTrigger(false);
     } else if (w && w.def.type === 'binoculars') {
       // Binoculars: raised to the eyes, fire spots the enemy in the middle of
@@ -283,7 +307,7 @@ export class PlayerController {
       else if (input.hit('fire') && useKit(this.game, s, w)) this.backAfterKit = true;
       w.setTrigger(false);
     } else if (w) {
-      w.setTrigger(input.is('fire') && s.canShoot && this.viewmodel.swap > 0.9);
+      w.setTrigger(input.is('fire') && s.canShoot && this.hold.up);
     }
   }
 
@@ -304,7 +328,8 @@ export class PlayerController {
     if (cur?.state === 'reloading') cur.cancelReload();
     cur?.setTrigger(false);
     this._equip(i);
-    this.viewmodel.swap = 0.6;
+    this.hold.swap = 0.6;
+    if (this.viewmodel) this.viewmodel.swap = 0.6;
     startAttack(s, m, { back });
   }
 
@@ -312,9 +337,9 @@ export class PlayerController {
   // the sights names him.
   _spot() {
     const g = this.game;
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const e = g.spotting?.trySpot(this.soldier, { eye: this.eye, dir, raised: this.viewmodel.aim });
-    if (e) g.hud?.killConfirm(e.name, { verb: 'Spotted', quiet: true });
+    const dir = this.camera ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion) : this.lookDir(new THREE.Vector3());
+    const e = g.spotting?.trySpot(this.soldier, { eye: this.eye, dir, raised: this.hold.aim });
+    if (e) this.hud?.killConfirm(e.name, { verb: 'Spotted', quiet: true });
     return e;
   }
 
@@ -346,6 +371,13 @@ export class PlayerController {
     if (!s.alive) return;
     const w = s.weapon;
     if (!w) return;
+    this.hold.update(dt, { aiming: s.aiming, mass: w.def.mass });
+    // With no screen (a server), the eye and the sway are kept here; on the
+    // player's own screen they are worked out as it draws (render).
+    if (!this.viewmodel) {
+      s.body.eyePosition(this.eye);
+      this._updateSway(dt);
+    }
 
     // Thrown the last grenade: back to the gun you had before.
     if (this.backAfterThrow && !s.throwing) {
@@ -370,36 +402,44 @@ export class PlayerController {
     const g = this.game;
     switch (ev.type) {
       case 'step':
-        this.viewmodel.playStep(ev.name, ev.t);
+        this.viewmodel?.playStep(ev.name, ev.t);
         break;
       case 'reloadCancel':
-        this.viewmodel.stopAction();
+        this.viewmodel?.stopAction();
         break;
       case 'sound':
         g.audio?.play(ev.id, null, { volume: 0.7 });
         break;
       case 'eject':
-        g.spawnCasing?.(this.viewmodel.ejectWorld, w, this.viewmodel.gun?.root.quaternion);
+        if (this.viewmodel) g.spawnCasing?.(this.viewmodel.ejectWorld, w, this.viewmodel.gun?.root.quaternion);
         break;
       case 'clipEject':
-        g.spawnClip?.(this.viewmodel.ejectWorld, w);
+        if (this.viewmodel) g.spawnClip?.(this.viewmodel.ejectWorld, w);
         break;
       case 'mode':
         g.audio?.play('fireModeSwitch', null, { volume: 0.6 });
-        g.hud?.flash(`Fire mode: ${ev.mode === 'slow' ? 'slow auto' : ev.mode}`);
+        this.hud?.flash(`Fire mode: ${ev.mode === 'slow' ? 'slow auto' : ev.mode}`);
         break;
       case 'zero':
-        g.hud?.flash(`Sight: ${ev.range} ${w.sight.unit}`);
+        this.hud?.flash(`Sight: ${ev.range} ${w.sight.unit}`);
         break;
       case 'sights':
-        this.viewmodel.setIrons(ev.irons);
-        this.viewmodel.setZero(w.zeroIndex);
+        this.viewmodel?.setIrons(ev.irons);
+        this.viewmodel?.setZero(w.zeroIndex);
         g.audio?.play('fireModeSwitch', null, { volume: 0.4 });
-        g.hud?.flash(ev.irons ? `Iron sights: ${w.zeroRange} ${w.sight.unit}` : `Scope: ${w.zeroRange} ${w.sight.unit}`);
+        this.hud?.flash(ev.irons ? `Iron sights: ${w.zeroRange} ${w.sight.unit}` : `Scope: ${w.zeroRange} ${w.sight.unit}`);
         break;
       case 'dry':
         break;
     }
+  }
+
+  // Where he faces, with the gun's sway: the line a shot leaves along when
+  // there is no first-person gun to take it from (a server).
+  lookDir(out) {
+    const yaw = this.look.yaw + this.sway.yaw,
+      pitch = this.look.pitch + this.sway.pitch;
+    return out.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
   }
 
   // Fire one round from the muzzle along the bore.
@@ -409,12 +449,13 @@ export class PlayerController {
     const vm = this.viewmodel;
     const d = w.def;
     const ammo = w.ammo;
-    // Direction: the real bore direction of the gun as it's held right now.
-    const dir = vm.boreWorld.clone();
-    this._scatter(dir, this.spread(w, vm.aim > 0.85));
+    // Direction: the real bore direction of the gun as it's held right now
+    // (on a server: where he faces with the sway, the muzzle out in front).
+    const dir = vm ? vm.boreWorld.clone() : this.lookDir(new THREE.Vector3());
+    this._scatter(dir, this.spread(w, this.hold.aimed));
 
     // Start at the muzzle, unless the muzzle is through a wall (then from the eye).
-    const muzzle = vm.muzzleWorld.clone();
+    const muzzle = vm ? vm.muzzleWorld.clone() : this.eye.clone().addScaledVector(dir, Math.min(0.9, (d.length || 1) * 0.7));
     const eye = this.eye;
     const toM = muzzle.clone().sub(eye);
     const dist = toM.length();
@@ -445,7 +486,7 @@ export class PlayerController {
     const supported = s.supported || (d.bipod && s.body.stance === STANCE.PRONE);
     const stanceK = s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.85 : 1;
     const massK = Math.sqrt(4 / Math.max(1.5, d.mass)); // heavier guns kick less
-    vm.shot(impulse * massK * stanceK, d, supported);
+    vm?.shot(impulse * massK * stanceK, d, supported);
     // Part of the kick stays: automatic fire climbs unless you pull down.
     const auto = w.mode === 'auto' || w.mode === 'slow';
     const r = d.recoil || { rise: 1, side: 0.3 };

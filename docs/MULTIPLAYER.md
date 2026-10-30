@@ -305,6 +305,18 @@ bots in a town battle. Your own movement predicted, everyone else smoothed.
 Vehicles driven through the server. Goal: you and friends can play a whole
 battle together.
 
+*Phase 1 so far.* The gun's state the rules need is kept apart from the
+drawing (`src/game/gunHold.js`: up after a switch, sights up), and the
+player's own controls (`src/game/player.js`) run with no screen when given
+`{ view: false }` and the server's stand-in keyboard. `addPlayer` in
+`src/server/battle.js` puts a player in a server battle; his input messages
+move, aim, fire and switch his guns, and a battle with players in it
+records and plays back exactly (`tests/remotePlayer.test.js`). On the server a
+shot leaves along where he faces with his sway; later the browser will send
+where its gun pointed and the server will check it. Next: the WebSocket game
+server, the browser side (sending inputs, drawing other soldiers from
+snapshots), then sign-in.
+
 **Phase 2: accounts and progress (about 1 to 2 weeks).**
 Neon database and Neon Auth (email, Google, GitHub). Soldiers, loadouts and
 unlocks saved on the server; experience and credits awarded by the server at the

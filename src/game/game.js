@@ -244,9 +244,16 @@ export class Game {
     this.time += dt;
     this.navBudget = 1;
     this._guard(this.player.soldier, () => this.player.update(dt));
+    // Players on a game server, each driven by his input messages (server/battle.js).
+    for (const p of this.remotePlayers || [])
+      this._guard(p.soldier, () => {
+        p.frameInput(dt);
+        p.update(dt);
+        p.input.endFrame();
+      });
     for (const v of this.vehicles) this._guard(v, () => v.step(dt));
     for (const s of this.soldiers) {
-      if (s.isPlayer) continue;
+      if (s.isPlayer || s.remote) continue;
       this._guard(s, () => {
         if (s.alive && s.brain) s.brain.update(dt);
         s.update(dt);
