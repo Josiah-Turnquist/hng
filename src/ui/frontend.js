@@ -814,14 +814,29 @@ export function showFrontEnd(app) {
 
     // The battle he goes to: a battle of the war, if one was chosen and is
     // still on and he is of the army the player leads, else a staged battle.
+    let onlineChosen = false;
     function readyBox(box, s) {
       const m = roster.mission;
       const war = m.war ? loadWar() : null;
       const wb = war && !war.over && war.army === s.faction && !m.online ? battleOf(war, m.war) : null;
       const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];
       const enemy = enemyOf(s.faction, m.enemy);
+      // Signed in: the online battle, each time the menus open. Battles on
+      // this computer against bots are a quiet link away (practice).
+      if (app.account && !onlineChosen) {
+        onlineChosen = true;
+        if (!m.online) {
+          m.online = true;
+          m.war = null;
+          save();
+        }
+      }
       box.innerHTML = `<div class="ready-mission"><span class="rm-kind"></span><b></b><small></small><button class="rm-change">Change battle</button></div><button class="ready-btn">Ready for battle</button>`;
       if (m.online && app.account) {
+        box.querySelector('.ready-btn').textContent = 'Join online battle';
+        const ch = box.querySelector('.rm-change');
+        ch.textContent = 'Practice offline';
+        ch.className = 'rm-practice';
         box.querySelector('.rm-kind').textContent = 'Online battle';
         box.querySelector('b').textContent = 'Town';
         box.querySelector('small').textContent = 'Against other players, with bots filling both sides';
@@ -835,7 +850,17 @@ export function showFrontEnd(app) {
         box.querySelector('b').textContent = mi.title;
         box.querySelector('small').textContent = m.map === 'town' ? `${m.side === 'attack' ? 'Attacking' : 'Defending'} against the ${FACTIONS[enemy].army} · ${m.bots} per side · ${m.minutes} min` : 'Practice, no enemies';
       }
-      box.querySelector('.rm-change').addEventListener('click', () => battleWindow(s));
+      box.querySelector('.ready-mission button').addEventListener('click', () => battleWindow(s));
+      if (app.account && !m.online) {
+        const back = el('button', 'rm-online', 'Back to online battle');
+        back.addEventListener('click', () => {
+          m.online = true;
+          m.war = null;
+          save();
+          readyBox(box, s);
+        });
+        box.querySelector('.ready-mission').appendChild(back);
+      }
       box.querySelector('.ready-btn').addEventListener('click', () => (wb ? go(wb, war) : go()));
     }
 
