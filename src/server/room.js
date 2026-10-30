@@ -27,6 +27,8 @@ const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
 const EMPTY_CLOSE = 60; // seconds with nobody in it
 const OVER_CLOSE = 15; // seconds after the battle is decided
 const INPUTS_PER_SECOND = 90; // more than this from one player and the rest wait
+const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anything else
+const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
 
 export class BattleRoom {
   constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false } = {}) {
@@ -108,21 +110,32 @@ export class BattleRoom {
     this._broadcast(JSON.stringify(roster(g)));
   }
 
+  // A few steps at a time, then the server answers everything else waiting
+  // (sign-in, saves, the other battles): a battle that can't keep up on a slow
+  // machine runs a little slow rather than leaving the server deaf.
   _start() {
-    const start = performance.now();
+    let start = performance.now();
+    let behind = 0;
     const loop = () => {
       if (this.closed) return;
-      const due = Math.floor((performance.now() - start) / 1000 / TICK);
-      // (After a long stall, don't race to catch up: drop the lost time.)
-      if (due - this.tick > 30) this.tick = due - 1;
+      let due = Math.floor((performance.now() - start) / 1000 / TICK);
+      // (More than a quarter second behind: the lost time is dropped.)
+      if (due - this.tick > 15) {
+        start += (due - this.tick - 1) * TICK * 1000;
+        due = this.tick + 1;
+        if (performance.now() - behind > SLOW_WARN * 1000) {
+          behind = performance.now();
+          console.warn(`battle ${this.opts.attackers} against ${this.opts.defenders}: the server can't keep up (${this.opts.perSide} a side)`);
+        }
+      }
       try {
-        while (this.tick < due && !this.closed) this._step();
+        for (let n = 0; n < STEPS_AT_ONCE && this.tick < due && !this.closed; n++) this._step();
       } catch (e) {
         // One bad step mustn't stop the server: noted (once a second at most), and on.
         if (!(this._lastError > performance.now() - 1000)) console.error('battle step failed', e);
         this._lastError = performance.now();
       }
-      this._timer = setTimeout(loop, 4);
+      this._timer = setTimeout(loop, this.tick < due ? 0 : 4);
     };
     loop();
   }
