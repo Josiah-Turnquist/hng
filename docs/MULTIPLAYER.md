@@ -78,13 +78,23 @@ commit to anything.
   60 times a second, with a WebSocket for every player in it.
 - **Neon Postgres.** Players, soldiers, loadouts, unlocks, results, reports.
 - **Neon Auth** (managed Better Auth). Sign-in. The page uses Neon's auth
-  client (`@neondatabase/auth`). After signing in it holds a short-lived signed
-  token (a JWT, signed with Ed25519, valid 15 minutes, renewed in the
-  background). The game server checks the token's signature and issuer with
-  Neon's public keys (published at the Neon Auth address plus
-  `/.well-known/jwks.json`, using the `jose` library) when a player connects,
-  so it knows who they are without asking Neon every time. Nothing of Neon's
-  is needed on the game server beyond those public keys.
+  client (`createAuthClient` from `@neondatabase/neon-js/auth`, as Neon's
+  React guide does now; the smaller `@neondatabase/auth` package works too).
+  After signing in it holds a short-lived signed token (a JWT, signed with
+  Ed25519, valid 15 minutes, renewed in the background with
+  `authClient.token()`). The game server checks the token's signature and
+  issuer with Neon's public keys (published at `NEON_AUTH_JWKS_URL`, which is
+  the Neon Auth address plus `/.well-known/jwks.json`, using the `jose`
+  library) when a player connects, so it knows who they are without asking
+  Neon every time. The issuer to check is only the start of the Neon Auth
+  address (`https://` and the host name, without the `/neondb/auth` part).
+  Nothing of Neon's is needed on the game server beyond those public keys.
+- **The page and Neon Auth are on different sites** (Railway and neon.tech).
+  So the page must make its auth client with
+  `fetchOptions: { credentials: 'include' }`, or it gets no token. Safari can
+  also block the sign-in cookie between two sites; if Safari players can't
+  stay signed in, the fix is to serve the sign-in address from our own web
+  address (Neon's JWT page links to Better Auth's notes on this).
 - **Check Neon's current docs before building on it.** Neon Auth moves fast
   and older guides (and AI tools trained on them) are often out of date.
 
@@ -305,6 +315,41 @@ bots in a town battle. Your own movement predicted, everyone else smoothed.
 Vehicles driven through the server. Goal: you and friends can play a whole
 battle together.
 
+*Neon is set up (October 2026).* What there is now:
+
+- A Neon project, `hng` (`weathered-credit-22128237`, organisation
+  `org-jolly-voice-46897785`), in AWS US West 2 (Oregon), close to Railway's
+  US West. Its main branch is `production`.
+- Neon Auth is on for that branch. Email and password sign-in is on (checking
+  the email address is off for now). Google sign-in works with Neon's shared
+  test keys. GitHub is not added yet. No sites are on its allowed list yet;
+  `localhost` is always allowed.
+- `neon.ts` (in the repo) lists the Neon services the project has: Postgres
+  and Neon Auth. `neon deploy` makes the branch match it, and saves the
+  branch's settings into `.env.local`. `@neon/config` and `@neon/env` were
+  added to `package.json` for it.
+- Two files stay on your computer and out of git: `.neon` (which project and
+  branch this folder uses; no secrets in it) and `.env.local` (the secrets).
+  `.env.local` holds `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_BRANCH`,
+  `NEON_AUTH_BASE_URL` and `NEON_AUTH_JWKS_URL`.
+
+To set up a fresh copy (a new computer or cloud session), install the Neon
+command-line tool (`npm i -g neon@latest`), set `NEON_API_KEY` (or run
+`neon login` to sign in through the browser), then:
+
+```bash
+neon link --org-id org-jolly-voice-46897785 --project-id weathered-credit-22128237 --branch production
+neon deploy
+```
+
+Still to do before real players sign in:
+
+- Add the game's Railway address to Neon Auth's allowed sites
+  (`neon neon-auth domain add https://...`) once it has one.
+- Use our own Google keys (the shared ones are for testing), add GitHub, and
+  turn on email checking with a real email sender (Neon's production
+  checklist).
+
 **Phase 2: accounts and progress (about 1 to 2 weeks).**
 Neon database and Neon Auth (email, Google, GitHub). Soldiers, loadouts and
 unlocks saved on the server; experience and credits awarded by the server at the
@@ -398,5 +443,10 @@ to about $2 a month, inside the Hobby plan's $5.
   https://neon.com/guides/react-neon-auth-hono (a separate backend checking
   Neon Auth's tokens); neon-auth vs better-auth notes:
   https://github.com/neondatabase/neon-js/blob/main/packages/auth/neon-auth_vs_better-auth.md
+- Neon setup from the command line: https://neon.com/docs/cli/init,
+  https://neon.com/docs/cli/link, https://neon.com/docs/cli/deploy and
+  https://neon.com/docs/reference/neon-ts
+- Neon Auth before launch: https://neon.com/docs/auth/guides/configure-domains
+  and https://neon.com/docs/auth/production-checklist
 - Neon plans and prices: https://neon.com/docs/introduction/plans and
   https://neon.com/blog/major-compute-price-reduction-on-neon
