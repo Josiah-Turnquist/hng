@@ -12,6 +12,9 @@ export const MAPS = {
     name: 'Saint-Aubin-sur-Lenne',
     kind: 'Town',
     description: 'A French village in a river bend. Take the police station and the church.',
+    // Soldiers a side in an online battle here (bots fill the places players
+    // don't): a big map, so a big battle.
+    onlineSize: 30,
     size: 2048,
     res: 1025,
     seed: 1944,

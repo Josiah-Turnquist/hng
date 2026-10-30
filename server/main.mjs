@@ -23,7 +23,8 @@
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
 // DATABASE_URL (Neon's Postgres, for saved progress; without it progress
 // stays in each browser),
-// BATTLE_SIZE (bots and players a side, default 12), MAX_BATTLES (battles
+// BATTLE_SIZE (bots and players a side; by default the map's own, its
+// onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
 // running at once, default 3).
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
@@ -33,6 +34,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { BattleRoom } from '../src/server/room.js';
+import { MAPS } from '../src/world/maps.js';
 import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
@@ -46,7 +48,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
   const rooms = new Set();
   const progress = progressHandler({ store, check, log });
   const opening = new Map(); // 'GE-US' -> the battle being made
@@ -95,7 +97,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     const defenders = army === 'GE' ? 'US' : 'GE';
     const key = `${army}-${defenders}`;
     const p = (async () => {
-      const r = new BattleRoom({ perSide: battleSize, attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onReward = rewardPlayer;
       r.onClose = () => {
@@ -103,7 +105,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         log(`battle closed: ${r.opts.attackers} against ${r.opts.defenders}`);
       };
       rooms.add(r);
-      log(`battle opened: ${r.opts.attackers} against ${r.opts.defenders}, ${battleSize} a side (${rooms.size} running)`);
+      log(`battle opened: ${r.opts.attackers} against ${r.opts.defenders}, ${r.opts.perSide} a side (${rooms.size} running)`);
       return r;
     })().finally(() => opening.delete(key));
     opening.set(key, p);
