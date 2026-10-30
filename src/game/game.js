@@ -33,6 +33,9 @@ import { MATERIALS } from '../ballistics/materials.js';
 import { updateVehicleSound } from '../vehicles/sound.js';
 import { clamp } from '../core/math.js';
 
+// Enemy gunfire within this many meters shows which way it came from (the shot marks).
+const HEAR_RANGE = 300;
+
 // A tank's own shells pass over it for their first 40 m of flight (they leave
 // from a muzzle out over its own hull, and may burst on a wall just in front).
 const OWN_GUN_CLEAR = 40;
@@ -80,6 +83,7 @@ export class Game {
       dynamicRaycast: (ox, oy, oz, dx, dy, dz, max, p) => this._raycastDynamic(ox, oy, oz, dx, dy, dz, max, p),
     });
     this.projectiles.onImpact = (p, info) => this._onImpact(p, info);
+    this.projectiles.onFire = (p, o) => this._heardShot(o);
     this.projectiles.onExpire = (p, why) => this._onExpire(p, why);
     this.projectiles.onSegment = (p, x0, y0, z0, x1, y1, z1) => this._onSegment(p, x0, y0, z0, x1, y1, z1);
     this.hud = new Hud(this);
@@ -275,6 +279,17 @@ export class Game {
     this.pickups?.update();
     this.spotting?.update(dt);
     this._guard(this.mode, () => this.mode.update?.(dt));
+  }
+
+  // An enemy's gun heard (within HEAR_RANGE): a faint mark on the ring pointing
+  // to it, however far off his shot goes (hud.js shotFrom 'heard').
+  _heardShot(o) {
+    const me = this.player?.soldier;
+    const a = o?.owner;
+    if (!me?.alive || !a || a === me || a.team === me.team || o.ammo?.fragment || o.ammo?.thrown) return;
+    const d = Math.hypot(o.x - me.body.x, o.z - me.body.z);
+    if (d < 4 || d > HEAR_RANGE) return;
+    this.hud?.shotFrom?.(o.x, o.z, 'heard', 1 - d / HEAR_RANGE);
   }
 
   // How the players get about, for their ribbons (game/ribbons.js): on foot by

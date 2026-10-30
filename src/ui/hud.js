@@ -296,14 +296,15 @@ export class Hud {
     this.damageFlash = Math.min(1, this.damageFlash + amount / 50);
   }
 
-  // A shot from (x, z) hit us ('hit': a red mark) or cracked past ('near': a
-  // pale one). The mark points that way round the middle of the screen, and
-  // keeps pointing there as you turn and move, until it fades.
+  // A shot from (x, z) hit us ('hit': a red mark), cracked past ('near': a
+  // pale one) or was only heard ('heard': a faint thin one, an enemy firing
+  // anywhere within earshot). The mark points that way round the middle of the
+  // screen, and keeps pointing there as you turn and move, until it fades.
   shotFrom(x, z, kind = 'hit', strength = 1) {
     if (!this.game.settings.get('shotMarkers') || !Number.isFinite(x) || !Number.isFinite(z)) return;
     const b = this.game.player.soldier.body;
     const ang = Math.atan2(-(x - b.x), -(z - b.z));
-    const life = kind === 'hit' ? 2.4 : 1.4;
+    const life = kind === 'hit' ? 2.4 : kind === 'heard' ? 1.6 : 1.4;
     // A shot from about the same way as one already showing renews that mark.
     for (const m of this.shots) {
       if (m.kind === kind && Math.abs(wrapAngle(Math.atan2(-(m.x - b.x), -(m.z - b.z)) - ang)) < 0.3) {
@@ -438,10 +439,11 @@ export class Hud {
       const th = shotMarkAngle(b.x, b.z, m.x, m.z, camYaw);
       const fade = Math.min(1, m.t / 0.7);
       const hit = m.kind === 'hit';
-      const a = fade * (hit ? 0.6 + 0.35 * m.s : 0.45 + 0.3 * m.s);
-      const half = hit ? 0.17 + 0.07 * m.s : 0.12;
-      const wdt = hit ? 5 + 3 * m.s : 3;
-      ctx.strokeStyle = hit ? `rgba(214, 40, 26, ${a})` : `rgba(255, 240, 205, ${a})`;
+      const heard = m.kind === 'heard';
+      const a = fade * (hit ? 0.6 + 0.35 * m.s : heard ? 0.22 + 0.33 * m.s : 0.45 + 0.3 * m.s);
+      const half = hit ? 0.17 + 0.07 * m.s : heard ? 0.08 : 0.12;
+      const wdt = hit ? 5 + 3 * m.s : heard ? 2 : 3;
+      ctx.strokeStyle = hit ? `rgba(214, 40, 26, ${a})` : heard ? `rgba(226, 206, 150, ${a})` : `rgba(255, 240, 205, ${a})`;
       ctx.lineWidth = wdt;
       ctx.beginPath();
       ctx.arc(cx, cy, R, th - half, th + half);
@@ -450,8 +452,8 @@ export class Hud {
       const ux = Math.cos(th),
         uy = Math.sin(th);
       const r0 = R + wdt / 2,
-        r1 = R + wdt / 2 + (hit ? 12 : 8),
-        side = hit ? 6 : 4;
+        r1 = R + wdt / 2 + (hit ? 12 : heard ? 6 : 8),
+        side = hit ? 6 : heard ? 3 : 4;
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
       ctx.moveTo(cx + ux * r1, cy + uy * r1);

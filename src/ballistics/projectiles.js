@@ -120,12 +120,14 @@ export class ProjectileSystem {
     this.onImpact = null; // (projectile, info) on every surface interaction
     this.onSegment = null; // (projectile, x0,y0,z0, x1,y1,z1) for fly-by sounds
     this.onExpire = null; // (projectile, reason)
+    this.onFire = null; // (projectile) as each round leaves the gun
     this.bounds = world ? world.hf.half + 300 : 5000;
   }
 
   fire(opts) {
     const p = (this.pool.pop() || new Projectile()).init(opts, (this.nextId = (this.nextId || 0) + 1));
     this.active.push(p);
+    this.onFire?.(p, opts);
     return p;
   }
 
