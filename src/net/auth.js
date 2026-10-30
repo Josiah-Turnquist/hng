@@ -5,6 +5,7 @@
 // Auth's set-auth-jwt header) and lasts 15 minutes.
 //
 //   await online()                     // is this page served by the game server?
+//   await serverConfig()               // its settings, or null
 //   await session()                    // { user: { id, name, email }, token } or null
 //   await signIn(email, password) / await signUp(name, email, password) / await signOut()
 //   await token()                      // a fresh token for the game server, or null
@@ -36,13 +37,20 @@ function message(data, status) {
   return data?.message || `Sign-in failed (${status}).`;
 }
 
-export async function online() {
+// The game server's settings ({ online, protocol, devNames }), or null
+// when the page is not served by it.
+export async function serverConfig() {
   try {
     const r = await fetch('/api/config', { cache: 'no-store' });
-    return r.ok && (await r.json()).online === true;
+    const c = r.ok ? await r.json() : null;
+    return c?.online === true ? c : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export async function online() {
+  return !!(await serverConfig());
 }
 
 export async function session() {

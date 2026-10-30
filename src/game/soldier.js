@@ -189,7 +189,8 @@ export class Soldier {
 
   // A bullet (or fragment) hit this soldier. info comes from the projectile system.
   hit(info, projectile) {
-    if (!this.alive) return 0;
+    // (Online the game server decides every wound: game/../net/online.js.)
+    if (!this.alive || this.game.online) return 0;
     const ammo = projectile.ammo;
     const zone = ZONES[info.part] ?? 1;
     let dmg = bulletDamage(info.energy, ammo.diameter) * zone * damageScale(projectile.weapon, projectile.distance);
@@ -217,7 +218,7 @@ export class Soldier {
   }
 
   damage(amount, cause) {
-    if (!this.alive) return;
+    if (!this.alive || this.game.online) return;
     // Who last hurt him, for a death by bleeding later.
     const a = cause?.attacker;
     if (a && a !== this && a.team !== this.team) {

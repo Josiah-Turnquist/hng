@@ -184,13 +184,16 @@ export function showFrontEnd(app) {
         saveWar(war);
       }
       const att = b ? b.att === s.faction : m.side === 'attack';
+      // Online (signed in): the game server's battle; the server says which side.
+      const online = !b && !!m.online && !!app.account;
       save();
       window.removeEventListener('keydown', onKey);
       view?.close();
       preview?.dispose();
       root.remove();
       resolve({
-        map: b ? 'town' : m.map,
+        online,
+        map: b || online ? 'town' : m.map,
         mode: 'auto',
         faction: s.faction,
         side: att ? 'attack' : 'defend',
@@ -786,11 +789,15 @@ export function showFrontEnd(app) {
     function readyBox(box, s) {
       const m = roster.mission;
       const war = m.war ? loadWar() : null;
-      const wb = war && !war.over && war.army === s.faction ? battleOf(war, m.war) : null;
+      const wb = war && !war.over && war.army === s.faction && !m.online ? battleOf(war, m.war) : null;
       const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];
       const enemy = enemyOf(s.faction, m.enemy);
       box.innerHTML = `<div class="ready-mission"><span class="rm-kind"></span><b></b><small></small><button class="rm-change">Change battle</button></div><button class="ready-btn">Ready for battle</button>`;
-      if (wb) {
+      if (m.online && app.account) {
+        box.querySelector('.rm-kind').textContent = 'Online battle';
+        box.querySelector('b').textContent = 'Town';
+        box.querySelector('small').textContent = 'Against other players, with bots filling both sides';
+      } else if (wb) {
         const att = wb.att === s.faction;
         box.querySelector('.rm-kind').textContent = 'War battle';
         box.querySelector('b').textContent = MAP.name(wb.point);
@@ -1409,6 +1416,19 @@ export function showFrontEnd(app) {
       const draw = () => {
         W.body.innerHTML = '';
         const war = loadWar();
+        // Signed in: the online battle, against other players.
+        if (app.account) {
+          W.body.appendChild(el('h3', 'wr-gap', 'Online'));
+          const c = el('button', `mission-card${m.online ? ' on' : ''}`);
+          c.innerHTML = '<span class="mc-kind">Online battle</span><b>Town</b><small>Against other players, with bots filling both sides.</small>';
+          c.addEventListener('click', () => {
+            m.online = true;
+            m.war = null;
+            save();
+            draw();
+          });
+          W.body.appendChild(c);
+        }
         W.body.appendChild(el('h3', 'wr-gap', 'Your war'));
         if (!war) W.body.appendChild(el('div', 'lo-note', 'No war yet: start one on the Generals screen.'));
         else if (war.army !== s.faction) W.body.appendChild(el('div', 'lo-note', `Your war is fought by the ${FACTIONS[war.army].army}; ${s.name} is in the ${FACTIONS[s.faction].army}.`));
@@ -1424,6 +1444,7 @@ export function showFrontEnd(app) {
             c.querySelector('small').textContent = `${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[att ? b.def : b.att].army} · fought on the Town map`;
             c.addEventListener('click', () => {
               m.war = b.id;
+              m.online = false;
               save();
               draw();
             });
@@ -1432,7 +1453,7 @@ export function showFrontEnd(app) {
         }
         W.body.appendChild(el('h3', 'wr-gap', 'Staged battles'));
         for (const mi of MISSIONS) {
-          const c = el('button', `mission-card${!m.war && mi.id === m.map ? ' on' : ''}`);
+          const c = el('button', `mission-card${!m.war && !m.online && mi.id === m.map ? ' on' : ''}`);
           c.innerHTML = '<span class="mc-kind"></span><b></b><small></small>';
           c.querySelector('.mc-kind').textContent = mi.kind;
           c.querySelector('b').textContent = mi.title;
@@ -1440,12 +1461,13 @@ export function showFrontEnd(app) {
           c.addEventListener('click', () => {
             m.map = mi.id;
             m.war = null;
+            m.online = false;
             save();
             draw();
           });
           W.body.appendChild(c);
         }
-        if (m.war || m.map !== 'town') return;
+        if (m.war || m.online || m.map !== 'town') return;
         const d = el('div', 'wr-staged');
         const row = (label, opts, value, set) => {
           const r = el('div', 'det-row');

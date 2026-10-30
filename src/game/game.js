@@ -107,6 +107,7 @@ export class Game {
       const attack = (this.opts.side || 'attack') === 'attack';
       team = attack ? ATT : DEF;
       this.mode = new AssaultMode(this, {
+        online: !!this.opts.online,
         attackers: attack ? faction : enemy,
         defenders: attack ? enemy : faction,
         playerTeam: team,
@@ -239,9 +240,11 @@ export class Game {
 
   // --- simulation ----------------------------------------------------------------------
   update(dt) {
-    if (this.paused) return;
+    if (this.paused && !this.online) return;
     useStream(this.rng);
     this.time += dt;
+    // Online: others placed from the server's snapshots (net/online.js).
+    this.online?.update(dt);
     this.navBudget = 1;
     this._guard(this.player.soldier, () => this.player.update(dt));
     // Players on a game server, each driven by his input messages (server/battle.js).
@@ -251,16 +254,17 @@ export class Game {
         p.update(dt);
         p.input.endFrame();
       });
-    for (const v of this.vehicles) this._guard(v, () => v.step(dt));
+    for (const v of this.vehicles) if (!v.puppet) this._guard(v, () => v.step(dt));
     for (const s of this.soldiers) {
-      if (s.isPlayer || s.remote) continue;
+      if (s.isPlayer || s.remote || s.puppet) continue;
       this._guard(s, () => {
         if (s.alive && s.brain) s.brain.update(dt);
         s.update(dt);
       });
       if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
     }
-    this._playerDeploy(dt);
+    if (this.online) this.online.deployHud(dt);
+    else this._playerDeploy(dt);
     this._ribbonMoves(dt);
     this._footsteps();
     this._runOver();
@@ -543,6 +547,13 @@ export class Game {
 
   _onImpact(p, info) {
     const fx = this.effects;
+    // Online, a round is drawn only: its mark, blood or sparks, nothing more.
+    if (p.visual) {
+      if (info.kind === 'exit' || info.detonate) return;
+      fx.impact(info.material === 'flesh' ? { ...info, effect: 'blood' } : info);
+      this.audio?.impact?.(info.material, info.x, info.y, info.z, info.energy);
+      return;
+    }
     if (info.target?.isVehicle) {
       this._vehicleImpact(p, info);
       return;
@@ -665,7 +676,8 @@ export class Game {
   }
 
   _onExpire(p, why) {
-    if (why === 'fuse' && p.ammo.explosive) this.explode(p.x, p.y, p.z, p);
+    // (Online, blasts come from the server: net/online.js.)
+    if (why === 'fuse' && p.ammo.explosive && !p.visual) this.explode(p.x, p.y, p.z, p);
   }
 
   // Supersonic bullets crack as they pass the listener; slow ones whiz.
@@ -851,6 +863,8 @@ export class Game {
     const input = this.input;
     if (this.cameraMode === 'spectate') this._spectate(frameDt);
     else this.player.frameInput(frameDt);
+    // Online: what the player does goes to the server before the keys are cleared.
+    this.online?.sendInput(frameDt);
     input.endFrame();
     for (const v of this.vehicles) v.syncModel(frameDt);
     if (this.cameraMode === 'first') this.player.render(frameDt);

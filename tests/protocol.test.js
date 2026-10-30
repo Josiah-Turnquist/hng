@@ -75,3 +75,13 @@ test('a recorded battle plays back the same, fingerprint by fingerprint', async 
   assert.equal(bad.mismatch.tick, 6 * 60);
   assert.equal(stateHash(g), r.ok && saved.checks[19][1]);
 });
+
+test('an online battle turns the short way round between snapshots', async () => {
+  const { lerpAngle } = await import('../src/net/online.js');
+  // From just short of half a turn one way to just past it: the short way, through the back.
+  const a = Math.PI - 0.1,
+    b = -Math.PI + 0.1;
+  const mid = lerpAngle(a, b, 0.5);
+  assert.ok(Math.abs(Math.abs(Math.atan2(Math.sin(mid), Math.cos(mid))) - Math.PI) < 1e-9);
+  assert.equal(lerpAngle(0.2, 0.6, 0.5), 0.4);
+});

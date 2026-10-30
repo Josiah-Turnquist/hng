@@ -8,6 +8,7 @@ import { AudioSystem } from '../audio/audio.js';
 import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
+import { connect, OnlineBattle } from '../net/online.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
@@ -95,7 +96,24 @@ export class App {
       // Played from the game server: sign in first (no guests). Offline (a
       // file, the claude.ai copy): straight in.
       this.account ??= await signInScreen(this.root);
-      opts = await showFrontEnd(this);
+      // An online battle: joined before the map loads (the server says the
+      // side, the armies and the battle's dice). If it can't be joined, back
+      // to the menu with the reason.
+      for (;;) {
+        opts = await showFrontEnd(this);
+        if (!opts.online) break;
+        const note = this._note('Joining the online battle...');
+        try {
+          this.conn = await connect({ faction: opts.faction, cls: opts.cls, loadout: opts.loadout }, { dev: this.account?.dev || null });
+          note.remove();
+          const w = this.conn.welcome;
+          opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: null };
+          break;
+        } catch (e) {
+          note.remove();
+          await this._note(`Could not join the online battle: ${e.message}`, 'Back').closed;
+        }
+      }
       // The quality may have changed in the menu.
       renderer.setPixelRatio(this._pixelRatio(this.settings.quality));
       this.audio?.resume();
@@ -113,6 +131,7 @@ export class App {
         })
       : Promise.resolve();
     await game.load((p, msg) => this._progress(p, msg));
+    if (this.conn) game.online = new OnlineBattle(game, this.conn);
     await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();
     window.addEventListener('resize', () => this._resize());
@@ -199,6 +218,29 @@ export class App {
 
   // The loading screen, as in the original game: the kind of battle, the
   // battlefield, the two armies, a tip, and the progress.
+  // A short message over everything, with a button when one is named:
+  // .closed resolves when it is pressed.
+  _note(text, button = null) {
+    const box = document.createElement('div');
+    box.className = 'si';
+    box.innerHTML = '<div class="si-panel si-msg"><p></p></div>';
+    box.querySelector('p').textContent = text;
+    let done;
+    box.closed = new Promise((r) => (done = r));
+    if (button) {
+      const b = document.createElement('button');
+      b.className = 'ready-btn';
+      b.textContent = button;
+      b.addEventListener('click', () => {
+        box.remove();
+        done();
+      });
+      box.firstChild.appendChild(b);
+    }
+    this.root.appendChild(box);
+    return box;
+  }
+
   _makeLoading(opts = {}) {
     const def = MAPS[opts.map] || MAPS.town;
     const assault = !!def.objectives && opts.mode !== 'range';

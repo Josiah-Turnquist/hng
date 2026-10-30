@@ -344,8 +344,25 @@ cookies (Safari) keep players signed in. `src/net/auth.js` holds the calls
 `src/ui/signIn.js` is the screen, shown first when the page comes from the
 game server (`/api/config` answers) and never in the offline copy. Email and
 password for now; Google needs Neon's redirect back to the game, later.
-Next: the battle in the browser (sending inputs, drawing the battle from
-snapshots).
+Then the battle in the browser (`src/net/online.js`): signed in, "Change
+battle" offers "Online battle". The page joins the server's battle before the
+map loads (the server says the side, the armies and the battle's dice; the
+first player's army attacks), then builds the town as usual with no bots,
+jeeps or bikes of its own (`AssaultMode` with `online: true` only shows
+points and time). Everyone else and every vehicle is a puppet, placed from
+the snapshots a tenth of a second behind and gliding between them. The
+player's own soldier moves at once from his keys and is quietly put right
+when the server saw him elsewhere (a quarter second's correction, or at once
+when more than 3 m off). He sends his keys and where he looks 60 times a
+second. Every round fired on the page is drawn only: hits, wounds, deaths,
+blasts and points come from the server alone (`Soldier.hit` and `damage` do
+nothing online). Getting into a vehicle happens at once on the page and
+follows the server if it disagrees for half a second. Down, he is back in
+after 10 seconds where the server puts him. `node tools/online.mjs` plays it
+with two browsers on one computer (the server with `ALLOW_DEV_NAMES=1`,
+`?dev=Name` instead of an account). Next: bots stepping aside as players
+join, choosing where to come back in, battle sizes by map, and trying it on
+Railway.
 
 *Neon is set up (October 2026).* What there is now:
 

@@ -72,6 +72,8 @@ export class Projectile {
     this.oz = o.z;
     this.crackPlayed = false; // (projectiles are reused: each shot cracks past the player afresh)
     this.ammo = o.ammo;
+    // Drawn only (an online battle: the server decides what it hits).
+    this.visual = !!o.visual;
     this.table = TABLES[o.ammo.drag || 'G1'];
     this.bc = o.ammo.bc;
     this.mass = o.ammo.mass;

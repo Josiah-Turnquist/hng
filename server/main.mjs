@@ -2,7 +2,7 @@
 //
 //   /         the game (index.html and its files: src/, assets/, three.js)
 //   /health   "ok", for Railway's health check
-//   /api/config     { online: true, protocol }: the page asks, to know it can play online
+//   /api/config     { online: true, protocol, devNames }: the page asks, to know it can play online
 //   /api/auth/...   sign-in, passed on to Neon Auth (src/server/authProxy.js)
 //   /play     the WebSocket a player's browser plays over
 //
@@ -37,7 +37,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), check = signInChecker(), authBase = NEON_AUTH_BASE_URL, log = console.log } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, log = console.log } = {}) {
   let room = null;
   let opening = null;
 
@@ -57,11 +57,14 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     return f;
   }
 
-  // The battle players join: the one running, or a new one.
-  async function currentRoom() {
+  // The battle players join: the one running, or a new one, where the first
+  // player's army attacks (the Germans against the Americans, the others
+  // against the Germans).
+  async function currentRoom(faction) {
     if (room && !room.closed) return room;
     opening ??= (async () => {
-      const r = new BattleRoom({ perSide: battleSize, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      const attackers = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
+      const r = new BattleRoom({ perSide: battleSize, attackers, defenders: attackers === 'GE' ? 'US' : 'GE', send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onClose = () => {
         if (room === r) room = null;
@@ -79,7 +82,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname === '/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
-      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION }));
+      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION, devNames }));
       if (url.pathname.startsWith('/api/auth/')) {
         // (How long each sign-in step takes, in the server's log: no names or addresses.)
         const t0 = performance.now();
@@ -129,7 +132,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       if (m.v !== PROTOCOL_VERSION) return refuse('Please reload the page: the game has been updated');
       try {
         const who = await check(m);
-        const r = await currentRoom();
+        const r = await currentRoom(m.soldier?.faction);
         if (ws.readyState !== 1) return;
         const s = m.soldier || {};
         r.join(ws, { userId: who.id, name: who.name, faction: s.faction, cls: s.cls, loadout: s.loadout });

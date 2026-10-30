@@ -36,6 +36,9 @@ export class AssaultMode {
     this.playerTeam = opts.playerTeam ?? ATT;
     this.perSide = opts.perSide ?? 12;
     this.withBikes = opts.bikes ?? !game.headless;
+    // Online the game server runs the battle (bots, vehicles, captures, the
+    // clock): here it is shown only (net/online.js fills in points and time).
+    this.online = !!opts.online;
     this.timeLeft = (opts.minutes ?? 30) * 60;
     this.suddenDeath = false;
     this.over = null;
@@ -144,6 +147,7 @@ export class AssaultMode {
     // The player.
     const ps = g.player.soldier;
     ps.team = this.playerTeam;
+    if (this.online) return this._startHud();
     // Bots fill both sides.
     // Each side has a tank or two crewed by bots (more in bigger battles).
     const tanks = this.perSide >= 16 ? 3 : this.perSide >= 10 ? 2 : this.perSide >= 6 ? 1 : 0;
@@ -164,7 +168,12 @@ export class AssaultMode {
     // Bicycles and motorcycles at the spawn points and around the village.
     this.bikes = new BikeStands(g);
     if (this.withBikes) placeAssaultBikes(this, this.bikes);
-    // HUD: points and timer.
+    this._startHud();
+  }
+
+  // HUD: points and timer.
+  _startHud() {
+    const g = this.game;
     const el = document.createElement('div');
     el.className = 'assault-bar';
     g.hud.root.appendChild(el);
@@ -401,6 +410,13 @@ export class AssaultMode {
       this.overT = (this.overT || 0) + dt;
       return;
     }
+    if (this.online) {
+      if (((g.time * 4) | 0) !== this._barTick) {
+        this._barTick = (g.time * 4) | 0;
+        this._updateBar();
+      }
+      return;
+    }
     // Who is on each point.
     for (const p of this.points) {
       p.count[0] = p.count[1] = 0;
@@ -536,6 +552,11 @@ export class AssaultMode {
       this.resultEl.style.display = 'flex';
     }
     g.audio?.play?.(won ? 'objectiveCaptured' : 'objectiveLost', null, { volume: 1 });
+  }
+
+  // The game server decided the battle.
+  serverEnd(team, why) {
+    this._end(team, why);
   }
 
   _updateBar() {

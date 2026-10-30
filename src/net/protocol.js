@@ -13,7 +13,7 @@
 //   welcome { k: 'w', v: PROTOCOL_VERSION, you: soldier id, map, seed, side }
 //   roster  { k: 'r', s: [[id, team, name, faction, cls, look seed, variant, loadout]] }   who is in the battle
 //           (look: the face and uniform; a bot's comes from his number, as now)
-//   snapshot{ k: 's', t: tick, tm: battle time, s: soldiers, v: vehicles, p: points, e: events, a: last input seq applied }
+//   snapshot{ k: 's', t: tick, tm: battle time, s: soldiers, v: vehicles, p: points, m: [clock tenths, sudden death], e: events, a: last input seq applied }
 //
 //   encodeInput(frame) / decodeInput(msg)
 //   new RemoteInput()       // the server's stand-in for a player's keyboard and mouse
@@ -120,7 +120,8 @@ export function snapshot(game, tick, { events = [], ack = 0 } = {}) {
     v.push([x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw || 0), ang(x.gunElev || 0), Math.ceil(x.hp), x.alive ? 1 : 0]);
   }
   const p = (game.mode?.points || []).map((x) => [x.id, x.owner ?? -1, Math.round(x.c * 100)]);
-  return { k: 's', t: tick, tm: Math.round(game.time * 1000), s, v, p, e: events, a: ack };
+  const mode = game.mode || {};
+  return { k: 's', t: tick, tm: Math.round(game.time * 1000), s, v, p, m: [Math.round((mode.timeLeft ?? 0) * 10), mode.suddenDeath ? 1 : 0], e: events, a: ack };
 }
 
 export function readSnapshot(m) {
@@ -130,6 +131,7 @@ export function readSnapshot(m) {
     soldiers: m.s.map(([id, x, y, z, yaw, pitch, stance, f, weapon, health, vehicle, seat]) => ({ id, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 10000, pitch: pitch / 10000, stance, alive: !!(f & ALIVE), aiming: !!(f & AIMING), sprinting: !!(f & SPRINTING), bleeding: !!(f & BLEEDING), weapon, health, vehicle, seat })),
     vehicles: m.v.map(([id, def, x, y, z, qx, qy, qz, qw, turret, gun, hp, alive]) => ({ id, def, x: x / 100, y: y / 100, z: z / 100, q: [qx / 10000, qy / 10000, qz / 10000, qw / 10000], turretYaw: turret / 10000, gunElev: gun / 10000, hp, alive: !!alive })),
     points: m.p.map(([id, owner, c]) => ({ id, owner: owner < 0 ? null : owner, control: c / 100 })),
+    clock: { timeLeft: (m.m?.[0] ?? 0) / 10, suddenDeath: !!m.m?.[1] },
     events: m.e,
     ack: m.a,
   };

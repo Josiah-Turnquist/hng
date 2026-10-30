@@ -1330,6 +1330,8 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 /* Sign-in (src/ui/signIn.js), first thing online. */
 .si { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(120% 90% at 50% 30%, #2a2b24, #0d0e0b 70%); color: var(--ink); overflow-y: auto; }
 .si-panel { width: min(400px, 100%); padding: 26px 26px 20px; background: rgba(20, 21, 18, 0.94); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.si-msg { display: flex; flex-direction: column; gap: 18px; text-align: center; }
+.si-msg p { margin: 0; font-size: 15px; line-height: 1.5; }
 .si-brand { font-family: var(--cond); font-size: 34px; font-weight: 700; letter-spacing: 0.4em; text-align: center; }
 .si-brand span { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-dim); }
 .si-tabs { display: grid; grid-template-columns: 1fr 1fr; margin: 22px 0 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }

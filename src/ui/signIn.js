@@ -3,7 +3,7 @@
 // server (the claude.ai copy), there is no sign-in and the game stays offline.
 //
 //   const account = await signInScreen(root)    // { user, token } or null (offline)
-import { online, session, signIn, signUp } from '../net/auth.js';
+import { serverConfig, session, signIn, signUp } from '../net/auth.js';
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -13,7 +13,12 @@ const el = (tag, cls, html) => {
 };
 
 export async function signInScreen(root) {
-  if (!(await online())) return null;
+  const config = await serverConfig();
+  if (!config) return null;
+  // Testing on your own computer (a server started with ALLOW_DEV_NAMES=1):
+  // ?dev=Name plays as Name with no account.
+  const dev = config.devNames && new URLSearchParams(location.search).get('dev');
+  if (dev) return { user: { id: `dev:${dev}`, name: dev, email: '' }, token: null, dev };
   const already = await session();
   if (already) return already;
   return new Promise((resolve) => {
