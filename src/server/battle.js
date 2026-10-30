@@ -141,14 +141,24 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
       const p = g.mode._spawnPoints(ps.team)[0];
       if (p) g.mode.spawnSoldier(ps, p);
     }
-    // Players back in after 10 seconds (choosing where comes with the browser side).
-    for (const pc of g.remotePlayers || []) if (!pc.soldier.alive && pc.soldier.deathTime > 10) deployPlayer(g, pc);
+    // Players back in at the point they chose, once its wait is over (and
+    // after a minute at the front if they choose none).
+    for (const pc of g.remotePlayers || []) {
+      const s = pc.soldier;
+      if (s.alive) continue;
+      const p = pc.deployAt && g.mode._spawnPoints(s.team).find((q) => q.id === pc.deployAt);
+      if (pc.deployAt && s.deathTime >= (p ? g.mode._spawnDelay(p, s.team) : 10)) deployPlayer(g, pc, p);
+      else if (s.deathTime > 60) deployPlayer(g, pc);
+    }
   };
   // A player's input message, on the step it arrives (record.js keeps them).
   g.applyInput = (id, msg) => {
     const pc = g.remotePlayers?.find((p) => p.soldier.id === id);
     const frame = decodeInput(msg);
-    return !!(pc && frame && pc.input.apply(frame));
+    if (!pc || !frame || !pc.input.apply(frame)) return false;
+    // (Only while down: a choice still on its way after he is back in is not kept for next time.)
+    if (frame.deploy && !pc.soldier.alive) pc.deployAt = frame.deploy;
+    return true;
   };
   return g;
 }
@@ -171,10 +181,11 @@ export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null,
   return pc;
 }
 
-function deployPlayer(g, pc) {
+function deployPlayer(g, pc, at = null) {
   const s = pc.soldier;
-  const p = g.mode._spawnPoints(s.team)[0];
+  const p = at || g.mode._spawnPoints(s.team)[0];
   if (!p) return;
+  pc.deployAt = null;
   g.mode.spawnSoldier(s, p);
   pc.look.yaw = s.yaw;
   pc.look.pitch = 0;

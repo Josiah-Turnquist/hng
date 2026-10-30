@@ -110,3 +110,25 @@ test('a player takes a bot\'s place: the bot fights on until he falls, then is g
   step(g, 20);
   assert.ok(!g.soldiers.includes(bot), 'and never back');
 });
+
+test('a fallen player comes back in at the point he chose, once its wait is over', async () => {
+  const g = await makeBattle({ perSide: 4, seed: 9 });
+  const pc = addPlayer(g, { name: 'Tester', faction: 'US', cls: 'infantry', team: 1 });
+  const s = pc.soldier;
+  const pts = g.mode._spawnPoints(1);
+  const pick = pts[pts.length - 1];
+  s.die({ type: 'test' });
+  let seq = 0;
+  const send = (deploy) => g.applyInput(s.id, encodeInput({ seq: ++seq, deploy }));
+  step(g, 2);
+  send(pick.id);
+  const wait = g.mode._spawnDelay(pick, 1);
+  step(g, wait - 3);
+  assert.equal(s.alive, false, 'not before the wait');
+  step(g, 2);
+  assert.equal(s.alive, true);
+  assert.ok(Math.hypot(s.body.x - pick.x, s.body.z - pick.z) < pick.radius + 30, 'at the point he chose');
+  // A choice that arrives once he is back in is not kept for next time.
+  send(pts[0].id);
+  assert.equal(pc.deployAt ?? null, null);
+});

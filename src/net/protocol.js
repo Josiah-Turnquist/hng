@@ -33,8 +33,11 @@ const ang = (a) => Math.round(a * 10000);
 
 // --- Inputs ----------------------------------------------------------------------
 
-export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0 }) {
-  return { k: 'i', q: seq, h: [...held].map((a) => ACTION_NO[a]).filter((n) => n != null), p: [...pressed].map((a) => ACTION_NO[a]).filter((n) => n != null), l: [ang(look[0]), ang(look[1])], w: wheel | 0 };
+// deploy: while down, the point he chose to come back in at (its id).
+export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0, deploy = null }) {
+  const m = { k: 'i', q: seq, h: [...held].map((a) => ACTION_NO[a]).filter((n) => n != null), p: [...pressed].map((a) => ACTION_NO[a]).filter((n) => n != null), l: [ang(look[0]), ang(look[1])], w: wheel | 0 };
+  if (deploy) m.d = String(deploy);
+  return m;
 }
 
 export function decodeInput(m) {
@@ -46,6 +49,7 @@ export function decodeInput(m) {
     pressed: new Set(m.p.map(name).filter(Boolean)),
     look: [Number(m.l[0]) / 10000 || 0, Math.max(-1.6, Math.min(1.6, Number(m.l[1]) / 10000 || 0))],
     wheel: Math.max(-5, Math.min(5, Number(m.w) || 0)),
+    deploy: typeof m.d === 'string' && m.d.length <= 8 ? m.d : null,
   };
 }
 

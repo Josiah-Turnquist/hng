@@ -75,7 +75,7 @@ export class OnlineBattle {
     this.sendT = 0;
     this.over = null;
     this.closed = false;
-    this.respawnAfter = welcome.respawn ?? 10;
+    this.deployAt = null; // while down: the point he chose (game.js _playerDeploy)
     this.seatOff = 0; // snapshots in a row that put him in another seat than here
     // Every round fired here is drawn only: the server fires the real one.
     const fire = game.projectiles.fire.bind(game.projectiles);
@@ -160,6 +160,7 @@ export class OnlineBattle {
       return;
     }
     if (!me.alive && st.alive) {
+      this.deployAt = null;
       me.alive = true;
       me.bleed = 0;
       me.deathTime = 0;
@@ -268,7 +269,7 @@ export class OnlineBattle {
       this.pressed.delete('aim');
     }
     this.seq++;
-    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look: [pc.look.yaw, pc.look.pitch] })));
+    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look: [pc.look.yaw, pc.look.pitch], deploy: this.me.alive ? null : this.deployAt })));
     this.pressed.clear();
     const b = this.me.body;
     this.history.push({ seq: this.seq, x: b.x, y: b.y, z: b.z });
@@ -438,14 +439,6 @@ export class OnlineBattle {
         g.audio?.explosion?.(size > 25 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
       }
     }
-  }
-
-  // While the player is down: the server puts him back in by itself.
-  deployHud(dt) {
-    const me = this.me;
-    if (me.alive) return;
-    const wait = Math.max(0, this.respawnAfter - me.deathTime);
-    this.game.hud?.setDeploy(this.closed ? 'Lost the connection to the game server' : wait > 0 ? `Back in ${Math.ceil(wait)} s` : 'Back in a moment');
   }
 
   close() {

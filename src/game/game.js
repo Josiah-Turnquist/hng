@@ -263,8 +263,7 @@ export class Game {
       });
       if (s.suppression) s.suppression = Math.max(0, s.suppression - dt * 0.35);
     }
-    if (this.online) this.online.deployHud(dt);
-    else this._playerDeploy(dt);
+    this._playerDeploy(dt);
     this._ribbonMoves(dt);
     this._footsteps();
     this._runOver();
@@ -389,8 +388,13 @@ export class Game {
       return;
     }
     d.t += dt;
-    const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;
     const input = this.input;
+    // Online, once chosen: the server puts him in (net/online.js sends the choice).
+    if (this.online?.deployAt) {
+      this.hud.setDeploy(this.online.closed ? 'Lost the connection to the game server' : `Deploying at ${this.online.deployAt}...`);
+      return;
+    }
+    const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;
     if (opts && opts.length) {
       if (input.hit('leanLeft')) d.index = (d.index + opts.length - 1) % opts.length;
       if (input.hit('leanRight')) d.index = (d.index + 1) % opts.length;
@@ -409,6 +413,13 @@ export class Game {
       }
       if (wait <= 0 && (input.hit('jump') || d.go)) {
         d.go = false;
+        if (this.online) {
+          this.online.deployAt = o.id;
+          this.hud.deployScreen?.(null);
+          this.deployOpen = false;
+          input.lock();
+          return;
+        }
         this.mode.spawnSoldier(s, o.point);
         if (s.cls === 'paratrooper') this.ribbonTally?.jump();
         this.player.look.yaw = s.yaw;

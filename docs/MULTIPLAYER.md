@@ -357,14 +357,17 @@ when more than 3 m off). He sends his keys and where he looks 60 times a
 second. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do
 nothing online). Getting into a vehicle happens at once on the page and
-follows the server if it disagrees for half a second. Down, he is back in
-after 10 seconds where the server puts him. `node tools/online.mjs` plays it
+follows the server if it disagrees for half a second. Down, he picks where
+to come back in on the same deploy map as offline; the choice goes with his
+inputs, and the server puts him there once that point's wait is over (at the
+front instead if the point is no longer his side's to spawn at, and after a
+minute if he chooses none). `node tools/online.mjs` plays it
 with two browsers on one computer (the server with `ALLOW_DEV_NAMES=1`,
 `?dev=Name` instead of an account). A joining player takes a bot's place:
 one bot on his side (a fallen one first, tank crews last) fights on until he
 falls and is then gone for good, so the sides keep their size; a player who
-leaves is taken over by a bot. Next: choosing where to come back in, battle
-sizes by map, and trying it on Railway.
+leaves is taken over by a bot. Next: battle sizes by map, and trying it on
+Railway.
 
 *Neon is set up (October 2026).* What there is now:
 
