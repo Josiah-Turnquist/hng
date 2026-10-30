@@ -1330,6 +1330,10 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 }
 .np-gen { margin-left: 8px; padding: 1px 6px; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; vertical-align: 3px; color: #1b160c; background: var(--amber); }
 .np-promote { pointer-events: auto; margin-top: 6px; padding: 4px 10px; font-family: var(--cond); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); background: rgba(226, 172, 70, 0.1); border: 1px solid rgba(226, 172, 70, 0.6); }
+.fe-nameplate h2 { display: inline; }
+.np-pen { pointer-events: auto; margin-left: 8px; padding: 2px 4px; font-size: 15px; line-height: 1; vertical-align: 2px; color: var(--ink-dim); background: none; border: 1px solid transparent; cursor: pointer; }
+.np-pen:hover { color: var(--amber); border-color: rgba(226, 172, 70, 0.5); }
+.np-name { pointer-events: auto; width: 100%; box-sizing: border-box; font-family: var(--cond); font-size: 22px; letter-spacing: 0.04em; color: inherit; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--amber); padding: 0 6px; outline: none; }
 .np-promote:hover { background: rgba(226, 172, 70, 0.22); }
 .wr-lockline { color: var(--ink); }
 .wr-hire:disabled { opacity: 0.5; cursor: default; }

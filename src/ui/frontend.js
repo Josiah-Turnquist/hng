@@ -20,7 +20,7 @@ import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, pic
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
 import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
-import { loadRoster, saveRoster, selected, select, recruit, dismiss, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
+import { loadRoster, saveRoster, selected, select, recruit, dismiss, rename, NAME_MAX, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
 import { BattleMap } from './battleMap.js';
 import { signOut } from '../net/auth.js';
@@ -324,6 +324,34 @@ export function showFrontEnd(app) {
       const plate = main.querySelector('.fe-nameplate');
       plate.innerHTML = `<span class="np-rank">${rankBadge(r.rank)}</span><div class="np-text"><h2></h2><div class="np-sub"></div><div class="xp"><i style="width:${(r.progress * 100).toFixed(1)}%"></i></div><div class="np-xp"></div></div>`;
       plate.querySelector('h2').textContent = s.name;
+      // Rename him: the pencil turns the name into a box; Enter keeps, Esc doesn't.
+      const pen = el('button', 'np-pen', ICONS.pen);
+      pen.title = 'Rename';
+      pen.addEventListener('click', () => {
+        const h = plate.querySelector('h2');
+        const box = el('input', 'np-name');
+        box.value = s.name;
+        box.maxLength = NAME_MAX;
+        box.spellcheck = false;
+        h.replaceWith(box);
+        pen.hidden = true;
+        box.focus();
+        box.select();
+        let done = false;
+        const end = (keep) => {
+          if (done) return;
+          done = true;
+          if (keep && rename(roster, s.id, box.value)) save();
+          show('heroes');
+        };
+        box.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') end(true);
+          else if (e.key === 'Escape') end(false);
+        });
+        box.addEventListener('blur', () => end(true));
+      });
+      plate.querySelector('h2').after(pen);
       // A General (rank 18 and promoted): marked by his name; he keeps fighting.
       if (s.general) plate.querySelector('h2').insertAdjacentHTML('beforeend', '<span class="np-gen">General</span>');
       else if (canPromote(s)) {

@@ -2,7 +2,7 @@
 // and dismissing, the record after a battle, and saved data that went wrong.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newRoster, loadRoster, recruit, dismiss, select, selected, awardBattle, rankOf, rankTitle, playerLevel, RANK_XP, RANK_TITLES, MAX_SOLDIERS } from '../src/ui/roster.js';
+import { newRoster, loadRoster, recruit, dismiss, rename, NAME_MAX, select, selected, awardBattle, rankOf, rankTitle, playerLevel, RANK_XP, RANK_TITLES, MAX_SOLDIERS } from '../src/ui/roster.js';
 import { weaponsFor } from '../src/weapons/defs.js';
 
 test('the roster starts with an infantryman of each army', () => {
@@ -95,4 +95,17 @@ test("equipment points: a loadout fits the class's budget, as in the original ga
   // Nothing twice; empty slots stay empty; the main weapon is always there.
   assert.deepEqual(fitLoadout(s, ['gewehr43', null, 'stielhandgranate24', 'stielhandgranate24']).slice(0, 4), ['gewehr43', null, 'stielhandgranate24', null]);
   assert.equal(fitLoadout(s, [])[0], 'gewehr43');
+});
+
+test('a soldier can be renamed: spaces tidied, kept short, never blank', () => {
+  const r = newRoster(() => 0.3);
+  const s = r.soldiers[0];
+  assert.equal(rename(r, s.id, '  Joe   "Lucky"  Hale '), true);
+  assert.equal(s.name, 'Joe "Lucky" Hale');
+  assert.equal(rename(r, s.id, '   '), false, 'blank keeps the old name');
+  assert.equal(s.name, 'Joe "Lucky" Hale');
+  assert.equal(rename(r, s.id, 'Joe "Lucky" Hale'), false, 'the same name is no change');
+  rename(r, s.id, 'x'.repeat(60));
+  assert.equal(s.name.length, NAME_MAX);
+  assert.equal(rename(r, 'nobody', 'Able'), false);
 });

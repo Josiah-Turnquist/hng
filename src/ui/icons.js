@@ -125,6 +125,7 @@ export const ICONS = {
     ),
   ),
   wrench: svg('<path d="M14.5 3.5a5 5 0 0 0-4.6 6.9L3.5 16.8a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4a5 5 0 0 0 6.9-4.6l-3 3-2.6-.6-.6-2.6 3-3a5 5 0 0 0-1.8-.8z" fill="currentColor"/>'),
+  pen: svg('<path d="M4 20l1-4.5L15.5 5a2.1 2.1 0 0 1 3 3L8 18.5zM13.5 7l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'),
   close: svg('<path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.4"/>'),
   turn: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M18 2v5h-5M6 22v-5h5" fill="none" stroke="currentColor" stroke-width="2"/>'),
 };

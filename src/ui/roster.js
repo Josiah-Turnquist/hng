@@ -192,6 +192,17 @@ export function recruit(r, { faction, cls, name }) {
   return s;
 }
 
+// A new name for a soldier: spaces tidied, at most NAME_MAX letters. False if
+// nothing is left of it or it is the same.
+export const NAME_MAX = 24;
+export function rename(r, id, name) {
+  const s = r.soldiers.find((x) => x.id === id);
+  const n = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim();
+  if (!s || !n || n === s.name) return false;
+  s.name = n;
+  return true;
+}
+
 // Send a soldier home (the last one stays).
 export function dismiss(r, id) {
   if (r.soldiers.length <= 1) return false;
