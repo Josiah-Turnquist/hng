@@ -237,6 +237,9 @@ export class Input {
         this.unlock();
         return;
       }
+      // (On the deploy screen the mouse is free but Tab is still the
+      // scoreboard: it must not also step between the screen's buttons.)
+      if (e.code === 'Tab' && !this.locked && document.querySelector('.hud.deploying')) e.preventDefault();
       if (this.locked && (e.code === 'Tab' || e.code.startsWith('F') || e.code === 'Space' || e.code.startsWith('Alt') || e.code === 'Backquote' || e.code === 'Quote' || e.code === 'Slash')) e.preventDefault();
       if (e.repeat) return;
       this._press(e.code);
