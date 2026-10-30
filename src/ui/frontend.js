@@ -27,7 +27,7 @@ import { WarMapView, ARMY_COLORS } from './warMapView.js';
 import { MAP, KIND_NAMES } from '../war/warMap.js';
 import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
 import { newWar, nextWar, tick, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
-import { loadWar, saveWar, commandPoints, generalRank } from '../war/warStore.js';
+import { loadWar, saveWar, commandPoints, generalRank, canPromote, promote, hireGeneral, mayLead, GENERAL_RANK, HIRE_PRICE } from '../war/warStore.js';
 
 const TANKS = {
   US: [
@@ -299,6 +299,18 @@ export function showFrontEnd(app) {
       const plate = main.querySelector('.fe-nameplate');
       plate.innerHTML = `<span class="np-rank">${rankBadge(r.rank)}</span><div class="np-text"><h2></h2><div class="np-sub"></div><div class="xp"><i style="width:${(r.progress * 100).toFixed(1)}%"></i></div><div class="np-xp"></div></div>`;
       plate.querySelector('h2').textContent = s.name;
+      // A General (rank 18 and promoted): marked by his name; he keeps fighting.
+      if (s.general) plate.querySelector('h2').insertAdjacentHTML('beforeend', '<span class="np-gen">General</span>');
+      else if (canPromote(s)) {
+        const pb = el('button', 'np-promote', 'Promote to General');
+        pb.title = 'He can lead the war on the Generals side, and still fights';
+        pb.addEventListener('click', () => {
+          promote(roster, s.id);
+          save();
+          show('heroes');
+        });
+        plate.querySelector('.np-text').appendChild(pb);
+      }
       plate.querySelector('.np-sub').textContent = `Rank ${r.rank} · ${rankTitle(s.faction, r.rank)} · ${CLASS_NAMES[s.cls]}`;
       plate.querySelector('.np-xp').textContent = r.next === null ? `${fmt(s.xp)} XP: the highest rank` : `${fmt(s.xp)} / ${fmt(r.next)} XP`;
       // Each like a loadout card: its label, the badge, its name.
@@ -1013,6 +1025,7 @@ export function showFrontEnd(app) {
     // joined by a hero or settled on their own. The other two armies have
     // computer generals. The war runs while this screen is open.
     function generals() {
+      if (!mayLead(roster)) return lockedScreen();
       let war = loadWar();
       if (!war) return newWarScreen();
       const army = war.army;
@@ -1147,7 +1160,8 @@ export function showFrontEnd(app) {
             return `<button class="wr-team${on}${t.at === null ? ' reserve' : ''}${t.battle ? ' fight' : ''}" data-act="team" data-id="${t.id}">${teamSign(t)}<span class="t"><b>${esc(TEAMS[t.type].name)}</b><small>${esc(whereText(t))}</small></span><span class="lv">${teamLevel(t)}</span>${t.at === null ? '' : `<span class="bar"><i style="width:${(full * 100).toFixed(0)}%"></i></span>`}</button>`;
           })
           .join('');
-        return `<div class="wr-head">${emblem(army)}<div><b>${FACTIONS[army].army}</b><small>You are its general</small></div></div>
+        const gen = roster.soldiers.filter((x) => x.faction === army && x.general).sort((a, b) => b.xp - a.xp)[0];
+        return `<div class="wr-head">${emblem(army)}<div><b>${FACTIONS[army].army}</b><small>${gen ? `Led by General ${esc(gen.name)}` : 'You are its general'}</small></div></div>
           <div class="wr-stats"><div title="Warfunds buy and refill assault teams"><span>Warfunds</span><b>${fmt(war.funds[army])}</b></div><div title="Command points: room for teams in the field. More as your soldiers of this army rise in rank (12, 15, 18 to 22)."><span>Command points</span><b>${used} / ${war.cpLimit[army]}</b></div></div>
           <h3>Assault teams</h3><div class="wr-teams">${rows || '<div class="lo-note">No teams yet.</div>'}</div>
           <button class="wr-add" data-act="buy">+ Assault team</button>`;
@@ -1325,6 +1339,23 @@ export function showFrontEnd(app) {
 
       refresh(true);
       mapView.start();
+    }
+
+    // Not a General yet: how to become one (a soldier at rank 18 promoted, or
+    // a General hired with credits).
+    function lockedScreen() {
+      const best = roster.soldiers.reduce((a, b) => (b.xp > a.xp ? b : a));
+      const r = rankOf(best.xp).rank;
+      main.innerHTML = `<div class="wr-new fe-panel"><div class="det-kind">The war</div><h2>Become a General</h2><p>Generals lead the war: they buy assault teams and send them across Europe. Reach rank ${GENERAL_RANK} with one of your soldiers and promote him (he keeps fighting), or hire a General.</p><p class="wr-lockline"></p><div class="wr-acts"><button class="ready-btn wr-hire"></button></div></div>`;
+      main.querySelector('.wr-lockline').textContent = `Your highest soldier, ${best.name}, is rank ${r} of ${GENERAL_RANK}.`;
+      const hb = main.querySelector('.wr-hire');
+      hb.textContent = `Hire a General · ${fmt(HIRE_PRICE)} credits`;
+      hb.disabled = (roster.credits || 0) < HIRE_PRICE;
+      hb.addEventListener('click', () => {
+        if (!hireGeneral(roster)) return;
+        save();
+        show('generals');
+      });
     }
 
     // The first war: which army the player leads as its general.

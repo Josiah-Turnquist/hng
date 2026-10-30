@@ -156,3 +156,21 @@ test('a team that wins a battle on a point it does not hold goes on to take it',
   tick(w, 2 * 3600 + 60);
   assert.equal(ownerOf(w, berlin), 'US');
 });
+
+test('a soldier of rank 18 can be promoted to General (and keeps fighting), or a General hired with credits', async () => {
+  const { canPromote, promote, hireGeneral, mayLead, HIRE_PRICE, GENERALS_OPEN } = await import('../src/war/warStore.js');
+  const { RANK_XP } = await import('../src/ui/roster.js');
+  const young = { id: 'a', xp: RANK_XP[17] };
+  const old = { id: 'b', xp: RANK_XP[18] };
+  const roster = { soldiers: [young, old], credits: HIRE_PRICE };
+  assert.equal(canPromote(young), false);
+  assert.ok(promote(roster, 'b'));
+  assert.equal(old.general, true);
+  assert.equal(canPromote(old), false, 'once only');
+  assert.ok(mayLead(roster));
+  // The beta is open to everyone; with it shut, a General is needed.
+  assert.equal(mayLead({ soldiers: [young] }), GENERALS_OPEN);
+  assert.ok(hireGeneral(roster));
+  assert.equal(roster.credits, 0);
+  assert.equal(hireGeneral(roster), false);
+});

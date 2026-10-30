@@ -128,6 +128,7 @@ function check(s) {
   s.variant = Math.max(0, Math.floor(Number(s.variant) || 0)) % variantCount(s.faction, s.cls);
   s.seed = Number(s.seed) || 1;
   s.stats = { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0, ...(s.stats || {}) };
+  s.general = !!s.general;
   s.name = String(s.name || randomName(s.faction)).slice(0, 40);
   return s;
 }
