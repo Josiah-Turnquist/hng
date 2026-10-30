@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RigidBody } from '../physics/rigidbody.js';
 import { FLAG_SOLID, FLAG_SIGHT, FLAG_WALKABLE, RayHit, CollisionWorld, Box } from '../physics/collision.js';
 import { SURFACE_INFO } from '../world/heightfield.js';
-import { G, clamp } from '../core/math.js';
+import { G, clamp, rand } from '../core/math.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -73,7 +73,6 @@ const ANCHOR_PART = {
   mgMount: 'turret',
 };
 
-let nextVehicleId = 1;
 
 // Gameplay tuning the players asked for, on top of the real figures: every
 // vehicle picks up speed twice as fast (the push left over after the hill, the
@@ -116,7 +115,7 @@ export function fallInjury(speed) {
 
 export class Vehicle {
   constructor(game, def, model, x, z, yaw) {
-    this.id = nextVehicleId++;
+    this.id = game.ids ? ++game.ids.vehicle : (game.ids = { soldier: 0, vehicle: 1, pickup: 0 }).vehicle;
     this.isVehicle = true;
     this.game = game;
     this.def = def;
@@ -1016,17 +1015,17 @@ export class Vehicle {
     switch (name) {
       case 'engine':
         m.engine = Math.max(0, m.engine - 0.5 * Math.min(2, power));
-        if (Math.random() < 0.18 * power) this.startFire(p.owner);
+        if (rand() < 0.18 * power) this.startFire(p.owner);
         if (m.engine <= 0) this.engineOn = false;
         break;
       case 'transmission':
         m.transmission = Math.max(0, m.transmission - 0.6 * Math.min(2, power));
         break;
       case 'fuel':
-        if (Math.random() < 0.3 * power) this.startFire(p.owner);
+        if (rand() < 0.3 * power) this.startFire(p.owner);
         break;
       case 'ammo':
-        if (power >= 1 && Math.random() < 0.45 + 0.1 * power) this.destroy(p.owner, 'ammo');
+        if (power >= 1 && rand() < 0.45 + 0.1 * power) this.destroy(p.owner, 'ammo');
         break;
       case 'gun':
         m.gun = Math.max(0, m.gun - 0.5 * power);
@@ -1039,7 +1038,7 @@ export class Vehicle {
 
   startFire(attacker) {
     if (this.fire > 0 || !this.alive) return;
-    this.fire = 10 + Math.random() * 10;
+    this.fire = 10 + rand() * 10;
     this.fireAttacker = attacker;
     this.game.onVehicleEvent?.(this, 'fire', attacker);
   }
@@ -1049,7 +1048,7 @@ export class Vehicle {
     this.damage(14 * dt, this.fireAttacker, 'fire');
     for (const o of this.occupants) if (o && o.alive) o.damage(5 * dt, { kind: 'fire', attacker: this.fireAttacker, vehicle: this });
     // A built-in extinguisher sometimes puts it out.
-    if (this.fire < 4 && this.alive && Math.random() < dt * 0.15) this.fire = 0;
+    if (this.fire < 4 && this.alive && rand() < dt * 0.15) this.fire = 0;
   }
 
   damage(amount, attacker, cause) {

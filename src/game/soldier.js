@@ -44,11 +44,11 @@ export function bulletDamage(energyJ, diameterM) {
   return 1.3 * Math.sqrt(Math.max(0, energyJ)) * Math.pow(diameterM / 0.008, 0.35);
 }
 
-let nextSoldierId = 1;
 
 export class Soldier {
   constructor(game, { faction, cls = 'infantry', loadout, team, name, isPlayer = false, x = 0, z = 0, badges = [], upgrades = null }) {
-    this.id = nextSoldierId++;
+    // Numbered within the battle (bots use it to spread out; messages name him by it).
+    this.id = game.ids ? ++game.ids.soldier : (game.ids = { soldier: 1, vehicle: 0, pickup: 0 }).soldier;
     this.game = game;
     this.faction = faction;
     this.cls = cls;

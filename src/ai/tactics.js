@@ -11,6 +11,7 @@
 //   grenadeLob(hand, target, vmax)    // launch velocity for a lob, or null
 import { STANCE } from '../actors/body.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
+import { rand } from '../core/math.js';
 
 const _hit = new RayHit();
 const _leaves = { dense: 0 };
@@ -211,8 +212,8 @@ export function findOverwatch(game, s, goal, { near = 80, far = 200, from = null
     let best = null,
       bestScore = -Infinity;
     for (let k = 0; k < tries; k++) {
-      const a = base + (Math.random() * 2 - 1) * 1.2;
-      const r = n0 + Math.random() * (n1 - n0);
+      const a = base + (rand() * 2 - 1) * 1.2;
+      const r = n0 + rand() * (n1 - n0);
       const x = goal.x + Math.cos(a) * r,
         z = goal.z + Math.sin(a) * r;
       const i = nav.index(x, z);

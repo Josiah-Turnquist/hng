@@ -4,12 +4,12 @@
 // slot in its place. Dropped weapons stay a couple of minutes.
 import { badgeValue } from './badges.js';
 import { Weapon } from '../weapons/weapon.js';
+import { rand } from '../core/math.js';
 
 const LIFE = 120; // s a dropped weapon stays
 const MAX = 60; // weapons lying about at once (the oldest go first)
 const REACH = 1.7; // m from the soldier
 
-let nextId = 1;
 
 export class Pickups {
   constructor(game) {
@@ -18,9 +18,10 @@ export class Pickups {
   }
 
   // A weapon put down at (x, z).
-  put(w, x, z, yaw = Math.random() * Math.PI * 2) {
+  put(w, x, z, yaw = rand() * Math.PI * 2) {
     const y = this.game.world.hf.getHeight(x, z);
-    const d = { id: nextId++, w, x, y, z, yaw, t: this.game.time };
+    const ids = (this.game.ids ??= { soldier: 0, vehicle: 0, pickup: 0 });
+    const d = { id: ++ids.pickup, w, x, y, z, yaw, t: this.game.time };
     this.list.push(d);
     while (this.list.length > MAX) this.list.shift();
     return d;
@@ -36,8 +37,8 @@ export class Pickups {
     if (w.state === 'reloading') w.cancelReload();
     s.weapons[0] = new Weapon(w.def);
     s.gunDropped = true;
-    const a = Math.random() * Math.PI * 2,
-      r = 0.4 + Math.random() * 0.4;
+    const a = rand() * Math.PI * 2,
+      r = 0.4 + rand() * 0.4;
     return this.put(w, s.body.x + Math.cos(a) * r, s.body.z + Math.sin(a) * r);
   }
 

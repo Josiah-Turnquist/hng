@@ -5,7 +5,7 @@
 // high explosive for infantry, fires when the sight is on, and stops to shoot
 // unless the gun is stabilized.
 import * as THREE from 'three';
-import { clamp, wrapAngle, DEG } from '../core/math.js';
+import { clamp, wrapAngle, DEG, rand } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { SHELLS } from '../vehicles/defs.js';
 import { leavesBetween } from './tactics.js';
@@ -23,7 +23,7 @@ export class TankBrain {
     this.game = game;
     this.s = soldier;
     this.v = vehicle;
-    this.thinkT = Math.random() * 0.4;
+    this.thinkT = rand() * 0.4;
     this.path = null;
     this.pathI = 0;
     this.pathT = 0;
@@ -43,7 +43,7 @@ export class TankBrain {
     if (!v.alive || v.occupants[0] !== this.s) return;
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
-      this.thinkT = 0.35 + Math.random() * 0.15;
+      this.thinkT = 0.35 + rand() * 0.15;
       this._perceive(0.4);
       this._decide();
     }
@@ -110,7 +110,7 @@ export class TankBrain {
         best = c;
       }
     }
-    if (best?.obj !== this.target?.obj) this.fireDelay = 0.8 + Math.random() * 1.2; // laying and ranging
+    if (best?.obj !== this.target?.obj) this.fireDelay = 0.8 + rand() * 1.2; // laying and ranging
     this.target = best ? { kind: best.kind, obj: best.obj } : null;
     for (const [o] of this.aware) if (!o.alive) this.aware.delete(o);
   }
@@ -147,7 +147,7 @@ export class TankBrain {
     const g = this.game;
     const nav = g.vnav || g.nav;
     const b = this.v.body.position;
-    this.pathT = g.time + 15 + Math.random() * 5;
+    this.pathT = g.time + 15 + rand() * 5;
     if (!nav || g.navBudget <= 0) {
       this.pathT = g.time + 0.5;
       return;
@@ -178,7 +178,7 @@ export class TankBrain {
     // No route (or too long a drive): leave that point to others for a few
     // minutes and take the next one, or hold here and fight.
     if (!p) {
-      if (this.goal) this.noRoute.set(this.goal.id, g.time + 150 + Math.random() * 60);
+      if (this.goal) this.noRoute.set(this.goal.id, g.time + 150 + rand() * 60);
       this.goal = null;
       this.pathT = 0;
     }
@@ -219,7 +219,7 @@ export class TankBrain {
     if (this.stuckT > 3) {
       this.stuckT = 0;
       this.reverseT = 2.5;
-      this.reverseSteer = Math.random() < 0.5 ? -0.6 : 0.6;
+      this.reverseSteer = rand() < 0.5 ? -0.6 : 0.6;
       this.path = null;
       this.pathT = 0;
     }
@@ -257,7 +257,7 @@ export class TankBrain {
     v.aim.yaw = Math.atan2(-dx, -dz);
     v.aim.pitch = Math.atan2(dy, Math.hypot(dx, dz));
     // The gunner sets the range drum to his estimate (within ~10%).
-    if (!this.rangeEst || Math.abs(this.rangeEst - d) > d * 0.15) this.rangeEst = d * (0.92 + Math.random() * 0.16);
+    if (!this.rangeEst || Math.abs(this.rangeEst - d) > d * 0.15) this.rangeEst = d * (0.92 + rand() * 0.16);
     v.setSightRange(this.rangeEst);
     // Fire when the sight is on and (unless stabilized) the hull is nearly still.
     this.fireDelay -= dt;
@@ -274,12 +274,12 @@ export class TankBrain {
       }
     if (this.fireDelay <= 0 && v.loaded && off < size + 0.0015 && steady && clear) {
       const p = v.fireMain(this.s);
-      if (p) this.fireDelay = 0.5 + Math.random();
+      if (p) this.fireDelay = 0.5 + rand();
     }
     // Coaxial MG on infantry within a few hundred meters.
     if (t.kind === 'soldier' && d < 350 && off < 0.02) {
       this.mgBurst -= dt;
-      if (this.mgBurst < -1.2) this.mgBurst = 0.8 + Math.random();
+      if (this.mgBurst < -1.2) this.mgBurst = 0.8 + rand();
       v.coax.trigger = this.mgBurst > 0;
     }
     // Shots from the coax are fired by the game for the crew.

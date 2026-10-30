@@ -20,7 +20,7 @@ import { ProjectileView } from './projectileView.js';
 import { Pickups } from './pickups.js';
 import { Spotting } from './spotting.js';
 import { PickupView } from './pickupView.js';
-import { gaussRandom } from '../core/math.js';
+import { gaussRandom, rand, RNG, useStream } from '../core/math.js';
 import { Casings } from '../render/casings.js';
 import { RibbonTally, LONG_RANGE } from './ribbons.js';
 import { STANCE } from '../actors/body.js';
@@ -41,6 +41,11 @@ export class Game {
   constructor(app, opts) {
     this.app = app;
     this.opts = opts;
+    // The battle's dice (core/math.js rand): from its seed, so it can be
+    // played back.
+    this.seed = opts.seed ?? (Math.random() * 2 ** 32) >>> 0;
+    this.rng = new RNG(this.seed);
+    useStream(this.rng);
     this.renderer = app.renderer;
     this.input = app.input;
     this.settings = app.settings;
@@ -58,6 +63,7 @@ export class Game {
   }
 
   async load(progress) {
+    useStream(this.rng);
     const def = MAPS[this.opts.map] || MAPS.town;
     this.mapDef = def;
     this.world = new World(this.renderer, this.camera, this.settings, def);
@@ -234,6 +240,7 @@ export class Game {
   // --- simulation ----------------------------------------------------------------------
   update(dt) {
     if (this.paused) return;
+    useStream(this.rng);
     this.time += dt;
     this.navBudget = 1;
     this._guard(this.player.soldier, () => this.player.update(dt));
@@ -641,7 +648,7 @@ export class Game {
     }
     // An ammunition explosion throws the turret off.
     if (cause === 'ammo' && v.model.parts?.turret) {
-      v.turretFly = { vy: 9 + Math.random() * 5, vx: (Math.random() - 0.5) * 3, vz: (Math.random() - 0.5) * 3, spin: (Math.random() - 0.5) * 4 };
+      v.turretFly = { vy: 9 + rand() * 5, vx: (rand() - 0.5) * 3, vz: (rand() - 0.5) * 3, spin: (rand() - 0.5) * 4 };
     }
   }
 
@@ -746,13 +753,13 @@ export class Game {
     const n = Math.min(60, ex.fragments || 30);
     const frag = { diameter: 0.004, mass: 0.0008, bc: 0.015, drag: 'G1', maxAge: 1.5, fragment: true };
     for (let i = 0; i < n; i++) {
-      const u = Math.random() * 2 - 1,
-        th = Math.random() * Math.PI * 2;
+      const u = rand() * 2 - 1,
+        th = rand() * Math.PI * 2;
       const r = Math.sqrt(1 - u * u);
       let dx = r * Math.cos(th),
         dy = Math.abs(u) * 0.8 + 0.05,
         dz = r * Math.sin(th);
-      const v = 900 + Math.random() * 600;
+      const v = 900 + rand() * 600;
       const f = this.projectiles.fire({ x, y: y + 0.15, z, vx: dx * v, vy: dy * v, vz: dz * v, ammo: frag, owner: p.owner, weapon: p.weapon });
       f.ignoreVehicle = own;
     }

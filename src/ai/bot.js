@@ -22,7 +22,7 @@
 import { badgeValue } from '../game/badges.js';
 import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
-import { clamp, gaussRandom, wrapAngle, DEG, G } from '../core/math.js';
+import { clamp, gaussRandom, wrapAngle, DEG, G, rand } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { findRide } from './riderBot.js';
 import { findCover, coverHolds, fireteam, callout, grenadeLob, hiddenAt, leavesBetween, findOverwatch } from './tactics.js';
@@ -106,7 +106,7 @@ const STYLE = {
 export class BotBrain {
   // skill: 'recruit', 'regular' or 'veteran', or by default from the difficulty's
   // mix, where rank (0..1) places him in it.
-  constructor(game, soldier, { skill = null, rank = Math.random() } = {}) {
+  constructor(game, soldier, { skill = null, rank = rand() } = {}) {
     this.game = game;
     this.s = soldier;
     this.style = STYLE[soldier.cls] || STYLE.other;
@@ -114,7 +114,7 @@ export class BotBrain {
     this.rank = rank;
     this.difficulty = null;
     this._updateSkill();
-    this.thinkT = Math.random() * 0.3;
+    this.thinkT = rand() * 0.3;
     this.path = null;
     this.pathI = 0;
     this.pathT = 0;
@@ -143,7 +143,7 @@ export class BotBrain {
     this.watch = null; // a post held on an objective, facing the enemy
     this.hunt = null; // where an enemy we lost sight of was: { e, x, y, z, t, go }
     this.heard = null; // a comrade's callout: { x, z, t }
-    this.nadeT = 8 + Math.random() * 12; // no grenade before this
+    this.nadeT = 8 + rand() * 12; // no grenade before this
     this.throwAt = null; // where a grenade we're throwing should land
     this.treatT = 0; // stopping to treat a wound until then
     this.goalT = 0; // next time to choose which point to fight for
@@ -155,7 +155,7 @@ export class BotBrain {
 
   _boundTime() {
     const [a, b] = this.style.bound;
-    return a + Math.random() * (b - a);
+    return a + rand() * (b - a);
   }
 
   // Skill from the level and the difficulty setting (read again whenever it changes).
@@ -216,7 +216,7 @@ export class BotBrain {
     }
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
-      this.thinkT = 0.2 + Math.random() * 0.1;
+      this.thinkT = 0.2 + rand() * 0.1;
       this._updateSkill();
       this._perceive(0.25);
       this._decide();
@@ -360,7 +360,7 @@ export class BotBrain {
   // first shots go wide and close in as we see where they strike.
   _engage(d) {
     const r = this.skill.reaction;
-    this.reactT = r[0] + Math.random() * (r[1] - r[0]);
+    this.reactT = r[0] + rand() * (r[1] - r[0]);
     const e0 = this.skill.aim * (0.6 + d / 120) * DEG;
     this.err.yaw = gaussRandom(0, e0 * 2.2);
     this.err.pitch = gaussRandom(0, e0 * 1.6);
@@ -395,7 +395,7 @@ export class BotBrain {
     const gp = this.goal && mode.byId?.[this.goal.id];
     if (!this.goal || g.time > this.goalT || (gp && gp.owner !== this.goalOwner)) {
       const goal = mode.botGoal?.(this) || null;
-      this.goalT = g.time + 12 + Math.random() * 10;
+      this.goalT = g.time + 12 + rand() * 10;
       if (goal && (!this.goal || goal.id !== this.goal.id)) {
         this.goal = goal;
         this.path = null;
@@ -467,14 +467,14 @@ export class BotBrain {
       if (!this.cover && this.watch && !this.watch.open && Math.hypot(this.watch.x - b.x, this.watch.z - b.z) < 1.5 && coverHolds(g, this.watch, threat)) this.cover = this.watch;
       // Still good, now that he may have moved?
       if (this.cover && g.time > this.coverCheckT) {
-        this.coverCheckT = g.time + 1.5 + Math.random();
+        this.coverCheckT = g.time + 1.5 + rand();
         if (!coverHolds(g, this.cover, threat)) {
           this.cover = null;
           this.coverT = 0;
         }
       }
       if (!this.cover && g.time > this.coverT && d > 7) {
-        this.coverT = g.time + 2 + Math.random() * 1.5;
+        this.coverT = g.time + 2 + rand() * 1.5;
         const spot = findCover(g, s, threat, { radius: d < 30 ? 9 : 15, taken: this._taken() });
         // Infantry holding a point fight from inside it, not from cover beyond.
         const away = spot && st.holdInside && !pushing && this.goal && this._inGoal() && Math.hypot(spot.x - this.goal.x, spot.z - this.goal.z) > this.goal.radius;
@@ -487,13 +487,13 @@ export class BotBrain {
       this.cover.since ??= g.time;
       // Moving up: after a while here, on to cover further forward (or along
       // the way if there's none), unless pinned down or a mate is on the move.
-      if (pushing && g.time - this.cover.since > this.boundT && sup < st.pinned && !(Math.random() < st.waitMates && this._mateMoving())) {
+      if (pushing && g.time - this.cover.since > this.boundT && sup < st.pinned && !(rand() < st.waitMates && this._mateMoving())) {
         this.boundT = this._boundTime();
         const spot = t.isVehicle ? null : findCover(g, s, threat, { radius: 18, toward: this.goal, taken: this._taken() });
         if (spot) this._takeCover(spot);
         else {
           this.cover = null;
-          this.coverT = g.time + 4 + Math.random() * 3;
+          this.coverT = g.time + 4 + rand() * 3;
           this._approach();
         }
         if (b.targetStance !== STANCE.STAND) b.setStance(STANCE.STAND);
@@ -501,9 +501,9 @@ export class BotBrain {
       }
       if (g.time > p.until) {
         p.up = !p.up;
-        p.until = g.time + (p.up ? 1.5 + Math.random() * 2 - sup : 0.8 + Math.random() * 1.2 + sup * 2.5);
+        p.until = g.time + (p.up ? 1.5 + rand() * 2 - sup : 0.8 + rand() * 1.2 + sup * 2.5);
         // Coming up, it takes a moment to find him in the sights again.
-        if (p.up) this.reactT = Math.max(this.reactT, 0.15 + Math.random() * 0.2);
+        if (p.up) this.reactT = Math.max(this.reactT, 0.15 + rand() * 0.2);
       }
       // Heavy fire, a reload or a bandage: stay down.
       if (sup > 0.75 || (w && w.state === 'reloading') || s.action) p.up = false;
@@ -519,9 +519,9 @@ export class BotBrain {
     if (pushing && (!this.path || this.pathI >= this.path.length || g.time > this.pathT)) this._approach();
     // No cover at hand: crouch or lie down where we are, flat under heavy fire.
     const lmg = w?.def.type === 'lmg' || w?.def.proneOrBipodOnly;
-    let want = (lmg && d > 40) || (d > 140 && Math.random() < 0.5) ? STANCE.PRONE : d > 25 ? STANCE.CROUCH : STANCE.STAND;
+    let want = (lmg && d > 40) || (d > 140 && rand() < 0.5) ? STANCE.PRONE : d > 25 ? STANCE.CROUCH : STANCE.STAND;
     if ((s.suppression || 0) > 0.6 && d > 15) want = STANCE.PRONE;
-    if (b.targetStance !== want && Math.random() < 0.5) b.setStance(want);
+    if (b.targetStance !== want && rand() < 0.5) b.setStance(want);
   }
 
   // Where we lost sight of an enemy: watch the spot for a few seconds; then,
@@ -572,11 +572,11 @@ export class BotBrain {
       const front = { x: b.x + dir.x * 70, y: b.y + 1.6, z: b.z + dir.z * 70 };
       const spot = findCover(g, s, front, { radius: Math.min(14, goal.radius * 0.8), tries: 6, taken: this._taken() });
       const yaw = Math.atan2(-dir.x, -dir.z);
-      if (spot && Math.hypot(spot.x - goal.x, spot.z - goal.z) < goal.radius * 0.85) this.watch = { ...spot, yaw, until: g.time + 25 + Math.random() * 30 };
+      if (spot && Math.hypot(spot.x - goal.x, spot.z - goal.z) < goal.radius * 0.85) this.watch = { ...spot, yaw, until: g.time + 25 + rand() * 30 };
       else {
-        const a = Math.random() * Math.PI * 2,
-          rr = Math.sqrt(Math.random()) * goal.radius * 0.7;
-        this.watch = { x: goal.x + Math.cos(a) * rr, y: b.y, z: goal.z + Math.sin(a) * rr, low: STANCE.CROUCH, high: STANCE.CROUCH, lean: 0, yaw, open: true, until: g.time + 6 + Math.random() * 10 };
+        const a = rand() * Math.PI * 2,
+          rr = Math.sqrt(rand()) * goal.radius * 0.7;
+        this.watch = { x: goal.x + Math.cos(a) * rr, y: b.y, z: goal.z + Math.sin(a) * rr, low: STANCE.CROUCH, high: STANCE.CROUCH, lean: 0, yaw, open: true, until: g.time + 6 + rand() * 10 };
       }
       this._plan(this.watch.x, this.watch.z);
     }
@@ -585,7 +585,7 @@ export class BotBrain {
       // Look out over the ground in front, now a little this way, now that.
       this.lookYaw = wt.yaw + Math.sin(g.time * 0.35 + s.id) * 0.5;
       if (b.targetStance !== wt.high) b.setStance(wt.high);
-    } else if (b.targetStance !== STANCE.STAND && Math.random() < 0.3) b.setStance(STANCE.STAND);
+    } else if (b.targetStance !== STANCE.STAND && rand() < 0.3) b.setStance(STANCE.STAND);
   }
 
   // A scout with a point to support: off to an overwatch post on it, and
@@ -609,7 +609,7 @@ export class BotBrain {
         this.postT = g.time + 6; // look again in a while
         return false;
       }
-      p.until = g.time + ow.stay[0] + Math.random() * (ow.stay[1] - ow.stay[0]);
+      p.until = g.time + ow.stay[0] + rand() * (ow.stay[1] - ow.stay[0]);
       this.post = p;
       this._plan(p.x, p.z);
     }
@@ -680,8 +680,8 @@ export class BotBrain {
     const b = s.body;
     const goal = this.goal;
     const d = Math.hypot(goal.x - b.x, goal.z - b.z) || 1;
-    const a = Math.random() * Math.PI * 2,
-      rr = Math.sqrt(Math.random()) * goal.radius * 0.6;
+    const a = rand() * Math.PI * 2,
+      rr = Math.sqrt(rand()) * goal.radius * 0.6;
     let tx = goal.x + Math.cos(a) * rr,
       tz = goal.z + Math.sin(a) * rr;
     const side = fireteam(g, s).side;
@@ -794,13 +794,13 @@ export class BotBrain {
       const roll = Math.min(1.5, d * 0.06) / d;
       const spot = { x: ls.x - (ls.x - b.x) * roll, y: ls.y, z: ls.z - (ls.z - b.z) * roll };
       const v = throwSpeed(s, w);
-      const angle = 0.55 + Math.random() * 0.25;
+      const angle = 0.55 + rand() * 0.25;
       const lob = grenadeLob(releasePoint(s, _rp), spot, v, angle);
       if (!lob) continue;
-      this.nadeT = g.time + 18 + Math.random() * 14;
+      this.nadeT = g.time + 18 + rand() * 14;
       this.throwAt = spot;
       // Cook it so he has no time to throw it back or run (not too long: we're exposed).
-      const cook = clamp(w.ammo.fuseTime - lob.t - 0.9 - Math.random() * 0.8, 0, 1.2);
+      const cook = clamp(w.ammo.fuseTime - lob.t - 0.9 - rand() * 0.8, 0, 1.2);
       // Off by a metre or two, more for the less skilled and the further.
       const err = (0.5 + d * 0.05) * this.skill.aim * 0.7;
       startThrow(s, w, {
@@ -826,8 +826,8 @@ export class BotBrain {
     if (!w || !canAttack(s)) return;
     const b = s.body;
     if (Math.hypot(t.body.x - b.x, t.body.z - b.z) > 2 || Math.abs(t.body.y - b.y) > 1.2) return;
-    if (Math.random() > 0.4) return;
-    this.meleeT = this.game.time + w.def.attack.period + 0.4 + Math.random();
+    if (rand() > 0.4) return;
+    this.meleeT = this.game.time + w.def.attack.period + 0.4 + rand();
     const i = s.weapons.indexOf(w);
     const back = s.current;
     s.weapon?.setTrigger(false);
@@ -844,7 +844,7 @@ export class BotBrain {
   _plan(x, z) {
     const nav = this.game.nav;
     const b = this.s.body;
-    this.pathT = this.game.time + 12 + Math.random() * 6;
+    this.pathT = this.game.time + 12 + rand() * 6;
     if (!nav) {
       this.path = [{ x, z }];
       this.pathI = 0;
@@ -852,7 +852,7 @@ export class BotBrain {
     }
     // Path searches are spread out: at most one per tick for all bots.
     if (this.game.navBudget <= 0) {
-      this.pathT = this.game.time + 0.3 + Math.random() * 0.5;
+      this.pathT = this.game.time + 0.3 + rand() * 0.5;
       return;
     }
     this.game.navBudget--;
@@ -860,7 +860,7 @@ export class BotBrain {
     this.path = p || [{ x, z }];
     this.pathI = 0;
     // Part of the way only (a long route): plan on again soon.
-    if (p?.partial) this.pathT = this.game.time + 6 + Math.random() * 3;
+    if (p?.partial) this.pathT = this.game.time + 6 + rand() * 3;
   }
 
   // --- moving ------------------------------------------------------------------
@@ -966,8 +966,8 @@ export class BotBrain {
       speed = auto && d < 40 ? 0.5 : 0;
       this.strafeT -= dt;
       if (this.strafeT <= 0) {
-        this.strafe = d < 50 && b.stance === STANCE.STAND && Math.random() < 0.5 ? (Math.random() < 0.5 ? -1 : 1) : 0;
-        this.strafeT = 0.8 + Math.random() * 1.5;
+        this.strafe = d < 50 && b.stance === STANCE.STAND && rand() < 0.5 ? (rand() < 0.5 ? -1 : 1) : 0;
+        this.strafeT = 0.8 + rand() * 1.5;
       }
     } else this.strafe = 0;
     const len = Math.hypot(wx, wz);
@@ -997,7 +997,7 @@ export class BotBrain {
     if (this.stuckT > 0.8 && this.stuckT < 0.9) it.jump = true;
     if (this.stuckT > 1.6 && !(this.unstickT > 0) && len > 0.5) {
       // Sideways (and a little back) from where we were trying to go.
-      const dir = Math.random() < 0.5 ? -1 : 1;
+      const dir = rand() < 0.5 ? -1 : 1;
       this.unstickX = -wz * dir - wx * 0.35;
       this.unstickZ = wx * dir - wz * 0.35;
       this.unstickT = 0.9;
@@ -1102,7 +1102,7 @@ export class BotBrain {
           const [lo, hi] = this.skill.burst;
           const ti = this._where(t, _ti);
           const d = Math.hypot(ti.x - b.x, ti.z - b.z);
-          this.burstLeft = Math.max(2, Math.round((lo + Math.random() * (hi - lo)) * (d > 80 ? 0.6 : 1)));
+          this.burstLeft = Math.max(2, Math.round((lo + rand() * (hi - lo)) * (d > 80 ? 0.6 : 1)));
         }
       }
       let trig = pull && (!auto || this.burstLeft > 0);
@@ -1116,15 +1116,15 @@ export class BotBrain {
         this.game.botFire(s, w);
         if (auto) {
           this.burstLeft--;
-          if (this.burstLeft <= 0) this.holdFire = 0.25 + Math.random() * 0.5;
-        } else this.holdFire = w.isBolt ? 0.2 : 0.25 + Math.random() * 0.35;
+          if (this.burstLeft <= 0) this.holdFire = 0.25 + rand() * 0.5;
+        } else this.holdFire = w.isBolt ? 0.2 : 0.25 + rand() * 0.35;
         // Firing blind at where he fired from: now and then, not a steady stream.
-        if (t && !this.lastSeen.get(t)?.visible && this.lastSeen.get(t)?.guess) this.holdFire = Math.max(this.holdFire, 0.8 + Math.random() * 1.2);
+        if (t && !this.lastSeen.get(t)?.visible && this.lastSeen.get(t)?.guess) this.holdFire = Math.max(this.holdFire, 0.8 + rand() * 1.2);
         // Seeing where the shot went, the next is laid closer.
         this.bias.yaw *= 0.5;
         this.bias.pitch *= 0.5;
         // Recoil throws the aim off; it's pulled back over the next moments.
-        this.err.vp += 0.06 + Math.random() * 0.04;
+        this.err.vp += 0.06 + rand() * 0.04;
         this.err.vy += gaussRandom(0, 0.03);
       }
       for (const ev of w.takeEvents()) this.game.onWeaponEvent?.(s, w, ev);

@@ -8,7 +8,7 @@
 import { TABLES, dragDecel } from './drag.js';
 import { MATERIALS, residualSpeed, ricochetChance, armorPenetrationMM, effectiveArmorMM, penetrationDepth } from './materials.js';
 import { RayHit, FLAG_BULLET } from '../physics/collision.js';
-import { G } from '../core/math.js';
+import { G, rand } from '../core/math.js';
 
 const MIN_SPEED = 25; // m/s: below this a bullet is spent
 
@@ -46,19 +46,18 @@ function deflect(p, sigma) {
 
 function gauss() {
   let u = 0;
-  while (u === 0) u = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
+  while (u === 0) u = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand());
 }
 
-let nextId = 1;
 
 export class Projectile {
   constructor() {
     this.alive = false;
   }
 
-  init(o) {
-    this.id = nextId++;
+  init(o, id) {
+    this.id = id;
     this.alive = true;
     this.x = o.x;
     this.y = o.y;
@@ -123,7 +122,7 @@ export class ProjectileSystem {
   }
 
   fire(opts) {
-    const p = (this.pool.pop() || new Projectile()).init(opts);
+    const p = (this.pool.pop() || new Projectile()).init(opts, (this.nextId = (this.nextId || 0) + 1));
     this.active.push(p);
     return p;
   }
@@ -322,7 +321,7 @@ export class ProjectileSystem {
     if (p.ammo.thrown) return this._bounce(p, hit, info);
     if (this._explosive(p, info)) return;
 
-    if (Math.random() < ricochetChance(grazing, mat, speed) * (p.ammo.ricochetMult ?? 1)) {
+    if (rand() < ricochetChance(grazing, mat, speed) * (p.ammo.ricochetMult ?? 1)) {
       // Glance off: reflect, lose speed, pick up random deflection and start tumbling.
       const vn = p.vx * hit.nx + p.vy * hit.ny + p.vz * hit.nz;
       p.vx -= 2 * vn * hit.nx;
@@ -401,7 +400,7 @@ export class ProjectileSystem {
     // Glancing blows off sloped plates, unless the round is far bigger than the plate is thick.
     const limitDeg = ammo.heat ? 80 : ammo.capped ? 70 : ammo.penRefMM ? 66 : 62;
     const calMM = ammo.diameter * 1000;
-    if (angle > (limitDeg * Math.PI) / 180 && calMM < mm * 3 && !(ammo.heat && angle < (80 * Math.PI) / 180) && Math.random() < 0.9) {
+    if (angle > (limitDeg * Math.PI) / 180 && calMM < mm * 3 && !(ammo.heat && angle < (80 * Math.PI) / 180) && rand() < 0.9) {
       const vn = p.vx * info.nx + p.vy * info.ny + p.vz * info.nz;
       p.vx -= 2 * vn * info.nx;
       p.vy -= 2 * vn * info.ny;

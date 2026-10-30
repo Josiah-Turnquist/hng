@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
 import { VehicleController } from './vehicleControl.js';
-import { clamp, damp, gaussRandom, DEG } from '../core/math.js';
+import { clamp, damp, gaussRandom, DEG, rand } from '../core/math.js';
 import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
 import { meleeOf, startAttack, canAttack } from './melee.js';
 import { useKit, workWrench, endRepair } from './kits.js';
@@ -24,7 +24,7 @@ export class PlayerController {
     this.viewmodel = new ViewModel(game.world.textures, soldier.faction, game.world.scene.environment);
     this.look = { yaw: soldier.yaw, pitch: 0 };
     this.sway = { yaw: 0, pitch: 0 };
-    this.swayT = Math.random() * 100;
+    this.swayT = rand() * 100;
     this.drift = { yaw: 0, pitch: 0, vy: 0, vp: 0 };
     this.holdingBreath = false;
     this.breathHold = 0; // seconds held
@@ -80,8 +80,8 @@ export class PlayerController {
   flinch(amount) {
     const k = clamp(amount / 35, 0.25, 1.3);
     // (About 2 to 3 degrees for a rifle hit to the body.)
-    this.kick.vp += (0.8 + Math.random() * 0.6) * k;
-    this.kick.vy += (Math.random() - 0.5) * 1.4 * k;
+    this.kick.vp += (0.8 + rand() * 0.6) * k;
+    this.kick.vy += (rand() - 0.5) * 1.4 * k;
     // The gun in your hands is knocked once too, and springs back.
     this.viewmodel.jolt(k);
   }

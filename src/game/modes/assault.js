@@ -17,6 +17,7 @@ import { DEFAULT_LOADOUT, weaponsFor, FACTIONS } from '../../weapons/defs.js';
 import { attachSoldierModel } from '../soldierView.js';
 import { TankBrain } from '../../ai/tankBot.js';
 import { BikeStands, placeAssaultBikes } from '../../vehicles/bikeSpots.js';
+import { rand } from '../../core/math.js';
 
 export const DEF = 0; // defenders' team index
 export const ATT = 1; // attackers
@@ -217,7 +218,7 @@ export class AssaultMode {
     s.brain = new BotBrain(g, s, { rank: (i * 0.618034 + 0.05) % 1 });
     s.alive = false;
     s.deathTime = 100;
-    s.respawnT = 1 + Math.random() * 6;
+    s.respawnT = 1 + rand() * 6;
     g.soldiers.push(s);
     if (!g.headless) attachSoldierModel(g, s);
     return s;
@@ -259,11 +260,11 @@ export class AssaultMode {
     const score = (p) => this._frontScore(p, s.team);
     const best = Math.max(...pts.map(score));
     let options = pts.filter((p) => score(p) === best);
-    if (pts.length > options.length && Math.random() < 0.15) options = pts;
+    if (pts.length > options.length && rand() < 0.15) options = pts;
     let pick = options[0],
       most = -Infinity;
     for (const p of options) {
-      const n = this._shortOf(p, s.team, 150) + Math.random() * 1.5;
+      const n = this._shortOf(p, s.team, 150) + rand() * 1.5;
       if (n > most) {
         most = n;
         pick = p;
@@ -300,13 +301,13 @@ export class AssaultMode {
     const g = this.game;
     const hints = g.world.village?.spawnHints?.[p.id];
     if (hints && hints.length) {
-      const h = hints[(Math.random() * hints.length) | 0];
-      return { x: h.x + (Math.random() - 0.5), z: h.z + (Math.random() - 0.5), y: h.y };
+      const h = hints[(rand() * hints.length) | 0];
+      return { x: h.x + (rand() - 0.5), z: h.z + (rand() - 0.5), y: h.y };
     }
     const nav = g.nav;
     for (let k = 0; k < 20; k++) {
-      const a = Math.random() * Math.PI * 2,
-        r = Math.sqrt(Math.random()) * p.radius * 0.7;
+      const a = rand() * Math.PI * 2,
+        r = Math.sqrt(rand()) * p.radius * 0.7;
       const x = p.x + Math.cos(a) * r,
         z = p.z + Math.sin(a) * r;
       if (!nav || nav.walkable(x, z)) return { x, z };
@@ -369,7 +370,7 @@ export class AssaultMode {
     if (team === ATT) options = attack.length ? attack : threatened;
     else {
       // Defenders: hold what's threatened, retake what was lost; keep some on the objectives.
-      options = threatened.concat(attack.filter((p) => p.kind !== 'access' || Math.random() < 0.2));
+      options = threatened.concat(attack.filter((p) => p.kind !== 'access' || rand() < 0.2));
       if (!options.length || brain.s.id % 4 === 0) options = options.concat(this.points.filter((p) => p.kind === 'objective' && p.owner === team));
     }
     if (exclude) options = options.filter((p) => !exclude.has(p.id));

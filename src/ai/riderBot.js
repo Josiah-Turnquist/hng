@@ -8,7 +8,7 @@
 // BotBrain owns a ride while it lasts: ride.update(dt) returns true while it
 // controls the soldier, false once it is over (the brain then carries on).
 import * as THREE from 'three';
-import { approach, clamp, wrapAngle, gaussRandom, DEG, G } from '../core/math.js';
+import { approach, clamp, wrapAngle, gaussRandom, DEG, G, rand } from '../core/math.js';
 import { SURF } from '../world/heightfield.js';
 import { LOCK_USE } from '../vehicles/bike.js';
 import { FLAG_SOLID, RayHit } from '../physics/collision.js';
@@ -64,7 +64,7 @@ export function findRide(brain) {
   const g = brain.game;
   const b = s.body;
   if (s.vehicle || brain.target || !brain.goal || s.tankCrew || (brain.noRideUntil ?? 0) > g.time) return null;
-  brain.noRideUntil = g.time + 2 + Math.random() * 2;
+  brain.noRideUntil = g.time + 2 + rand() * 2;
   const goal = brain.goal;
   if (Math.hypot(goal.x - b.x, goal.z - b.z) - goal.radius < RIDE_MIN) return null;
   if (g.time - (s.lastHitTime ?? -99) < 8) return null;
@@ -110,7 +110,7 @@ function maxCurvature(v, u) {
 function look(brain, dt) {
   brain.thinkT -= dt;
   if (brain.thinkT > 0) return;
-  brain.thinkT = 0.25 + Math.random() * 0.1;
+  brain.thinkT = 0.25 + rand() * 0.1;
   brain._perceive(0.3);
 }
 
@@ -524,10 +524,10 @@ export class GunnerRide {
         const laid = v.mgDir(new THREE.Vector3()).dot(_d) > Math.cos(4 * DEG) && !friendInLine(this.s, m, _d, dist);
         if (this.pause > 0) this.pause -= dt;
         else if (laid) {
-          if (this.burst <= 0) this.burst = 0.35 + Math.random() * 0.5;
+          if (this.burst <= 0) this.burst = 0.35 + rand() * 0.5;
           this.burst -= dt;
           mg.trigger = true;
-          if (this.burst <= 0) this.pause = 0.5 + Math.random() * 0.9;
+          if (this.burst <= 0) this.pause = 0.5 + rand() * 0.9;
         }
       }
     } else {

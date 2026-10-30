@@ -40,7 +40,7 @@ import { MountedGun } from './tracked.js';
 import { magic } from './wheeled.js';
 import { FLAG_SOLID, FLAG_WALKABLE, RayHit, Box, CollisionWorld } from '../physics/collision.js';
 import { SURFACE_INFO } from '../world/heightfield.js';
-import { G, clamp, approach, damp, smoothstep, wrapAngle, DEG } from '../core/math.js';
+import { G, clamp, approach, damp, smoothstep, wrapAngle, DEG, rand } from '../core/math.js';
 
 const SUB = 4; // physics sub-steps per tick
 const _v = new THREE.Vector3();
@@ -666,8 +666,8 @@ export class Bike extends Vehicle {
   _rideNoise(dt) {
     this.noiseT -= dt;
     if (this.noiseT <= 0) {
-      this.noiseT = 0.25 + Math.random() * 0.35;
-      this.noiseTarget = (Math.random() * 2 - 1) * (this.pedal ? 1 : 0.6);
+      this.noiseT = 0.25 + rand() * 0.35;
+      this.noiseTarget = (rand() * 2 - 1) * (this.pedal ? 1 : 0.6);
     }
     this.noise = damp(this.noise, this.noiseTarget || 0, 4, dt);
   }

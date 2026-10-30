@@ -75,11 +75,23 @@ export class RNG {
   }
 }
 
-// Unseeded gaussian for per-shot randomness.
+// The battle's own random numbers. Everything that decides what happens in a
+// battle (spread, recoil, ricochets, fires, bots' choices) draws from here, so
+// a battle seeded the same way plays out the same way: it can be recorded and
+// played back, and a server can run several battles side by side, each
+// switching to its own stream while it steps (Game.update). Looks and sounds
+// (camera shake, smoke, sparks) keep Math.random.
+let stream = new RNG(0x2545f491);
+export function useStream(rng) {
+  stream = rng;
+}
+export const rand = () => stream.next();
+
+// A normally distributed number from the battle's stream.
 export function gaussRandom(mean = 0, sd = 1) {
   let u = 0;
-  while (u === 0) u = Math.random();
-  const v = Math.random();
+  while (u === 0) u = rand();
+  const v = rand();
   return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
