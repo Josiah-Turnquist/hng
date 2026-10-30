@@ -115,6 +115,27 @@ test("sign-in tokens are checked against the sign-in service's public keys", asy
   }
 });
 
+test('sign-in keys: Neon not answering at first is tried again, and its trouble is logged', async () => {
+  const { publicKey, privateKey } = await generateKeyPair('EdDSA', { crv: 'Ed25519' });
+  const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'EdDSA' };
+  let asked = 0;
+  const keys = createServer((req, res) => (++asked <= 2 ? res.writeHead(503).end('waking up') : res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ keys: [jwk] }))));
+  await new Promise((r) => keys.listen(0, r));
+  const logged = [];
+  const check = signInChecker({ jwksUrl: `http://localhost:${keys.address().port}/.well-known/jwks.json`, allowDevNames: false, log: (t) => logged.push(t) });
+  const token = await new SignJWT({ sub: 'u1', name: 'Able' }).setProtectedHeader({ alg: 'EdDSA', kid: 'k1' }).setIssuedAt().setExpirationTime('15m').sign(privateKey);
+  try {
+    assert.deepEqual(await check({ token }), { id: 'u1', name: 'Able' });
+    assert.equal(asked, 3);
+    assert.match(logged.join('\n'), /HTTP 503/);
+    // Kept: no more asking.
+    await check({ token });
+    assert.equal(asked, 3);
+  } finally {
+    keys.close();
+  }
+});
+
 test('a loadout from the browser is checked against the army, class and equipment points', () => {
   assert.deepEqual(checkLoadout('US', 'infantry', null), DEFAULT_LOADOUT.US.infantry);
   assert.deepEqual(checkLoadout('US', 'infantry', ['mg42', null, null, null, null, null, null]), DEFAULT_LOADOUT.US.infantry, 'not his army');
