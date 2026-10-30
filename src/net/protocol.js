@@ -118,7 +118,10 @@ const ALIVE = 1,
   SPRINTING = 4,
   BLEEDING = 8;
 
-export function snapshot(game, tick, { events = [], ack = 0 } = {}) {
+// sent: the server's note of what it last sent of each vehicle; with it, a
+// vehicle that hasn't moved or changed is left out (most are parked), unless
+// full: then all are in, and the browser drops any it has that are gone (vf).
+export function snapshot(game, tick, { events = [], ack = 0, sent = null, full = true } = {}) {
   const s = [];
   for (const x of game.soldiers) {
     const b = x.body;
@@ -129,11 +132,19 @@ export function snapshot(game, tick, { events = [], ack = 0 } = {}) {
   for (const x of game.vehicles) {
     const p = x.body.position,
       q = x.body.quaternion;
-    v.push([x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw || 0), ang(x.gunElev || 0), Math.ceil(x.hp), x.alive ? 1 : 0]);
+    const row = [x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw || 0), ang(x.gunElev || 0), Math.ceil(x.hp), x.alive ? 1 : 0];
+    if (sent) {
+      const key = row.join(',');
+      if (!full && sent.get(x.id) === key) continue;
+      sent.set(x.id, key);
+    }
+    v.push(row);
   }
   const p = (game.mode?.points || []).map((x) => [x.id, x.owner ?? -1, Math.round(x.c * 100)]);
   const mode = game.mode || {};
-  return { k: 's', t: tick, tm: Math.round(game.time * 1000), s, v, p, m: [Math.round((mode.timeLeft ?? 0) * 10), mode.suddenDeath ? 1 : 0], e: events, a: ack };
+  const out = { k: 's', t: tick, tm: Math.round(game.time * 1000), s, v, p, m: [Math.round((mode.timeLeft ?? 0) * 10), mode.suddenDeath ? 1 : 0], e: events, a: ack };
+  if (sent) out.vf = full ? 1 : 0;
+  return out;
 }
 
 export function readSnapshot(m) {
@@ -146,6 +157,7 @@ export function readSnapshot(m) {
     clock: { timeLeft: (m.m?.[0] ?? 0) / 10, suddenDeath: !!m.m?.[1] },
     events: m.e,
     ack: m.a,
+    allVehicles: m.vf !== 0,
   };
 }
 

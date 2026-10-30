@@ -25,6 +25,7 @@ import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } 
 import { TANK_IDS } from '../game/ribbons.js';
 
 const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
+const FULL_EVERY = 40; // every 40th snapshot (two seconds) has every vehicle, moved or not
 const EMPTY_CLOSE = 60; // seconds with nobody in it
 const OVER_CLOSE = 15; // seconds after the battle is decided
 const INPUTS_PER_SECOND = 90; // more than this from one player and the rest wait
@@ -74,6 +75,7 @@ export class BattleRoom {
     const pc = addPlayer(g, who);
     this.rec?.join(this.tick, who, pc.soldier.id);
     this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });
+    this.fullNext = true; // (he sees every vehicle at once)
     this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, tick: this.tick, rate: 1 / TICK }));
     this._broadcast(JSON.stringify(roster(g)));
     if (this._scores) this.send(client, this._scores);
@@ -162,7 +164,10 @@ export class BattleRoom {
     }
     if (this.rec && this.tick % CHECK_EVERY === 0) this.rec.check(this.tick, g);
     if (this.tick % SNAP_EVERY === 0) {
-      const snap = snapshot(g, this.tick, { events: this.events.take() });
+      const n = this.tick / SNAP_EVERY;
+      const full = this.fullNext || n % FULL_EVERY === 0;
+      this.fullNext = false;
+      const snap = snapshot(g, this.tick, { events: this.events.take(), sent: (this.sentVehicles ??= new Map()), full });
       for (const [client, p] of this.players) {
         snap.a = p.pc.input.seq;
         this.send(client, JSON.stringify(snap));

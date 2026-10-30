@@ -97,6 +97,7 @@ export class OnlineBattle {
       this._events(snap.events);
       this._self(snap);
       this._points(snap);
+      if (snap.allVehicles) this._dropGone(snap);
     } else if (m.k === 'r') this._roster(m.s);
     else if (m.k === 'c') this._scores(m.s);
     else if (m.k === 'g') {
@@ -379,6 +380,22 @@ export class OnlineBattle {
     if (me.vehicle && me.seat >= 0) me.vehicle.occupants[me.seat] = me;
   }
 
+  // An update with every vehicle: any we have that it doesn't (a wreck the
+  // server took away) is gone.
+  _dropGone(snap) {
+    const g = this.game;
+    const here = new Set(snap.vehicles.map((x) => x.id));
+    for (const [id, v] of this.vehicles) {
+      if (here.has(id) || v === this.me.vehicle) continue;
+      this.vehicles.delete(id);
+      v.removeFromWorld?.();
+      const i = g.vehicles.indexOf(v);
+      if (i >= 0) g.vehicles.splice(i, 1);
+    }
+  }
+
+  // Vehicles between two updates. (One left out of an update hasn't moved: it
+  // stays where it is.)
   _vehiclesAt(a, b, t) {
     const g = this.game;
     const prev = new Map(a.vehicles.map((x) => [x.id, x]));
@@ -408,6 +425,17 @@ export class OnlineBattle {
       v.gunElev = lerp(na.gunElev, nb.gunElev, t);
       v.hp = nb.hp;
       v.alive = nb.alive;
+    }
+    // One that just stopped (in the earlier update, not this one): where it stopped.
+    const inB = new Set(b.vehicles.map((x) => x.id));
+    for (const na of a.vehicles) {
+      const v = inB.has(na.id) ? null : this.vehicles.get(na.id);
+      if (!v) continue;
+      v.body.position.set(na.x, na.y, na.z);
+      v.body.quaternion.set(...na.q);
+      v.body.updateDerived?.();
+      v.turretYaw = na.turretYaw;
+      v.gunElev = na.gunElev;
     }
   }
 
