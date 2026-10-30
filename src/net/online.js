@@ -155,6 +155,7 @@ export class OnlineBattle {
       this._place(me, st);
       pc.look.yaw = st.yaw;
       pc.look.pitch = 0;
+      this._seat(st, true);
     }
     if (me.alive && !st.alive) {
       // Down (the server says so): the death view, and back in when it puts him back.
@@ -179,6 +180,8 @@ export class OnlineBattle {
       pc.look.yaw = st.yaw;
       pc.look.pitch = 0;
       this.history.length = 0;
+      // (A tank crewman comes back in in his tank: in it at once.)
+      this._seat(st, true);
       return;
     }
     if (!me.alive) return;
@@ -207,13 +210,13 @@ export class OnlineBattle {
   // In or out of a vehicle: done here at once on his key, and put right when
   // the server still has him elsewhere half a second later (a seat taken
   // first by someone else, say).
-  _seat(st) {
+  _seat(st, now = false) {
     const me = this.me;
     const pc = this.game.player;
     const sv = (st.vehicle && this.vehicles.get(st.vehicle)) || null;
     const here = me.vehicle || null;
     if (sv === here && (!sv || st.seat === me.seat)) return (this.seatOff = 0);
-    if (++this.seatOff < 10) return;
+    if (++this.seatOff < 10 && !now) return;
     this.seatOff = 0;
     if (here) {
       here.occupants[me.seat] = null;
@@ -275,7 +278,8 @@ export class OnlineBattle {
       this.pressed.delete('aim');
     }
     this.seq++;
-    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look: [pc.look.yaw, pc.look.pitch], deploy: this.me.alive ? null : this.deployAt })));
+    const [look, range] = this._aimOut(pc);
+    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look, range, deploy: this.me.alive ? null : this.deployAt })));
     this.pressed.clear();
     const b = this.me.body;
     this.history.push({ seq: this.seq, x: b.x, y: b.y, z: b.z });
@@ -445,6 +449,17 @@ export class OnlineBattle {
         g.audio?.explosion?.(size > 25 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
       }
     }
+  }
+
+  // Where he points: on foot his look; in a vehicle the gun of his seat (and a
+  // tank gunner's sight range), as his own controls set it.
+  _aimOut(pc) {
+    const v = this.me.vehicle;
+    const role = v ? pc.vehicleCtl.role : null;
+    if (role === 'gunner' && v.aim) return [[v.aim.yaw, v.aim.pitch], v.sightRange ?? null];
+    if (role === 'bowMg' && v.bowAim) return [[v.bowAim.yaw, v.bowAim.pitch], null];
+    if (role === 'sidecarMg' && v.mgAim) return [[v.mgAim.yaw, v.mgAim.pitch], null];
+    return [[pc.look.yaw, pc.look.pitch], null];
   }
 
   // Leaving before the end: the server works out his rewards first (up to a few

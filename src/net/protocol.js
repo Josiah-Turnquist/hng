@@ -34,9 +34,12 @@ const ang = (a) => Math.round(a * 10000);
 // --- Inputs ----------------------------------------------------------------------
 
 // deploy: while down, the point he chose to come back in at (its id).
-export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0, deploy = null }) {
+// In a vehicle, look is where the gun of his seat points, and range a tank
+// gunner's sight setting (m).
+export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0, deploy = null, range = null }) {
   const m = { k: 'i', q: seq, h: [...held].map((a) => ACTION_NO[a]).filter((n) => n != null), p: [...pressed].map((a) => ACTION_NO[a]).filter((n) => n != null), l: [ang(look[0]), ang(look[1])], w: wheel | 0 };
   if (deploy) m.d = String(deploy);
+  if (range != null) m.r = Math.round(range);
   return m;
 }
 
@@ -50,6 +53,7 @@ export function decodeInput(m) {
     look: [Number(m.l[0]) / 10000 || 0, Math.max(-1.6, Math.min(1.6, Number(m.l[1]) / 10000 || 0))],
     wheel: Math.max(-5, Math.min(5, Number(m.w) || 0)),
     deploy: typeof m.d === 'string' && m.d.length <= 8 ? m.d : null,
+    range: Number.isFinite(m.r) ? Math.max(0, Math.min(5000, m.r)) : null,
   };
 }
 
@@ -76,6 +80,7 @@ export class RemoteInput {
     this.down = new Set(frame.held);
     this.wheel += frame.wheel;
     this.look = frame.look;
+    this.range = frame.range;
     return true;
   }
 

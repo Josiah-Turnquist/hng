@@ -171,7 +171,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
 // his soldier's number is what his messages and the snapshots name him by.
 // What he does is tallied for his ribbons (s.tally), and when he came in kept
 // (s.joinedAt), for his rewards (game/rewards.js).
-export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player' } = {}) {
+export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player', tank = null } = {}) {
   // A bot on his side makes room: he fights on until he falls, then is gone
   // (game/modes/assault.js). A fallen one goes first, and tank crews last.
   // (Not the battle's own stand-in "player": he always comes back.)
@@ -180,6 +180,7 @@ export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null,
   if (bot) bot.retire = true;
   const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
   s.remote = true;
+  s.tankId = tank;
   s.tally = new RibbonTally();
   s.joinedAt = g.time;
   g.soldiers.push(s);
@@ -201,6 +202,11 @@ function deployPlayer(g, pc, at = null) {
   pc.look.pitch = 0;
   s.current = -1;
   pc._equip(0);
+  // A tank crewman comes in in his tank, as in the game.
+  if (s.cls === 'tanker') {
+    const v = g._deployInTank(s);
+    if (v) pc.vehicleCtl.entered(v);
+  }
 }
 
 export function step(g, seconds, dt = 1 / 60, onTick = null) {

@@ -91,6 +91,7 @@ export class VehicleController {
     if (!v) return;
     if (input.hit('use')) this.exitRequested = true;
     for (let i = 0; i < 4; i++) if (input.hit(`seat${i + 1}`)) this.switchTo = i;
+    if (input.remote) return this._remoteInput(v, input);
     if (input.hit('camera')) this.view = this.view === 'third' ? 'first' : 'third';
     const role = this.role;
     const inv = s.get('invertY') ? -1 : 1;
@@ -159,6 +160,45 @@ export class VehicleController {
     }
     // Bikes: the chase camera swings in behind when the mouse is left alone.
     this.idleLook = mx || my ? 0 : (this.idleLook || 0) + dt;
+  }
+
+  // On the game server: his browser says where the gun of his seat points (its
+  // look, and a tank gunner's sight range: net/protocol.js); the keys work as at home.
+  _remoteInput(v, input) {
+    const role = this.role;
+    const look = input.look;
+    if (role === 'gunner') {
+      if (look && v.aim) {
+        v.aim.yaw = look[0];
+        v.aim.pitch = clamp(look[1], -0.6, 0.7);
+      }
+      if (input.range != null && input.range !== v.sightRange) v.setSightRange(input.range);
+      if (input.hit('fire')) this.wantFire = true;
+      if (v.coax) v.coax.trigger = input.is('handbrake');
+      if (input.hit('ammo1')) this._ammo(v, 0);
+      if (input.hit('ammo2')) this._ammo(v, 1);
+      if (input.hit('ammo3')) this._ammo(v, 2);
+    } else if (role === 'bowMg' && v.bowMg) {
+      const mg = v.def.bowMg;
+      if (look) {
+        v.bowAim.yaw = clamp(look[0], -mg.traverse * DEG, mg.traverse * DEG);
+        v.bowAim.pitch = clamp(look[1], mg.elev[0] * DEG, mg.elev[1] * DEG);
+      }
+      v.bowMg.trigger = input.is('fire');
+    } else if (role === 'sidecarMg' && v.mg) {
+      const d = v.def.sidecarMg;
+      if (look) {
+        v.mgAim.yaw = clamp(look[0], -d.traverse * DEG, d.traverse * DEG);
+        v.mgAim.pitch = clamp(look[1], d.elev[0] * DEG, d.elev[1] * DEG);
+      }
+      v.mg.trigger = input.is('fire') && v.alive;
+    }
+    if (this.soldier.seat === 0) {
+      this.drive = (input.is('forward') ? 1 : 0) - (input.is('back') ? 1 : 0);
+      this.steer = (input.is('right') ? 1 : 0) - (input.is('left') ? 1 : 0);
+      this.handbrake = (v.def.kind === 'wheeled' || v.isBike) && input.is('handbrake');
+      this.sprint = input.is('sprint');
+    }
   }
 
   _ammo(v, i) {

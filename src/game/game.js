@@ -191,7 +191,8 @@ export class Game {
 
   // Put a soldier in a fresh tank of their army near where they stand.
   _deployInTank(s) {
-    const id = (s.isPlayer && this.opts.tank) || { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' }[s.faction];
+    // (The player's own choice; a player on the game server brings his, s.tankId.)
+    const id = (s.isPlayer && this.opts.tank) || s.tankId || { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' }[s.faction];
     if (!id) return null;
     const b = s.body;
     // Somewhere a tank can actually drive out of (not wedged between houses).

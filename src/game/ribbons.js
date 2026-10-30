@@ -453,6 +453,16 @@ export function tankUnlocked(soldier, tankId) {
   return !r || ribbonLevel(soldier.ribbons?.[r.ribbon]).level >= r.level;
 }
 
+// Each army's tanks for its crews, the first open to every crewman.
+export const TANK_IDS = { US: ['m5a1_stuart', 'm4a1_sherman'], GE: ['panzer4_h', 'tiger1'], SU: ['t34_76', 't34_85'] };
+
+// The tank a crewman goes into battle in: the one asked for, if it is his
+// army's and open to him, else his army's first.
+export function tankFor(soldier, tankId) {
+  const ids = TANK_IDS[soldier.faction] || [];
+  return ids.includes(tankId) && tankUnlocked(soldier, tankId) ? tankId : ids[0] || null;
+}
+
 // The ribbons a soldier of this class earns, in the order to show them.
 export function ribbonsFor(cls) {
   return Object.keys(RIBBONS).filter((k) => RIBBONS[k].classes.includes(cls));

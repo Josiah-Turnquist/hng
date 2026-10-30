@@ -9,7 +9,7 @@
 //
 //   const room = new BattleRoom({ perSide, attackers, defenders, send })
 //   await room.ready
-//   room.join(client, { userId, name, faction, cls, loadout, soldierId })   -> soldier id or throws
+//   room.join(client, { userId, name, faction, cls, loadout, soldierId, tank })   -> soldier id or throws
 //   room.input(client, message); room.leaving(client); room.leave(client)
 //   room.onClose = () => ...
 //   room.onReward = ({ client, userId, name, soldierId, reward }) => ...   (reward null: nothing earned)
@@ -21,6 +21,7 @@ import { snapshot, roster, watchEvents, PROTOCOL_VERSION } from '../net/protocol
 import { BotBrain } from '../ai/bot.js';
 import { battleReward } from '../game/rewards.js';
 import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
+import { TANK_IDS } from '../game/ribbons.js';
 
 const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
 const EMPTY_CLOSE = 60; // seconds with nobody in it
@@ -52,13 +53,13 @@ export class BattleRoom {
     return faction === this.opts.attackers ? ATT : faction === this.opts.defenders ? DEF : null;
   }
 
-  join(client, { userId, name, faction, cls = 'infantry', loadout = null, soldierId = null }) {
+  join(client, { userId, name, faction, cls = 'infantry', loadout = null, soldierId = null, tank = null }) {
     const g = this.g;
     const team = this.sideOf(faction);
     if (team === null) throw new Error(`This battle is ${this.opts.attackers} against ${this.opts.defenders}`);
     if (!DEFAULT_LOADOUT[faction]?.[cls]) throw new Error('Unknown class');
     for (const [, p] of this.players) if (p.userId === userId) throw new Error('You are already in this battle');
-    const who = { faction, cls, team, name, loadout: checkLoadout(faction, cls, loadout) };
+    const who = { faction, cls, team, name, loadout: checkLoadout(faction, cls, loadout), tank: cls === 'tanker' ? (TANK_IDS[faction].includes(tank) ? tank : TANK_IDS[faction][0]) : null };
     const pc = addPlayer(g, who);
     this.rec?.join(this.tick, who, pc.soldier.id);
     this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });

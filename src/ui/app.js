@@ -115,7 +115,7 @@ export class App {
         try {
           // (The server goes by the soldier it keeps: anything changed just now first.)
           await saveNow().catch(() => {});
-          this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout }, { dev: this.account?.dev || null });
+          this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank }, { dev: this.account?.dev || null });
           note.remove();
           const w = this.conn.welcome;
           opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: null };

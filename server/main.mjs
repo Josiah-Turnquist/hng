@@ -35,6 +35,7 @@ import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
 import { fitLoadout } from '../src/ui/roster.js';
+import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 
@@ -163,7 +164,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       try {
         const who = await check(m);
         const s = m.soldier || {};
-        let me = { faction: s.faction, cls: s.cls, loadout: s.loadout, soldierId: typeof s.id === 'string' ? s.id.slice(0, 64) : null };
+        let me = { faction: s.faction, cls: s.cls, loadout: s.loadout, tank: s.tank, soldierId: typeof s.id === 'string' ? s.id.slice(0, 64) : null };
         // Soldiers kept here: his army, class and what he may carry are the
         // kept soldier's, not what the browser says.
         if (store) {
@@ -176,7 +177,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
           }
           const kept = row?.roster?.soldiers?.find((x) => x && x.id === me.soldierId);
           if (!kept) return refuse('This soldier is not saved on the server yet. Go back and try again in a moment.');
-          me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout) };
+          me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout), tank: kept.cls === 'tanker' ? tankFor(kept, s.tank) : null };
         }
         const r = await currentRoom(me.faction);
         if (ws.readyState !== 1) return;

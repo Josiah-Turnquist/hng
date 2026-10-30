@@ -454,7 +454,7 @@ export class AssaultMode {
       g.rosterChanged = true;
     }
     for (const s of g.soldiers) {
-      if (s.alive || s.isPlayer) continue;
+      if (s.alive || s.isPlayer || s.remote) continue; // (players come back in where they choose)
       if (s.respawnT === undefined || s.respawnT === null) s.respawnT = this._spawnDelay(this.points[0], s.team);
       s.respawnT -= dt;
       if (s.respawnT <= 0 && s.deathTime > 3) {

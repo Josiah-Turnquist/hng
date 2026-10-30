@@ -132,3 +132,49 @@ test('a fallen player comes back in at the point he chose, once its wait is over
   send(pts[0].id);
   assert.equal(pc.deployAt ?? null, null);
 });
+
+test('a tank crewman joins in the tank he chose, drives it from his messages, and comes back in a tank', async () => {
+  const g = await makeBattle({ perSide: 4, seed: 11 });
+  const pc = addPlayer(g, { name: 'Tanker', faction: 'GE', cls: 'tanker', team: 0, tank: 'tiger1' });
+  const s = pc.soldier;
+  assert.ok(s.vehicle, 'in a tank at once');
+  assert.equal(s.vehicle.def.id, 'tiger1');
+  assert.equal(s.seat, 0, 'in the driver\'s seat');
+  assert.equal(s.vehicle.team, 0);
+  // His forward key drives it.
+  const v = s.vehicle;
+  const x0 = v.body.position.x,
+    z0 = v.body.position.z;
+  let seq = 0;
+  for (let i = 0; i < 240; i++) {
+    g.applyInput(s.id, encodeInput({ seq: ++seq, held: ['forward'], look: [pc.look.yaw, 0] }));
+    step(g, 1 / 60);
+  }
+  assert.ok(Math.hypot(v.body.position.x - x0, v.body.position.z - z0) > 1, 'it moved');
+  // To the gunner's seat: his aim turns the turret, his fire key fires the gun.
+  const gunner = v.seats.findIndex((q) => q.role === 'gunner');
+  g.applyInput(s.id, encodeInput({ seq: ++seq, pressed: [`seat${gunner + 1}`] }));
+  step(g, 0.1);
+  assert.equal(s.seat, gunner);
+  const want = v.aim.yaw + 0.8;
+  for (let i = 0; i < 300; i++) {
+    g.applyInput(s.id, encodeInput({ seq: ++seq, look: [want, 0.02], range: 600 }));
+    step(g, 1 / 60);
+  }
+  assert.ok(Math.abs(v.aim.yaw - want) < 1e-3, 'aimed where his browser says');
+  assert.equal(v.sightRange, 600);
+  const shells = g.projectiles.active?.length ?? 0;
+  g.applyInput(s.id, encodeInput({ seq: ++seq, pressed: ['fire'], look: [want, 0.02] }));
+  step(g, 0.05);
+  assert.ok(!v.loaded || (g.projectiles.active?.length ?? 0) > shells, 'the gun fired');
+  // Out, on foot.
+  g.applyInput(s.id, encodeInput({ seq: ++seq, pressed: ['use'] }));
+  step(g, 0.1);
+  assert.equal(s.vehicle, null, 'got out');
+  // Down and back: in a tank again.
+  s.die({ type: 'test' });
+  step(g, 65);
+  assert.equal(s.alive, true);
+  assert.ok(s.vehicle && s.vehicle !== v, 'a new tank');
+  assert.equal(s.vehicle.def.id, 'tiger1');
+});
