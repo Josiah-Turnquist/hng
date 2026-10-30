@@ -476,9 +476,11 @@ canvas.game {
   transform-origin: 50% 100%;
 }
 
-/* Assault: capture points and timer at the top */
+/* Assault: capture points and timer at the top, over the deploy screen. The
+   points show only with the scoreboard (Tab); see Hud._updateScores. */
 .assault-bar {
   position: absolute;
+  z-index: 9;
   top: 44px;
   left: 50%;
   transform: translateX(-50%);
@@ -489,7 +491,8 @@ canvas.game {
   pointer-events: none;
 }
 .assault-bar .timer { font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: 0.05em; }
-.assault-bar .pts { display: flex; align-items: center; gap: 2px; font-size: 10px; }
+.assault-bar .pts { display: none; align-items: center; gap: 2px; font-size: 10px; }
+.assault-bar.show-pts .pts { display: flex; }
 .assault-bar .pts b { color: var(--ink-dim); margin: 0 5px; font-weight: 400; }
 .assault-bar .pt {
   position: relative;
@@ -509,6 +512,7 @@ canvas.game {
 .assault-result {
   position: absolute;
   inset: 0;
+  z-index: 9; /* (the bar's level: coming later, it covers the bar) */
   display: none;
   flex-direction: column;
   align-items: center;
@@ -610,9 +614,10 @@ canvas.game {
 .set-view .set-group { margin: 16px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: var(--ink); }
 .set-view .fps-now { color: var(--ink); }
 
-/* Scoreboard (Tab) */
+/* Scoreboard (Tab), over the deploy screen too */
 .hud-scores {
   position: absolute;
+  z-index: 9;
   top: 90px;
   left: 50%;
   transform: translateX(-50%);

@@ -867,12 +867,17 @@ export class Hud {
     this.crossEl.style.setProperty('--gap', `${c.r.toFixed(1)}px`);
   }
 
-  // Hold Tab: both sides' soldiers with kills, deaths and score.
+  // Hold Tab: both sides' soldiers with kills, deaths and score (and, in an
+  // Assault, the row of points).
   _updateScores(g) {
     const el = (this.scoresEl ??= this.el('.hud-scores'));
     // (Not over the battle results, which have their own summary.)
-    const show = (g.input.is('scores') || !!g.mode?.over) && !this.root.querySelector('.battle-result');
+    const held = g.input.is('scores') || !!g.mode?.over;
+    const show = held && !this.root.querySelector('.battle-result');
     el.style.display = show ? 'flex' : 'none';
+    // Assault: the row of points under the clock shows with the scoreboard.
+    const bar = g.mode?.barEl;
+    if (bar && bar.classList.contains('show-pts') !== held) bar.classList.toggle('show-pts', held);
     if (!show) return;
     this._scoreT = (this._scoreT || 0) + 1;
     if (this._scoreT % 15 !== 1) return;
