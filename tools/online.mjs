@@ -23,18 +23,34 @@ server.stdout.on('data', (d) => process.stdout.write(`[server] ${d}`));
 server.stderr.on('data', (d) => process.stdout.write(`[server!] ${d}`));
 await new Promise((r) => setTimeout(r, 1500));
 
-const browser = await playwright.chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
+// (Each player in his own browser, as two people would be.)
+const launch = () => playwright.chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
+const browsers = [];
 let failed = false;
 async function player(name) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const browser = await launch();
+  browsers.push(browser);
+  // (Small and low detail: two games drawn without a graphics card are slow.)
+  const ctx = await browser.newContext({ viewport: { width: 800, height: 450 } });
   const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem('hng.settings.v1')) localStorage.setItem('hng.settings.v1', JSON.stringify({ quality: 'low' }));
+    } catch {}
+  });
   page.on('console', (m) => m.type() !== 'debug' && console.log(`[${name} ${m.type()}] ${m.text()}`.slice(0, 600)));
   page.on('pageerror', (e) => {
     failed = true;
     console.log(`[${name} pageerror] ${e.stack || e.message}`);
   });
   await page.goto(`http://localhost:${port}/?dev=${name}&audio=0`, { waitUntil: 'domcontentloaded', timeout: 180000 });
-  await page.waitForSelector('.fe .rm-change', { timeout: 400000 });
+  try {
+    await page.waitForSelector('.fe .rm-change', { timeout: 400000 });
+  } catch (e) {
+    await page.screenshot({ path: join(out, `online-${name}-stuck.png`) }).catch(() => {});
+    console.log(`[${name}] stuck on:`, await page.evaluate(() => document.body.innerText.slice(0, 600)).catch((x) => x.message));
+    throw e;
+  }
   await page.click('.fe .rm-change');
   await page.click('.mission-card:has-text("Online battle")');
   await page.click('.hx-win .ok');
@@ -54,7 +70,7 @@ try {
   const seen = (page) =>
     page.evaluate(() => {
       const o = window.__app.game.online;
-      return { me: o.me.id, team: o.me.team, alive: o.me.alive, puppets: o.puppets.size, players: [...o.puppets.values()].filter((s) => !/\(bot\)|^[A-Z][a-z]+ [A-Z]/.test(s.name)).map((s) => s.name), vehicles: o.vehicles.size, snaps: o.snaps.length };
+      return { me: o.me.id, team: o.me.team, alive: o.me.alive, puppets: o.puppets.size, names: [...o.puppets.values()].map((s) => s.name), vehicles: o.vehicles.size, snaps: o.snaps.length };
     });
   console.log('Able sees', JSON.stringify(await seen(able)));
   console.log('Baker sees', JSON.stringify(await seen(baker)));
@@ -77,23 +93,26 @@ try {
     const is = i.is.bind(i);
     i.is = (a) => i.fakeHeld.has(a) || is(a);
   });
-  await able.waitForTimeout(3000);
+  // (Held for 90 of his frames: on this computer a frame can take a while.)
+  const f0 = await frames(able);
+  await able.waitForFunction((f) => window.__app.game.loop.frame > f + 90, f0, { timeout: 600000 });
   await able.evaluate(() => window.__app.input.fakeHeld.clear());
-  await able.waitForTimeout(500);
+  await able.waitForFunction((f) => window.__app.game.loop.frame > f + 120, f0, { timeout: 600000 });
+  await baker.waitForFunction((t) => performance.now() > t, await baker.evaluate(() => performance.now() + 1500));
   const after = await where(baker, ableId);
   const ownAfter = await own();
   const moved = before && after ? Math.hypot(after.x - before.x, after.z - before.z) : 0;
   const ownMoved = Math.hypot(ownAfter.x - ownBefore.x, ownAfter.z - ownBefore.z);
   const gap = after ? Math.hypot(after.x - ownAfter.x, after.z - ownAfter.z) : -1;
   console.log(`Able moved ${ownMoved.toFixed(2)} m on his screen, ${moved.toFixed(2)} m on Baker's; the two places ${gap.toFixed(2)} m apart`);
-  await able.screenshot({ path: join(out, 'online-able.png') });
-  await baker.screenshot({ path: join(out, 'online-baker.png') });
+  await able.screenshot({ path: join(out, 'online-able.png'), timeout: 300000 });
+  await baker.screenshot({ path: join(out, 'online-baker.png'), timeout: 300000 });
   if (!(moved > 2 && ownMoved > 2 && gap < 1.5)) failed = true;
 } catch (e) {
   failed = true;
   console.log('FAILED', e.stack || e.message);
 }
-await browser.close();
+for (const b of browsers) await b.close();
 server.kill();
 console.log(failed ? 'FAILED' : 'OK');
 process.exit(failed ? 1 : 0);

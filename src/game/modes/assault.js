@@ -22,7 +22,7 @@ import { rand } from '../../core/math.js';
 export const DEF = 0; // defenders' team index
 export const ATT = 1; // attackers
 
-const NAMES = {
+export const NAMES = {
   US: ['Miller', 'Kowalski', 'Russo', 'Johnson', 'Walsh', 'Hendricks', 'Ortiz', 'Brennan', 'Novak', 'Carter', 'Delaney', 'Fischer', 'Hayes', 'Lindqvist', 'Moretti', 'Parker', 'Quinn', 'Sullivan', 'Tucker', 'Vance'],
   GE: ['Bauer', 'Becker', 'Hartmann', 'Kraus', 'Lehmann', 'Maier', 'Neumann', 'Richter', 'Schäfer', 'Schmitt', 'Vogel', 'Wagner', 'Weber', 'Wolf', 'Zimmermann', 'Krüger', 'Brandt', 'Lorenz', 'Hahn', 'Engel'],
   SU: ['Ivanov', 'Petrov', 'Smirnov', 'Kuznetsov', 'Popov', 'Sokolov', 'Lebedev', 'Kozlov', 'Novikov', 'Morozov', 'Volkov', 'Zaitsev', 'Pavlov', 'Semenov', 'Golubev', 'Vinogradov', 'Bogdanov', 'Vorobyov', 'Fedorov', 'Mikhailov'],

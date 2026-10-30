@@ -16,7 +16,7 @@ import { Atmosphere } from '../ballistics/atmosphere.js';
 import { RNG, useStream } from '../core/math.js';
 import { ProjectileSystem } from '../ballistics/projectiles.js';
 import { NavGrid } from '../ai/navgrid.js';
-import { AssaultMode, ATT, DEF } from '../game/modes/assault.js';
+import { AssaultMode, ATT, DEF, NAMES } from '../game/modes/assault.js';
 import { Soldier } from '../game/soldier.js';
 import { BotBrain } from '../ai/bot.js';
 import { DEFAULT_LOADOUT } from '../weapons/defs.js';
@@ -120,7 +120,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   g.projectiles.onSegment = (p, ...a) => g._botsNearMiss(p, ...a);
   g.mode = new AssaultMode(g, { attackers, defenders, playerTeam: ATT, perSide, minutes });
   // The "player" is just one more bot here.
-  const ps = new Soldier(g, { faction: attackers, cls: 'infantry', loadout: DEFAULT_LOADOUT[attackers].infantry, team: ATT, name: 'P', x: 0, z: 0 });
+  const ps = new Soldier(g, { faction: attackers, cls: 'infantry', loadout: DEFAULT_LOADOUT[attackers].infantry, team: ATT, name: NAMES[attackers][(perSide - 1) % NAMES[attackers].length], x: 0, z: 0 });
   ps.brain = new BotBrain(g, ps);
   g.soldiers.push(ps);
   g.player = {
@@ -169,7 +169,8 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
 export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player' } = {}) {
   // A bot on his side makes room: he fights on until he falls, then is gone
   // (game/modes/assault.js). A fallen one goes first, and tank crews last.
-  const bots = g.soldiers.filter((b) => b.team === team && b.brain && !b.remote && !b.retire);
+  // (Not the battle's own stand-in "player": he always comes back.)
+  const bots = g.soldiers.filter((b) => b.team === team && b.brain && !b.remote && !b.retire && b !== g.player.soldier);
   const bot = bots.find((b) => !b.alive && !b.tankCrew) || bots.find((b) => !b.tankCrew) || bots[0];
   if (bot) bot.retire = true;
   const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
