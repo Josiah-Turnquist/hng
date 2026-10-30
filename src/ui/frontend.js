@@ -833,7 +833,6 @@ export function showFrontEnd(app) {
       }
       box.innerHTML = `<div class="ready-mission"><span class="rm-kind"></span><b></b><small></small><button class="rm-change">Change battle</button></div><button class="ready-btn">Ready for battle</button>`;
       if (m.online && app.account) {
-        box.querySelector('.ready-btn').textContent = 'Join online battle';
         const ch = box.querySelector('.rm-change');
         ch.textContent = 'Practice offline';
         ch.className = 'rm-practice';
