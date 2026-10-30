@@ -106,6 +106,8 @@ export class BattleRoom {
     this.players.delete(client);
     const g = this.g;
     const s = p.pc.soldier;
+    // (Aim that kept turning faster than a person can: in the log, to look into.)
+    if (p.pc.snaps > 30) console.warn(`${p.name}: aim turned faster than a person can ${p.pc.snaps} times this battle`);
     s.tally = null;
     g.remotePlayers = g.remotePlayers.filter((x) => x !== p.pc);
     s.remote = false;

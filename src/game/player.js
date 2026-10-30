@@ -6,10 +6,14 @@ import { STANCE } from '../actors/body.js';
 import { ViewModel } from '../weapons/viewmodel.js';
 import { GunHold } from './gunHold.js';
 import { VehicleController } from './vehicleControl.js';
-import { clamp, damp, gaussRandom, DEG, rand } from '../core/math.js';
+import { clamp, damp, gaussRandom, DEG, rand, wrapAngle } from '../core/math.js';
 import { hasGrenade, startThrow, releaseThrow, lookAim } from './throwing.js';
 import { meleeOf, startAttack, canAttack } from './melee.js';
 import { useKit, workWrench, endRepair } from './kits.js';
+
+// On the game server, how fast a player's aim may turn (rad/s): beyond any
+// person's flick of the mouse, so only a cheat's snap onto a target is slowed.
+export const TURN_LIMIT = 40;
 
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
@@ -203,10 +207,16 @@ export class PlayerController {
       dpitch = 0;
     if (input.remote) {
       if (input.look) {
-        dyaw = input.look[0] - this.look.yaw;
-        dpitch = input.look[1] - this.look.pitch;
-        this.look.yaw = input.look[0];
-        this.look.pitch = clamp(input.look[1], -1.45, 1.45);
+        // (No faster than TURN_LIMIT: a turn held back is finished on the next
+        // steps. Held back by more than twice that is counted: snaps.)
+        const max = TURN_LIMIT * dt;
+        const wy = wrapAngle(input.look[0] - this.look.yaw);
+        const wp = clamp(input.look[1], -1.45, 1.45) - this.look.pitch;
+        dyaw = clamp(wy, -max, max);
+        dpitch = clamp(wp, -max, max);
+        if (Math.hypot(wy, wp) > 2 * max) this.snaps = (this.snaps || 0) + 1;
+        this.look.yaw += dyaw;
+        this.look.pitch += dpitch;
       }
     } else {
       const [mx, my] = input.takeMouse();

@@ -185,3 +185,29 @@ test("an online battle's bots fight at the battle's difficulty (easy unless the 
   const brains = g.soldiers.map((s) => s.brain).filter((b) => b?.difficulty);
   assert.ok(brains.length > 0 && brains.every((b) => b.difficulty === 'easy'));
 });
+
+test("a player's aim turns no faster than a person can: a cheat's snap is slowed and counted", async () => {
+  const { TURN_LIMIT } = await import('../src/game/player.js');
+  const g = await makeBattle({ perSide: 4, seed: 6 });
+  const pc = addPlayer(g, { name: 'Snap', faction: 'US', cls: 'infantry', team: 1 });
+  const s = pc.soldier;
+  let seq = 0;
+  const yaw0 = pc.look.yaw;
+  const want = yaw0 + Math.PI; // straight behind him, in one step
+  g.applyInput(s.id, encodeInput({ seq: ++seq, look: [want, 0] }));
+  step(g, 1 / 60);
+  const turned = Math.abs(pc.look.yaw - yaw0);
+  assert.ok(turned <= TURN_LIMIT / 60 + 1e-6, `held back: ${turned.toFixed(2)} rad in one step`);
+  assert.ok(pc.snaps >= 1, 'and counted');
+  for (let i = 0; i < 12; i++) {
+    g.applyInput(s.id, encodeInput({ seq: ++seq, look: [want, 0] }));
+    step(g, 1 / 60);
+  }
+  assert.ok(Math.abs(Math.atan2(Math.sin(pc.look.yaw - want), Math.cos(pc.look.yaw - want))) < 1e-3, 'there a moment later');
+  // An ordinary turn isn't touched.
+  const before = pc.snaps;
+  g.applyInput(s.id, encodeInput({ seq: ++seq, look: [want + 0.2, 0.1] }));
+  step(g, 1 / 60);
+  assert.equal(pc.snaps, before);
+  assert.ok(Math.abs(pc.look.pitch - 0.1) < 1e-3);
+});
