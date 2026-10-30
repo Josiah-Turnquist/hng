@@ -5,9 +5,10 @@
 // with each save, so two computers can't quietly overwrite each other.
 //
 //   const store = openProgressStore(process.env.DATABASE_URL)
-//   await store.get(userId)                       // { roster, war, rev } or null
+//   await store.get(userId)                       // { name, roster, war, rev } or null
 //   await store.put(userId, name, { roster, war }, rev)
 //       // -> { rev } saved (a part left out stays as it was), or { conflict: { roster, war, rev } }
+//   await store.list(search)                      // up to 50 players, latest first: [{ user_id, name, roster, rev, updated_at }]
 //   await store.close()
 import pg from 'pg';
 
@@ -36,7 +37,7 @@ export function openProgressStore(url, { log = console.log } = {}) {
   return {
     async get(userId) {
       await table();
-      const r = await pool.query('SELECT roster, war, rev FROM progress WHERE user_id = $1', [userId]);
+      const r = await pool.query('SELECT name, roster, war, rev FROM progress WHERE user_id = $1', [userId]);
       return r.rows[0] || null;
     },
     async put(userId, name, { roster = null, war = null }, rev) {
@@ -53,6 +54,12 @@ export function openProgressStore(url, { log = console.log } = {}) {
       if (r.rows.length) return { rev: r.rows[0].rev };
       // Saved meanwhile from somewhere else: what is there now.
       return { conflict: await this.get(userId) };
+    },
+    // Players by name (part of it, any case), the latest played first.
+    async list(search = '') {
+      await table();
+      const r = await pool.query(`SELECT user_id, name, roster, rev, updated_at FROM progress WHERE name ILIKE $1 ORDER BY updated_at DESC LIMIT 50`, [`%${String(search).replace(/[\\%_]/g, (c) => '\\' + c)}%`]);
+      return r.rows;
     },
     close: () => pool.end(),
   };

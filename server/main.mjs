@@ -23,7 +23,8 @@
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
 // DATABASE_URL (Neon's Postgres, for saved progress; without it progress
 // stays in each browser),
-// BOT_DIFFICULTY (easy, normal or hard; easy by default),
+// BOT_DIFFICULTY (easy, normal or hard; easy by default), ADMIN_EMAILS (the
+// sign-in emails, comma between, that may open the admin page /admin),
 // BATTLE_SIZE (bots and players a side; by default the map's own, its
 // onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
 // running at once, default 3).
@@ -39,6 +40,7 @@ import { MAPS } from '../src/world/maps.js';
 import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
+import { adminHandler } from '../src/server/admin.js';
 import { fitLoadout } from '../src/ui/roster.js';
 import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
@@ -46,12 +48,13 @@ import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Only the game's own files are handed out.
-const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
+const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
   const rooms = new Set();
   const progress = progressHandler({ store, check, log });
+  const admin = adminHandler({ store, check, admins, log });
   const opening = new Map(); // 'GE-US' -> the battle being made
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
@@ -125,6 +128,8 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         await proxyAuth(req, res, path, authBase, { log });
         return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
       }
+      if (url.pathname.startsWith('/api/admin/')) return await admin(req, res, url.pathname.slice('/api/admin/'.length));
+      if (url.pathname === '/admin') return res.writeHead(302, { Location: '/admin.html' }).end();
       if (url.pathname === '/api/progress') {
         const t0 = performance.now();
         await progress(req, res);
@@ -138,7 +143,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       // The page and its code are checked with the server each time (an
       // unchanged file costs a short "not modified"), so a reload always gets
       // the latest game; three.js and the models may be kept a while.
-      const fresh = path === 'index.html' || path.startsWith(`src${sep}`) || path.startsWith('src/');
+      const fresh = path === 'index.html' || path === 'admin.html' || path.startsWith(`src${sep}`) || path.startsWith('src/');
       const headers = { 'Content-Type': f.type, 'Cache-Control': fresh ? 'no-cache' : 'public, max-age=300', ETag: f.etag, Vary: 'Accept-Encoding' };
       if (req.headers['if-none-match'] === f.etag) return res.writeHead(304, headers).end();
       const gz = f.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');

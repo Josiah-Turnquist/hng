@@ -19,10 +19,13 @@ function memoryStore() {
     async get(id) {
       return rows.get(id) ?? null;
     },
+    async list(q = '') {
+      return [...rows].filter(([, r]) => (r.name || '').toLowerCase().includes(q.toLowerCase())).map(([id, r]) => ({ user_id: id, name: r.name, roster: r.roster, rev: r.rev, updated_at: new Date().toISOString() }));
+    },
     async put(id, name, { roster, war }, rev) {
       const r = rows.get(id);
       if (r && r.rev !== rev) return { conflict: r };
-      const next = { roster: roster ?? r?.roster ?? null, war: war ?? r?.war ?? null, rev: (r?.rev ?? 0) + 1 };
+      const next = { name, roster: roster ?? r?.roster ?? null, war: war ?? r?.war ?? null, rev: (r?.rev ?? 0) + 1 };
       rows.set(id, next);
       return { rev: next.rev };
     },
@@ -223,5 +226,37 @@ test('the database store saves, keeps the part left out, and refuses a stale sav
     assert.equal((await store.get(id)).roster.soldiers[0].xp, 2);
   } finally {
     await store.close();
+  }
+});
+
+test('the admin page: only admins; find players, set credits and ranks, max ribbons', async () => {
+  const store = memoryStore();
+  await store.put('dev:Pipsy', 'Pipsy', { roster: { soldiers: [full(), full({ id: 's2', faction: 'GE', name: 'Braun' })], selectedId: 's1', credits: 10 } }, 0);
+  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, admins: ['dev:Boss'], log: () => {} });
+  const as = (name, path, body) =>
+    fetch(`http://localhost:${srv.port}/api/admin/${path}`, { method: body ? 'POST' : 'GET', headers: { 'X-Dev-Name': name, 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  try {
+    assert.equal((await fetch(`http://localhost:${srv.port}/api/admin/players`)).status, 401);
+    assert.equal((await as('Pipsy', 'players')).status, 403, 'a player is not an admin');
+    const found = (await as('Boss', 'players?q=pip')).body.players;
+    assert.equal(found.length, 1);
+    assert.deepEqual([found[0].name, found[0].credits, found[0].soldiers.length], ['Pipsy', 10, 2]);
+    const credits = await as('Boss', 'change', { id: 'dev:Pipsy', what: 'credits', value: 5000000 });
+    assert.equal(credits.body.player.credits, 5000000);
+    await as('Boss', 'change', { id: 'dev:Pipsy', what: 'rank', value: 12, soldier: 's2' });
+    let kept = store.rows.get('dev:Pipsy').roster;
+    assert.deepEqual([kept.soldiers[0].xp, kept.soldiers[1].xp], [5000, 101000], 'one soldier, rank 12');
+    await as('Boss', 'change', { id: 'dev:Pipsy', what: 'rank', value: 3 });
+    await as('Boss', 'change', { id: 'dev:Pipsy', what: 'ribbons' });
+    await as('Boss', 'change', { id: 'dev:Pipsy', what: 'specialists' });
+    kept = store.rows.get('dev:Pipsy').roster;
+    assert.deepEqual(kept.soldiers.map((s) => s.xp), [3000, 3000], 'everyone rank 3');
+    assert.equal(kept.soldiers[1].ribbons.armorAssault, 184500);
+    assert.equal(kept.soldiers[0].ribbons['spec:mg42'], 184500);
+    assert.equal(store.rows.get('dev:Pipsy').rev, 6, 'each change a new revision: an open game takes it');
+    assert.equal((await as('Boss', 'change', { id: 'dev:Pipsy', what: 'credits', value: -5 })).status, 400);
+    assert.equal((await as('Boss', 'change', { id: 'nobody', what: 'credits', value: 5 })).status, 400);
+  } finally {
+    await srv.close();
   }
 });

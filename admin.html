@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HNG Admin</title>
+<style>
+  :root { --bg: #121310; --panel: #1b1c18; --line: rgba(255, 255, 255, 0.12); --ink: #e9e4d6; --dim: #b9b29f; --amber: #e2ac46; --bad: #d5644f; --good: #8fbf6a;
+    --font: 'Barlow', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; --cond: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); padding: 24px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); }
+  main { max-width: 980px; margin: 0 auto; display: grid; gap: 18px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { margin: 0; font: 700 30px var(--cond); letter-spacing: 0.3em; }
+  header span { font: 600 13px var(--cond); letter-spacing: 0.22em; text-transform: uppercase; color: var(--amber); }
+  header a { margin-left: auto; color: var(--dim); }
+  .bar { display: flex; gap: 10px; }
+  input, select, button { font: inherit; color: var(--ink); background: #23241f; border: 1px solid var(--line); padding: 8px 10px; }
+  input:focus, select:focus { outline: none; border-color: var(--amber); }
+  .bar input { flex: 1; min-width: 0; }
+  button { cursor: pointer; font: 600 14px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
+  button:hover { border-color: var(--amber); color: var(--amber); }
+  button.main { background: var(--amber); color: #1b160c; border-color: var(--amber); }
+  button.main:hover { color: #1b160c; filter: brightness(1.08); }
+  .note { color: var(--dim); }
+  .msg { padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); }
+  .msg.bad { border-color: var(--bad); color: #f1b5a8; }
+  .msg.good { border-color: var(--good); color: #cfe6bc; }
+  .player { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 12px; }
+  .ph { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+  .ph b { font: 700 22px var(--cond); letter-spacing: 0.04em; }
+  .ph small { color: var(--dim); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row label { font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); min-width: 74px; }
+  .row input[type=number] { width: 160px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); }
+  th { font: 600 12px var(--cond); letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+  .wrap { overflow-x: auto; }
+  td select { padding: 4px 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>HNG</h1><span>Admin</span><a href="/">Back to the game</a></header>
+  <div id="gate" class="msg">Checking who you are...</div>
+  <section id="tools" hidden>
+    <form class="bar" id="find">
+      <input id="q" placeholder="Player name (leave empty for the latest players)" autocomplete="off">
+      <button class="main">Find</button>
+    </form>
+  </section>
+  <div id="status" hidden></div>
+  <div id="list" style="display:grid;gap:14px"></div>
+</main>
+<script type="module">
+import { session, token, serverConfig } from './src/net/auth.js';
+
+const $ = (s) => document.querySelector(s);
+const MAX_RANK = 22;
+let jwt = null;
+// (On your own computer, with ALLOW_DEV_NAMES=1: ?dev=Name signs in as Name.)
+const config = await serverConfig().catch(() => null);
+const dev = config?.devNames ? new URLSearchParams(location.search).get('dev') : null;
+
+async function api(path, body) {
+  if (!dev) jwt ||= await token();
+  const r = await fetch(`/api/admin/${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { ...(dev ? { 'X-Dev-Name': dev } : { Authorization: `Bearer ${jwt}` }), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  });
+  if (r.status === 401) jwt = null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.error || `Error ${r.status}`), { status: r.status });
+  return data;
+}
+
+function status(text, kind = '') {
+  const el = $('#status');
+  el.hidden = !text;
+  el.className = `msg ${kind}`;
+  el.textContent = text;
+}
+
+const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+const when = (t) => (t ? new Date(t).toLocaleString() : '');
+
+function card(p) {
+  const el = document.createElement('div');
+  el.className = 'player';
+  el.innerHTML = `
+    <div class="ph"><b></b><small class="seen"></small><small class="cr"></small></div>
+    <div class="row"><label>Credits</label><input type="number" min="0" step="1000" class="credits"><button class="setc">Set credits</button></div>
+    <div class="row"><label>Everyone</label>
+      <select class="rankall"></select><button class="setr">Set rank</button>
+      <button class="rib">Max ribbons</button><button class="spec">Max specialist ribbons</button></div>
+    <div class="wrap"><table><thead><tr><th>Soldier</th><th>Army</th><th>Class</th><th>Rank</th><th>XP</th></tr></thead><tbody></tbody></table></div>`;
+  const ranks = (sel, value) => {
+    sel.innerHTML = '';
+    for (let r = 0; r <= MAX_RANK; r++) sel.add(new Option(`Rank ${r}`, r, false, r === value));
+  };
+  const draw = (pl) => {
+    el.querySelector('b').textContent = pl.name || '(no name)';
+    el.querySelector('.seen').textContent = `Last saved ${when(pl.updated)}`;
+    el.querySelector('.cr').textContent = `${fmt(pl.credits)} credits`;
+    el.querySelector('.credits').value = pl.credits;
+    ranks(el.querySelector('.rankall'), 12);
+    const tb = el.querySelector('tbody');
+    tb.innerHTML = '';
+    for (const s of pl.soldiers) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td></td><td></td><td></td><td><select></select></td><td></td>';
+      tr.cells[0].textContent = s.name;
+      tr.cells[1].textContent = s.faction;
+      tr.cells[2].textContent = s.cls;
+      tr.cells[4].textContent = fmt(s.xp);
+      const sel = tr.querySelector('select');
+      ranks(sel, s.rank);
+      sel.addEventListener('change', () => go({ what: 'rank', value: Number(sel.value), soldier: s.id }, `${s.name} is now rank ${sel.value}`));
+      tb.appendChild(tr);
+    }
+  };
+  const go = async (change, done) => {
+    el.querySelectorAll('button, select, input').forEach((x) => (x.disabled = true));
+    try {
+      const r = await api('change', { id: p.id, ...change });
+      p = r.player;
+      draw(p);
+      status(`${p.name}: ${done}. If they have the game open, it picks this up on their next save or reload.`, 'good');
+    } catch (e) {
+      status(`${p.name}: ${e.message}`, 'bad');
+    } finally {
+      el.querySelectorAll('button, select, input').forEach((x) => (x.disabled = false));
+    }
+  };
+  el.querySelector('.setc').addEventListener('click', () => {
+    const v = Number(el.querySelector('.credits').value);
+    go({ what: 'credits', value: v }, `credits set to ${fmt(v)}`);
+  });
+  el.querySelector('.setr').addEventListener('click', () => {
+    const v = Number(el.querySelector('.rankall').value);
+    go({ what: 'rank', value: v }, `every soldier is now rank ${v}`);
+  });
+  el.querySelector('.rib').addEventListener('click', () => go({ what: 'ribbons' }, 'every ribbon at its top level'));
+  el.querySelector('.spec').addEventListener('click', () => go({ what: 'specialists' }, 'every specialist ribbon at its top level'));
+  draw(p);
+  return el;
+}
+
+async function find() {
+  status('Looking...');
+  try {
+    const { players } = await api(`players?q=${encodeURIComponent($('#q').value.trim())}`);
+    const list = $('#list');
+    list.innerHTML = '';
+    for (const p of players) list.appendChild(card(p));
+    status(players.length ? '' : 'Nobody by that name.');
+  } catch (e) {
+    status(e.message, 'bad');
+  }
+}
+
+$('#find').addEventListener('submit', (e) => {
+  e.preventDefault();
+  find();
+});
+
+// Who is this? Only admins get further.
+const s = dev ? { user: { name: dev } } : await session().catch(() => null);
+const gate = $('#gate');
+if (!s) {
+  gate.innerHTML = 'Sign in to the game first, then come back here. <a href="/">Go to the game</a>';
+} else {
+  try {
+    await api('players?q=');
+    gate.hidden = true;
+    $('#tools').hidden = false;
+    find();
+  } catch (e) {
+    gate.className = 'msg bad';
+    gate.textContent = e.status === 403 ? `Signed in as ${s.user?.email || s.user?.name}, which is not an admin account.` : e.message;
+  }
+}
+</script>
+</body>
+</html>

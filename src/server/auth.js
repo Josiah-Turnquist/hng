@@ -30,7 +30,7 @@ export function signInChecker({ jwksUrl = process.env.NEON_AUTH_JWKS_URL?.trim()
       const { payload } = await jwtVerify(String(hello.token), keys, { issuer, algorithms: ['EdDSA', 'ES256', 'RS256'] });
       if (!payload.sub) throw new Error('No user in the sign-in');
       const name = cleanName(payload.name) || cleanName(String(payload.email || '').split('@')[0]) || 'Soldier';
-      return { id: String(payload.sub), name };
+      return { id: String(payload.sub), name, email: String(payload.email || '').toLowerCase() || null };
     }
     if (allowDevNames && hello?.dev) {
       const name = cleanName(hello.dev) || 'Tester';
