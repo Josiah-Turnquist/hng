@@ -27,6 +27,11 @@ commit to anything.
   from Neon. Neon Auth is still in beta; if it lets us down, we run the same
   sign-in library (Better Auth) ourselves on Railway, still storing users in Neon.
 - **Guests can play at once.** Signing in is only needed to keep progress.
+- **One shared war.** The Generals side becomes a single war that everyone
+  takes part in, run on the server around the clock. Real players lead the
+  armies as generals; computer generals fill in for an army that has too few.
+  War battles are played by heroes on the game servers, with bots filling up
+  the sides.
 - **Cost at the start: about $5 to $10 a month.** Growing to a couple of hundred
   players at once: roughly $100 to $200 a month, most of it for data sent to
   players.
@@ -109,6 +114,69 @@ stutter for a moment. Small messages, 20 snapshots a second and smoothing in the
 browser hide most of it. If it ever becomes a real problem, the game servers
 alone can move to a host that accepts UDP (WebRTC data channels in the
 browser), keeping everything else on Railway.
+
+## The shared war
+
+Today each player has a private war in their browser: it moves only while
+their Generals screen is open, and the computer leads the other two armies. In
+multiplayer there is one war for everyone, as in the original game.
+
+**What players will see**
+
+- At the start of a war each player picks an army and stays with it until the
+  war ends (the original locked players to one army for the whole war).
+- The Generals tab shows the same map to everyone: who holds what, every
+  army's assault teams that you can see, battles going on, war news.
+- **Generals** (in the beta, chosen by hand; later, a soldier of rank 18
+  promoted, or a General hired) each own their assault teams and warfunds,
+  as in the original. They buy teams, set them down at their army's capitals
+  within their own command points and send them along the supply lines. An
+  army has many generals; they share the land and the capitals.
+- **Heroes** (everyone) see their army's war battles in the battle list on the
+  Heroes screen and join one. The battle runs on a game server like any other,
+  with bots filling the empty places.
+- A war battle nobody joins is settled on its own after a while (the original
+  waited 10 minutes when one side had too few players, then settled it).
+- The war runs whether anyone is looking or not. A general who logs off leaves
+  his teams standing where they are; they still defend if attacked.
+- Computer generals fill in for an army with too few human generals, the way
+  bots fill a battle, so the war never stalls.
+- 15 capitals win the war. The winners' generals get their reward, and a new
+  war starts (generals keep their warfunds and teams, as now).
+
+**How it fits the pieces**
+
+```
+   Generals' browsers --- orders (buy, set down, send) ---> war service ---> Neon
+   Everyone's browsers <-- the map, teams, battles, news --  (on Railway)    (the war's state)
+                                                            |        ^
+                                         "battle at Berlin" |        | "attackers won, losses"
+                                                            v        |
+                                                          game server (the battle itself)
+```
+
+- **The war service** runs the war's rules (`src/war/war.js`, which needs no
+  browser already) every few seconds and keeps the war in the database: the
+  map's owners, the teams, the battles, the news. It can live inside the web
+  service at first; it is light (a whole war day takes well under a second of
+  processor time to work out).
+- When teams meet, the war service asks a game server to open a battle and
+  lists it for that army's heroes. When the battle ends the game server reports
+  who won and the losses, and the war goes on from there, exactly as a battle
+  the player fights now.
+- Generals' orders are checked on the server (enough warfunds, enough command
+  points, their own team), so nobody can give themselves teams or money.
+- Browsers get the map's changes as they happen over the same kind of
+  connection as the battles, so everyone sees teams move.
+
+**What changes in the rules**
+
+- Warfunds and command points become each general's own, not the army's.
+- The war clock runs at real time (or a set speed; see Decisions). Today's 20
+  times speed is for one player alone.
+- Generals in the beta: a yes/no on each account, set by you from a small admin
+  page. The rank 18 promotion and hiring for credits are already built and
+  switch on later; hiring for real money needs payments (after accounts).
 
 ## Bots as fill
 
@@ -196,12 +264,18 @@ Neon database and Neon Auth (email, Google, GitHub). Soldiers, loadouts and
 unlocks saved on the server; experience and credits awarded by the server at the
 end of each battle. A guest can turn into an account without losing progress.
 
-**Phase 3: make it feel right (about 2 to 3 weeks).**
+**Phase 3: the shared war (about 2 weeks).**
+The war service on Railway with the war kept in Neon. Generals (chosen by hand
+for the beta) give orders from the Generals tab; everyone sees the same map.
+War battles open on the game servers and their results go back into the war.
+Computer generals fill in for empty armies. An admin page to choose generals.
+
+**Phase 4: make it feel right (about 2 to 3 weeks).**
 Hits judged as the shooter saw them, vehicle prediction, sending only nearby
 information, trimming data, reconnecting after a dropped connection, a battle
 list and Quick battle, the fairness checks.
 
-**Phase 4: run it for real (ongoing).**
+**Phase 5: run it for real (ongoing).**
 More than one game server, battles started on demand, health checks, logs and
 charts, database backups, report, kick and ban tools, a privacy policy and terms.
 
@@ -219,6 +293,12 @@ more.
 5. **Monthly budget ceiling:** so we can set spending limits on Railway.
 6. **Accounts to create:** a Railway account and a Neon account (yours, so you
    own them). For Phase 1 only Railway is needed.
+7. **War speed:** real time, as in the original (a war lasts several days and
+   teams take a few minutes to march between towns), or faster (say 4 times,
+   for wars of a day or two while there are few players)?
+8. **One war or several:** one war for everyone (recommended at first), or a
+   war per region later?
+9. **Beta generals:** about how many, so each army has a few.
 
 ## Risks and fallbacks
 
@@ -232,6 +312,8 @@ more.
   returning players start quickly.
 - **Railway's raw TCP option** can't use a custom domain with a certificate, so
   the WebSockets go through Railway's normal secure web address instead.
+- **A war with few players.** One army can run away with it. Computer generals
+  fill empty armies, and the war can pause or slow when nobody is on.
 
 ## Sources
 
