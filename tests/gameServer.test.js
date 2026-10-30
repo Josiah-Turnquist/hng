@@ -201,8 +201,8 @@ test("sign-in tokens are checked against the sign-in service's public keys", asy
   const check = signInChecker({ jwksUrl: `http://localhost:${keys.address().port}/.well-known/jwks.json`, allowDevNames: false });
   const token = (claims, exp = '15m', key = privateKey) => new SignJWT(claims).setProtectedHeader({ alg: 'EdDSA', kid: 'k1' }).setIssuedAt().setExpirationTime(exp).sign(key);
   try {
-    assert.deepEqual(await check({ token: await token({ sub: 'u1', name: 'Walt <Kowalski>' }) }), { id: 'u1', name: 'Walt Kowalski' });
-    assert.deepEqual(await check({ token: await token({ sub: 'u2', email: 'baker@example.com' }) }), { id: 'u2', name: 'baker' });
+    assert.deepEqual(await check({ token: await token({ sub: 'u1', name: 'Walt <Kowalski>' }) }), { id: 'u1', name: 'Walt Kowalski', email: null });
+    assert.deepEqual(await check({ token: await token({ sub: 'u2', email: 'baker@example.com' }) }), { id: 'u2', name: 'baker', email: 'baker@example.com' });
     await assert.rejects(check({ token: await token({ sub: 'u1' }, '-1m') }), 'run out');
     const other = await generateKeyPair('EdDSA', { crv: 'Ed25519' });
     await assert.rejects(check({ token: await token({ sub: 'u1' }, '15m', other.privateKey) }), 'someone else signed it');
@@ -222,7 +222,7 @@ test('sign-in keys: Neon not answering at first is tried again, and its trouble 
   const check = signInChecker({ jwksUrl: `http://localhost:${keys.address().port}/.well-known/jwks.json`, allowDevNames: false, log: (t) => logged.push(t) });
   const token = await new SignJWT({ sub: 'u1', name: 'Able' }).setProtectedHeader({ alg: 'EdDSA', kid: 'k1' }).setIssuedAt().setExpirationTime('15m').sign(privateKey);
   try {
-    assert.deepEqual(await check({ token }), { id: 'u1', name: 'Able' });
+    assert.deepEqual(await check({ token }), { id: 'u1', name: 'Able', email: null });
     assert.equal(asked, 3);
     assert.match(logged.join('\n'), /HTTP 503/);
     // Kept: no more asking.
