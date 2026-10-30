@@ -12,9 +12,10 @@
 // The server checks the token (src/server/auth.js), puts him in the battle
 // (src/server/room.js) and sends him 'w' (welcome), 'r' (who is in it) and
 // then snapshots 's'; he sends inputs 'i'. 'x' is a refusal ({ k: 'x', why }),
-// 'o' the battle decided. One battle at a time for now; it starts with the
-// first player and closes when everyone has gone, so an idle server uses
-// nothing and Railway can put it to sleep.
+// 'o' the battle decided. Battles start with their first player and close when
+// everyone has gone, so an idle server uses nothing and Railway can put it to
+// sleep. A player joins a running battle his army fights in, with a place on
+// his side; else a new one opens, up to MAX_BATTLES at once.
 //
 // Settings (environment variables): PORT (Railway sets it),
 // NEON_AUTH_BASE_URL (Neon Auth; the game's own by default), NEON_AUTH_JWKS_URL
@@ -22,7 +23,8 @@
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
 // DATABASE_URL (Neon's Postgres, for saved progress; without it progress
 // stays in each browser),
-// BATTLE_SIZE (bots and players a side, default 12).
+// BATTLE_SIZE (bots and players a side, default 12), MAX_BATTLES (battles
+// running at once, default 3).
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -44,10 +46,10 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
-  let room = null;
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
+  const rooms = new Set();
   const progress = progressHandler({ store, check, log });
-  let opening = null;
+  const opening = new Map(); // 'GE-US' -> the battle being made
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
   // loads hundreds of small code files, so this makes it much quicker.
@@ -65,9 +67,6 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     return f;
   }
 
-  // The battle players join: the one running, or a new one, where the first
-  // player's army attacks (the Germans against the Americans, the others
-  // against the Germans).
   // An online battle's rewards, kept with his soldiers and sent to him
   // ({ k: 'g' }: the result, or null when nothing was earned or kept).
   async function rewardPlayer({ client, userId, name, soldierId, reward }) {
@@ -83,24 +82,32 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     if (client.readyState === 1) client.send(JSON.stringify(out ? { k: 'g', ...out } : { k: 'g', result: null }));
   }
 
-  // (A battle already decided takes no one new: a fresh one opens.)
-  async function currentRoom(faction) {
-    if (room && !room.closed && !room.g?.mode?.over) return room;
-    opening ??= (async () => {
-      const attackers = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
-      const r = new BattleRoom({ perSide: battleSize, attackers, defenders: attackers === 'GE' ? 'US' : 'GE', send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+  // The battle a player of this army joins: a running one his army fights in,
+  // not yet decided and with a place on his side (the fullest first), else a
+  // new one where his army attacks (the Germans against the Americans, the
+  // others against the Germans).
+  async function roomFor(faction) {
+    const army = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
+    const open = [...rooms].filter((r) => !r.closed && !r.g?.mode?.over && r.sideOf(army) !== null && r.playersOn(r.sideOf(army)) < r.opts.perSide);
+    if (open.length) return open.sort((a, b) => b.players.size - a.players.size)[0];
+    for (const [key, p] of opening) if (key.split('-').includes(army)) return p;
+    if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
+    const defenders = army === 'GE' ? 'US' : 'GE';
+    const key = `${army}-${defenders}`;
+    const p = (async () => {
+      const r = new BattleRoom({ perSide: battleSize, attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onReward = rewardPlayer;
       r.onClose = () => {
-        if (room === r) room = null;
-        log('battle closed');
+        rooms.delete(r);
+        log(`battle closed: ${r.opts.attackers} against ${r.opts.defenders}`);
       };
-      room = r;
-      opening = null;
-      log(`battle opened: ${r.opts.attackers} against ${r.opts.defenders}, ${battleSize} a side`);
+      rooms.add(r);
+      log(`battle opened: ${r.opts.attackers} against ${r.opts.defenders}, ${battleSize} a side (${rooms.size} running)`);
       return r;
-    })();
-    return opening;
+    })().finally(() => opening.delete(key));
+    opening.set(key, p);
+    return p;
   }
 
   const http = createServer(async (req, res) => {
@@ -179,7 +186,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
           if (!kept) return refuse('This soldier is not saved on the server yet. Go back and try again in a moment.');
           me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout), tank: kept.cls === 'tanker' ? tankFor(kept, s.tank) : null };
         }
-        const r = await currentRoom(me.faction);
+        const r = await roomFor(me.faction);
         if (ws.readyState !== 1) return;
         r.join(ws, { userId: who.id, name: who.name, ...me });
         joined = r;
@@ -197,7 +204,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => room, close: () => new Promise((done) => { room?.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
+      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }

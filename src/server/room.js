@@ -48,6 +48,13 @@ export class BattleRoom {
     });
   }
 
+  // How many players fight on this side.
+  playersOn(team) {
+    let n = 0;
+    for (const [, p] of this.players) if (p.pc.soldier.team === team) n++;
+    return n;
+  }
+
   // Which side a player of this army fights on, or null if his army isn't in this battle.
   sideOf(faction) {
     return faction === this.opts.attackers ? ATT : faction === this.opts.defenders ? DEF : null;

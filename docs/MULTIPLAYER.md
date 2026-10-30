@@ -195,6 +195,18 @@ multiplayer there is one war for everyone, as in the original game.
   page. The rank 18 promotion and hiring for credits are already built and
   switch on later; hiring for real money needs payments (after accounts).
 
+## Several battles at once
+
+**Done (October 2026):** the server runs up to `MAX_BATTLES` battles at once
+(default 3; each one is a full battle of bots and players, so a small Railway
+machine may want fewer). A player joins a running battle his army fights in,
+not yet decided and with a place for a player on his side (the fullest
+first); if there is none, a new one opens where his army attacks: the Germans
+against the Americans, the Americans and the Soviets against the Germans. So a
+player of any army always has a battle, and players of the same army play
+together. With every battle running and full: "Every battle is full right
+now."
+
 ## Bots as fill
 
 - Each battle has a size (for example 12 against 12). Empty places are bots.

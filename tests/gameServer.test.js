@@ -32,7 +32,7 @@ function connect(port) {
 }
 
 test('players join a battle over the network, move, see each other, and leave to a bot', async () => {
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
+  const srv = await startServer({ port: 0, battleSize: 4, maxBattles: 2, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
   try {
     const a = await connect(srv.port);
     a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US', cls: 'infantry' } }));
@@ -62,10 +62,21 @@ test('players join a battle over the network, move, see each other, and leave to
     const c = await connect(srv.port);
     c.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US' } }));
     assert.match((await c.next((m) => m.k === 'x')).why, /already/);
-    // A wrong army is refused; so is an old page.
+    // An army not in this battle gets a battle of its own (the Soviets attack the Germans).
     const d = await connect(srv.port);
     d.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Dog', soldier: { faction: 'SU' } }));
-    assert.match((await d.next((m) => m.k === 'x')).why, /US against GE/);
+    const wd = await d.next((m) => m.k === 'w');
+    assert.deepEqual([wd.attackers, wd.defenders, wd.side], ['SU', 'GE', 1]);
+    assert.equal(srv.rooms().length, 2, 'two battles at once');
+    // A German joins one already running; with two running (the most here), a
+    // third army's battle can't open, but a place in a running one can be had.
+    const f = await connect(srv.port);
+    f.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Fox', soldier: { faction: 'GE' } }));
+    assert.equal((await f.next((m) => m.k === 'w')).side, 0);
+    assert.equal(srv.rooms().length, 2);
+    f.ws.close();
+    d.ws.close();
+    // An old page is refused.
     const e = await connect(srv.port);
     e.ws.send(JSON.stringify({ k: 'h', v: 0, dev: 'Easy' }));
     assert.match((await e.next((m) => m.k === 'x')).why, /reload/);
@@ -73,7 +84,7 @@ test('players join a battle over the network, move, see each other, and leave to
     b.ws.close();
     const r2 = await a.next((m) => m.k === 'r' && m.s.some((x) => x[0] === wb.you && /\(bot\)/.test(x[2])));
     assert.ok(r2);
-    assert.equal(srv.room().g.soldiers.find((s) => s.id === wb.you).remote, false);
+    assert.equal(srv.rooms()[0].g.soldiers.find((s) => s.id === wb.you).remote, false);
     a.ws.close();
   } finally {
     await srv.close();
