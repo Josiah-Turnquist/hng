@@ -47,7 +47,8 @@ async function buildTown() {
       m.userData.texWorld = PRESETS[name]?.world ?? 1;
       return m;
     },
-    get: () => ({}),
+    // No pictures: every texture a model asks for is none.
+    get: () => new Proxy({}, { get: () => null }),
   };
   const village = buildVillage(plan, { terrain, def, collision, textures });
   // Trees, hedges and bushes are solid, as in the game (no graphics here).
@@ -64,7 +65,7 @@ async function buildTown() {
     return riverData.level[riverData.distField.nearest[i]] - 0.25;
   };
   collision.waterLevelAt = waterLevelAt;
-  return { def, terrain, hf, collision, village, waterLevelAt };
+  return { def, terrain, hf, collision, village, waterLevelAt, textures };
 }
 
 export async function makeBattle({ perSide = 8, minutes = 30, seed = 1 } = {}) {
@@ -76,6 +77,9 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1 } = {}) {
     atmosphere: new Atmosphere(town.def.altitude, town.def.temperatureC),
     waterLevelAt: town.waterLevelAt,
     village: town.village,
+    // Plain materials: vehicles are built from their real models (their
+    // armour, hit areas and seats come from them), with nothing to draw.
+    textures: town.textures,
     scene: new THREE.Scene(),
     add() {},
     shadows: { prepare() {}, setup() {} },

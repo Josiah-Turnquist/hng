@@ -253,6 +253,44 @@ Make the battle run as a server program with nothing that needs a browser (the
 test harness already does most of this). Decide the messages between browser
 and server. Add a way to record a battle and play it back, for finding bugs.
 
+*Phase 0 is done.* What there is now:
+
+- `src/server/battle.js`: a battle with no graphics, as the game server will
+  run it (the tests use the same one). Each battle has its own village and
+  collision world; tanks and cars are built from their real models.
+- Every roll of the dice that decides what happens in a battle (spread,
+  recoil, ricochets, armour, fires, the bots' choices) comes from the
+  battle's own seeded stream (`rand` in `src/core/math.js`), and soldiers,
+  vehicles and bullets are numbered within their battle. So a battle with the
+  same seed and inputs plays out exactly the same, even with other battles
+  run in the same program: the server is the one true version.
+- `src/net/protocol.js`: the messages. Inputs name actions (not keys) and
+  carry where the player faces; snapshots carry every soldier, vehicle and
+  capture point in whole numbers; events carry shots, deaths and blasts.
+  `RemoteInput` is the server's stand-in for a player's keyboard: it answers
+  the same questions as the real one, so the same controls can drive a
+  soldier on the server.
+- `src/server/record.js`: recording a battle (settings, seed, inputs, a
+  fingerprint every second) and playing it back to check it goes the same
+  way.
+- `server/battle.mjs` runs a battle like the server will and reports on it;
+  `server/replay.mjs` plays a recording back.
+
+Measured with `node server/battle.mjs --fast` (12 against 12, bots): a battle
+starts in about 3.5 seconds and needs about 8 to 12% of one processor core in
+real time. A snapshot is about 1.7 KB, 0.7 KB squeezed the way WebSocket
+messages are, which at 20 a second is about 13 KB a second for each player,
+in line with the costs above.
+
+*Found for Phase 1.* On the player's own screen the gun's real direction
+comes from the first-person gun model as it moves (sway, recoil, the sights
+coming up), worked out while drawing. On the server the player's controls
+need that without the drawing: the gun's aim and the "gun is up" moment as
+plain numbers, with the browser sending where its gun pointed for each shot
+and the server checking it is believable (close to where he faces, no faster
+than the gun fires). The first job of Phase 1 is to split those numbers out of
+the drawing (`src/game/player.js` and `src/weapons/viewmodel.js`).
+
 **Phase 1: play together (about 2 to 3 weeks).**
 One game server on Railway, guest names only, no accounts. Up to 16 players and
 bots in a town battle. Your own movement predicted, everyone else smoothed.
