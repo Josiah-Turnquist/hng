@@ -291,8 +291,9 @@ and the server checking it is believable (close to where he faces, no faster
 than the gun fires). The first job of Phase 1 is to split those numbers out of
 the drawing (`src/game/player.js` and `src/weapons/viewmodel.js`).
 
-**Phase 1: play together (about 2 to 3 weeks).**
-One game server on Railway, guest names only, no accounts. Up to 16 players and
+**Phase 1: play together (about 3 to 4 weeks).**
+One game server on Railway, asleep when nobody plays. Sign-in with Neon Auth
+(no guests), so players are named and known from the first battle. Up to 16 players and
 bots in a town battle. Your own movement predicted, everyone else smoothed.
 Vehicles driven through the server. Goal: you and friends can play a whole
 battle together.
@@ -319,6 +320,31 @@ charts, database backups, report, kick and ban tools, a privacy policy and terms
 
 These times are for the work itself; testing with real players always turns up
 more.
+
+## Decisions made (October 2026)
+
+- **Host:** Railway (account already made). Region US West (California); it
+  plays fine from anywhere in the US (about 60 to 80 ms from the east coast).
+- **Budget:** $5 to $10 a month: the Hobby plan, whose $5 includes $5 of use.
+- **Only running while people play:** the game server uses Railway's
+  Serverless setting (Settings > Deploy > Serverless). With nobody connected
+  for 10 minutes it goes to sleep and costs nothing; the next player's
+  connection wakes it (the browser shows "Waking the server" and tries again
+  for a few seconds). Neon's free database also sleeps after 5 idle minutes.
+- **No guests:** everyone signs in, so sign-in (Neon Auth, free up to 60,000
+  players a month) comes in Phase 1, with the first battles, instead of
+  Phase 2.
+- **Battle size:** set by each map, from 12 to about 30 a side (the Town map
+  as now); bots fill whatever players don't.
+- **WebSockets, not UDP.** UDP is the faster kind of connection big shooters
+  use, but a web page can't use it directly; it would take WebRTC or
+  WebTransport and a host that accepts UDP, for a gain a WWII battle at our
+  size won't feel. Railway and WebSockets are kept; the game servers alone can
+  move later if it ever matters.
+
+At these numbers: a battle costs about $0.01 an hour to run plus about $0.002
+an hour for each player's data, so 10 players for 2 hours every evening comes
+to about $2 a month, inside the Hobby plan's $5.
 
 ## Decisions for you
 
