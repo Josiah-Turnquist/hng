@@ -24,8 +24,10 @@ commit to anything.
   unlocks, battle results) in a Postgres database.
 - **Neon Auth handles sign-in** (email and password, Google, GitHub). Railway has
   no sign-in system of its own for players, so the "built-in auth" part comes
-  from Neon. Neon Auth is still in beta; if it lets us down, we run the same
-  sign-in library (Better Auth) ourselves on Railway, still storing users in Neon.
+  from Neon. Neon Auth is Better Auth, run by Neon for us: the users live in
+  our Neon database, and we use Neon's own client library, not a plain
+  Better Auth one (Neon's sign-in addresses differ from Better Auth's
+  defaults).
 - **Guests can play at once.** Signing in is only needed to keep progress.
 - **One shared war.** The Generals side becomes a single war that everyone
   takes part in, run on the server around the clock. Real players lead the
@@ -75,11 +77,16 @@ commit to anything.
   once. Each battle is the game we have today running without graphics, stepped
   60 times a second, with a WebSocket for every player in it.
 - **Neon Postgres.** Players, soldiers, loadouts, unlocks, results, reports.
-- **Neon Auth.** Sign-in. After signing in, the page holds a short-lived signed
-  token (a JWT, valid about 15 minutes, renewed in the background). The game
-  server checks the token's signature with Neon's public keys (published at the
-  sign-in address plus `/.well-known/jwks.json`) when a player connects, so it
-  knows who they are without asking Neon every time.
+- **Neon Auth** (managed Better Auth). Sign-in. The page uses Neon's auth
+  client (`@neondatabase/auth`). After signing in it holds a short-lived signed
+  token (a JWT, signed with Ed25519, valid 15 minutes, renewed in the
+  background). The game server checks the token's signature and issuer with
+  Neon's public keys (published at the Neon Auth address plus
+  `/.well-known/jwks.json`, using the `jose` library) when a player connects,
+  so it knows who they are without asking Neon every time. Nothing of Neon's
+  is needed on the game server beyond those public keys.
+- **Check Neon's current docs before building on it.** Neon Auth moves fast
+  and older guides (and AI tools trained on them) are often out of date.
 
 ## The network part, in plain terms
 
@@ -366,8 +373,9 @@ to about $2 a month, inside the Hobby plan's $5.
 
 ## Risks and fallbacks
 
-- **Neon Auth is in beta.** Fallback: run Better Auth ourselves on Railway with
-  the users in Neon. It is the same library, so the change is small.
+- **Neon Auth is newer than most of Neon.** It is managed Better Auth, so if
+  it ever lets us down we could run Better Auth ourselves with the same users
+  in Neon; the game server would only change where it reads the public keys.
 - **No UDP on Railway.** Fallback: move only the game servers to a host that
   takes UDP if WebSockets prove too stuttery.
 - **Browser games are easier to tamper with.** That is why the server decides
@@ -385,7 +393,10 @@ to about $2 a month, inside the Hobby plan's $5.
   https://docs.railway.com/reference/pricing/understanding-your-bill
 - Railway regions: https://docs.railway.com/deployments/regions
 - Railway TCP proxy (no UDP): https://docs.railway.com/networking/tcp-proxy
-- Neon Auth: https://neon.com/docs/auth/overview and
-  https://neon.com/docs/auth/guides/plugins/jwt
+- Neon Auth: https://neon.com/docs/auth/overview,
+  https://neon.com/docs/auth/guides/plugins/jwt and
+  https://neon.com/guides/react-neon-auth-hono (a separate backend checking
+  Neon Auth's tokens); neon-auth vs better-auth notes:
+  https://github.com/neondatabase/neon-js/blob/main/packages/auth/neon-auth_vs_better-auth.md
 - Neon plans and prices: https://neon.com/docs/introduction/plans and
   https://neon.com/blog/major-compute-price-reduction-on-neon
