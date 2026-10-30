@@ -172,12 +172,14 @@ export class Hud {
     const root = (this.dpEl ??= this.el('.hud-deploy'));
     if (!state) {
       if (!root.hidden) root.hidden = true;
+      this.root.classList.remove('deploying');
       this.deployState = null;
       return;
     }
     this.deployState = state;
     if (root.hidden) {
       root.hidden = false;
+      this.root.classList.add('deploying'); // (the scoreboard goes solid over it)
       this.dpKey = '';
       if (!this.dpMap) {
         this.dpMap = new BattleMap(this.el('.dp-map'), g.mapDef, { world: g.world });

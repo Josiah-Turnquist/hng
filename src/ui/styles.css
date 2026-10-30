@@ -626,6 +626,8 @@ canvas.game {
   width: min(760px, calc(100% - 32px));
 }
 .hud-scores .side { flex: 1; background: var(--panel); border: 1px solid var(--panel-edge); padding: 8px 10px; }
+/* (Over the deploy screen: solid, so its map and list don't show through.) */
+.hud.deploying .hud-scores .side { background: rgba(14, 15, 12, 0.96); }
 .hud-scores .side.own h3 { color: #8fb4e0; }
 .hud-scores .side.enemy h3 { color: #e08a7a; }
 .hud-scores h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
