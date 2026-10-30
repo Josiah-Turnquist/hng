@@ -218,6 +218,23 @@ battle is still a real fight.
 - Only nearby information is sent (see above).
 - Limits on messages per second; a player who floods the server is dropped.
 - Experience and credits are worked out on the server from what happened.
+  **Done (October 2026):** each player in an online battle has his own ribbon
+  tally on the server (`s.tally`), fed by the same game code as the browser's.
+  When the battle is decided, or when he leaves before (the pause menu sends
+  `{ k: 'l' }`, or the connection drops), the room works out his rewards with
+  `src/game/rewards.js` (the same rules as a battle on your own computer) and
+  `src/server/progress.js` `awardStored` adds them to the soldier kept in the
+  database; he is sent them as `{ k: 'g', result, soldier, roster, rev }` and
+  the results screen shows them. Joining uses the kept soldier's army, class
+  and what he has opened and owns, not what the browser says. A save from the
+  browser (`PUT /api/progress`) goes through `keepEarned`: names, loadouts,
+  badges worn, recruits and soldiers sent home are his to change, but
+  experience, ribbon points and records stay as kept, and credits only go
+  down, by the price of what he bought (purchases he can't pay for, or of
+  things not opened to him, are undone, and the browser is sent the corrected
+  roster). Signed in, a battle on your own computer is practice: no
+  experience or credits. The one way round it left: progress already in a
+  browser is taken as it is the first time an account saves.
 - Kick, ban and report tools, and logs to check reports against.
 
 ## Hosting on Railway

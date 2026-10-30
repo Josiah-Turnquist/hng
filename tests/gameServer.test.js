@@ -80,6 +80,54 @@ test('players join a battle over the network, move, see each other, and leave to
   }
 });
 
+test("online battle rewards are worked out by the server and kept with his soldiers", async () => {
+  // The database, in memory: Able has one soldier kept, a US rifleman.
+  const rows = new Map();
+  const store = {
+    get: async (id) => rows.get(id) ?? null,
+    put: async (id, name, { roster }, rev) => {
+      const r = rows.get(id);
+      if (r && r.rev !== rev) return { conflict: r };
+      rows.set(id, { roster: roster ?? r?.roster, war: null, rev: (r?.rev ?? 0) + 1 });
+      return { rev: rows.get(id).rev };
+    },
+    close: async () => {},
+  };
+  const kept = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 }, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
+  rows.set('dev:Able', { roster: { soldiers: [kept], selectedId: 's1', credits: 0 }, war: null, rev: 1 });
+  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
+  try {
+    // A soldier not kept on the server can't join.
+    const x = await connect(srv.port);
+    x.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 'nobody', faction: 'US', cls: 'infantry' } }));
+    assert.match((await x.next((m) => m.k === 'x')).why, /not saved/);
+    // His army and class are the kept soldier's, whatever the browser says.
+    const a = await connect(srv.port);
+    a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 's1', faction: 'GE', cls: 'tanker', loadout: ['mg42', null, null, null, null, null, null] } }));
+    const w = await a.next((m) => m.k === 'w');
+    assert.equal(w.side, 1, 'the US side');
+    const s = srv.room().g.soldiers.find((q) => q.id === w.you);
+    assert.deepEqual([s.faction, s.cls, s.weapons[0].def.id], ['US', 'infantry', 'm1_garand']);
+    // Two men down, then he leaves: the server works out his battle and keeps it.
+    s.kills = 2;
+    a.ws.send(JSON.stringify({ k: 'l' }));
+    const g = await a.next((m) => m.k === 'g');
+    assert.equal(g.result.xp, 300, '100 for the battle, 100 a kill');
+    assert.equal(g.soldier.xp, 300);
+    assert.equal(g.rev, 2);
+    const row = rows.get('dev:Able');
+    assert.equal(row.roster.soldiers[0].xp, 300);
+    assert.equal(row.roster.soldiers[0].stats.kills, 2);
+    assert.equal(row.roster.credits, g.result.credits);
+    // Once only: leaving for good adds nothing more.
+    a.ws.close();
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(rows.get('dev:Able').rev, 2);
+  } finally {
+    await srv.close();
+  }
+});
+
 test('the game files are handed out, and nothing else', async () => {
   const srv = await startServer({ port: 0, check: signInChecker({ jwksUrl: null }), log: () => {} });
   try {

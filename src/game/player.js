@@ -480,7 +480,7 @@ export class PlayerController {
       weapon: d,
       tracer,
     });
-    g.ribbonTally?.shot(d, s);
+    s.tally?.shot(d, s);
 
     // Recoil from momentum: bullet + powder gas push the gun back.
     const gasV = mv > 600 ? 1300 : mv * 1.5;

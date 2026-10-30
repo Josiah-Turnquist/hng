@@ -22,6 +22,7 @@ import { BotBrain } from '../ai/bot.js';
 import { DEFAULT_LOADOUT } from '../weapons/defs.js';
 import { PlayerController } from '../game/player.js';
 import { RemoteInput, decodeInput } from '../net/protocol.js';
+import { RibbonTally } from '../game/ribbons.js';
 
 // Minimal browser stand-ins for the village's canvas-painted signs and the HUD.
 const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : typeof k === 'string' && /^(create|measure)/.test(k) ? () => ({ addColorStop() {}, width: 10 }) : () => {}), set: (t, k, v) => ((t[k] = v), true) });
@@ -133,8 +134,10 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   };
   g.mode.start();
   g.mode.spawnSoldier(ps, g.mode._spawnPoints(ATT)[0]);
+  // Kills, scores and the players' ribbon tallies as in the game; the side totals too.
   g.onDeath = (s, cause) => {
     if (cause?.attacker && cause.attacker.team !== s.team) g.stats.kills[cause.attacker.team]++;
+    Game.prototype.onDeath.call(g, s, cause);
   };
   g._playerDeploy = () => {
     if (!ps.alive && ps.deathTime > 12) {
@@ -166,6 +169,8 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
 // A player in the battle, driven by his input messages (net/protocol.js):
 // a soldier with the player's controls and no screen. Returns his controller;
 // his soldier's number is what his messages and the snapshots name him by.
+// What he does is tallied for his ribbons (s.tally), and when he came in kept
+// (s.joinedAt), for his rewards (game/rewards.js).
 export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null, team = ATT, name = 'Player' } = {}) {
   // A bot on his side makes room: he fights on until he falls, then is gone
   // (game/modes/assault.js). A fallen one goes first, and tank crews last.
@@ -175,6 +180,8 @@ export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null,
   if (bot) bot.retire = true;
   const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
   s.remote = true;
+  s.tally = new RibbonTally();
+  s.joinedAt = g.time;
   g.soldiers.push(s);
   const pc = new PlayerController(g, s, { input: new RemoteInput(), view: false });
   (g.remotePlayers ??= []).push(pc);
@@ -188,6 +195,8 @@ function deployPlayer(g, pc, at = null) {
   if (!p) return;
   pc.deployAt = null;
   g.mode.spawnSoldier(s, p);
+  // (A paratrooper's every time into battle is a jump.)
+  if (s.cls === 'paratrooper') s.tally?.jump();
   pc.look.yaw = s.yaw;
   pc.look.pitch = 0;
   s.current = -1;

@@ -9,9 +9,14 @@
 // - After each save: sent to the server a moment later (several saves in a
 //   row go as one), and at once when the page is closed.
 // - Saved meanwhile from another computer: that copy wins, and the page
-//   reloads to show it.
+//   reloads to show it. The same when the server corrected a save (earnings
+//   only grow on the server: src/server/progress.js).
+// - An online battle's rewards come from the server with the roster as kept
+//   there (takeServerCopy).
 //
 //   await syncProgress(account)       // before the menus open; false if it could not
+//   await saveNow()                   // what is waiting goes now (before a battle)
+//   takeServerCopy({ roster, rev })   // the server's newer copy
 import { token } from './auth.js';
 import { onSaved } from '../core/saved.js';
 
@@ -84,6 +89,20 @@ export async function syncProgress(account) {
   return true;
 }
 
+export async function saveNow() {
+  const s = sync;
+  if (!s) return;
+  for (let i = 0; i < 20 && s.busy; i++) await new Promise((r) => setTimeout(r, 100));
+  await flush(s);
+}
+
+export function takeServerCopy({ roster, rev }) {
+  if (!sync || !roster) return;
+  sync.rev = rev;
+  sync.dirty.delete('roster');
+  adopt({ roster });
+}
+
 function adopt({ roster, war }) {
   if (roster) store.set(KEYS.roster, JSON.stringify(roster));
   if (war) store.set(KEYS.war, JSON.stringify(war));
@@ -113,8 +132,14 @@ async function flush(s, keepalive = false) {
   let failed = false;
   try {
     const r = await call(s, 'PUT', body, keepalive);
-    if (r.ok) s.rev = r.body.rev;
-    else if (r.status === 409) {
+    if (r.ok) {
+      s.rev = r.body.rev;
+      // Corrected on the server: its copy, shown.
+      if (r.body.roster) {
+        adopt({ roster: r.body.roster });
+        reloadSoon();
+      }
+    } else if (r.status === 409) {
       // Saved from another computer meanwhile: that copy wins.
       s.rev = r.body.rev;
       adopt(r.body);

@@ -9,13 +9,14 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
 import { connect, OnlineBattle } from '../net/online.js';
-import { syncProgress } from '../net/progress.js';
+import { syncProgress, saveNow, takeServerCopy } from '../net/progress.js';
+import { battleReward } from '../game/rewards.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
 import { emblem, rankBadge } from './icons.js';
 import { ribbonSvg } from './ribbonArt.js';
-import { ribbonInfo, ribbonPoints, ribbonLevel } from '../game/ribbons.js';
+import { ribbonInfo, ribbonLevel } from '../game/ribbons.js';
 import { BattleMap } from './battleMap.js';
 import { MAPS } from '../world/maps.js';
 import { FACTIONS } from '../weapons/defs.js';
@@ -112,7 +113,9 @@ export class App {
         if (!opts.online) break;
         const note = this._note('Joining the online battle...');
         try {
-          this.conn = await connect({ faction: opts.faction, cls: opts.cls, loadout: opts.loadout }, { dev: this.account?.dev || null });
+          // (The server goes by the soldier it keeps: anything changed just now first.)
+          await saveNow().catch(() => {});
+          this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout }, { dev: this.account?.dev || null });
           note.remove();
           const w = this.conn.welcome;
           opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: null };
@@ -139,7 +142,10 @@ export class App {
         })
       : Promise.resolve();
     await game.load((p, msg) => this._progress(p, msg));
-    if (this.conn) game.online = new OnlineBattle(game, this.conn);
+    if (this.conn) {
+      game.online = new OnlineBattle(game, this.conn);
+      game.online.onReward = (m) => this._serverReward(m);
+    }
     await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();
     window.addEventListener('resize', () => this._resize());
@@ -300,27 +306,43 @@ export class App {
   }
 
   // Experience for the battle just fought (an Assault): for taking part, for
-  // every enemy put out of the fight, for every point taken, and more for a win.
-  // Once per battle; nothing for practice or for leaving straight away.
+  // every enemy put out of the fight, for every point taken, and more for a win
+  // (game/rewards.js). Once per battle; nothing for practice or for leaving
+  // straight away. Signed in, his soldiers are kept on the server, and only
+  // the server gives rewards: for an online battle it works them out and sends
+  // them (_serverReward); a battle on this computer is practice.
   _recordBattle(won) {
     const g = this.game;
     const id = this.opts?.soldier?.id;
-    if (this.recorded || !g?.mode?.points || !id) return this.recorded || null;
+    if (this.recordDone || !g?.mode?.points || !id) return this.recorded || null;
+    if (this.conn && this.progressSynced) return this.recorded || null;
     const s = g.player.soldier;
-    if (g.time < 60 && !s.kills) return null;
-    const captures = s.captures || 0;
-    const xp = 100 + s.kills * 100 + captures * 150 + (won ? 400 : 0);
     const roster = loadRoster();
     const cls = roster.soldiers.find((x) => x.id === id)?.cls || s.cls;
-    g.ribbonTally?.end({ won, defending: s.team === DEF, seconds: g.time, deaths: s.deaths });
-    const ribbons = g.ribbonTally ? ribbonPoints(g.ribbonTally, cls) : {};
-    const res = awardBattle(roster, id, { xp, won, kills: s.kills, deaths: s.deaths, captures, ribbons });
+    const reward = battleReward(s, { won, defending: s.team === DEF, seconds: g.time, cls });
+    if (!reward) return null;
+    this.recordDone = true;
+    const warfunds = this._warResult(won, reward.kills, reward.captures);
+    if (this.progressSynced) {
+      this.practice = { warfunds };
+      return null;
+    }
+    const res = awardBattle(roster, id, reward);
     if (!res) return null;
     saveRoster(roster);
     const soldier = roster.soldiers.find((x) => x.id === id);
-    const warfunds = this._warResult(won, s.kills, captures);
-    this.recorded = { xp, captures, kills: s.kills, deaths: s.deaths, ...res, soldier, warfunds };
+    this.recorded = { ...reward, ...res, soldier, warfunds };
     return this.recorded;
+  }
+
+  // An online battle's rewards from the server, with his soldiers as it keeps
+  // them now. The results show them (once the battle is over).
+  _serverReward(m) {
+    this.recordDone = true;
+    if (m.roster) takeServerCopy(m);
+    this.recorded = m.result && m.soldier ? { ...m.result, xp: m.result.xp ?? 0, soldier: m.soldier } : null;
+    this.rewardIn = true;
+    if (this.overShown) this._battleOver(this.overShown);
   }
 
   // A battle of the war (Generals screen): its outcome goes back into the war,
@@ -341,8 +363,10 @@ export class App {
   }
 
   // Leave the battle (pause menu): keep the experience, back to the Heroes screen.
-  leaveBattle() {
-    this._recordBattle(false);
+  // (Online: the server works it out first.)
+  async leaveBattle() {
+    if (this.game?.online && this.progressSynced) await this.game.online.leave();
+    else this._recordBattle(false);
     location.reload();
   }
 
@@ -351,7 +375,13 @@ export class App {
     const g = this.game;
     const r = this._recordBattle(won);
     const s = g.player.soldier;
+    // Online: the screen shows at once, and again when the server's rewards
+    // come (r.xp missing until then).
+    const waiting = !!(this.conn && this.progressSynced && !this.rewardIn);
+    this.overShown = { won, why };
+    this.resultEl?.remove();
     const el = document.createElement('div');
+    this.resultEl = el;
     el.className = `battle-result ${won ? 'won' : 'lost'}`;
     const f = r?.soldier?.faction || s.faction;
     const rk = r ? rankOf(r.soldier.xp) : null;
@@ -376,7 +406,7 @@ export class App {
         ${r?.unlocks?.length ? '<div class="br-unlocks"><span>Now open to him</span><b></b></div>' : ''}
         <button class="cta">Back to headquarters</button>
       </div>`;
-    el.querySelector('.br-why').textContent = why;
+    el.querySelector('.br-why').textContent = waiting ? `${why} · Working out your rewards...` : this.practice ? `${why} · Practice: no experience or credits` : why;
     if (r) {
       const promoted = r.after > r.before;
       el.querySelector('.br-rank b').textContent = `${promoted ? 'Promoted: ' : ''}Rank ${rk.rank} ${rankTitle(f, rk.rank)}`;
@@ -403,7 +433,8 @@ export class App {
     el.querySelector('.cta').addEventListener('click', () => location.reload());
     g.hud.root.appendChild(el);
     // The mouse is needed for the button.
-    setTimeout(() => this.input.unlock(), 1200);
+    if (!this.unlockedForResult) setTimeout(() => this.input.unlock(), 1200);
+    this.unlockedForResult = true;
     return true;
   }
 

@@ -4,18 +4,22 @@
 // fill the sides. A player who leaves is taken over by a bot. With nobody left
 // for a minute (or the battle over), the room closes and stops using the
 // processor, so the server can go to sleep (Railway's Serverless setting).
+// Each player's rewards are worked out here, once: when the battle is decided,
+// or when he leaves before (game/rewards.js); onReward keeps them.
 //
 //   const room = new BattleRoom({ perSide, attackers, defenders, send })
 //   await room.ready
-//   room.join(client, { userId, name, faction, cls, loadout })   -> soldier id or throws
-//   room.input(client, message); room.leave(client)
+//   room.join(client, { userId, name, faction, cls, loadout, soldierId })   -> soldier id or throws
+//   room.input(client, message); room.leaving(client); room.leave(client)
 //   room.onClose = () => ...
+//   room.onReward = ({ client, userId, name, soldierId, reward }) => ...   (reward null: nothing earned)
 //
 // client: any object; send(client, text) sends it a message.
 import { makeBattle, addPlayer, ATT, DEF } from './battle.js';
 import { Recorder, TICK, CHECK_EVERY } from './record.js';
 import { snapshot, roster, watchEvents, PROTOCOL_VERSION } from '../net/protocol.js';
 import { BotBrain } from '../ai/bot.js';
+import { battleReward } from '../game/rewards.js';
 import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 
 const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
@@ -31,6 +35,7 @@ export class BattleRoom {
     this.tick = 0;
     this.closed = false;
     this.onClose = null;
+    this.onReward = null;
     this.rec = record ? new Recorder(this.opts) : null;
     this.ready = makeBattle(this.opts).then((g) => {
       this.g = g;
@@ -47,7 +52,7 @@ export class BattleRoom {
     return faction === this.opts.attackers ? ATT : faction === this.opts.defenders ? DEF : null;
   }
 
-  join(client, { userId, name, faction, cls = 'infantry', loadout = null }) {
+  join(client, { userId, name, faction, cls = 'infantry', loadout = null, soldierId = null }) {
     const g = this.g;
     const team = this.sideOf(faction);
     if (team === null) throw new Error(`This battle is ${this.opts.attackers} against ${this.opts.defenders}`);
@@ -56,7 +61,7 @@ export class BattleRoom {
     const who = { faction, cls, team, name, loadout: checkLoadout(faction, cls, loadout) };
     const pc = addPlayer(g, who);
     this.rec?.join(this.tick, who, pc.soldier.id);
-    this.players.set(client, { pc, userId, name, queue: [], budget: INPUTS_PER_SECOND });
+    this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });
     this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, tick: this.tick, rate: 1 / TICK }));
     this._broadcast(JSON.stringify(roster(g)));
     return pc.soldier.id;
@@ -71,13 +76,22 @@ export class BattleRoom {
     p.queue.push(message);
   }
 
-  // A player gone: a bot takes his soldier over where he stands.
+  // He is leaving (the pause menu): his rewards now, so he can see them.
+  leaving(client) {
+    const p = this.players.get(client);
+    if (p) this._reward(client, p, false);
+  }
+
+  // A player gone: a bot takes his soldier over where he stands. (Gone before
+  // the battle is decided: a defeat for him.)
   leave(client) {
     const p = this.players.get(client);
     if (!p) return;
+    this._reward(client, p, false);
     this.players.delete(client);
     const g = this.g;
     const s = p.pc.soldier;
+    s.tally = null;
     g.remotePlayers = g.remotePlayers.filter((x) => x !== p.pc);
     s.remote = false;
     s.retire = false;
@@ -134,11 +148,23 @@ export class BattleRoom {
     if (this.tick % 60 === 0) {
       this.emptyFor = this.players.size ? 0 : this.emptyFor + 1;
       if (g.mode.over) {
-        if (this.overFor === 0) this._broadcast(JSON.stringify({ k: 'o', team: g.mode.over.team, why: g.mode.over.why ?? '' }));
+        if (this.overFor === 0) {
+          this._broadcast(JSON.stringify({ k: 'o', team: g.mode.over.team, why: g.mode.over.why ?? '' }));
+          for (const [client, p] of this.players) this._reward(client, p, p.pc.soldier.team === g.mode.over.team);
+        }
         this.overFor++;
       }
       if (this.emptyFor >= EMPTY_CLOSE || this.overFor >= OVER_CLOSE) this.close();
     }
+  }
+
+  // What his battle earned him, once (game/rewards.js).
+  _reward(client, p, won) {
+    if (p.rewarded) return;
+    p.rewarded = true;
+    const s = p.pc.soldier;
+    const reward = battleReward(s, { won, defending: s.team === DEF, seconds: this.g.time - (s.joinedAt ?? 0) });
+    this.onReward?.({ client, userId: p.userId, name: p.name, soldierId: p.soldierId, reward });
   }
 
   _broadcast(text) {

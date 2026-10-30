@@ -55,7 +55,7 @@ export function startAttack(s, w, { back = -1 } = {}) {
   s.melee = { w, def: w.def, t: 0, struck: false, back };
   const mine = s === g?.player?.soldier;
   // Each blow counts as a shot for his ribbons.
-  if (mine) g.ribbonTally?.shot(w.def, s);
+  s.tally?.shot(w.def, s);
   const snd = MELEE_SOUNDS[w.def.sound] || MELEE_SOUNDS.blade;
   g?.audio?.play?.(snd.swing, mine ? null : { x: s.body.x, y: s.body.y + 1.3, z: s.body.z }, { volume: mine ? 0.6 : 0.8, rate: w.def.style === 'stab' ? 1.15 : 1 });
   s.lastShotTime = g?.time ?? 0;

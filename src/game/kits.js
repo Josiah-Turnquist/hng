@@ -14,7 +14,7 @@
 // put right one after another, a few seconds each. Not while it burns, and a
 // wreck is past repair.
 //
-// The player's own work feeds his Medic ribbon (game.ribbonTally): one heal
+// A player's own work feeds his Medic ribbon (his s.tally): one heal
 // per use, one repair per vehicle he really repaired (a tenth of its health or
 // a broken part in one go at it).
 import * as THREE from 'three';
@@ -174,7 +174,7 @@ export function updateKit(game, s, dt) {
     o.bleed = 0;
     o.body.legWound *= 0.5;
     o.armWound *= 0.5;
-    if (isPlayer(game, s)) game.ribbonTally?.heal(o === s ? 'self' : 'other');
+    s.tally?.heal(o === s ? 'self' : 'other');
   }
   if (k.spent) {
     const rate = k.heal / (k.dur - apply);
@@ -274,5 +274,5 @@ export function endRepair(game, s) {
   const r = s.repair;
   if (!r) return;
   s.repair = null;
-  if ((r.v.hp - r.hp0 >= 0.1 * r.v.maxHp || r.mended > 0) && isPlayer(game, s)) game.ribbonTally?.repair();
+  if (r.v.hp - r.hp0 >= 0.1 * r.v.maxHp || r.mended > 0) s.tally?.repair();
 }

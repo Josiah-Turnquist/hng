@@ -33,7 +33,8 @@ import { WebSocketServer } from 'ws';
 import { BattleRoom } from '../src/server/room.js';
 import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
-import { progressHandler } from '../src/server/progress.js';
+import { progressHandler, awardStored } from '../src/server/progress.js';
+import { fitLoadout } from '../src/ui/roster.js';
 import { openProgressStore } from '../src/server/progressStore.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 
@@ -66,12 +67,29 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   // The battle players join: the one running, or a new one, where the first
   // player's army attacks (the Germans against the Americans, the others
   // against the Germans).
+  // An online battle's rewards, kept with his soldiers and sent to him
+  // ({ k: 'g' }: the result, or null when nothing was earned or kept).
+  async function rewardPlayer({ client, userId, name, soldierId, reward }) {
+    let out = null;
+    if (store && reward && soldierId) {
+      try {
+        out = await awardStored(store, userId, name, soldierId, reward);
+        if (out) log(`${name}: +${reward.xp} XP`);
+      } catch (e) {
+        log(`rewards not saved for ${name}: ${e.message}`);
+      }
+    }
+    if (client.readyState === 1) client.send(JSON.stringify(out ? { k: 'g', ...out } : { k: 'g', result: null }));
+  }
+
+  // (A battle already decided takes no one new: a fresh one opens.)
   async function currentRoom(faction) {
-    if (room && !room.closed) return room;
+    if (room && !room.closed && !room.g?.mode?.over) return room;
     opening ??= (async () => {
       const attackers = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
       const r = new BattleRoom({ perSide: battleSize, attackers, defenders: attackers === 'GE' ? 'US' : 'GE', send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
+      r.onReward = rewardPlayer;
       r.onClose = () => {
         if (room === r) room = null;
         log('battle closed');
@@ -135,6 +153,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       }
       if (joined) {
         if (m.k === 'i') joined.input(ws, m);
+        else if (m.k === 'l') joined.leaving(ws);
         return;
       }
       if (m.k !== 'h' || joined === false) return;
@@ -143,10 +162,25 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       if (m.v !== PROTOCOL_VERSION) return refuse('Please reload the page: the game has been updated');
       try {
         const who = await check(m);
-        const r = await currentRoom(m.soldier?.faction);
-        if (ws.readyState !== 1) return;
         const s = m.soldier || {};
-        r.join(ws, { userId: who.id, name: who.name, faction: s.faction, cls: s.cls, loadout: s.loadout });
+        let me = { faction: s.faction, cls: s.cls, loadout: s.loadout, soldierId: typeof s.id === 'string' ? s.id.slice(0, 64) : null };
+        // Soldiers kept here: his army, class and what he may carry are the
+        // kept soldier's, not what the browser says.
+        if (store) {
+          let row;
+          try {
+            row = await store.get(who.id);
+          } catch (e) {
+            log(`progress: ${e.message}`);
+            return refuse('Your soldiers could not be loaded. Try again in a moment.');
+          }
+          const kept = row?.roster?.soldiers?.find((x) => x && x.id === me.soldierId);
+          if (!kept) return refuse('This soldier is not saved on the server yet. Go back and try again in a moment.');
+          me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout) };
+        }
+        const r = await currentRoom(me.faction);
+        if (ws.readyState !== 1) return;
+        r.join(ws, { userId: who.id, name: who.name, ...me });
         joined = r;
         log(`${who.name} joined`);
       } catch (e) {

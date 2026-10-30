@@ -60,6 +60,7 @@ function setup({ wallAt = null } = {}) {
   };
   const me = man(0, 0, 0, 0);
   game.player = { soldier: me };
+  me.tally = game.ribbonTally;
   // A blow from start to finish, in the game's steps.
   const blow = (s, w = s.weapons[5], opts) => {
     assert.ok(startAttack(s, w, opts), 'the blow starts');

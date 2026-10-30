@@ -32,7 +32,10 @@ function battle() {
 function man(game, { x = 0, z = 0, team = 0, faction = 'US', loadout = ['m1_garand', null, null, null, null, null, null], player = false, name } = {}) {
   const s = new Soldier(game, { faction, cls: 'infantry', loadout, team, name, isPlayer: player, x, z });
   game.soldiers.push(s);
-  if (player) game.player = { soldier: s };
+  if (player) {
+    game.player = { soldier: s };
+    s.tally = game.ribbonTally;
+  }
   return s;
 }
 

@@ -121,7 +121,7 @@ function launch(game, s, th, aim) {
   else w.spareMags.pop();
   const a = aim(s);
   const p = game.projectiles.fire({ x: a.x, y: a.y, z: a.z, vx: a.vx, vy: a.vy, vz: a.vz, ammo: w.ammo, owner: s, weapon: w.def });
-  if (s === game.player?.soldier) game.ribbonTally?.shot(w.def, s);
+  s.tally?.shot(w.def, s);
   // The fuse has been burning since the arm was drawn back.
   p.age = Math.min(w.ammo.fuseTime - 0.5, th.cook);
   game.audio?.play?.('weaponHandling', s.isPlayer ? null : s.body, { volume: 0.5 });

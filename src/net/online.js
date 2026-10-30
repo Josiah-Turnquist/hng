@@ -97,6 +97,12 @@ export class OnlineBattle {
       this._self(snap);
       this._points(snap);
     } else if (m.k === 'r') this._roster(m.s);
+    else if (m.k === 'g') {
+      // What the battle earned him, worked out and kept by the server.
+      this.reward = m;
+      this.onReward?.(m);
+      this._left?.();
+    }
     else if (m.k === 'o') {
       this.over = m;
       this.game.mode?.serverEnd?.(m.team, m.why);
@@ -439,6 +445,21 @@ export class OnlineBattle {
         g.audio?.explosion?.(size > 25 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
       }
     }
+  }
+
+  // Leaving before the end: the server works out his rewards first (up to a few
+  // seconds' wait for them).
+  leave() {
+    if (this.reward || this.closed) return Promise.resolve(this.reward);
+    try {
+      this.ws.send(JSON.stringify({ k: 'l' }));
+    } catch {
+      return Promise.resolve(null);
+    }
+    return new Promise((ok) => {
+      this._left = () => ok(this.reward);
+      setTimeout(() => ok(this.reward), 6000);
+    });
   }
 
   close() {

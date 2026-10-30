@@ -123,8 +123,11 @@ export class Game {
     this.player.look.yaw = spawn.yaw;
     attachSoldierModel(this, player);
     // What the player does this battle, for his ribbons (game/ribbons.js). A
-    // paratrooper's every time into battle counts as a jump.
+    // paratrooper's every time into battle counts as a jump. (Each soldier a
+    // person plays keeps his own tally, s.tally: on the game server, every
+    // player's.)
     this.ribbonTally = new RibbonTally();
+    player.tally = this.ribbonTally;
     if (cls === 'paratrooper') this.ribbonTally.jump();
     this.mode.start();
     this.deploy = { t: 0, index: 0 };
@@ -227,7 +230,7 @@ export class Game {
     });
     p.ignoreTarget = v;
     if (owner) owner.lastShotTime = this.time;
-    if (owner && owner === this.player?.soldier) this.ribbonTally?.shot(p.weapon, owner);
+    owner?.tally?.shot(p.weapon, owner);
     this.effects.muzzle(m.x, m.y, m.z, dd.x, dd.y, dd.z, 0.6);
     this.audio?.gunshot?.(d.sound, m.x, m.y, m.z, { isLocal: owner === this.player?.soldier, source: `v${v.id}` });
   }
@@ -273,13 +276,14 @@ export class Game {
     this._guard(this.mode, () => this.mode.update?.(dt));
   }
 
-  // How the player gets about, for his ribbons (game/ribbons.js): on foot by
+  // How the players get about, for their ribbons (game/ribbons.js): on foot by
   // gait (Physical Training, Combat Movement); driving (Tank Driver, Driver,
   // Chauffeur when men ride with him) or cycling (Physical Training).
   _ribbonMoves(dt) {
-    const t = this.ribbonTally;
-    const me = this.player.soldier;
-    if (!t || !me.alive) return;
+    for (const s of this.soldiers) if (s.tally && s.alive) this._ribbonMove(s, s.tally, dt);
+  }
+
+  _ribbonMove(me, t, dt) {
     const v = me.vehicle;
     if (!v) {
       const b = me.body;
@@ -298,13 +302,13 @@ export class Game {
     t.ride(kind, m, v.occupants.some((o, i) => i > 0 && o && o.alive));
   }
 
-  // Points taken or turned neutral by the player (the Tactical ribbon).
+  // Points taken or turned neutral by a player (the Tactical ribbon).
   onPointTaken(s) {
-    if (s === this.player?.soldier) this.ribbonTally?.event('capture');
+    s.tally?.event('capture');
   }
 
   onPointNeutral(s) {
-    if (s === this.player?.soldier) this.ribbonTally?.event('neutralize');
+    s.tally?.event('neutralize');
   }
 
   // Is this soldier on a point his side is taking (or holding against takers)?
@@ -421,7 +425,7 @@ export class Game {
           return;
         }
         this.mode.spawnSoldier(s, o.point);
-        if (s.cls === 'paratrooper') this.ribbonTally?.jump();
+        if (s.cls === 'paratrooper') s.tally?.jump();
         this.player.look.yaw = s.yaw;
         this.player.look.pitch = 0;
         s.current = -1; // (his gun may be a new one: see Soldier.rearm)
@@ -666,14 +670,12 @@ export class Game {
       charModel(v);
     }
     this.hud?.killFeed(attacker, { name: v.def.name, faction: v.def.faction }, { kind: 'vehicle', weapon: { name: cause } });
-    if (attacker === this.player?.soldier) {
+    // (Not for knocking out his own side's machine.)
+    const foe = attacker && (v.occupants?.some((o) => o && o.team !== attacker.team) || (v.def.faction && v.def.faction !== attacker.faction));
+    if (foe) attacker.tally?.vehicleKill(v.lastWeapon, attacker);
+    if (attacker && attacker === this.player?.soldier) {
       this.hud?.hitMarker(2);
-      // (Not for knocking out his own side's machine.)
-      const foe = v.occupants?.some((o) => o && o.team !== attacker.team) || (v.def.faction && v.def.faction !== attacker.faction);
-      if (foe) {
-        this.ribbonTally?.vehicleKill(v.lastWeapon, attacker);
-        this.hud?.killConfirm?.(v.def.name, { verb: 'Destroyed' });
-      }
+      if (foe) this.hud?.killConfirm?.(v.def.name, { verb: 'Destroyed' });
     }
     // An ammunition explosion throws the turret off.
     if (cause === 'ammo' && v.model.parts?.turret) {
@@ -806,11 +808,11 @@ export class Game {
   // The player hurt: a red flash at the edges, the view jolts, and he grunts.
   onDamage(s, amount, cause) {
     const a = cause?.attacker;
-    if (a && a === this.player?.soldier && a.team !== s.team) {
-      this.ribbonTally?.damage(cause.weapon, a, amount);
-      if (this._farShot?.(a, s, cause)) this.ribbonTally?.far('dmg', Math.min(amount, 100));
+    if (a?.tally && a.team !== s.team) {
+      a.tally.damage(cause.weapon, a, amount);
+      if (this._farShot?.(a, s, cause)) a.tally.far('dmg', Math.min(amount, 100));
       // (Should someone else finish him, the player has an assist.)
-      s.hurtByPlayer = { t: this.time, weapon: cause.weapon };
+      s.hurtByPlayer = { who: a, t: this.time, weapon: cause.weapon };
     }
     if (s !== this.player?.soldier) return;
     this.hud?.damage(amount);
@@ -827,26 +829,29 @@ export class Game {
         a.score += 5;
         // The kill mark for the player however he killed (run over, blown up,
         // bled out), not only by a bullet.
-        if (a === this.player?.soldier) {
-          this.ribbonTally?.kill(cause?.weapon, a, !!cause?.headshot);
+        const t = a.tally;
+        if (t) {
+          t.kill(cause?.weapon, a, !!cause?.headshot);
           // Tactical: a kill while taking a point; Defense: the man killed was
           // taking one; Recon: a rifle kill from far off.
-          if (this._onPoint?.(a, true)) this.ribbonTally?.event('killWhileCapturing');
-          if (this._onPoint?.(s, true)) this.ribbonTally?.event('killCapturing');
-          if (this._farShot?.(a, s, cause)) this.ribbonTally?.far(cause?.headshot ? 'head' : 'kill');
+          if (this._onPoint?.(a, true)) t.event('killWhileCapturing');
+          if (this._onPoint?.(s, true)) t.event('killCapturing');
+          if (this._farShot?.(a, s, cause)) t.far(cause?.headshot ? 'head' : 'kill');
+        }
+        if (a === this.player?.soldier) {
           this.hud?.hitMarker(2);
           this.hud?.killConfirm?.(s.name, { points: 5, headshot: !!cause?.headshot });
         }
       } else a.score -= 10;
     } else if (a === s) s.score -= 1;
-    // A kill assist: the player hurt him in the last 15 s and someone else (or
+    // A kill assist: a player hurt him in the last 15 s and someone else (or
     // his bleeding) finished him.
-    const me = this.player?.soldier;
     const h = s.hurtByPlayer;
     s.hurtByPlayer = null;
-    if (me && a !== me && s.team !== me.team && h && this.time - h.t < 15) {
-      this.ribbonTally?.assist(h.weapon, me);
-      this.hud?.killConfirm?.(s.name, { verb: 'Assist', quiet: true });
+    const me = h?.who;
+    if (me?.tally && a !== me && s.team !== me.team && this.time - h.t < 15) {
+      me.tally.assist(h.weapon, me);
+      if (me === this.player?.soldier) this.hud?.killConfirm?.(s.name, { verb: 'Assist', quiet: true });
     }
     this.hud?.killFeed(a, s, cause);
   }
