@@ -1,0 +1,123 @@
+// The game server (docs/MULTIPLAYER.md): what Railway runs (npm start).
+//
+//   /         the game (index.html and its files: src/, assets/, three.js)
+//   /health   "ok", for Railway's health check
+//   /play     the WebSocket a player's browser plays over
+//
+// A player's first message says who he is and which soldier he brings:
+//   { k: 'h', v: PROTOCOL_VERSION, token: <Neon Auth sign-in token>, soldier: { faction, cls, loadout } }
+// The server checks the token (src/server/auth.js), puts him in the battle
+// (src/server/room.js) and sends him 'w' (welcome), 'r' (who is in it) and
+// then snapshots 's'; he sends inputs 'i'. 'x' is a refusal ({ k: 'x', why }),
+// 'o' the battle decided. One battle at a time for now; it starts with the
+// first player and closes when everyone has gone, so an idle server uses
+// nothing and Railway can put it to sleep.
+//
+// Settings (environment variables): PORT (Railway sets it),
+// NEON_AUTH_JWKS_URL (Neon Auth's public keys), NEON_AUTH_ISSUER (optional),
+// ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
+// BATTLE_SIZE (bots and players a side, default 12).
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { WebSocketServer } from 'ws';
+import { BattleRoom } from '../src/server/room.js';
+import { signInChecker } from '../src/server/auth.js';
+import { PROTOCOL_VERSION } from '../src/net/protocol.js';
+
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Only the game's own files are handed out.
+const PUBLIC = ['index.html', 'src', 'assets', join('node_modules', 'three')];
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
+
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), check = signInChecker(), log = console.log } = {}) {
+  let room = null;
+  let opening = null;
+
+  // The battle players join: the one running, or a new one.
+  async function currentRoom() {
+    if (room && !room.closed) return room;
+    opening ??= (async () => {
+      const r = new BattleRoom({ perSide: battleSize, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      await r.ready;
+      r.onClose = () => {
+        if (room === r) room = null;
+        log('battle closed');
+      };
+      room = r;
+      opening = null;
+      log(`battle opened: ${r.opts.attackers} against ${r.opts.defenders}, ${battleSize} a side`);
+      return r;
+    })();
+    return opening;
+  }
+
+  const http = createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, 'http://x');
+      if (url.pathname === '/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      let path = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '') || 'index.html';
+      if (!PUBLIC.some((p) => path === p || path.startsWith(p + sep) || path.startsWith(p + '/'))) return res.writeHead(404).end('Not found');
+      const file = join(root, path);
+      const info = await stat(file).catch(() => null);
+      if (!info || !info.isFile()) return res.writeHead(404).end('Not found');
+      const body = await readFile(file);
+      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': path === 'index.html' ? 'no-cache' : 'public, max-age=300' });
+      res.end(body);
+    } catch {
+      res.writeHead(500).end('Server error');
+    }
+  });
+
+  const wss = new WebSocketServer({ server: http, path: '/play', maxPayload: 16 * 1024, perMessageDeflate: { threshold: 256 } });
+  wss.on('connection', (ws) => {
+    let joined = null;
+    const refuse = (why) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why }));
+      ws.close(4000, 'refused');
+    };
+    // Ten seconds to say who you are.
+    const helloTimer = setTimeout(() => !joined && refuse('No sign-in'), 10000);
+    ws.on('message', async (data) => {
+      let m;
+      try {
+        m = JSON.parse(String(data));
+      } catch {
+        return refuse('Bad message');
+      }
+      if (joined) {
+        if (m.k === 'i') joined.input(ws, m);
+        return;
+      }
+      if (m.k !== 'h' || joined === false) return;
+      joined = false; // (one hello)
+      clearTimeout(helloTimer);
+      if (m.v !== PROTOCOL_VERSION) return refuse('Please reload the page: the game has been updated');
+      try {
+        const who = await check(m);
+        const r = await currentRoom();
+        if (ws.readyState !== 1) return;
+        const s = m.soldier || {};
+        r.join(ws, { userId: who.id, name: who.name, faction: s.faction, cls: s.cls, loadout: s.loadout });
+        joined = r;
+        log(`${who.name} joined`);
+      } catch (e) {
+        refuse(e.message || 'Could not join');
+      }
+    });
+    ws.on('close', () => {
+      clearTimeout(helloTimer);
+      if (joined) joined.leave(ws);
+    });
+  });
+
+  return new Promise((ok) =>
+    http.listen(port, () => {
+      log(`Game server on port ${http.address().port}`);
+      ok({ http, wss, port: http.address().port, room: () => room, close: () => new Promise((done) => { room?.close(); wss.close(); http.close(done); }) });
+    }),
+  );
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) startServer();

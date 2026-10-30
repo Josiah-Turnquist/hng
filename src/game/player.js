@@ -201,11 +201,13 @@ export class PlayerController {
     // faces: his sensitivity settings stay in his browser.
     let dyaw = 0,
       dpitch = 0;
-    if (input.look) {
-      dyaw = input.look[0] - this.look.yaw;
-      dpitch = input.look[1] - this.look.pitch;
-      this.look.yaw = input.look[0];
-      this.look.pitch = clamp(input.look[1], -1.45, 1.45);
+    if (input.remote) {
+      if (input.look) {
+        dyaw = input.look[0] - this.look.yaw;
+        dpitch = input.look[1] - this.look.pitch;
+        this.look.yaw = input.look[0];
+        this.look.pitch = clamp(input.look[1], -1.45, 1.45);
+      }
     } else {
       const [mx, my] = input.takeMouse();
       const zoom = this.baseFov / this.fovCurrent;
@@ -244,7 +246,7 @@ export class PlayerController {
     // the next. Sprinting, reloading a long gun or a grenade in hand lowers the gun.
     const canAim = !b.sprinting && s.canShoot && !(w && w.state === 'reloading' && w.def.type !== 'pistol') && !(w && (w.def.type === 'grenade' || w.def.type === 'melee' || w.kit));
     // (A browser playing online sends the aim key as held while toggled on.)
-    if (this.settings?.get('aimToggle') && !input.look) {
+    if (this.settings?.get('aimToggle') && !input.remote) {
       if (input.hit('aim')) this.aimToggled = !this.aimToggled;
       if (!canAim) this.aimToggled = false;
       s.aiming = this.aimToggled;

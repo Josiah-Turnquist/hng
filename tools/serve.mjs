@@ -1,5 +1,5 @@
 // Tiny static file server for local play and development.
-// Usage: npm start  (then open http://localhost:8080)
+// Usage: npm run dev  (then open http://localhost:8080)
 import { createServer } from 'node:http';
 import { stat, readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';

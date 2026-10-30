@@ -323,9 +323,18 @@ player's own controls (`src/game/player.js`) run with no screen when given
 move, aim, fire and switch his guns, and a battle with players in it
 records and plays back exactly (`tests/remotePlayer.test.js`). On the server a
 shot leaves along where he faces with his sway; later the browser will send
-where its gun pointed and the server will check it. Next: the WebSocket game
-server, the browser side (sending inputs, drawing other soldiers from
-snapshots), then sign-in.
+where its gun pointed and the server will check it. Then the game server (`server/main.mjs`, `npm start`, what Railway runs): it
+hands out the game's files (and nothing else of the repo), answers `/health`,
+and players play over a WebSocket at `/play`. A player's first message
+carries his Neon Auth sign-in token, checked against Neon's public keys
+(`src/server/auth.js`; `NEON_AUTH_JWKS_URL` on Railway), and the soldier he
+brings, whose loadout is checked against his army, class and points. One
+battle at a time (`src/server/room.js`): it opens with the first player, runs
+60 steps a second, sends each player 20 snapshots a second, hands a leaving
+player's soldier to a bot, and closes a minute after the last player leaves,
+so the server idles and Railway can put it to sleep. `tests/gameServer.test.js`
+plays it over real WebSockets. Next: the browser side (signing in, sending
+inputs, drawing the battle from snapshots).
 
 *Neon is set up (October 2026).* What there is now:
 

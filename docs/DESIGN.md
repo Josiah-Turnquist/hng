@@ -1,6 +1,6 @@
 # How the game is built
 
-Plain ES modules and three.js, no build step during development (`npm start` serves the files). Everything runs in one browser page; the only worker is the sound generator.
+Plain ES modules and three.js, no build step during development (`npm run dev` serves the files; `npm start` is the online game server). Everything runs in one browser page; the only worker is the sound generator.
 
 ## Conventions
 

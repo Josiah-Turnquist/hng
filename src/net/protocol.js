@@ -55,6 +55,7 @@ export function decodeInput(m) {
 // steps counts once; the look is where he faces (look), so takeMouse is still.
 export class RemoteInput {
   constructor() {
+    this.remote = true;
     this.down = new Set();
     this.pressed = new Set();
     this.released = new Set();
