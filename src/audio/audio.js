@@ -838,6 +838,7 @@ export class AudioSystem {
   // automatic fire reuses one echo tail) }. Near and far reports cross-fade
   // between 100 and 300 m; near shots add the surroundings' echo.
   gunshot(type, x, y, z, opts = {}) {
+    if (!type) return DUMMY;
     let t = type;
     let forceFar = false;
     if (t.endsWith('Far')) {

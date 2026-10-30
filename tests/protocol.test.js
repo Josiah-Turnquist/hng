@@ -85,3 +85,21 @@ test('an online battle turns the short way round between snapshots', async () =>
   assert.ok(Math.abs(Math.abs(Math.atan2(Math.sin(mid), Math.cos(mid))) - Math.PI) < 1e-9);
   assert.equal(lerpAngle(0.2, 0.6, 0.5), 0.4);
 });
+
+test("a vehicle's shot names its own ammunition and report, so other players see and hear the right gun", async () => {
+  const { ammoRef, ammoOf, watchEvents: watch } = await import('../src/net/protocol.js');
+  const { AMMO } = await import('../src/weapons/ammo.js');
+  const { SHELLS } = await import('../src/vehicles/defs.js');
+  const shell = Object.values(SHELLS)[0];
+  const round = Object.values(AMMO)[0];
+  assert.equal(ammoOf(ammoRef(shell)), shell);
+  assert.equal(ammoOf(ammoRef(round)), round);
+  assert.equal(ammoOf('nonsense'), null);
+  // The server's record of a shot: the shell and the tank gun's report go with it.
+  const game = { projectiles: { fire: () => ({}) }, onDeath: null, effects: { explosion() {} } };
+  const ev = watch(game);
+  game.projectiles.fire({ x: 0, y: 0, z: 0, vx: 1, vy: 0, vz: 0, ammo: shell, owner: { id: 7 }, weapon: { name: 'KwK', id: 'tiger1', vehicle: true, sound: 'tankGun' } });
+  const f = ev.take().find((e) => e[0] === 'f');
+  assert.equal(f[10], 'tankGun');
+  assert.equal(ammoOf(f[11]), shell);
+});

@@ -13,7 +13,7 @@
 //   const conn = await connect(soldier)          // { ws, welcome, roster, inbox } or throws
 //   game.online = new OnlineBattle(game, conn)    // once the world is built
 //   (Game calls online.update(dt) each step and online.sendInput() each frame)
-import { ACTION_LIST, encodeInput, readSnapshot, PROTOCOL_VERSION } from './protocol.js';
+import { ACTION_LIST, encodeInput, readSnapshot, ammoOf, PROTOCOL_VERSION } from './protocol.js';
 import { token } from './auth.js';
 import { Soldier } from '../game/soldier.js';
 import { attachSoldierModel } from '../game/soldierView.js';
@@ -420,11 +420,12 @@ export class OnlineBattle {
     for (const e of list) {
       if (e[0] === 'f') {
         // A round fired: drawn (the player's own already were, as he fired).
-        const [, who, wid, x, y, z, vx, vy, vz, tracer] = e;
+        const [, who, wid, x, y, z, vx, vy, vz, tracer, sound, aref] = e;
         if (who === this.me.id) continue;
         const s = this.puppets.get(who);
         const def = WEAPONS[wid];
-        const ammo = AMMO[def?.ammo] || AMMO[s?.weapon?.def?.ammo];
+        // (A tank's shell or a vehicle's machine gun: named by the server.)
+        const ammo = ammoOf(aref) || AMMO[def?.ammo] || AMMO[s?.weapon?.def?.ammo];
         if (!ammo) continue;
         const px = x / 100,
           py = y / 100,
@@ -434,7 +435,8 @@ export class OnlineBattle {
         const sp = Math.hypot(vx, vy, vz) || 1;
         if (!ammo.thrown) {
           g.effects.muzzle(px, py, pz, vx / sp, vy / sp, vz / sp, 0.8);
-          g.audio?.gunshot?.(def?.sound, px, py, pz, { source: `s${who}` });
+          const report = sound || def?.sound;
+          if (report) g.audio?.gunshot?.(report, px, py, pz, { source: `s${who}` });
         }
       } else if (e[0] === 'd') {
         const [, who, by, wid] = e;

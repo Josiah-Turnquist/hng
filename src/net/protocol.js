@@ -22,6 +22,8 @@
 //   watchEvents(game)       // shots, deaths and blasts as they happen: .take() empties the list
 //   stateHash(game)         // a short fingerprint of the battle, for record and playback
 import { DEFAULT_BINDINGS } from '../core/input.js';
+import { AMMO } from '../weapons/ammo.js';
+import { SHELLS } from '../vehicles/defs.js';
 
 // (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.)
 export const PROTOCOL_VERSION = 2;
@@ -152,8 +154,25 @@ export function roster(game) {
   return { k: 'r', s: game.soldiers.map((x) => [x.id, x.team, x.name, x.faction, x.cls, x.look?.seed ?? x.id * 7919 + 13, x.look?.variant ?? 0, x.weapons.map((w) => w?.def.id ?? null)]) };
 }
 
+// The name a round's ammunition goes by in a message, and back.
+let refs = null;
+export function ammoRef(ammo) {
+  if (!refs) {
+    refs = new Map();
+    for (const [k, a] of Object.entries(AMMO)) refs.set(a, `a:${k}`);
+    for (const [k, a] of Object.entries(SHELLS)) refs.set(a, `s:${k}`);
+  }
+  return refs.get(ammo) ?? '';
+}
+export function ammoOf(ref) {
+  if (typeof ref !== 'string') return null;
+  return (ref.startsWith('a:') ? AMMO[ref.slice(2)] : ref.startsWith('s:') ? SHELLS[ref.slice(2)] : null) || null;
+}
+
 // Shots, deaths and blasts as they happen, for the snapshots' events:
-//   ['f', shooter, weapon, x, y, z, vx, vy, vz, tracer]   a round fired (not grenade fragments)
+//   ['f', shooter, weapon, x, y, z, vx, vy, vz, tracer, sound, ammo]   a round fired
+//       (not grenade fragments); sound: its report (audio.js GUN_TYPES); ammo:
+//       'a:<AMMO key>' or 's:<SHELLS key>' (a tank's shell, a vehicle's gun)
 //   ['d', soldier, killer, weapon]                         a soldier down
 //   ['x', x, y, z, size]                                   a blast
 export function watchEvents(game) {
@@ -161,7 +180,7 @@ export function watchEvents(game) {
   const fire = game.projectiles.fire.bind(game.projectiles);
   game.projectiles.fire = (o) => {
     const p = fire(o);
-    if (!o.ammo?.fragment) list.push(['f', o.owner?.id ?? 0, o.weapon?.id ?? '', cm(o.x), cm(o.y), cm(o.z), Math.round(o.vx * 10), Math.round(o.vy * 10), Math.round(o.vz * 10), o.tracer ? 1 : 0]);
+    if (!o.ammo?.fragment) list.push(['f', o.owner?.id ?? 0, o.weapon?.id ?? '', cm(o.x), cm(o.y), cm(o.z), Math.round(o.vx * 10), Math.round(o.vy * 10), Math.round(o.vz * 10), o.tracer ? 1 : 0, o.weapon?.sound ?? '', ammoRef(o.ammo)]);
     return p;
   };
   const death = game.onDeath?.bind(game);

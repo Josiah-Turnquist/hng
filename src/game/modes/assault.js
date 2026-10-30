@@ -36,6 +36,7 @@ export class AssaultMode {
     this.playerTeam = opts.playerTeam ?? ATT;
     this.perSide = opts.perSide ?? 12;
     this.withBikes = opts.bikes ?? !game.headless;
+    this.withJeeps = opts.jeeps ?? !game.headless;
     // Online the game server runs the battle (bots, vehicles, captures, the
     // clock): here it is shown only (net/online.js fills in points and time).
     this.online = !!opts.online;
@@ -161,7 +162,7 @@ export class AssaultMode {
     // Jeeps wait at each side's spawn points.
     this.vehicleSpots = [];
     const jeep = { US: 'willys_mb', GE: 'kubelwagen', SU: 'gaz67' };
-    if (!g.headless) {
+    if (this.withJeeps) {
       for (const p of this.points.filter((q) => q.kind === 'access')) this._park(jeep[this.factions[ATT]], p, ATT);
       for (const p of this.points.filter((q) => q.kind === 'objective')) this._park(jeep[this.factions[DEF]], p, DEF);
     }

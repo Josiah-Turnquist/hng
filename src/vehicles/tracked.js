@@ -520,7 +520,7 @@ export class TrackedVehicle extends Vehicle {
       vz: dir.z * mv + v.z,
       ammo: shell,
       owner,
-      weapon: { name: this.def.gun.name, id: this.def.id, vehicle: true },
+      weapon: { name: this.def.gun.name, id: this.def.id, vehicle: true, sound: 'tankGun' },
       tracer: true,
     });
     p.ignoreVehicle = this;

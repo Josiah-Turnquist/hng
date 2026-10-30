@@ -226,7 +226,7 @@ export class Game {
       vz: dd.z * mv + bv.z,
       ammo,
       owner,
-      weapon: { name: d.name, vehicle: true },
+      weapon: { name: d.name, vehicle: true, sound: d.sound },
       tracer: d.tracerEvery > 0 && mg.shots % d.tracerEvery === 0,
     });
     p.ignoreTarget = v;

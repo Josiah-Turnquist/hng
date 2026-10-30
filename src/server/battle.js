@@ -5,7 +5,8 @@
 // (vehicles add to the collision world as they go); only the terrain, which
 // never changes, is shared between battles in one program.
 //
-//   const g = await makeBattle({ perSide, minutes, seed, attackers, defenders })
+//   const g = await makeBattle({ perSide, minutes, seed, attackers, defenders, vehicles })
+//     (vehicles: the jeeps and bikes of a real battle; the tanks come with their crews)
 //   step(g, seconds)                // run it on, 60 steps a second
 import * as THREE from 'three';
 import { Game } from '../game/game.js';
@@ -71,7 +72,7 @@ async function buildTown() {
   return { def, terrain, hf, collision, village, waterLevelAt, textures };
 }
 
-export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attackers = 'US', defenders = 'GE' } = {}) {
+export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attackers = 'US', defenders = 'GE', vehicles = false } = {}) {
   const town = await buildTown();
   const world = {
     def: town.def,
@@ -119,7 +120,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   g.projectiles.onImpact = (p, info) => g._onImpact(p, info);
   g.projectiles.onExpire = (p, why) => g._onExpire(p, why);
   g.projectiles.onSegment = (p, ...a) => g._botsNearMiss(p, ...a);
-  g.mode = new AssaultMode(g, { attackers, defenders, playerTeam: ATT, perSide, minutes });
+  g.mode = new AssaultMode(g, { attackers, defenders, playerTeam: ATT, perSide, minutes, jeeps: vehicles, bikes: vehicles });
   // The "player" is just one more bot here.
   const ps = new Soldier(g, { faction: attackers, cls: 'infantry', loadout: DEFAULT_LOADOUT[attackers].infantry, team: ATT, name: NAMES[attackers][(perSide - 1) % NAMES[attackers].length], x: 0, z: 0 });
   ps.brain = new BotBrain(g, ps);

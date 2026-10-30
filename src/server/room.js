@@ -31,8 +31,8 @@ const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anythi
 const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
 
 export class BattleRoom {
-  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false } = {}) {
-    this.opts = { perSide, minutes, attackers, defenders, seed };
+  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true } = {}) {
+    this.opts = { perSide, minutes, attackers, defenders, seed, vehicles };
     this.send = send;
     this.players = new Map(); // client -> { pc, userId, name, queue, budget }
     this.tick = 0;
