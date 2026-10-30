@@ -11,7 +11,11 @@
 // trying the server on your own computer and for the tests. Never on Railway.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-export function signInChecker({ jwksUrl = process.env.NEON_AUTH_JWKS_URL, issuer = process.env.NEON_AUTH_ISSUER || undefined, allowDevNames = process.env.ALLOW_DEV_NAMES === '1' } = {}) {
+// The game's Neon Auth (project hng, branch production). Not a secret: it is
+// where browsers sign in. NEON_AUTH_BASE_URL overrides it.
+export const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL || 'https://ep-weathered-meadow-ary5i3vv.neonauth.c-4.us-west-2.aws.neon.tech/neondb/auth';
+
+export function signInChecker({ jwksUrl = process.env.NEON_AUTH_JWKS_URL || `${NEON_AUTH_BASE_URL}/.well-known/jwks.json`, issuer = process.env.NEON_AUTH_ISSUER || undefined, allowDevNames = process.env.ALLOW_DEV_NAMES === '1' } = {}) {
   const keys = jwksUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
   return async function check(hello) {
     if (hello?.token && keys) {

@@ -7,6 +7,7 @@ import { Game } from '../game/game.js';
 import { AudioSystem } from '../audio/audio.js';
 import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
+import { signInScreen } from './signIn.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
 import { loadRoster, saveRoster, awardBattle, rankOf, rankTitle } from './roster.js';
@@ -91,6 +92,9 @@ export class App {
         minutes: Number(p.get('minutes') || 20),
       };
     } else {
+      // Played from the game server: sign in first (no guests). Offline (a
+      // file, the claude.ai copy): straight in.
+      this.account ??= await signInScreen(this.root);
       opts = await showFrontEnd(this);
       // The quality may have changed in the menu.
       renderer.setPixelRatio(this._pixelRatio(this.settings.quality));

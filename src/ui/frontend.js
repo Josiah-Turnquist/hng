@@ -23,6 +23,7 @@ import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
 import { loadRoster, saveRoster, selected, select, recruit, dismiss, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
 import { BattleMap } from './battleMap.js';
+import { signOut } from '../net/auth.js';
 import { WarMapView, ARMY_COLORS } from './warMapView.js';
 import { MAP, KIND_NAMES } from '../war/warMap.js';
 import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
@@ -128,6 +129,7 @@ export function showFrontEnd(app) {
           <div class="fe-credits"></div>
           <div class="fe-level" title="Player level"></div>
           <div class="fe-army"></div>
+          <button class="fe-account" hidden></button>
           <button class="fe-icon" data-screen="settings" title="Settings">${ICONS.gear}</button>
           <button class="fe-icon fe-fs" title="Full screen">${ICONS.screen}</button>
           <button class="fe-icon" data-screen="about" title="About">${ICONS.info}</button>
@@ -137,6 +139,26 @@ export function showFrontEnd(app) {
       <div class="fe-touch" hidden>This game needs a keyboard and a mouse (or touchpad). Open it on a computer to play.</div>`;
     app.root.appendChild(root);
     const main = root.querySelector('.fe-main');
+    // Signed in (online): the account's name; press twice to sign out.
+    const acct = root.querySelector('.fe-account');
+    if (app.account) {
+      acct.hidden = false;
+      acct.textContent = app.account.user.name || app.account.user.email;
+      acct.title = `Signed in as ${app.account.user.email}. Press to sign out.`;
+      acct.addEventListener('click', async () => {
+        if (!acct.classList.contains('sure')) {
+          acct.classList.add('sure');
+          acct.textContent = 'Sign out?';
+          setTimeout(() => {
+            acct.classList.remove('sure');
+            acct.textContent = app.account.user.name || app.account.user.email;
+          }, 3000);
+          return;
+        }
+        await signOut();
+        location.reload();
+      });
+    }
     root.querySelector('.fe-touch').hidden = !matchMedia('(hover: none) and (pointer: coarse)').matches;
     let screen = 'heroes';
     let view = null; // settings pages, when open

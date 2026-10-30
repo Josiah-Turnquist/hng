@@ -333,8 +333,19 @@ battle at a time (`src/server/room.js`): it opens with the first player, runs
 60 steps a second, sends each player 20 snapshots a second, hands a leaving
 player's soldier to a bot, and closes a minute after the last player leaves,
 so the server idles and Railway can put it to sleep. `tests/gameServer.test.js`
-plays it over real WebSockets. Next: the browser side (signing in, sending
-inputs, drawing the battle from snapshots).
+plays it over real WebSockets. Signing in: the browser
+never talks to Neon directly. It calls `/api/auth/...` on the game's own
+address and the server passes it on to Neon Auth
+(`src/server/authProxy.js`, written after Neon's own server toolkit: only a
+few headers each way, only Neon Auth's cookies, every cookie made the game
+address's own, Secure and SameSite=Lax), so browsers that block other sites'
+cookies (Safari) keep players signed in. `src/net/auth.js` holds the calls
+(sign in, create an account, the session and its 15-minute token);
+`src/ui/signIn.js` is the screen, shown first when the page comes from the
+game server (`/api/config` answers) and never in the offline copy. Email and
+password for now; Google needs Neon's redirect back to the game, later.
+Next: the battle in the browser (sending inputs, drawing the battle from
+snapshots).
 
 *Neon is set up (October 2026).* What there is now:
 

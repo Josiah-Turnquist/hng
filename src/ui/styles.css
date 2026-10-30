@@ -814,7 +814,8 @@ canvas.game {
 .ready-mission b { grid-column: 1; font-family: var(--cond); font-size: 18px; font-weight: 600; letter-spacing: 0.04em; }
 .ready-mission small { grid-column: 1; font-size: 11px; color: var(--ink-dim); }
 .rm-change { grid-column: 2; grid-row: 1 / span 3; align-self: center; padding: 6px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14); font-size: 12px; }
-.fe .ready-btn {
+.fe .ready-btn,
+.si .ready-btn {
   width: 100%;
   padding: 15px 12px;
   border: 0;
@@ -827,7 +828,8 @@ canvas.game {
   text-transform: uppercase;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
-.fe .ready-btn:hover { background: linear-gradient(180deg, #f5c867, #d6a03b); }
+.fe .ready-btn:hover,
+.si .ready-btn:hover:not(:disabled) { background: linear-gradient(180deg, #f5c867, #d6a03b); }
 .fe button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 /* Recruit */
@@ -1324,3 +1326,24 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .np-promote:hover { background: rgba(226, 172, 70, 0.22); }
 .wr-lockline { color: var(--ink); }
 .wr-hire:disabled { opacity: 0.5; cursor: default; }
+
+/* Sign-in (src/ui/signIn.js), first thing online. */
+.si { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(120% 90% at 50% 30%, #2a2b24, #0d0e0b 70%); color: var(--ink); overflow-y: auto; }
+.si-panel { width: min(400px, 100%); padding: 26px 26px 20px; background: rgba(20, 21, 18, 0.94); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.si-brand { font-family: var(--cond); font-size: 34px; font-weight: 700; letter-spacing: 0.4em; text-align: center; }
+.si-brand span { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-dim); }
+.si-tabs { display: grid; grid-template-columns: 1fr 1fr; margin: 22px 0 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.si-tabs button { padding: 10px 0; font-family: var(--cond); font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.si-tabs button.on { color: var(--ink); border-bottom-color: var(--amber); }
+.si-form { display: flex; flex-direction: column; gap: 12px; }
+.si-form label { display: flex; flex-direction: column; gap: 5px; font-family: var(--cond); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
+.si-form label[hidden] { display: none; }
+.si-form input { padding: 10px 12px; font: 15px var(--font); letter-spacing: 0; text-transform: none; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 0; }
+.si-form input:focus { outline: none; border-color: var(--amber); background: rgba(255, 255, 255, 0.08); }
+.si-error { padding: 8px 10px; font-size: 13px; line-height: 1.4; color: #f0b9a8; background: rgba(170, 60, 40, 0.18); border: 1px solid rgba(200, 90, 70, 0.5); }
+.si .si-go { margin-top: 4px; padding: 12px; font-size: 20px; cursor: pointer; }
+.si-go:disabled { opacity: 0.7; cursor: default; }
+.si-note { margin: 14px 0 0; font-size: 12px; line-height: 1.5; text-align: center; color: var(--ink-dim); }
+.fe-account { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; font-family: var(--cond); font-size: 14px; letter-spacing: 0.06em; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14); cursor: pointer; }
+.fe-account:hover { border-color: var(--amber); }
+.fe-account.sure { color: #1b160c; background: var(--amber); border-color: var(--amber); }
