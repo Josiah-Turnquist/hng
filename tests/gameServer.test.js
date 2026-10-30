@@ -58,6 +58,9 @@ test('players join a battle over the network, move, see each other, and leave to
     const snaps = a.inbox.filter((m) => m.k === 's');
     assert.ok(snaps.length > 30, `${snaps.length} snapshots`);
     assert.ok(snaps.at(-1).a > 0, 'the server says which input it has used');
+    // The scoreboard as the server counts it, everyone on it.
+    const sc = await a.next((m) => m.k === 'c');
+    assert.ok(sc.s.some((x) => x[0] === wa.you) && sc.s.some((x) => x[0] === wb.you));
     // A second hello from the same user is refused.
     const c = await connect(srv.port);
     c.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US' } }));
@@ -137,6 +140,36 @@ test("online battle rewards are worked out by the server and kept with his soldi
     a.ws.close();
     await new Promise((r) => setTimeout(r, 300));
     assert.equal(rows.get('dev:Able').rev, 2);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("when the server stops (a new version going up), the players' battles so far are kept", async () => {
+  const rows = new Map();
+  const store = {
+    get: async (id) => rows.get(id) ?? null,
+    put: async (id, name, { roster }, rev) => {
+      const r = rows.get(id);
+      if (r && r.rev !== rev) return { conflict: r };
+      rows.set(id, { roster: roster ?? r?.roster, war: null, rev: (r?.rev ?? 0) + 1 });
+      return { rev: rows.get(id).rev };
+    },
+    close: async () => {},
+  };
+  const kept = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 }, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
+  rows.set('dev:Able', { roster: { soldiers: [kept], selectedId: 's1', credits: 0 }, war: null, rev: 1 });
+  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
+  try {
+    const a = await connect(srv.port);
+    a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 's1', faction: 'US', cls: 'infantry' } }));
+    const w = await a.next((m) => m.k === 'w');
+    srv.room().g.soldiers.find((q) => q.id === w.you).kills = 1;
+    await srv.finish();
+    assert.equal(rows.get('dev:Able').roster.soldiers[0].xp, 200, 'his battle so far is kept');
+    assert.equal((await a.next((m) => m.k === 'g')).result.xp, 200, 'and he is told');
+    assert.equal(srv.rooms().length, 0);
+    a.ws.close();
   } finally {
     await srv.close();
   }

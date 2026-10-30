@@ -160,7 +160,8 @@ export class BotBrain {
 
   // Skill from the level and the difficulty setting (read again whenever it changes).
   _updateSkill() {
-    const set = this.game.settings?.get?.('botDifficulty');
+    // (On the game server, with no player's settings: the battle's own, game.botDifficulty.)
+    const set = this.game.settings?.get?.('botDifficulty') ?? this.game.botDifficulty;
     const diff = DIFFICULTY[set] ? set : 'normal';
     if (diff === this.difficulty) return;
     this.difficulty = diff;

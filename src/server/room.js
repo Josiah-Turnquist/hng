@@ -13,11 +13,12 @@
 //   room.input(client, message); room.leaving(client); room.leave(client)
 //   room.onClose = () => ...
 //   room.onReward = ({ client, userId, name, soldierId, reward }) => ...   (reward null: nothing earned)
+//   await room.finish()   // the server is stopping: everyone's rewards kept, then closed
 //
 // client: any object; send(client, text) sends it a message.
 import { makeBattle, addPlayer, ATT, DEF } from './battle.js';
 import { Recorder, TICK, CHECK_EVERY } from './record.js';
-import { snapshot, roster, watchEvents, PROTOCOL_VERSION } from '../net/protocol.js';
+import { snapshot, roster, scores, watchEvents, PROTOCOL_VERSION } from '../net/protocol.js';
 import { BotBrain } from '../ai/bot.js';
 import { battleReward } from '../game/rewards.js';
 import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
@@ -31,14 +32,15 @@ const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anythi
 const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
 
 export class BattleRoom {
-  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true } = {}) {
-    this.opts = { perSide, minutes, attackers, defenders, seed, vehicles };
+  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true, difficulty = 'easy' } = {}) {
+    this.opts = { perSide, minutes, attackers, defenders, seed, vehicles, difficulty };
     this.send = send;
     this.players = new Map(); // client -> { pc, userId, name, queue, budget }
     this.tick = 0;
     this.closed = false;
     this.onClose = null;
     this.onReward = null;
+    this.saving = []; // rewards on their way to the database
     this.rec = record ? new Recorder(this.opts) : null;
     this.ready = makeBattle(this.opts).then((g) => {
       this.g = g;
@@ -74,6 +76,7 @@ export class BattleRoom {
     this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });
     this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, tick: this.tick, rate: 1 / TICK }));
     this._broadcast(JSON.stringify(roster(g)));
+    if (this._scores) this.send(client, this._scores);
     return pc.soldier.id;
   }
 
@@ -165,6 +168,15 @@ export class BattleRoom {
         this.send(client, JSON.stringify(snap));
       }
     }
+    // The scoreboard, when it changed (once a second at most).
+    if (this.tick % 60 === 30) {
+      const sc = scores(g);
+      const text = JSON.stringify(sc);
+      if (text !== this._scores) {
+        this._scores = text;
+        this._broadcast(text);
+      }
+    }
     // Closing: empty for a minute, or a while after the battle is decided.
     if (this.tick % 60 === 0) {
       this.emptyFor = this.players.size ? 0 : this.emptyFor + 1;
@@ -185,7 +197,16 @@ export class BattleRoom {
     p.rewarded = true;
     const s = p.pc.soldier;
     const reward = battleReward(s, { won, defending: s.team === DEF, seconds: this.g.time - (s.joinedAt ?? 0) });
-    this.onReward?.({ client, userId: p.userId, name: p.name, soldierId: p.soldierId, reward });
+    const saving = this.onReward?.({ client, userId: p.userId, name: p.name, soldierId: p.soldierId, reward });
+    if (saving?.then) this.saving.push(saving.catch(() => {}));
+  }
+
+  // The server is stopping (a new version going up): each player's battle so
+  // far is kept, as if he had left, and the room closes.
+  async finish() {
+    if (this.g) for (const [client, p] of this.players) this._reward(client, p, false);
+    await Promise.all(this.saving);
+    this.close();
   }
 
   _broadcast(text) {

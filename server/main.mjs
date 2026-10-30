@@ -23,6 +23,7 @@
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
 // DATABASE_URL (Neon's Postgres, for saved progress; without it progress
 // stays in each browser),
+// BOT_DIFFICULTY (easy, normal or hard; easy by default),
 // BATTLE_SIZE (bots and players a side; by default the map's own, its
 // onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
 // running at once, default 3).
@@ -97,7 +98,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     const defenders = army === 'GE' ? 'US' : 'GE';
     const key = `${army}-${defenders}`;
     const p = (async () => {
-      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onReward = rewardPlayer;
       r.onClose = () => {
@@ -219,9 +220,23 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
+      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())), close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) startServer();
+// Run as the game server: when Railway stops it (a new version going up), the
+// players' battles so far are kept before it goes (eight seconds at most).
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const server = await startServer();
+  let stopping = false;
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, async () => {
+      if (stopping) return;
+      stopping = true;
+      console.log(`${sig}: keeping the players' battles before stopping`);
+      await Promise.race([server.finish(), new Promise((r) => setTimeout(r, 8000))]);
+      process.exit(0);
+    });
+  }
+}

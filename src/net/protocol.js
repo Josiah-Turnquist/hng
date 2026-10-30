@@ -149,6 +149,12 @@ export function readSnapshot(m) {
   };
 }
 
+// The scoreboard: each soldier's kills, deaths, score and points taken, as the
+// server counts them (sent when they change, at most once a second).
+export function scores(game) {
+  return { k: 'c', s: game.soldiers.map((x) => [x.id, x.kills || 0, x.deaths || 0, x.score || 0, x.captures || 0]) };
+}
+
 // Who is in the battle, sent when someone joins or leaves.
 export function roster(game) {
   return { k: 'r', s: game.soldiers.map((x) => [x.id, x.team, x.name, x.faction, x.cls, x.look?.seed ?? x.id * 7919 + 13, x.look?.variant ?? 0, x.weapons.map((w) => w?.def.id ?? null)]) };

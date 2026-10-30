@@ -6,7 +6,8 @@
 // never changes, is shared between battles in one program.
 //
 //   const g = await makeBattle({ perSide, minutes, seed, attackers, defenders, vehicles })
-//     (vehicles: the jeeps and bikes of a real battle; the tanks come with their crews)
+//     (vehicles: the jeeps and bikes of a real battle; the tanks come with their
+//     crews. difficulty: the bots', bot.js DIFFICULTY)
 //   step(g, seconds)                // run it on, 60 steps a second
 import * as THREE from 'three';
 import { Game } from '../game/game.js';
@@ -72,7 +73,7 @@ async function buildTown() {
   return { def, terrain, hf, collision, village, waterLevelAt, textures };
 }
 
-export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attackers = 'US', defenders = 'GE', vehicles = false } = {}) {
+export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attackers = 'US', defenders = 'GE', vehicles = false, difficulty = 'normal' } = {}) {
   const town = await buildTown();
   const world = {
     def: town.def,
@@ -109,6 +110,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
     app: { params: new URLSearchParams() },
     stats: { kills: [0, 0], shots: 0 },
     seed,
+    botDifficulty: difficulty,
     rng: new RNG(seed),
     tmpHit: new RayHit(),
   });

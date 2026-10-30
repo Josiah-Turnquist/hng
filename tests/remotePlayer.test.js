@@ -178,3 +178,10 @@ test('a tank crewman joins in the tank he chose, drives it from his messages, an
   assert.ok(s.vehicle && s.vehicle !== v, 'a new tank');
   assert.equal(s.vehicle.def.id, 'tiger1');
 });
+
+test("an online battle's bots fight at the battle's difficulty (easy unless the server says otherwise)", async () => {
+  const g = await makeBattle({ perSide: 4, seed: 2, difficulty: 'easy' });
+  step(g, 1);
+  const brains = g.soldiers.map((s) => s.brain).filter((b) => b?.difficulty);
+  assert.ok(brains.length > 0 && brains.every((b) => b.difficulty === 'easy'));
+});

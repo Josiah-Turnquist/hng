@@ -98,6 +98,7 @@ export class OnlineBattle {
       this._self(snap);
       this._points(snap);
     } else if (m.k === 'r') this._roster(m.s);
+    else if (m.k === 'c') this._scores(m.s);
     else if (m.k === 'g') {
       // What the battle earned him, worked out and kept by the server.
       this.reward = m;
@@ -107,6 +108,18 @@ export class OnlineBattle {
     else if (m.k === 'o') {
       this.over = m;
       this.game.mode?.serverEnd?.(m.team, m.why);
+    }
+  }
+
+  // The scoreboard as the server counts it.
+  _scores(list) {
+    for (const [id, kills, deaths, score, captures] of list || []) {
+      const s = id === this.me.id ? this.me : this.puppets.get(id);
+      if (!s) continue;
+      s.kills = kills;
+      s.deaths = deaths;
+      s.score = score;
+      s.captures = captures;
     }
   }
 
