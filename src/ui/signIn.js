@@ -35,6 +35,8 @@ export async function signInScreen(root) {
     const err = box.querySelector('.si-error');
     const go = box.querySelector('.si-go');
     const pw = form.elements.password;
+    const note = box.querySelector('.si-note');
+    const NOTE = note.textContent;
     let mode = 'in';
     const setMode = (m) => {
       mode = m;
@@ -59,8 +61,16 @@ export async function signInScreen(root) {
       }
       go.disabled = true;
       go.textContent = mode === 'up' ? 'Creating your account...' : 'Signing in...';
+      // After a quiet spell the server and the sign-in service wake up first,
+      // which can take some seconds: say so rather than leave the player wondering.
+      const slow = setTimeout(() => {
+        note.textContent = 'Still working: after a quiet spell the servers take a few seconds to wake up.';
+      }, 3000);
       try {
-        const s = mode === 'up' ? await signUp(name, email, password) : await signIn(email, password);
+        const s = await (mode === 'up' ? signUp(name, email, password) : signIn(email, password)).finally(() => {
+          clearTimeout(slow);
+          note.textContent = NOTE;
+        });
         if (!s) throw new Error(mode === 'up' ? 'Your account was made, but signing in failed. Try signing in.' : 'Signing in failed. Try again.');
         box.remove();
         resolve(s);

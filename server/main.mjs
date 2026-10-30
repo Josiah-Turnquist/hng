@@ -21,6 +21,8 @@
 // ALLOW_DEV_NAMES=1 (sign in with just a name: your own computer only),
 // BATTLE_SIZE (bots and players a side, default 12).
 import { createServer } from 'node:http';
+import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +40,22 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE || 12), check = signInChecker(), authBase = NEON_AUTH_BASE_URL, log = console.log } = {}) {
   let room = null;
   let opening = null;
+
+  // The game's files, read once and kept, each also squeezed (gzip): the page
+  // loads hundreds of small code files, so this makes it much quicker.
+  const files = new Map();
+  async function fileFor(path) {
+    if (files.has(path)) return files.get(path);
+    const file = join(root, path);
+    const info = await stat(file).catch(() => null);
+    if (!info || !info.isFile()) return null;
+    const raw = await readFile(file);
+    const type = TYPES[extname(file)] || 'application/octet-stream';
+    const gz = /^(text|application\/(json|javascript))/.test(type) || type.startsWith('image/svg') ? gzipSync(raw, { level: 9 }) : null;
+    const f = { raw, gz, type, etag: `"${createHash('sha1').update(raw).digest('base64url').slice(0, 16)}"` };
+    files.set(path, f);
+    return f;
+  }
 
   // The battle players join: the one running, or a new one.
   async function currentRoom() {
@@ -62,15 +80,24 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       const url = new URL(req.url, 'http://x');
       if (url.pathname === '/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
       if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION }));
-      if (url.pathname.startsWith('/api/auth/')) return await proxyAuth(req, res, url.pathname.slice('/api/auth/'.length), authBase);
+      if (url.pathname.startsWith('/api/auth/')) {
+        // (How long each sign-in step takes, in the server's log: no names or addresses.)
+        const t0 = performance.now();
+        const path = url.pathname.slice('/api/auth/'.length);
+        await proxyAuth(req, res, path, authBase);
+        return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
+      }
       let path = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '') || 'index.html';
       if (!PUBLIC.some((p) => path === p || path.startsWith(p + sep) || path.startsWith(p + '/'))) return res.writeHead(404).end('Not found');
-      const file = join(root, path);
-      const info = await stat(file).catch(() => null);
-      if (!info || !info.isFile()) return res.writeHead(404).end('Not found');
-      const body = await readFile(file);
-      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': path === 'index.html' ? 'no-cache' : 'public, max-age=300' });
-      res.end(body);
+      const f = await fileFor(path);
+      if (!f) return res.writeHead(404).end('Not found');
+      // Squeezed when the browser takes it, and not sent again while unchanged.
+      const headers = { 'Content-Type': f.type, 'Cache-Control': path === 'index.html' ? 'no-cache' : 'public, max-age=300', ETag: f.etag, Vary: 'Accept-Encoding' };
+      if (req.headers['if-none-match'] === f.etag) return res.writeHead(304, headers).end();
+      const gz = f.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      if (gz) headers['Content-Encoding'] = 'gzip';
+      res.writeHead(200, headers);
+      res.end(gz ? f.gz : f.raw);
     } catch {
       res.writeHead(500).end('Server error');
     }
