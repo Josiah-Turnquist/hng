@@ -5,10 +5,12 @@
 // parts their upgrades fit.
 //
 //   const pv = new SoldierPreview(app.renderer);
-//   pv.show({ faction, cls, seed, variant, primary });   // weapon id
+//   pv.show({ faction, cls, seed, variant, primary, picks });   // weapon id, and
+//                          // the upgrades fitted to it { slot: id } (a scope shows)
 //   pv.frame(el);          // where on the page he stands (the middle of el)
 //   pv.start(); pv.stop(); pv.dispose();
 //   const url = pv.gunPicture('m1_garand');   // data: URL, cached
+//   pv.gunPicture('kar98k', 240, 70, picks);  // with its upgrades fitted
 //   pv.partPicture('kar98k', 'u80');          // the part an upgrade fits, the same
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -17,6 +19,7 @@ import { makeGunMaterials } from '../weapons/models/kit.js';
 import { MODELS, buildGun } from '../weapons/models/index.js';
 import { partOf, partKey, buildPart } from '../weapons/models/upgradeParts.js';
 import { WEAPONS } from '../weapons/defs.js';
+import { upgradedDef } from '../weapons/upgrades.js';
 import { SoldierModel } from '../actors/soldierModel.js';
 
 const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', binoculars: 'binoculars', firstaid: 'grenade', medkit: 'grenade', wrench: 'grenade' };
@@ -67,8 +70,12 @@ function frameView(obj, dir, fov, aspect, fill, focus = null) {
   return cam;
 }
 
-function modelId(id) {
-  const d = WEAPONS[id];
+// The model a gun is drawn with, with the upgrades fitted to it (picks
+// { slot: id }): a scope upgrade puts the rifle in its mount with the scope
+// on it (models/upgradeScopes.js), as in battle. The other upgrades are inside
+// the gun, or not modeled on it yet, and leave it as it is.
+function modelId(id, picks = null) {
+  const d = picks && Object.keys(picks).length ? upgradedDef(id, picks) : WEAPONS[id];
   if (!d) return null;
   return MODELS[d.model] ? d.model : MODELS[id] ? id : null;
 }
@@ -328,8 +335,9 @@ export class SoldierPreview {
   }
 
   // Dress and arm the soldier (rebuilt only when something changed).
-  show({ faction, cls, seed, variant, primary }) {
-    const k = `${faction}|${cls}|${seed}|${variant}|${primary}`;
+  show({ faction, cls, seed, variant, primary, picks = null }) {
+    const mid = modelId(primary, picks);
+    const k = `${faction}|${cls}|${seed}|${variant}|${primary}|${mid}`;
     if (k === this.key) return;
     this.key = k;
     if (this.model) {
@@ -346,7 +354,6 @@ export class SoldierPreview {
       this.model = null;
       return;
     }
-    const mid = modelId(primary);
     if (mid) m.setWeapon(buildGun(mid, this.gunMats, { lod: 0 }), kind);
     m.setGround(() => 0);
     m.root.traverse((o) => {
@@ -462,11 +469,11 @@ export class SoldierPreview {
   }
 
   // A side view of a gun on a clear background, muzzle to the right (data: URL).
-  gunPicture(id, w = 240, h = 80) {
-    const key = `${id}@${w}x${h}`;
-    if (this.pictures.has(key)) return this.pictures.get(key);
-    const mid = modelId(id);
+  gunPicture(id, w = 240, h = 80, picks = null) {
+    const mid = modelId(id, picks);
     if (!mid) return '';
+    const key = `${mid}@${w}x${h}`;
+    if (this.pictures.has(key)) return this.pictures.get(key);
     const gun = buildGun(mid, this.gunMats, { lod: 0 });
     // Binoculars read best from behind and a little to the side and above (the
     // two eyecups side by side, the halves running off behind them). A kit or

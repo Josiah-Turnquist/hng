@@ -467,7 +467,8 @@ export function showFrontEnd(app) {
       // The soldier in 3D, his name plate, and his two badges under him.
       const stage = main.querySelector('.fe-stage');
       if (preview) {
-        preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0] });
+        // (His main gun with the upgrades fitted to it: a scope shows on it.)
+        preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0], picks: picksOf(s, s.loadout[0]) });
         preview.frame(stage);
         if (!stage.dataset.drag) {
           preview.enableDrag(stage);
@@ -573,7 +574,7 @@ export function showFrontEnd(app) {
           return;
         }
         const w = upgradedDef(id, picksOf(s, id));
-        const pic = preview?.gunPicture(id, 240, 70) || '';
+        const pic = preview?.gunPicture(id, 240, 70, picksOf(s, id)) || '';
         const n = Object.keys(picksOf(s, id)).length;
         const ups = upgradesOf(id).length ? `<span class="mods" title="${n} of 5 upgrade slots fitted">${[0, 1, 2, 3, 4].map((k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('')}</span>` : '';
         const b = el('button', `hx-slot${i === 0 ? ' main' : ''}`, `<span class="lab">${SLOT_LABELS[i]}</span><span class="pt">${pointsOf(id)} pt</span>${pic ? `<img alt="" src="${pic}">` : ''}<b></b>${ups}`);
@@ -1083,13 +1084,16 @@ export function showFrontEnd(app) {
 
       const draw = () => {
         const picks = picksOf(s, gun);
+        // The gun as fitted now, at the top; and in his hands behind, when it is his main gun.
+        const fittedPic = preview?.gunPicture(gun, 360, 120, picks) || gunPic;
+        if (preview && gun === s.loadout[0]) preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: gun, picks });
         const list = upgradesOf(gun)
           .filter((u) => u.slot === slot)
           .sort((a, b) => a.level - b.level || a.credits - b.credits);
         if (chosen === undefined || (chosen && !list.some((u) => u.id === chosen))) chosen = picks[slot] || null;
         const key = specialistKey(gun);
         const lv = key ? ribbonLevel(s.ribbons?.[key]).level : null;
-        ov.innerHTML = `<div class="cust-head"><span class="cust-gun">${gunPic ? `<img alt="" src="${gunPic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><button class="cust-close">Done</button></div>
+        ov.innerHTML = `<div class="cust-head"><span class="cust-gun">${fittedPic ? `<img alt="" src="${fittedPic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><button class="cust-close">Done</button></div>
           <div class="cust-body"><nav class="cust-slots"></nav><div class="cust-grid"></div><aside class="cust-detail"></aside></div>`;
         ov.querySelector('h2').textContent = def.name;
         ov.querySelector('.cust-title small').textContent = key ? `${ribbonInfo(key).name} · level ${lv} of 12` : 'All upgrades open';
