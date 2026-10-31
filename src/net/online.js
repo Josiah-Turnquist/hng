@@ -13,7 +13,7 @@
 //   const conn = await connect(soldier)          // { ws, welcome, roster, inbox } or throws
 //   game.online = new OnlineBattle(game, conn)    // once the world is built
 //   (Game calls online.update(dt) each step and online.sendInput() each frame)
-import { ACTION_LIST, encodeInput, readSnapshot, ammoOf, PROTOCOL_VERSION } from './protocol.js';
+import { ACTION_LIST, encodeInput, readSnapshot, ammoOf, applyVehicleState, PROTOCOL_VERSION } from './protocol.js';
 import { token } from './auth.js';
 import { Soldier } from '../game/soldier.js';
 import { attachSoldierModel } from '../game/soldierView.js';
@@ -429,6 +429,12 @@ export class OnlineBattle {
       v.gunElev = lerp(na.gunElev, nb.gunElev, t);
       v.hp = nb.hp;
       v.alive = nb.alive;
+      // Its speed, engine, damage and guns, as the server has them (puppets
+      // aren't run here): for the HUD of whoever rides in it, and its sound.
+      if (nb.state && v._state !== nb.state) {
+        v._state = nb.state;
+        applyVehicleState(v, nb.state);
+      }
     }
     // One that just stopped (in the earlier update, not this one): where it stopped.
     const inB = new Set(b.vehicles.map((x) => x.id));

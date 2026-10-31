@@ -27,7 +27,8 @@ import { SHELLS } from '../vehicles/defs.js';
 
 // (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.
 // 3: the map key, a new action at the end of the list; how hard a soldier
-// bleeds; which points are closed for coming back in.)
+// bleeds; which points are closed for coming back in; a vehicle's speed,
+// engine, damage and guns, vehicleState.)
 export const PROTOCOL_VERSION = 3;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
@@ -120,6 +121,84 @@ const ALIVE = 1,
   SPRINTING = 4,
   BLEEDING = 8;
 
+// A vehicle's state past where it is, for the HUD of whoever rides in it (and
+// its sound): [speed dm/s, rpm / 10, gear, flags, damage, load tenths, effort,
+// power / 10 W, guns]. flags: the engine running, on fire, on its side (and
+// which side), off-road gearing, changing gear. damage: two bits a part
+// (VEHICLE_PARTS; 1 hurt, 2 broken). effort: a bicycle's (EFFORTS). guns: a
+// tank's main gun [round loaded, round next (1 + their place in its list, 0
+// none), reload tenths, then the rounds stowed of each kind], then each machine
+// gun's [rounds in the belt, belts, reload tenths].
+export const VEHICLE_PARTS = ['engine', 'transmission', 'trackL', 'trackR', 'turret', 'gun', 'fuel', 'ammo', 'tireF', 'tireR', 'tireS'];
+const EFFORTS = ['idle', 'coast', 'cruise', 'sprint', 'spent', 'walk'];
+const V_ENGINE = 1,
+  V_FIRE = 2,
+  V_FALLEN = 4,
+  V_FALLEN_RIGHT = 8,
+  V_OFFROAD = 16,
+  V_SHIFTING = 32;
+const tenths = (t) => Math.max(0, Math.round((t || 0) * 10));
+
+export function vehicleState(v) {
+  const flags = (v.engineOn ? V_ENGINE : 0) | (v.fire > 0 ? V_FIRE : 0) | (v.fallen ? V_FALLEN : 0) | (v.fallen > 0 ? V_FALLEN_RIGHT : 0) | (v.offroad ? V_OFFROAD : 0) | (v.shiftTimer > 0 ? V_SHIFTING : 0);
+  let damage = 0;
+  VEHICLE_PARTS.forEach((k, i) => {
+    const m = v.modules?.[k];
+    if (m !== undefined && m < 1) damage += (m <= 0 ? 2 : 1) * 4 ** i;
+  });
+  const guns = [];
+  if (v.ammoTypes) {
+    const no = (id) => (id ? v.ammoTypes.indexOf(id) + 1 : 0);
+    guns.push(no(v.loaded), no(v.nextAmmo), tenths(v.reloadT), ...v.ammoTypes.map((id) => v.stowed[id] | 0));
+  }
+  for (const mg of [v.coax, v.bowMg, v.mg]) if (mg?.def) guns.push(mg.loaded | 0, mg.belts | 0, tenths(mg.reloadT));
+  const speed = Math.round((v.speed || 0) * 10);
+  return [speed || 0, Math.round((v.rpm || 0) / 10), v.gear | 0, flags, damage, tenths(v.load), Math.max(0, EFFORTS.indexOf(v.effort)), Math.round((v.power || 0) / 10), guns];
+}
+
+// And back, onto a vehicle shown in the browser (a puppet: net/online.js).
+export function applyVehicleState(v, st) {
+  if (!Array.isArray(st) || st.length < 5) return;
+  const [speed, rpm, gear, flags, damage, load = 0, effort = 0, power = 0, guns = []] = st;
+  v.speed = speed / 10;
+  v.rpm = rpm * 10;
+  v.gear = gear;
+  v.engineOn = !!(flags & V_ENGINE);
+  v.fire = flags & V_FIRE ? Math.max(v.fire || 0, 1) : 0;
+  v.fallen = flags & V_FALLEN ? (flags & V_FALLEN_RIGHT ? 1 : -1) : 0;
+  v.offroad = !!(flags & V_OFFROAD);
+  v.shiftTimer = flags & V_SHIFTING ? 0.1 : 0;
+  if (v.modules) {
+    VEHICLE_PARTS.forEach((k, i) => {
+      if (!(k in v.modules)) return;
+      const d = Math.floor(damage / 4 ** i) % 4;
+      // (Hurt: how badly isn't sent; half is near enough for the smoke.)
+      v.modules[k] = d === 2 ? 0 : d === 1 ? Math.min(v.modules[k] < 1 && v.modules[k] > 0 ? v.modules[k] : 0.5, 0.99) : 1;
+    });
+  }
+  v.load = load / 10;
+  if (v.isBike) {
+    v.effort = EFFORTS[effort] || 'idle';
+    v.power = power * 10;
+  }
+  if (!Array.isArray(guns)) return;
+  let i = 0;
+  if (v.ammoTypes) {
+    const id = (n) => (n > 0 ? v.ammoTypes[n - 1] || null : null);
+    v.loaded = id(guns[i++]);
+    v.nextAmmo = id(guns[i++]);
+    v.reloadT = (guns[i++] || 0) / 10;
+    for (const k of v.ammoTypes) v.stowed[k] = guns[i++] | 0;
+    v.ammoIndex = Math.max(0, v.ammoTypes.indexOf(v.nextAmmo));
+  }
+  for (const mg of [v.coax, v.bowMg, v.mg]) {
+    if (!mg?.def || i + 3 > guns.length) continue;
+    mg.loaded = guns[i++];
+    mg.belts = guns[i++];
+    mg.reloadT = guns[i++] / 10;
+  }
+}
+
 // sent: the server's note of what it last sent of each vehicle; with it, a
 // vehicle that hasn't moved or changed is left out (most are parked), unless
 // full: then all are in, and the browser drops any it has that are gone (vf).
@@ -138,7 +217,7 @@ export function snapshot(game, tick, { events = [], ack = 0, sent = null, full =
     const p = x.body.position,
       q = x.body.quaternion;
     // (A tank's turret and gun, or a sidecar's machine gun.)
-    const row = [x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw ?? x.mgYaw ?? 0), ang(x.gunElev ?? x.mgPitch ?? 0), Math.ceil(x.hp), x.alive ? 1 : 0];
+    const row = [x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw ?? x.mgYaw ?? 0), ang(x.gunElev ?? x.mgPitch ?? 0), Math.ceil(x.hp), x.alive ? 1 : 0, ...vehicleState(x)];
     if (sent) {
       const key = row.join(',');
       if (!full && sent.get(x.id) === key) continue;
@@ -160,7 +239,7 @@ export function readSnapshot(m) {
     tick: m.t,
     time: m.tm / 1000,
     soldiers: m.s.map(([id, x, y, z, yaw, pitch, stance, f, weapon, health, vehicle, seat, bleed]) => ({ id, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 10000, pitch: pitch / 10000, stance, alive: !!(f & ALIVE), aiming: !!(f & AIMING), sprinting: !!(f & SPRINTING), bleeding: !!(f & BLEEDING), bleed: f & BLEEDING ? (bleed || 10) / 10 : 0, weapon, health, vehicle, seat })),
-    vehicles: m.v.map(([id, def, x, y, z, qx, qy, qz, qw, turret, gun, hp, alive]) => ({ id, def, x: x / 100, y: y / 100, z: z / 100, q: [qx / 10000, qy / 10000, qz / 10000, qw / 10000], turretYaw: turret / 10000, gunElev: gun / 10000, hp, alive: !!alive })),
+    vehicles: m.v.map(([id, def, x, y, z, qx, qy, qz, qw, turret, gun, hp, alive, ...state]) => ({ id, def, x: x / 100, y: y / 100, z: z / 100, q: [qx / 10000, qy / 10000, qz / 10000, qw / 10000], turretYaw: turret / 10000, gunElev: gun / 10000, hp, alive: !!alive, state: state.length ? state : null })),
     points: m.p.map(([id, owner, c, closed]) => ({ id, owner: owner < 0 ? null : owner, control: c / 100, closed: !!closed })),
     clock: { timeLeft: (m.m?.[0] ?? 0) / 10, suddenDeath: !!m.m?.[1] },
     events: m.e,
