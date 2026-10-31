@@ -182,7 +182,7 @@ test('gameplay: twice the pick-up and sharper turns than the real figures, the s
     return u / w;
   };
   for (const [id, lo, hi] of [
-    ['willys_mb', 1.9, 2.5],
+    ['willys_mb', 2.4, 3.0], // (cars: 0.68 of the real circle, wheeled.js)
     ['wla', 1.6, 2.2],
   ]) {
     const r = circle(id);
