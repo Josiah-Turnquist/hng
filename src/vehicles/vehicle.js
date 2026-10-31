@@ -256,7 +256,10 @@ export class Vehicle {
       const lift = w.radius + 0.15;
       const start = _v.copy(mount).addScaledVector(up, lift);
       const len = lift + w.rest + w.radius + 0.2;
-      const ok = this.world.collision.raycast(start.x, start.y, start.z, -up.x, -up.y, -up.z, len, _hit, FLAG_WALKABLE, true);
+      let ok = this.world.collision.raycast(start.x, start.y, start.z, -up.x, -up.y, -up.z, len, _hit, FLAG_WALKABLE, true);
+      // A ray that starts inside something solid (a wheel jammed against a
+      // wall or a wreck) found no ground there to stand on: the ground below.
+      if (ok && !_hit.ground && _hit.t < 0.02) ok = this.world.collision.raycast(start.x, start.y, start.z, -up.x, -up.y, -up.z, len, _hit, 0, true);
       if (ok) {
         w.onGround = true;
         w.contact.set(start.x - up.x * _hit.t, start.y - up.y * _hit.t, start.z - up.z * _hit.t);
@@ -352,23 +355,33 @@ export class Vehicle {
         if (box.owner?.isBike) continue;
         const depth = sphereBox(p, s.r, box, _n);
         if (depth <= 0) continue;
+        // A tree is a wall, never a ramp: it pushes straight back, not up, and
+        // hard enough to stop him against it (sideways it can't launch him).
+        let wall = false;
+        if (box.tree) {
+          _n.y = 0;
+          if (_n.lengthSq() < 1e-6) continue;
+          _n.normalize();
+          wall = true;
+        }
         // Tracks climb low obstacles: the front and back runs slope like a ramp.
-        if (s.climb && _n.dot(up) < 0.5) _n.addScaledVector(up, 0.9).normalize();
-        this._contactForce(p, _n, depth, k, c, 0.4, dt, box.owner?.isVehicle ? box.owner : null, s);
+        else if (s.climb && _n.dot(up) < 0.5) _n.addScaledVector(up, 0.9).normalize();
+        this._contactForce(p, _n, depth, k, c, 0.4, dt, box.owner?.isVehicle ? box.owner : null, s, wall);
       }
     }
   }
 
   // Spring-damper contact at a point with friction. `other` gets the reaction.
-  _contactForce(p, n, depth, k, c, mu, dt, other = null, sample = null) {
+  _contactForce(p, n, depth, k, c, mu, dt, other = null, sample = null, wall = false) {
     const b = this.body;
     const vel = b.pointVelocity(p, _v3);
     if (other) vel.sub(other.body.pointVelocity(p, _v2));
     const vn = vel.dot(n);
     let fn = depth * k - vn * c;
     if (fn <= 0) return;
-    // Don't let the penalty spring launch the vehicle.
-    fn = Math.min(fn, this.def.mass * G * 6);
+    // Don't let the penalty spring launch the vehicle (a wall pushing only
+    // sideways may push harder: it stops him instead of letting him in).
+    fn = Math.min(fn, this.def.mass * G * (wall ? 30 : 6));
     _f.copy(n).multiplyScalar(fn);
     // Friction opposing sliding along the surface.
     const vt = _v3.addScaledVector(n, -vn);

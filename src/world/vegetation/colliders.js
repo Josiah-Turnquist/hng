@@ -1,5 +1,6 @@
 // Collision for the vegetation (inside the battlefield only):
-//   trunks       solid, stop bullets ('wood'), block sight (FLAG_DEFAULT)
+//   trunks       solid, stop bullets ('wood'), block sight (TRUNK: not something
+//                to stand or drive on)
 //   big crowns   of trees standing in the open (field, hedge, roadside, orchard,
 //                riverbank and forest-edge trees) hide what's behind them partly and
 //                slow bullets a little ('foliage'); crowns inside the woods are
@@ -14,8 +15,12 @@
 // (CollisionWorld.foliageAlong). Bushes and hedges are drawn so thick that nobody
 // can see through them (box.dense): beyond a few meters they hide a man from the
 // bots as from the player. Tree crowns are thinner: they only slow spotting.
-import { Box, FLAG_DEFAULT, FLAG_SOLID, FLAG_BULLET, FLAG_SIGHT } from '../../physics/collision.js';
+import { Box, FLAG_SOLID, FLAG_BULLET, FLAG_SIGHT } from '../../physics/collision.js';
 import { ROLE, isBush } from './placement.js';
+
+// A trunk stops men, vehicles, bullets and sight, but is no ground: a wheel
+// against one found a "ground" a metre up and the springs threw the vehicle.
+const TRUNK = FLAG_SOLID | FLAG_BULLET | FLAG_SIGHT;
 import { HEDGE } from './treeGeometry.js';
 
 // Trees standing in the open get crown boxes.
@@ -77,14 +82,17 @@ export function addVegetationColliders(collision, { plants, info, pieces, def })
           const wx = x + c * mx + sn * mz + P.lx[i] * my,
             wz = z - sn * mx + c * mz + P.lz[i] * my;
           const r = (A[3] + (B[3] - A[3]) * f * 0.5) * hs;
-          const box = new Box(wx, y + my, wz, r * 0.82, (yb - ya) / 2, r * 0.82, yaw, 'wood', FLAG_DEFAULT);
+          const box = new Box(wx, y + my, wz, r * 0.82, (yb - ya) / 2, r * 0.82, yaw, 'wood', TRUNK);
           box.trunk = { x: wx, z: wz, r };
+          box.tree = true;
           collision.add(box);
           stats.trunks++;
         }
       } else {
         const lean = 0.5 * top;
-        collision.add(new Box(x + P.lx[i] * lean, y + (top - 0.5) / 2, z + P.lz[i] * lean, rt, (top + 0.5) / 2, rt, yaw, 'wood', FLAG_DEFAULT));
+        const box = new Box(x + P.lx[i] * lean, y + (top - 0.5) / 2, z + P.lz[i] * lean, rt, (top + 0.5) / 2, rt, yaw, 'wood', TRUNK);
+        box.tree = true;
+        collision.add(box);
         stats.trunks++;
       }
     }

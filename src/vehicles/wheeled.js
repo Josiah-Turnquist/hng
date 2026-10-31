@@ -3,7 +3,13 @@
 // and tires with a Pacejka-style grip curve that depends on the ground (dry road,
 // grass, mud, sand...).
 import * as THREE from 'three';
-import { Vehicle, TURN_CIRCLE, TURN_GRIP, ROLL_CG } from './vehicle.js';
+import { Vehicle, ROLL_CG } from './vehicle.js';
+
+// Cars and trucks turn tighter and grip harder sideways than the real ones, for
+// gameplay, but less than bikes do (vehicle.js TURN_CIRCLE 0.55, TURN_GRIP
+// 1.9): a turning circle 0.68 of the real one, 1.55 times the sideways grip.
+const TURN_CIRCLE = 0.68;
+const TURN_GRIP = 1.55;
 import { clamp, approach } from '../core/math.js';
 
 const _v = new THREE.Vector3();
