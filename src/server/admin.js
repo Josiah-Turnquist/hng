@@ -8,6 +8,10 @@
 //     all), 'ribbons' (every ribbon at its top level), 'specialists' (every
 //     gun's specialist ribbon at its top level)
 //
+//   GET  /api/admin/generals         -> { generals: [{ id, army, name, seen, watching }], war: { number, day, over } }
+//   POST /api/admin/general { id, army }   -> the same (army null: no longer a general)
+//   POST /api/admin/war { act: 'restart' } -> the same, with a new war begun
+//
 // A change bumps the saved revision, so a game open for that player takes the
 // new copy on its next save (net/progress.js). Each change goes to the log.
 import { RANK_XP, rankOf } from '../ui/roster.js';
@@ -17,7 +21,7 @@ import { WEAPONS } from '../weapons/defs.js';
 const TOP = RIBBON_XP[RIBBON_XP.length - 1];
 const MAX_BODY = 16 * 1024;
 
-export function adminHandler({ store, check, admins = [], log = console.log }) {
+export function adminHandler({ store, check, admins = [], log = console.log, war = null }) {
   const allowed = new Set(admins.map((a) => String(a).trim().toLowerCase()).filter(Boolean));
   return async function handle(req, res, path) {
     const send = (status, body) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
@@ -35,6 +39,34 @@ export function adminHandler({ store, check, admins = [], log = console.log }) {
         if (!store.stats) return send(503, { error: 'No stats here' });
         const days = Number(new URL(req.url, 'http://x').searchParams.get('days')) || 7;
         return send(200, await store.stats(days));
+      }
+      // --- The shared war: its generals ---
+      const warInfo = () => ({ generals: war.list(), war: war.war ? { number: war.war.number, t: war.war.t, over: war.war.over?.winner ?? null, humans: war.war.humans ?? [] } : null });
+      if (path === 'generals' || path === 'general' || path === 'war') {
+        if (!war) return send(503, { error: 'This server runs no war' });
+        if (req.method === 'GET' && path === 'generals') return send(200, warInfo());
+        let body;
+        try {
+          body = JSON.parse((await readBody(req)) ?? '');
+        } catch {
+          return send(400, { error: 'Not JSON' });
+        }
+        if (req.method === 'POST' && path === 'general') {
+          if (typeof body?.id !== 'string' || !body.id) return send(400, { error: 'Which player?' });
+          const army = body.army || null;
+          if (army && !['US', 'GE', 'SU'].includes(army)) return send(400, { error: 'No such army' });
+          const kept = await store.get(body.id);
+          if (!kept) return send(400, { error: 'No such player' });
+          await war.setGeneral(body.id, army, kept.name || '');
+          log(`admin ${who.name}: ${kept.name} ${army ? `made general of ${army}` : 'no longer a general'}`);
+          return send(200, warInfo());
+        }
+        if (req.method === 'POST' && path === 'war' && body?.act === 'restart') {
+          await war.restart();
+          log(`admin ${who.name}: started a new war`);
+          return send(200, warInfo());
+        }
+        return send(404, { error: 'No such thing' });
       }
       if (req.method === 'GET' && path === 'players') {
         const q = new URL(req.url, 'http://x').searchParams.get('q') || '';

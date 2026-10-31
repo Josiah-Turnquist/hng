@@ -50,12 +50,21 @@
   .sbox h3 { margin: 0 0 6px; font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); }
   .err td:first-child { word-break: break-word; }
   td select { padding: 4px 6px; }
+  #war { display: grid; gap: 12px; }
+  .warline { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+  .warline b { font: 700 18px var(--cond); letter-spacing: 0.06em; }
+  .on { color: var(--good); }
+  button.sure { border-color: var(--bad); color: var(--bad); }
 </style>
 </head>
 <body>
 <main>
   <header><h1>Rank &amp; File</h1><span>Admin</span><a href="/">Back to the game</a></header>
   <div id="gate" class="msg">Checking who you are...</div>
+  <section id="war" hidden>
+    <div class="sh"><h2>The war</h2><button id="restart">Start a new war</button></div>
+    <div id="wbody" class="note">Loading...</div>
+  </section>
   <section id="stats" hidden>
     <div class="sh"><h2>Stats</h2><select id="days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></div>
     <div id="sbody" class="note">Loading...</div>
@@ -100,6 +109,7 @@ function status(text, kind = '') {
   el.textContent = text;
 }
 
+let generals = new Map(); // player id -> { army, name, seen, watching }
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const when = (t) => (t ? new Date(t).toLocaleString() : '');
 
@@ -109,6 +119,7 @@ function card(p) {
   el.innerHTML = `
     <div class="ph"><b></b><small class="seen"></small><small class="cr"></small></div>
     <div class="row"><label>Credits</label><input type="number" min="0" step="1000" class="credits"><button class="setc">Set credits</button></div>
+    <div class="row"><label>General</label><select class="gen"><option value="">Not a general</option><option value="US">General of the US Army</option><option value="GE">General of the Wehrmacht</option><option value="SU">General of the Red Army</option></select><button class="setg">Set</button></div>
     <div class="row"><label>Everyone</label>
       <select class="rankall"></select><button class="setr">Set rank</button>
       <button class="rib">Max ribbons</button><button class="spec">Max specialist ribbons</button></div>
@@ -123,6 +134,7 @@ function card(p) {
     el.querySelector('.cr').textContent = `${fmt(pl.credits)} credits`;
     el.querySelector('.credits').value = pl.credits;
     ranks(el.querySelector('.rankall'), 12);
+    el.querySelector('.gen').value = generals.get(pl.id)?.army || '';
     const tb = el.querySelector('tbody');
     tb.innerHTML = '';
     for (const s of pl.soldiers) {
@@ -158,6 +170,15 @@ function card(p) {
   el.querySelector('.setr').addEventListener('click', () => {
     const v = Number(el.querySelector('.rankall').value);
     go({ what: 'rank', value: v }, `every soldier is now rank ${v}`);
+  });
+  el.querySelector('.setg').addEventListener('click', async () => {
+    const army = el.querySelector('.gen').value || null;
+    try {
+      showWar(await api('general', { id: p.id, army }));
+      status(`${p.name}: ${army ? `now leads the ${ARMY[army]}` : 'no longer a general'}.`, 'good');
+    } catch (e) {
+      status(`${p.name}: ${e.message}`, 'bad');
+    }
   });
   el.querySelector('.rib').addEventListener('click', () => go({ what: 'ribbons' }, 'every ribbon at its top level'));
   el.querySelector('.spec').addEventListener('click', () => go({ what: 'specialists' }, 'every specialist ribbon at its top level'));
@@ -208,6 +229,65 @@ async function stats() {
 }
 $('#days').addEventListener('change', stats);
 
+// --- The shared war: who leads each army (generals are chosen here for the beta) ---
+function showWar(info) {
+  generals = new Map(info.generals.map((g) => [g.id, g]));
+  const w = info.war;
+  const day = w ? `Day ${Math.floor(w.t / 86400) + 1}` : '';
+  const armies = ['US', 'GE', 'SU'].map((a) => `${ARMY[a]}: ${w?.humans?.includes(a) ? '<span class="on">led by its generals</span>' : 'led by the computer'}`).join(' · ');
+  const rows = info.generals.map((g) => [g.name || g.id, ARMY[g.army] || g.army, g.watching ? 'In the game now' : g.seen ? when(g.seen) : 'Never', '']);
+  $('#wbody').className = '';
+  $('#wbody').innerHTML = `<div class="warline">${w ? `<b>War ${w.number}</b><span>${day}${w.over ? ` · won by the ${ARMY[w.over]}` : ''}</span>` : '<b>Loading</b>'}</div>
+    <div class="note">${armies}.<br>An army with no general, or whose generals have been away a day, is led by the computer. Make a player a general from their card below.</div>
+    ${table(['General', 'Army', 'Last seen', ''], rows)}`;
+  // (Each name has a button to stand him down.)
+  [...$('#wbody').querySelectorAll('tbody tr')].forEach((tr, i) => {
+    const g = info.generals[i];
+    if (!g) return;
+    const b = document.createElement('button');
+    b.textContent = 'Stand down';
+    b.addEventListener('click', async () => {
+      try {
+        showWar(await api('general', { id: g.id, army: null }));
+        status(`${g.name}: no longer a general.`, 'good');
+        find();
+      } catch (e) {
+        status(e.message, 'bad');
+      }
+    });
+    tr.cells[3].appendChild(b);
+  });
+}
+async function war() {
+  try {
+    showWar(await api('generals'));
+  } catch (e) {
+    $('#wbody').className = 'msg bad';
+    $('#wbody').textContent = e.message;
+  }
+}
+// (Two clicks: the first asks to be sure.)
+$('#restart').addEventListener('click', async (e) => {
+  const b = e.currentTarget;
+  if (!b.classList.contains('sure')) {
+    b.classList.add('sure');
+    b.textContent = 'Sure? Click again';
+    setTimeout(() => {
+      b.classList.remove('sure');
+      b.textContent = 'Start a new war';
+    }, 4000);
+    return;
+  }
+  b.classList.remove('sure');
+  b.textContent = 'Start a new war';
+  try {
+    showWar(await api('war', { act: 'restart' }));
+    status('A new war has begun.', 'good');
+  } catch (err) {
+    status(err.message, 'bad');
+  }
+});
+
 $('#find').addEventListener('submit', (e) => {
   e.preventDefault();
   find();
@@ -224,7 +304,9 @@ if (!s) {
     gate.hidden = true;
     $('#tools').hidden = false;
     $('#stats').hidden = false;
+    $('#war').hidden = false;
     stats();
+    await war();
     find();
   } catch (e) {
     gate.className = 'msg bad';

@@ -17,6 +17,8 @@
 //   { k: 'pc', text }               party chat
 //   { k: 'army', army }             the army of the soldier he has chosen
 //   { k: 'go' }                     (leader) going into battle: the party follows
+//   { k: 'ww', on }                 watching the shared war (the Generals tab) or not
+//   { k: 'wo', n, act, ... }        a general's order (warService.js order)
 // To the browser:
 //   { k: 'w', me }                  welcome
 //   { k: 'f', friends: [{ id, name, status: 'friend' | 'asked' | 'asks', where }] }
@@ -26,6 +28,9 @@
 //   { k: 'pc', from, name, text }   party chat
 //   { k: 'go', by }                 his leader went into battle
 //   { k: 'n', text }                a note (an error, a refusal)
+//   { k: 'war', you, war }          the shared war, every two seconds while watching
+//                                   (you: the army he leads as a general, or null)
+//   { k: 'wr', n, ok, why }         the answer to an order
 import { cleanName } from './auth.js';
 
 const MAX_PARTY = 6;
@@ -50,7 +55,8 @@ export function chatAllowed(times, now = Date.now()) {
 }
 
 export class Social {
-  constructor({ store = null, log = console.log } = {}) {
+  constructor({ store = null, log = console.log, war = null } = {}) {
+    this.war = war; // the shared war (warService.js), if this server runs one
     // (A store without friends, as some tests use: no friends here.)
     this.store = store?.friendsOf ? store : null;
     this.log = log;
@@ -69,6 +75,7 @@ export class Social {
     u.name = who.name;
     u.sockets.add(ws);
     this.send(u.id, { k: 'w', me: { id: u.id, name: u.name } });
+    this.war?.seen(u.id);
     this._friends(u.id).catch(() => {});
     this._party(u.id);
     this._tellFriends(u.id);
@@ -80,6 +87,7 @@ export class Social {
     u.sockets.delete(ws);
     if (u.sockets.size || u.battle) return;
     // Gone (not in a battle either): out of his party, offline to his friends.
+    this.war?.unwatch(id);
     this._leaveParty(id);
     this.users.delete(id);
     this._tellFriends(id);
@@ -106,9 +114,12 @@ export class Social {
   }
 
   send(id, msg) {
+    this._sendText(id, JSON.stringify(msg));
+  }
+
+  _sendText(id, text) {
     const u = this.users.get(id);
     if (!u) return;
-    const text = JSON.stringify(msg);
     for (const ws of u.sockets) if (ws.readyState === 1) ws.send(text);
   }
 
@@ -134,6 +145,14 @@ export class Social {
         return;
       }
       if (m.k === 'go') return this._go(u);
+      if (m.k === 'ww') {
+        if (!this.war) return;
+        return m.on ? this.war.watch(u.id, (text) => this._sendText(u.id, text)) : this.war.unwatch(u.id);
+      }
+      if (m.k === 'wo') {
+        const r = this.war ? this.war.order(u.id, m) : { ok: false, why: 'This server runs no war' };
+        return this.send(u.id, { k: 'wr', n: m.n, ...r });
+      }
     } catch (e) {
       this.log(`social: ${e.message}`);
       this.send(u.id, { k: 'n', text: 'That did not work. Try again in a moment.' });

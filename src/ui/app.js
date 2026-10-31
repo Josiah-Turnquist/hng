@@ -131,7 +131,8 @@ export class App {
           for (let attempt = 1; ; attempt++) {
             try {
               await saveNow({ all: true }).catch(() => false);
-              this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank }, { dev: this.account?.dev || null });
+              // (warBattle: a battle of the shared war, { number, id }.)
+              this.conn = await connect({ id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank, war: opts.warBattle || undefined }, { dev: this.account?.dev || null });
               break;
             } catch (e) {
               if (e.reload && this._reloadForUpdate()) return;
@@ -141,7 +142,7 @@ export class App {
           }
           note.remove();
           const w = this.conn.welcome;
-          opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: null };
+          opts = { ...opts, map: 'town', mode: 'assault', side: w.side === 1 ? 'attack' : 'defend', enemy: opts.faction === w.attackers ? w.defenders : w.attackers, seed: w.seed, war: w.war ? { online: true, point: w.war.point } : null };
           break;
         } catch (e) {
           note.remove();
@@ -380,7 +381,8 @@ export class App {
   // the original paid its generals, and 250 a point he takes).
   _warResult(won, kills, captures) {
     const w = this.opts?.war;
-    if (!w) return null;
+    // (A battle of the shared war: the server puts its result into the war.)
+    if (!w || w.online) return null;
     const war = loadWar();
     const b = war && war.number === w.number ? battleOf(war, w.battle) : null;
     if (!b) return null;

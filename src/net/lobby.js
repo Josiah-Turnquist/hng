@@ -10,8 +10,12 @@
 //   lobby.army(army)                    // the army of the soldier he has chosen
 //   lobby.go()                          // (leader) going into battle: the party follows
 //   lobby.onGo = (leaderId) => ...      // his leader went in
+//   lobby.watchWar(true | false)        // the shared war (the Generals tab open)
+//   lobby.onWar(() => ...)              // it came: lobby.war (war.js shape), lobby.general (army he leads or null)
+//   await lobby.warOrder({ act, id, type, point, to })   -> { ok, why }
 import { token } from './auth.js';
 import { PROTOCOL_VERSION } from './protocol.js';
+import { load } from '../war/war.js';
 
 const CHAT_KEEP = 60; // party chat lines kept
 
@@ -24,6 +28,13 @@ export class Lobby {
     this.onChat = null; // (line) party chat as it comes (the battle shows it too)
     this.wait = 1000;
     this._army = null;
+    this.war = null;
+    this.general = null;
+    this.warAt = 0; // (performance.now() when it came)
+    this.warListeners = new Set();
+    this._watching = false;
+    this._orders = new Map(); // n -> answer
+    this._n = 0;
     this._open();
   }
 
@@ -43,6 +54,7 @@ export class Lobby {
     ws.onopen = () => {
       ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, token: t, dev: this.account.dev || null }));
       if (this._army) ws.send(JSON.stringify({ k: 'army', army: this._army }));
+      if (this._watching) ws.send(JSON.stringify({ k: 'ww', on: true }));
     };
     ws.onmessage = (e) => this._message(JSON.parse(e.data));
     ws.onclose = () => {
@@ -69,6 +81,19 @@ export class Lobby {
       this.onChat?.(line);
     } else if (m.k === 'n') s.note = m.text;
     else if (m.k === 'go') return this.onGo?.(m.by);
+    else if (m.k === 'war') {
+      const w = load(JSON.stringify(m.war));
+      if (!w) return;
+      for (const k of ['leaders', 'fights', 'speed', 'nextIn']) w[k] = m.war[k];
+      this.war = w;
+      this.general = m.you || null;
+      this.warAt = performance.now();
+      for (const fn of this.warListeners) fn();
+      return;
+    } else if (m.k === 'wr') {
+      this._orders.get(m.n)?.(m);
+      return this._orders.delete(m.n);
+    }
     else return;
     this._changed();
   }
@@ -112,6 +137,30 @@ export class Lobby {
   }
   go() {
     this._send({ k: 'go' });
+  }
+
+  watchWar(on) {
+    this._watching = !!on;
+    this._send({ k: 'ww', on: !!on });
+  }
+  onWar(fn) {
+    this.warListeners.add(fn);
+    return () => this.warListeners.delete(fn);
+  }
+  warOrder(order) {
+    const n = ++this._n;
+    return new Promise((ok) => {
+      if (this.ws?.readyState !== 1) return ok({ ok: false, why: 'Not connected to the game server. Try again in a moment.' });
+      const timer = setTimeout(() => {
+        this._orders.delete(n);
+        ok({ ok: false, why: 'The game server did not answer' });
+      }, 8000);
+      this._orders.set(n, (m) => {
+        clearTimeout(timer);
+        ok(m);
+      });
+      this._send({ ...order, k: 'wo', n });
+    });
   }
 
   // Is he in a party, and its leader?

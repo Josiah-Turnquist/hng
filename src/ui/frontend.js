@@ -27,7 +27,7 @@ import { signOut } from '../net/auth.js';
 import { WarMapView, ARMY_COLORS } from './warMapView.js';
 import { MAP, KIND_NAMES } from '../war/warMap.js';
 import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
-import { newWar, nextWar, tick, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
+import { newWar, nextWar, tick, drift, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
 import { loadWar, saveWar, commandPoints, generalRank, canPromote, promote, hireGeneral, mayLead, GENERAL_RANK, HIRE_PRICE } from '../war/warStore.js';
 import { GAME_NAME, GAME_TAGLINE } from '../core/brand.js';
 
@@ -178,6 +178,12 @@ export function showFrontEnd(app) {
       fb.addEventListener('click', () => friendsWindow());
       lobby.onGo = () => partyGo();
     }
+    // Signed in on the game server: the war is the shared one, run there and
+    // the same for everyone (src/server/warService.js), watched while the
+    // menus are open. Offline (the claude.ai copy): his own war, in this browser.
+    const shared = !!lobby;
+    lobby?.watchWar(true);
+    const warNow = () => (shared ? lobby.war : loadWar());
     root.querySelector('.fe-touch').hidden = !matchMedia('(hover: none) and (pointer: coarse)').matches;
     let screen = 'heroes';
     let view = null; // settings pages, when open
@@ -198,15 +204,18 @@ export function showFrontEnd(app) {
     const go = (b = null, war = null) => {
       const s = selected(roster);
       const m = roster.mission;
-      if (b) {
+      // (A battle of the shared war, fought online: it has no player army.)
+      const sharedB = !!b && !war.army;
+      if (b && !sharedB) {
         b.hero = s.id;
         saveWar(war);
       }
       const att = b ? b.att === s.faction : m.side === 'attack';
       // Online (signed in): the game server's battle; the server says which side.
-      const online = !b && !!m.online && !!app.account;
+      const online = sharedB || (!b && !!m.online && !!app.account);
       // His party follows him in.
-      if (online && lobby?.leading) lobby.go();
+      if (online && !sharedB && lobby?.leading) lobby.go();
+      lobby?.watchWar(false);
       offLobby?.();
       if (lobby) lobby.onGo = null;
       save();
@@ -227,9 +236,10 @@ export function showFrontEnd(app) {
         badges: badgesOf(s),
         upgrades: loadoutUpgrades(s, s.loadout),
         bots: m.bots,
-        minutes: b ? BATTLE_TIME / 60 : m.minutes,
+        minutes: b && !sharedB ? BATTLE_TIME / 60 : m.minutes,
         soldier: { id: s.id, name: s.name, seed: s.seed, variant: s.variant },
-        war: b ? { number: war.number, battle: b.id, point: MAP.name(b.point) } : null,
+        war: b && !sharedB ? { number: war.number, battle: b.id, point: MAP.name(b.point) } : null,
+        warBattle: sharedB ? { number: war.number, id: b.id } : null,
       });
     };
 
@@ -974,8 +984,9 @@ export function showFrontEnd(app) {
       const m = roster.mission;
       // (His party sees which army he has chosen.)
       lobby?.army(s.faction);
-      const war = m.war ? loadWar() : null;
-      const wb = war && !war.over && war.army === s.faction && !m.online ? battleOf(war, m.war) : null;
+      const war = m.war ? warNow() : null;
+      const fights = (b) => b && (b.att === s.faction || b.def === s.faction);
+      const wb = !war || war.over ? null : shared ? (fights(battleOf(war, m.war)) ? battleOf(war, m.war) : null) : war.army === s.faction && !m.online ? battleOf(war, m.war) : null;
       const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];
       const enemy = enemyOf(s.faction, m.enemy);
       // Signed in: the online battle, each time the menus open. Battles on
@@ -989,7 +1000,13 @@ export function showFrontEnd(app) {
         }
       }
       box.innerHTML = `<div class="ready-mission"><span class="rm-kind"></span><b></b><small></small><button class="rm-change">Change battle</button></div><button class="ready-btn">Ready for battle</button>`;
-      if (m.online && app.account) {
+      if (wb && shared) {
+        const att = wb.att === s.faction;
+        const n = war.fights?.[wb.id];
+        box.querySelector('.rm-kind').textContent = 'War battle · Online';
+        box.querySelector('b').textContent = MAP.name(wb.point);
+        box.querySelector('small').textContent = `${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[att ? wb.def : wb.att].army}${n ? ` · ${n} player${n > 1 ? 's' : ''} fighting now` : ''}`;
+      } else if (m.online && app.account) {
         const ch = box.querySelector('.rm-change');
         ch.textContent = 'Practice offline';
         ch.className = 'rm-practice';
@@ -1265,13 +1282,46 @@ export function showFrontEnd(app) {
     // points, sent along the supply lines; battles where they meet the enemy,
     // joined by a hero or settled on their own. The other two armies have
     // computer generals. The war runs while this screen is open.
+    // Signed in on the game server it is the shared war: everyone sees it,
+    // its generals (chosen on the admin page) give orders to the server, and
+    // the computer leads an army nobody does.
     function generals() {
-      if (!mayLead(roster)) return lockedScreen();
-      let war = loadWar();
+      if (!shared && !mayLead(roster)) return lockedScreen();
+      let war = warNow();
+      if (shared && !war) return waitForWar();
       if (!war) return newWarScreen();
-      const army = war.army;
-      for (const b of war.battles) b.hero = null;
-      war.cpLimit[army] = commandPoints(generalRank(roster, army));
+      // The army shown: the one he leads, or his soldier's.
+      const leading = shared ? lobby.general : war.army;
+      const army = leading || selected(roster).faction;
+      const leads = () => !shared || lobby.general === army;
+      if (!shared) {
+        for (const b of war.battles) b.hero = null;
+        war.cpLimit[army] = commandPoints(generalRank(roster, army));
+      }
+      // (Shared: each new copy of the war from the server is shown as it comes.)
+      const offWar = shared
+        ? lobby.onWar(() => {
+            if (lobby.general !== leading) return show('generals');
+            war = lobby.war;
+            mapView.setWar(war);
+            uiT = 1;
+          })
+        : null;
+      // An order: to the server (shared), or made here. done: what to say if it worked.
+      const orderIt = (o, local, done) => {
+        if (!shared) {
+          if (local()) {
+            if (done) flash(done);
+            saveWar(war);
+          }
+          return refresh(true);
+        }
+        lobby.warOrder(o).then((r) => {
+          flash(r.ok ? done || 'Done' : r.why || 'That did not work');
+          if (r.ok && r.team) sel = { team: r.team };
+          refresh(true);
+        });
+      };
       main.innerHTML = `
         <aside class="fe-panel wr-side wr-army"></aside>
         <div class="wr-mapbox"><canvas class="wr-map"></canvas><div class="wr-top"></div><div class="wr-hint" hidden></div>
@@ -1291,7 +1341,8 @@ export function showFrontEnd(app) {
       const pick = (p) => {
         const t = sel?.team ? teamOf(war, sel.team) : null;
         // A team of his selected and a point tapped: send it there.
-        if (p?.point != null && mine(t) && t.at !== null && !t.battle) {
+        if (p?.point != null && mine(t) && leads() && t.at !== null && !t.battle) {
+          if (shared) return orderIt({ act: 'move', id: t.id, point: p.point }, null, `${TEAMS[t.type].name}: on the way to ${MAP.name(p.point)}`);
           if (order(war, t.id, p.point)) {
             flash(`${TEAMS[t.type].name}: ${t.air ? 'flying' : 'on the way'} to ${MAP.name(p.point)}`);
             return refresh(true);
@@ -1307,6 +1358,14 @@ export function showFrontEnd(app) {
         army,
         onPick: pick,
         onFrame: (dt) => {
+          // (Shared: the server runs the war; here the teams only move on
+          // smoothly between its copies.)
+          if (shared) {
+            if (!war.over) drift(war, dt * (war.speed || 1));
+            uiT += dt;
+            if (uiT > 0.4) refresh();
+            return;
+          }
           if (!paused && !war.over) tick(war, dt * WAR_SPEED);
           saveT += dt;
           uiT += dt;
@@ -1330,7 +1389,8 @@ export function showFrontEnd(app) {
       view = {
         close() {
           mapView.stop();
-          saveWar(war);
+          offWar?.();
+          if (!shared) saveWar(war);
           window.removeEventListener('resize', onResize);
           main.removeEventListener('click', onAct);
           main.removeEventListener('pointerdown', press, true);
@@ -1373,11 +1433,15 @@ export function showFrontEnd(app) {
         const t = sel?.team ? teamOf(war, sel.team) : null;
         if (performance.now() - flashT > 2600) {
           hint.classList.remove('flash');
-          hint.hidden = !(mine(t) && t.at !== null && !t.battle);
+          hint.hidden = !(mine(t) && leads() && t.at !== null && !t.battle);
           if (!hint.hidden) hint.textContent = `Tap a point to send ${TEAMS[t.type].name} there${canFly(war, t) ? ` · it can fly up to ${Math.round((TEAMS[t.type].airRange * KM) / 10) * 10} km from here` : ''}`;
         }
         overBox.hidden = !war.over;
-        if (war.over && !overBox.dataset.done) {
+        if (war.over && shared) {
+          const mins = Math.max(1, Math.ceil((war.nextIn || 0) / 60));
+          const html = `<div class="wr-overbox"><span>War ${war.number} is over</span><h2>The ${FACTIONS[war.over.winner].army} wins</h2><p>The next war begins in about ${mins} minute${mins > 1 ? 's' : ''}.</p></div>`;
+          if (overBox.innerHTML !== html) overBox.innerHTML = html;
+        } else if (war.over && !overBox.dataset.done) {
           overBox.dataset.done = '1';
           const won = war.over.winner === army;
           overBox.innerHTML = `<div class="wr-overbox"><span>War ${war.number} is over</span><h2></h2><p></p><button class="ready-btn" data-act="next">Start war ${war.number + 1}</button></div>`;
@@ -1388,7 +1452,8 @@ export function showFrontEnd(app) {
 
       function topHtml() {
         const score = ARMIES.map((a) => `<span class="wr-sc${a === army ? ' me' : ''}" title="${FACTIONS[a].army}: capitals held of ${CAPITALS_TO_WIN} to win">${emblem(a)}<b>${capitalsOf(war, a).length}</b><i>/${CAPITALS_TO_WIN}</i></span>`).join('');
-        return `<div class="wr-clock"><b>War ${war.number}</b><span>${clock(war.t)}</span><button data-act="pause" title="${paused ? 'Let the war run' : 'Hold the war'}">${paused ? '&#9654;' : '&#10073;&#10073;'}</button></div><div class="wr-score">${score}</div>`;
+        const pause = shared ? '' : `<button data-act="pause" title="${paused ? 'Let the war run' : 'Hold the war'}">${paused ? '&#9654;' : '&#10073;&#10073;'}</button>`;
+        return `<div class="wr-clock"><b>War ${war.number}</b><span>${clock(war.t)}</span>${pause}</div><div class="wr-score">${score}</div>`;
       }
 
       function armyHtml() {
@@ -1402,10 +1467,12 @@ export function showFrontEnd(app) {
           })
           .join('');
         const gen = roster.soldiers.filter((x) => x.faction === army && x.general).sort((a, b) => b.xp - a.xp)[0];
-        return `<div class="wr-head">${emblem(army)}<div><b>${FACTIONS[army].army}</b><small>${gen ? `Led by General ${esc(gen.name)}` : 'You are its general'}</small></div></div>
+        const names = war.leaders?.[army] || [];
+        const by = !shared ? (gen ? `Led by General ${esc(gen.name)}` : 'You are its general') : leads() ? `You are its general${names.length > 1 ? `, with ${names.length - 1} more` : ''}` : war.humans?.includes(army) ? `Led by General ${names.map(esc).join(', General ')}` : 'Led by the computer';
+        return `<div class="wr-head">${emblem(army)}<div><b>${FACTIONS[army].army}</b><small>${by}</small></div></div>
           <div class="wr-stats"><div title="Warfunds buy and refill assault teams"><span>Warfunds</span><b>${fmt(war.funds[army])}</b></div><div title="Command points: room for teams in the field. More as your soldiers of this army rise in rank (12, 15, 18 to 22)."><span>Command points</span><b>${used} / ${war.cpLimit[army]}</b></div></div>
           <h3>Assault teams</h3><div class="wr-teams">${rows || '<div class="lo-note">No teams yet.</div>'}</div>
-          <button class="wr-add" data-act="buy">+ Assault team</button>`;
+          ${leads() ? '<button class="wr-add" data-act="buy">+ Assault team</button>' : '<div class="lo-note">You are watching the war: everyone sees the same one. Generals give the orders; for now the game\'s admins choose them. Your soldiers fight its battles from the Heroes screen.</div>'}`;
       }
 
       function detailHtml() {
@@ -1418,7 +1485,7 @@ export function showFrontEnd(app) {
           .slice(0, 14)
           .map((l) => `<div class="wr-news${l.army ? ` a-${l.army}` : ''}"><time>${clock(l.t).replace('Day ', 'D')}</time><span>${esc(l.text)}</span></div>`)
           .join('');
-        return `<h3>Your battles</h3>${battles || '<div class="lo-note">None now. Battles start where your teams meet the enemy, or the enemy comes for your capitals.</div>'}
+        return `<h3>${leads() ? 'Your battles' : `Battles of the ${FACTIONS[army].army}`}</h3>${battles || '<div class="lo-note">None now. Battles start where your teams meet the enemy, or the enemy comes for your capitals.</div>'}
           <h3 class="wr-gap">War news</h3><div class="wr-newslist">${news}</div>`;
       }
 
@@ -1427,7 +1494,9 @@ export function showFrontEnd(app) {
         const foe = att ? b.def : b.att;
         const left = Math.max(0, Math.ceil((b.ends - war.t) / 60));
         const hero = heroFor();
-        return `<div class="wr-battle"><div class="k">${b.garrison ? 'Capital assault' : 'Assault'} · ${left} min left</div><b>${esc(MAP.name(b.point))}</b><small>${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[foe].army}</small>
+        const n = war.fights?.[b.id];
+        const when = shared ? (n ? `${n} player${n > 1 ? 's' : ''} fighting now` : b.hero ? 'Being fought now' : `${Math.max(0, Math.ceil((b.ends - war.t) / 60 / (war.speed || 1)))} min to join`) : `${left} min left`;
+        return `<div class="wr-battle"><div class="k">${b.garrison ? 'Capital assault' : 'Assault'} · ${when}</div><b>${esc(MAP.name(b.point))}</b><small>${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[foe].army}</small>
           <div class="wr-bbtn"><button data-act="join" data-id="${b.id}" ${hero ? '' : 'disabled'}>${hero ? `Fight as ${esc(hero.name)}` : 'No soldier in this army'}</button><button data-act="look" data-point="${b.point}">Show</button></div></div>`;
       }
 
@@ -1450,6 +1519,7 @@ export function showFrontEnd(app) {
           <div class="wr-res"><span>Team XP</span><b>${fmt(t.xp)}${next ? ` / ${fmt(next)}` : ''}</b><i><u class="x" style="width:${next ? (((t.xp - prev) / (next - prev)) * 100).toFixed(0) : 100}%"></u></i></div></div>`;
         const pace = d.speed / TEAMS.guard.speed;
         h += `<div class="wr-facts">${d.cp} command point${d.cp > 1 ? 's' : ''} · ${pace === 1 ? 'marches at a Guard\'s pace' : `${pace.toFixed(1)} times a Guard's pace`}${d.airSpeed ? ', far faster in the air' : ''} · earns ${d.joinFunds ? `${fmt(d.joinFunds)} warfunds a battle and ` : ''}${fmt(d.winFunds)} for a win</div>`;
+        if (!leads()) return h;
         if (t.at === null) {
           const caps = capitalsOf(war, army);
           const why = deployProblem(war, t, null);
@@ -1506,17 +1576,14 @@ export function showFrontEnd(app) {
           mapView.focus(sel.point, Math.max(mapView.view.s, 0.25));
         }
         if (act === 'buy') return buyWindow();
-        if (act === 'deploy' && t && deploy(war, t.id, Number(b.dataset.point))) {
-          mapView.focus(t.at);
-          saveWar(war);
+        if (act === 'deploy' && t) {
+          const at = Number(b.dataset.point);
+          mapView.focus(at);
+          return orderIt({ act: 'deploy', id: t.id, point: at }, () => deploy(war, t.id, at), `${TEAMS[t.type].name} set down at ${MAP.name(at)}`);
         }
-        if (act === 'stop' && t) {
-          t.path = [];
-          t.leg = 0;
-          t.hold = 0;
-        }
-        if (act === 'withdraw' && t) withdraw(war, t.id);
-        if (act === 'upgrade' && t) upgrade(war, t.id, b.dataset.type);
+        if (act === 'stop' && t) return orderIt({ act: 'stop', id: t.id }, () => Object.assign(t, { path: [], leg: 0, hold: 0 }), `${TEAMS[t.type].name} stops here`);
+        if (act === 'withdraw' && t) return orderIt({ act: 'withdraw', id: t.id }, () => withdraw(war, t.id), `${TEAMS[t.type].name} goes back to the reserve`);
+        if (act === 'upgrade' && t) return orderIt({ act: 'upgrade', id: t.id, to: b.dataset.type }, () => upgrade(war, t.id, b.dataset.type), `Upgraded to ${TEAMS[b.dataset.type].name}`);
         if (act === 'join') {
           const bt = battleOf(war, Number(b.dataset.id));
           const hero = heroFor();
@@ -1565,11 +1632,13 @@ export function showFrontEnd(app) {
             c.querySelector('small').textContent = madeText(d) + (d.airRange ? ' · flies from airfields and capitals' : '');
             c.disabled = war.funds[army] < d.price;
             c.addEventListener('click', () => {
+              W.close();
+              if (shared) return orderIt({ act: 'buy', type: id }, null, `${d.name} bought: set it down at one of your capitals`);
               const t = buyTeam(war, army, id);
               if (!t) return;
               sel = { team: t.id };
               saveWar(war);
-              W.close();
+              refresh(true);
             });
             W.body.appendChild(c);
           }
@@ -1580,6 +1649,13 @@ export function showFrontEnd(app) {
 
       refresh(true);
       mapView.start();
+    }
+
+    // The shared war not here yet (just signed in): shown when it comes.
+    function waitForWar() {
+      main.innerHTML = '<div class="wr-new fe-panel"><div class="det-kind">The war</div><h2>Loading the war...</h2><p>The war is run on the game server and is the same for everyone.</p></div>';
+      const off = lobby.onWar(() => show('generals'));
+      view = { close: () => off() };
     }
 
     // Not a General yet: how to become one (a soldier at rank 18 promoted, or
@@ -1623,7 +1699,7 @@ export function showFrontEnd(app) {
     // Choosing a battle for the Heroes screen: a battle of the war for a soldier
     // of the army the player leads, or a staged battle.
     function battleWindow(s) {
-      const W = openWindow('Choose a battle', { sub: 'A battle of your war, or a staged one', cls: 'hx-wide' });
+      const W = openWindow('Choose a battle', { sub: shared ? 'Online, a battle of the war, or practice offline' : 'A battle of your war, or a staged one', cls: 'hx-wide' });
       const m = roster.mission;
       const draw = () => {
         W.body.innerHTML = '';
@@ -1631,7 +1707,7 @@ export function showFrontEnd(app) {
         // Signed in: the online battle, against other players.
         if (app.account) {
           W.body.appendChild(el('h3', 'wr-gap', 'Online'));
-          const c = el('button', `mission-card${m.online ? ' on' : ''}`);
+          const c = el('button', `mission-card${m.online && !(shared && m.war) ? ' on' : ''}`);
           c.innerHTML = '<span class="mc-kind">Online battle</span><b>Town</b><small>Against other players, with bots filling both sides.</small>';
           c.addEventListener('click', () => {
             m.online = true;
@@ -1641,8 +1717,34 @@ export function showFrontEnd(app) {
           });
           W.body.appendChild(c);
         }
-        W.body.appendChild(el('h3', 'wr-gap', 'Your war'));
-        if (!war) W.body.appendChild(el('div', 'lo-note', 'No war yet: start one on the Generals screen.'));
+        if (shared) {
+          // The shared war: its battles that his soldier's army fights, online.
+          W.body.appendChild(el('h3', 'wr-gap', 'The war'));
+          const sw = lobby.war;
+          const list = sw && !sw.over ? sw.battles.filter((b) => b.att === s.faction || b.def === s.faction) : [];
+          if (!sw) W.body.appendChild(el('div', 'lo-note', 'The war is loading...'));
+          else if (!list.length) W.body.appendChild(el('div', 'lo-note', `No battles for the ${FACTIONS[s.faction].army} right now. They start where the armies meet on the Generals screen.`));
+          for (const b of list) {
+            const att = b.att === s.faction;
+            const n = sw.fights?.[b.id];
+            const c = el('button', `mission-card${m.war === b.id ? ' on' : ''}`);
+            c.innerHTML = '<span class="mc-kind"></span><b></b><small></small>';
+            c.querySelector('.mc-kind').textContent = n ? `War battle · ${n} player${n > 1 ? 's' : ''} fighting now` : `War battle · ${Math.max(0, Math.ceil((b.ends - sw.t) / 60 / (sw.speed || 1)))} min to join`;
+            c.querySelector('b').textContent = MAP.name(b.point);
+            c.querySelector('small').textContent = `${att ? 'Attacking' : 'Defending'} against the ${FACTIONS[att ? b.def : b.att].army} · online, on the Town map`;
+            c.addEventListener('click', () => {
+              m.war = b.id;
+              m.online = true;
+              save();
+              draw();
+            });
+            W.body.appendChild(c);
+          }
+        }
+        if (!shared) W.body.appendChild(el('h3', 'wr-gap', 'Your war'));
+        if (shared) {
+          /* (above) */
+        } else if (!war) W.body.appendChild(el('div', 'lo-note', 'No war yet: start one on the Generals screen.'));
         else if (war.army !== s.faction) W.body.appendChild(el('div', 'lo-note', `Your war is fought by the ${FACTIONS[war.army].army}; ${s.name} is in the ${FACTIONS[s.faction].army}.`));
         else {
           const list = war.battles.filter((b) => b.att === war.army || b.def === war.army);

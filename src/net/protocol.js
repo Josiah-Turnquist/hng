@@ -29,7 +29,7 @@ import { SHELLS } from '../vehicles/defs.js';
 // 3: the map key, a new action at the end of the list; how hard a soldier
 // bleeds; which points are closed for coming back in; a vehicle's speed,
 // engine, damage and guns, vehicleState.)
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
 

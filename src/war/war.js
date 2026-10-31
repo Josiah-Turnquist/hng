@@ -41,6 +41,7 @@ const GARRISON = 150;
 const START_FUNDS = 50000;
 const CAPITAL_INCOME = 400;
 const AI_CP = 4;
+const SHARED_CP = 6; // each army's command points in a shared war
 
 // The teams there are here (not the aircraft: this game has none). Prices in
 // warfunds: the original's where known (wiki tables), else ours.
@@ -107,7 +108,10 @@ const unitCost = (r) => MAN_COST * (PRODUCTION[r]?.size || 1);
 
 // --- Starting a war -----------------------------------------------------------
 
-export function newWar({ army = 'US', seed = Date.now() % 2147483647, carry = null } = {}) {
+// (army null: a shared war on the game server, src/server/warService.js. No
+// army is the player's: people lead the armies listed in war.humans, the
+// computer the rest; every army gets SHARED_CP command points.)
+export function newWar({ army = 'US', seed = Date.now() % 2147483647, carry = null, number = null } = {}) {
   const owner = new Uint8Array(MAP.count);
   // The land nearest each capital goes to whoever holds that capital.
   const { from } = spread(MAP.capitals.map((c) => c.point));
@@ -115,7 +119,7 @@ export function newWar({ army = 'US', seed = Date.now() % 2147483647, carry = nu
   for (let i = 0; i < MAP.count; i++) owner[i] = start.get(from[i]) || 0;
   const war = {
     v: 1,
-    number: (carry?.number || 0) + 1,
+    number: number ?? (carry?.number || 0) + 1,
     army,
     rng: seed >>> 0 || 1,
     t: 8 * 3600,
@@ -124,7 +128,7 @@ export function newWar({ army = 'US', seed = Date.now() % 2147483647, carry = nu
     battles: [],
     funds: { US: START_FUNDS, GE: START_FUNDS, SU: START_FUNDS },
     pools: Object.fromEntries(ARMIES.map((a) => [a, Object.fromEntries(Object.entries(PRODUCTION).map(([r, p]) => [r, p.start]))])),
-    cpLimit: { US: AI_CP, GE: AI_CP, SU: AI_CP },
+    cpLimit: army ? { US: AI_CP, GE: AI_CP, SU: AI_CP } : { US: SHARED_CP, GE: SHARED_CP, SU: SHARED_CP },
     log: [],
     over: null,
     nextId: 1,
@@ -132,10 +136,11 @@ export function newWar({ army = 'US', seed = Date.now() % 2147483647, carry = nu
     nextAi: 8 * 3600,
   };
   // The player's general keeps his warfunds and his teams from war to war.
-  if (carry) {
+  if (!army) war.humans = [];
+  if (army && carry) {
     war.funds[army] = carry.funds;
     for (const t of carry.teams) war.teams.push({ ...blankTeam(war, army, t.type), xp: t.xp });
-  } else war.teams.push(blankTeam(war, army, 'guard'));
+  } else if (army) war.teams.push(blankTeam(war, army, 'guard'));
   for (const a of ARMIES) if (a !== army) war.teams.push(blankTeam(war, a, 'guard'));
   note(war, '', `War ${war.number} begins`);
   return war;
@@ -148,6 +153,9 @@ function blankTeam(war, army, type) {
 // --- What things are ----------------------------------------------------------
 
 export const armyCode = (a) => CODE[a];
+// Is this army led by a person (the player, or in a shared war one of its
+// generals), not the computer?
+export const ledByPeople = (war, a) => (war.humans ? war.humans.includes(a) : a === war.army);
 export const ownerOf = (war, p) => ARMY_OF[war.owner[p]];
 export const teamOf = (war, id) => war.teams.find((t) => t.id === id);
 export const battleOf = (war, id) => war.battles.find((b) => b.id === id);
@@ -330,6 +338,17 @@ export function tick(war, seconds) {
   }
 }
 
+// For drawing only (a copy of the shared war between the server's copies):
+// the clock runs on and marching teams move along their way, nothing else.
+export function drift(war, seconds) {
+  war.t += seconds;
+  for (const t of war.teams) {
+    if (t.at === null || t.battle || t.hold > 0 || !t.path.length) continue;
+    const len = distance(t.at, t.path[0]);
+    t.leg = Math.min(len * 0.98, t.leg + (t.air ? TEAMS[t.type].airSpeed : TEAMS[t.type].speed) * seconds);
+  }
+}
+
 function step(war, dt) {
   for (const t of war.teams) {
     if (t.at === null) continue;
@@ -358,7 +377,7 @@ function step(war, dt) {
   }
   if (war.t >= war.nextAi) {
     war.nextAi += 300;
-    for (const a of ARMIES) if (a !== war.army) think(war, a);
+    for (const a of ARMIES) if (!ledByPeople(war, a)) think(war, a);
   }
   checkVictory(war);
 }
@@ -390,7 +409,7 @@ function enter(war, t, p, b) {
 }
 
 function startBattle(war, p, att, def, attTeams, defTeams, garrison) {
-  const b = { id: war.nextId++, point: p, att, def, attTeams: attTeams.map((t) => t.id), defTeams: defTeams.map((t) => t.id), garrison, start: war.t, ends: war.t + BATTLE_TIME, hero: null };
+  const b = { id: war.nextId++, point: p, att, def, attTeams: attTeams.map((t) => t.id), defTeams: defTeams.map((t) => t.id), garrison, start: war.t, ends: war.t + (war.battleTime || BATTLE_TIME), hero: null };
   for (const t of [...attTeams, ...defTeams]) Object.assign(t, { battle: b.id, hold: 0, path: t.army === att ? t.path : [], leg: 0 });
   war.battles.push(b);
   note(war, att, `Battle at ${MAP.name(p)}: ${att} attacks ${def}`, p);
@@ -509,6 +528,7 @@ function checkVictory(war) {
 
 // The next war, carrying over the player's warfunds and teams.
 export function nextWar(war) {
+  if (!war.army) return Object.assign(newWar({ army: null, number: war.number + 1 }), { battleTime: war.battleTime });
   return newWar({ army: war.army, carry: { number: war.number, funds: war.funds[war.army], teams: war.teams.filter((t) => t.army === war.army) } });
 }
 

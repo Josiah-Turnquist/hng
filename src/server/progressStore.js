@@ -9,6 +9,8 @@
 //   await store.put(userId, name, { roster, war }, rev)
 //       // -> { rev } saved (a part left out stays as it was), or { conflict: { roster, war, rev } }
 //   await store.list(search)                      // up to 50 players, latest first: [{ user_id, name, roster, rev, updated_at }]
+//   await store.loadWar() / saveWar(text)             // the shared war
+//   await store.generals() / setGeneral(id, army, name) / generalSeen(id)
 //   await store.close()
 import pg from 'pg';
 
@@ -45,6 +47,22 @@ const EVENTS = `CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_kind_at ON events (kind, at)`;
 export const KEEP_DAYS = 90;
 
+// The shared war (server/warService.js): one row, the war as war.js saves it.
+// And its generals, chosen by hand on the admin page for the beta: one row a
+// general, with the army he leads and when he last looked in.
+const WAR = `CREATE TABLE IF NOT EXISTS war_state (
+  id integer PRIMARY KEY,
+  state jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS generals (
+  user_id text PRIMARY KEY,
+  army text NOT NULL,
+  name text NOT NULL DEFAULT '',
+  last_seen timestamptz,
+  made_at timestamptz NOT NULL DEFAULT now()
+)`;
+
 export function openProgressStore(url, { log = console.log } = {}) {
   // (A few connections are plenty: a save is one small statement.)
   const pool = new pg.Pool({ connectionString: url, max: 4, idleTimeoutMillis: 30000, connectionTimeoutMillis: 20000 });
@@ -53,7 +71,7 @@ export function openProgressStore(url, { log = console.log } = {}) {
   // asleep when the server starts); tried again after a failure.
   let ready = null;
   const table = () =>
-    (ready ??= pool.query(TABLE).then(() => pool.query(FRIENDS)).then(() => pool.query(EVENTS)).catch((e) => {
+    (ready ??= pool.query(TABLE).then(() => pool.query(FRIENDS)).then(() => pool.query(EVENTS)).then(() => pool.query(WAR)).catch((e) => {
       ready = null;
       throw e;
     }));
@@ -143,6 +161,31 @@ export function openProgressStore(url, { log = console.log } = {}) {
            FROM events WHERE kind = 'session' AND at > ${since}`),
       ]);
       return { days: d, daily, battles: battles[0], sides, perf, errors, sessions: sessions[0] };
+    },
+    // --- The shared war ---
+    async loadWar() {
+      await table();
+      return (await pool.query('SELECT state FROM war_state WHERE id = 1')).rows[0]?.state ?? null;
+    },
+    // state: the war as text (war.js save).
+    async saveWar(state) {
+      await table();
+      await pool.query(`INSERT INTO war_state (id, state, updated_at) VALUES (1, $1::jsonb, now()) ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`, [state]);
+    },
+    // [{ user_id, army, name, last_seen }]
+    async generals() {
+      await table();
+      return (await pool.query('SELECT user_id, army, name, last_seen FROM generals ORDER BY army, name')).rows;
+    },
+    // army null: no longer a general.
+    async setGeneral(userId, army, name = '') {
+      await table();
+      if (!army) return void (await pool.query('DELETE FROM generals WHERE user_id = $1', [userId]));
+      await pool.query(`INSERT INTO generals (user_id, army, name) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET army = EXCLUDED.army, name = EXCLUDED.name`, [userId, army, name]);
+    },
+    async generalSeen(userId) {
+      await table();
+      await pool.query('UPDATE generals SET last_seen = now() WHERE user_id = $1', [userId]);
     },
     close: () => pool.end(),
   };

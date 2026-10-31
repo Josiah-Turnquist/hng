@@ -464,6 +464,24 @@ for the beta) give orders from the Generals tab; everyone sees the same map.
 War battles open on the game servers and their results go back into the war.
 Computer generals fill in for empty armies. An admin page to choose generals.
 
+*Phase 3 is done (October 2026).* One war runs on the game server
+(`src/server/warService.js`), kept in Neon (`war_state`, saved every 30
+seconds and when the server stops) and run on in real time, `WAR_SPEED` times
+faster (6 by default). Its generals are chosen on the admin page (`generals`
+table); an army with no general, or whose generals have all been away a day,
+is led by the computer. Signed in, the Generals tab shows that war: everyone
+sees the same map (sent over `/lobby` every two seconds while the menus are
+open), and only a general can give his army orders, which the server checks
+with the same rules as the offline war (`src/war/war.js`). A war battle waits
+`WAR_BATTLE_WAIT` minutes (10 by default) for players; a soldier of either
+army joins it from the Generals tab or the battle chooser, and it opens as an
+online battle with that battle's two armies. While it is being fought the war
+waits for it, and the winner goes back into the war; if everyone leaves first,
+it settles on its own. Heroes earn their army warfunds (40 a man put down,
+250 a point taken). When a war is won, the next begins ten minutes later; the
+admin page can also start one at once. The offline copy keeps its own war in
+the browser, as before. Tests: `tests/sharedWar.test.js`.
+
 **Phase 4: make it feel right (about 2 to 3 weeks).**
 Hits judged as the shooter saw them, vehicle prediction, sending only nearby
 information, trimming data, reconnecting after a dropped connection, a battle

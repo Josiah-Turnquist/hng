@@ -12,6 +12,8 @@
 //   room.join(client, { userId, name, faction, cls, loadout, soldierId, tank })   -> soldier id or throws
 //   room.input(client, message); room.leaving(client); room.leave(client)
 //   room.onClose = () => ...
+//   room.onOver = (team) => ...   // decided: the winning side (ATT or DEF)
+//   (war: { number, id, point } for a battle of the shared war, told to each player)
 //   room.onReward = ({ client, userId, name, soldierId, reward }) => ...   (reward null: nothing earned)
 //   await room.finish()   // the server is stopping: everyone's rewards kept, then closed
 //
@@ -34,14 +36,15 @@ const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anythi
 const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
 
 export class BattleRoom {
-  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true, difficulty = 'easy' } = {}) {
-    this.opts = { perSide, minutes, attackers, defenders, seed, vehicles, difficulty };
+  constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true, difficulty = 'easy', war = null } = {}) {
+    this.opts = { perSide, minutes, attackers, defenders, seed, vehicles, difficulty, war };
     this.send = send;
     this.players = new Map(); // client -> { pc, userId, name, queue, budget }
     this.tick = 0;
     this.closed = false;
     this.onClose = null;
     this.onReward = null;
+    this.onOver = null; // (winning side) when the battle is decided
     this.saving = []; // rewards on their way to the database
     this.rec = record ? new Recorder(this.opts) : null;
     this.ready = makeBattle(this.opts).then((g) => {
@@ -77,7 +80,7 @@ export class BattleRoom {
     this.rec?.join(this.tick, who, pc.soldier.id);
     this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });
     this.fullNext = true; // (he sees every vehicle at once)
-    this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, tick: this.tick, rate: 1 / TICK }));
+    this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, war: this.opts.war, tick: this.tick, rate: 1 / TICK }));
     this._broadcast(JSON.stringify(roster(g)));
     if (this._scores) this.send(client, this._scores);
     return pc.soldier.id;
@@ -205,6 +208,7 @@ export class BattleRoom {
         if (this.overFor === 0) {
           this._broadcast(JSON.stringify({ k: 'o', team: g.mode.over.team, why: g.mode.over.why ?? '' }));
           for (const [client, p] of this.players) this._reward(client, p, p.pc.soldier.team === g.mode.over.team);
+          this.onOver?.(g.mode.over.team);
         }
         this.overFor++;
       }

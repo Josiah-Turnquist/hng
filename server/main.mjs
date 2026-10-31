@@ -27,7 +27,13 @@
 // sign-in emails, comma between, that may open the admin page /admin),
 // BATTLE_SIZE (bots and players a side; by default the map's own, its
 // onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
-// running at once, default 3).
+// running at once, default 3), WAR_SPEED (how many times faster than real
+// time the shared war runs, default 6), WAR_BATTLE_WAIT (minutes a war battle
+// waits for players before it settles on its own, default 10).
+//
+// The shared war (src/server/warService.js) runs here too: the Generals tab
+// watches it and its generals give orders over /lobby, and its battles are
+// fought on /play (the hello's soldier.war: { number, id }).
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -43,6 +49,9 @@ import { progressHandler, awardStored } from '../src/server/progress.js';
 import { adminHandler } from '../src/server/admin.js';
 import { Social } from '../src/server/social.js';
 import { Telemetry } from '../src/server/telemetry.js';
+import { WarService } from '../src/server/warService.js';
+import { ATT } from '../src/server/battle.js';
+import { MAP } from '../src/war/warMap.js';
 import { fitLoadout } from '../src/ui/roster.js';
 import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
@@ -53,11 +62,14 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10 } = {}) {
   const rooms = new Set();
+  const warRooms = new Map(); // war battle id -> its online battle (or the battle being made)
+  const war = new WarService({ store, log, speed: warSpeed, battleWait: warBattleWait });
+  const warReady = war.start().catch((e) => log(`war: ${e.message}`));
   const progress = progressHandler({ store, check, log });
-  const admin = adminHandler({ store, check, admins, log });
-  const social = new Social({ store, log });
+  const admin = adminHandler({ store, check, admins, log, war });
+  const social = new Social({ store, log, war });
   const telemetry = new Telemetry({ store, log });
   const telemetryRoute = telemetry.handler({ check });
   const opening = new Map(); // 'GE-US' -> the battle being made
@@ -125,6 +137,47 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     return p;
   }
 
+  // The online battle for a battle of the shared war: the one open for it if
+  // his side has room, else a new one (counted with the others, MAX_BATTLES).
+  async function warRoomFor(faction, ask) {
+    const number = Number(ask?.number);
+    const id = Number(ask?.id);
+    const b = war.battleFor(number, id, faction);
+    const have = warRooms.get(id);
+    if (have) {
+      const r = await have;
+      if (r.opts.war.number === number && !r.closed && !r.g?.mode?.over) {
+        if (r.playersOn(r.sideOf(faction)) >= r.opts.perSide) throw new Error('Your side of that battle is full');
+        return r;
+      }
+    }
+    if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
+    const p = (async () => {
+      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: b.att, defenders: b.def, war: { number, id, point: MAP.name(b.point) }, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      await r.ready;
+      // (The warfunds his heroes earn the army: 40 a man put down, 250 a point taken.)
+      r.onReward = (x) => {
+        if (x.info) war.heroFunds(number, x.info.army, (x.info.kills || 0) * 40 + (x.info.captures || 0) * 250);
+        return rewardPlayer(x);
+      };
+      r.onError = (e) => telemetry.record(null, 'error', { where: 'server', message: String(e?.message || e), place: String(e?.stack || '').split('\n')[1]?.trim() || '' });
+      r.onOver = (team) => war.result(number, id, team === ATT);
+      r.onClose = () => {
+        rooms.delete(r);
+        if (warRooms.get(id) === p) warRooms.delete(id);
+        if (!r.g?.mode?.over) war.closedEarly(number, id);
+        log(`war battle closed: ${r.opts.war.point}`);
+      };
+      rooms.add(r);
+      war.opened(number, id, r);
+      log(`war battle opened: ${b.att} against ${b.def} at ${r.opts.war.point} (${rooms.size} running)`);
+      return r;
+    })();
+    warRooms.set(id, p);
+    p.catch(() => warRooms.get(id) === p && warRooms.delete(id));
+    return p;
+  }
+
   const http = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
@@ -168,7 +221,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   // Two kinds of connection on one address: /play (a battle) and /lobby (the
   // menus: friends, party, chat).
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: { threshold: 256 } });
-  const lobby = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 });
+  const lobby = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024, perMessageDeflate: { threshold: 1024 } });
   http.on('upgrade', (req, socket, head) => {
     const path = new URL(req.url, 'http://x').pathname;
     const to = path === '/play' ? wss : path === '/lobby' ? lobby : null;
@@ -179,6 +232,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     let who = null;
     let since = 0;
     let budget = 20; // messages in ten seconds
+    const held = [];
     const refill = setInterval(() => (budget = 20), 10000);
     const helloTimer = setTimeout(() => !who && ws.close(4000, 'No sign-in'), 10000);
     ws.on('message', async (data) => {
@@ -190,7 +244,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         return;
       }
       if (who) return social.message(who.id, m);
-      if (m?.k !== 'h' || who === false) return;
+      // (Sent right after the hello, while it is being checked: kept till then.)
+      if (who === false) return held.length < 10 && held.push(m);
+      if (m?.k !== 'h') return;
       who = false;
       clearTimeout(helloTimer);
       try {
@@ -199,6 +255,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         who = w;
         since = Date.now();
         social.join(ws, who);
+        for (const x of held.splice(0)) await social.message(who.id, x);
       } catch {
         ws.close(4000, 'No sign-in');
       }
@@ -266,7 +323,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
           if (!kept) return refuse('Your soldier could not be loaded. Try again in a moment.', true);
           me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout), tank: kept.cls === 'tanker' ? tankFor(kept, s.tank) : null };
         }
-        const r = await roomFor(me.faction, social.partyRoom(who.id));
+        const r = s.war ? (await warReady, await warRoomFor(me.faction, s.war)) : await roomFor(me.faction, social.partyRoom(who.id));
         if (ws.readyState !== 1) return;
         r.join(ws, { userId: who.id, name: who.name, ...me });
         joined = r;
@@ -287,7 +344,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())).then(() => telemetry.stop()), close: () => new Promise((done) => { for (const r of rooms) r.close(); telemetry.stop(); wss.close(); lobby.close(); store?.close().catch(() => {}); http.close(done); }) });
+      ok({ http, wss, war, warReady, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())).then(() => Promise.all([telemetry.stop(), war.stop()])), close: () => new Promise((done) => { for (const r of rooms) r.close(); telemetry.stop(); war.stop(); wss.close(); lobby.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }
