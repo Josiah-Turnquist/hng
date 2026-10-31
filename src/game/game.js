@@ -915,6 +915,8 @@ export class Game {
     else this.player.frameInput(frameDt);
     // Online: what the player does goes to the server before the keys are cleared.
     this.online?.sendInput(frameDt);
+    // The map key opens and closes the battle map (hud.js).
+    if (input.hit('map')) this.hud.mapOpen = !this.hud.mapOpen;
     input.endFrame();
     for (const v of this.vehicles) v.syncModel(frameDt);
     if (this.cameraMode === 'first') this.player.render(frameDt);

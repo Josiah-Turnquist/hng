@@ -927,12 +927,13 @@ export class Hud {
     el.innerHTML = teams.map(side).join('');
   }
 
-  // The battle map, opened and closed with the map key: the points, his side's
-  // soldiers and where he is and faces, as on the deploy screen. (Not while he
-  // is down, when the deploy screen has the map, nor over the battle results.)
+  // The battle map, opened and closed with the map key (game.js render sets
+  // mapOpen: the key is read there, before the keys are cleared): the points,
+  // his side's soldiers and where he is and faces, as on the deploy screen.
+  // (Not while he is down, when the deploy screen has the map, nor over the
+  // battle results.)
   _updateMap(g, p) {
     const s = p.soldier;
-    if (g.input.hit('map')) this.mapOpen = !this.mapOpen;
     const open = !!this.mapOpen && s.alive && !this.deployState && !g.mode?.over;
     const box = (this.mapEl ??= this.el('.hud-map'));
     if (!open) {
