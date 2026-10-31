@@ -128,6 +128,8 @@ const LEAN_EXTRA = 0.1; // rad
 // dirt and cobbles look what they are; grass, fields and leaf litter are
 // slipperier than they look, so riders lean too far on them (est.).
 const MISJUDGE = [0.12, 0.08, 0.03, 0.1, 0.03, 0.1, 0.03, 0.1, 0.03, 0.1, 0.1, 0.1];
+// The efforts in which a rider turns the pedals (see _legs).
+const PUSHING = new Set(['cruise', 'sprint', 'spent']);
 
 // Mass and kit of a soldier on board (kg), and where his own center of mass sits
 // above his hip point.
@@ -1671,46 +1673,26 @@ export class Bike extends Vehicle {
 
   // ------------------------------------------------------------------ puppets
   // Online the server rides the machine; the browser hears only where it is and
-  // how it is turned (net/online.js). What the rider and the model go by (the
-  // heading, lean and pitch, the speed, the bars, the wheels and pedals turning,
-  // a foot down at a stop, the stand, the sidecar gun) is worked out from that
-  // here, each step, in place of step(). (Without it a puppet's rider kept the
-  // heading it was made with and twisted round to reach bars pointing elsewhere,
-  // and nothing on the machine moved.)
-  followPose(dt) {
-    super.followPose(dt);
-    if (!(dt > 0)) return;
+  // how it is turned (net/online.js). Its speed and turn come from that as for
+  // any vehicle (vehicle.js followPose); what the rider and the model go by
+  // besides (the heading, lean and pitch, the bars, the wheels and pedals
+  // turning, a foot down at a stop, the stand, the sidecar gun) and the engine
+  // are worked out here. (Without it a puppet's rider kept the heading it was
+  // made with and twisted round to reach bars pointing elsewhere, nothing on
+  // the machine moved, and its engine was never heard.)
+  _followParts(dt) {
     const b = this.body,
       p = b.position;
     _e.setFromQuaternion(b.quaternion, 'YXZ');
-    const yaw = _e.y;
+    const yaw = (this.yaw = _e.y);
     this.pitch = _e.x;
     this.lean = -_e.z;
-    const last = this._pup;
-    if (!last || Math.hypot(p.x - last.x, p.z - last.z) > 5) {
-      // Just made, or put somewhere new: no speed to go by yet.
-      this._pup = { x: p.x, y: p.y, z: p.z };
-      this.yaw = yaw;
-      this.vx = this.vz = this.vy = this.yawRate = this.u = this.speed = this.ay = this.accel = 0;
-    } else {
-      // Speeds from the change since the last step, smoothed (between two
-      // updates the place moves at a steady pace, then turns a corner).
-      const k = 1 - Math.exp(-10 * dt);
-      this.vx += ((p.x - last.x) / dt - this.vx) * k;
-      this.vy += ((p.y - last.y) / dt - this.vy) * k;
-      this.vz += ((p.z - last.z) / dt - this.vz) * k;
-      this.yawRate += (wrapAngle(yaw - this.yaw) / dt - this.yawRate) * k;
-      this.yaw = yaw;
-      last.x = p.x;
-      last.y = p.y;
-      last.z = p.z;
-      const u = -this.vx * Math.sin(yaw) - this.vz * Math.cos(yaw);
-      this.accel += ((u - this.u) / dt - this.accel) * (1 - Math.exp(-3 * dt));
-      this.u = this.speed = u;
-      this.ay = this.ayPath = -u * this.yawRate;
-    }
-    const u = this.u,
-      au = Math.abs(u);
+    const u = (this.u = this.followSpeed);
+    this.vx = b.velocity.x;
+    this.vy = b.velocity.y;
+    this.vz = b.velocity.z;
+    this.ay = this.ayPath = -u * this.yawRate;
+    const au = Math.abs(u);
     const d = this.def;
     // The model origin on the ground under the contact line (see _sync).
     const cyw = Math.cos(yaw),
@@ -1732,31 +1714,66 @@ export class Bike extends Vehicle {
       this.steerG = approach(this.steerG, want, (d.rider?.barRate ?? 2.5) * dt);
     } else if (!rider) this.steerG = approach(this.steerG, 0, dt);
     // Lying on its side, or stood on its stand when nobody rides it.
-    this.fallen = !this.rig && Math.abs(this.lean) > Math.max(1, d.lean.crash ?? 0) ? Math.sign(this.lean) : 0;
+    // (The server says so with its state: net/protocol.js vehicleState.)
+    if (!this._state) this.fallen = !this.rig && Math.abs(this.lean) > Math.max(1, d.lean.crash ?? 0) ? Math.sign(this.lean) : 0;
     if (rider) this.onStand = false;
     else if (au < 0.1 && !this.fallen) this.onStand = !this.rig;
     // A foot down at walking pace, up again once moving (as _rider does).
     if (!rider || this.fallen) this.footDown = 0;
     else if (au < 0.8) this.footDown ||= this._footSide();
     else if (au > 1.6) this.footDown = 0;
-    if (this.pedal) {
-      // Pedaling while he keeps his speed up; coasting while he slows (the
-      // server doesn't say: he slows only by braking or coasting).
-      const pd = d.pedal;
-      if (!rider || this.fallen || au < 0.8 || u < 0) this._pedaling = false;
-      else if (this.accel > -0.2) this._pedaling = true;
-      else if (this.accel < -0.8) this._pedaling = false;
-      const dev = (2 * Math.PI * d.wheelRadius * pd.chainring) / pd.sprocket; // m per crank turn
-      this.cadence = this._pedaling ? (u / dev) * 60 : 0;
-      this.effort = !rider ? 'idle' : this._pedaling ? 'cruise' : 'coast';
-      this.power = this._pedaling ? pd.cruise : 0;
-      this.rpm = this.cadence;
-    }
+    this.holdGear = !this.rig && Math.abs(this.lean) > 0.12;
     // The sidecar's gun, as the server has it turned (net/protocol.js).
     if (this.mg) {
       this.mgYaw = this.turretYaw || 0;
       this.mgPitch = this.gunElev || 0;
     }
+  }
+
+  _followEngine(dt) {
+    const d = this.def;
+    const rider = this.occupants[0];
+    const sent = !!this._state; // (the server's effort, engine and revs: applyVehicleState)
+    const u = this.u,
+      au = Math.abs(u);
+    if (this.pedal) {
+      // Pedaling while the server's rider pushes on the pedals. (From an older
+      // server: while he keeps his speed up, coasting while he slows.)
+      const pd = d.pedal;
+      if (!rider || this.fallen || u < (sent ? 0.2 : 0.8)) this._pedaling = false;
+      else if (sent) this._pedaling = PUSHING.has(this.effort);
+      else if (this.accel > -0.2) this._pedaling = true;
+      else if (this.accel < -0.8) this._pedaling = false;
+      const dev = (2 * Math.PI * d.wheelRadius * pd.chainring) / pd.sprocket; // m per crank turn
+      this.cadence = this._pedaling ? (u / dev) * 60 : 0;
+      if (!sent) {
+        this.effort = !rider ? 'idle' : this._pedaling ? 'cruise' : 'coast';
+        this.power = this._pedaling ? pd.cruise : 0;
+      }
+      this.rpm = this.cadence;
+      return;
+    }
+    const wasOn = this._followOn;
+    if (!sent) {
+      // (An older server: started with a kick when he gets on, off once he
+      // has left it standing, as step does.)
+      if (rider && !this.engineOn && this.alive && !this.fallen) {
+        this.kickT += dt;
+        if (this.kickT > 0.9) {
+          this.engineOn = true;
+          this.kickT = 0;
+        }
+      } else this.kickT = 0;
+      if ((!rider && au < 0.5) || !this.alive) this.engineOn = false;
+      if (!this.engineOn) {
+        this.rpm = 0;
+        this.gear = 0;
+        this.load = 0;
+      } else super._followEngine(dt);
+    }
+    // Kicked into life: heard here as on the server (enter).
+    this._followOn = this.engineOn;
+    if (this.engineOn && wasOn === false) this.game.audio?.play?.('motoStart', this.body.position, { volume: 0.8 });
   }
 
   // ------------------------------------------------------------------ seats and riders

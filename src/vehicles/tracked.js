@@ -391,6 +391,26 @@ export class TrackedVehicle extends Vehicle {
     this.recoil = Math.max(0, this.recoil - dt * 2.5);
   }
 
+  // Online, a puppet (vehicle.js followPose): each track runs at the speed of
+  // its side of the hull (the outer one quicker in a turn), turning the road
+  // wheels, sprockets and idlers; the turret's swing (for its motor's whine)
+  // from the turn the server sends.
+  _followParts(dt, moved) {
+    super._followParts(dt, moved);
+    if (!this._halfTrack) {
+      const xs = this.wheels.map((w) => Math.abs(w.model.x));
+      this._halfTrack = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : this.def.dims[0] * 0.4;
+    }
+    const u = this.followSpeed,
+      turn = this.yawRate * this._halfTrack;
+    this.trackSpeed[0] = u - turn;
+    this.trackSpeed[1] = u + turn;
+    for (let i = 0; i < 2; i++) this.trackDist[i] += this.trackSpeed[i] * dt;
+    const was = this._followTurret ?? this.turretYaw;
+    this._followTurret = this.turretYaw;
+    this.turretRate += (wrapAngle(this.turretYaw - was) / dt - this.turretRate) * (1 - Math.exp(-10 * dt));
+  }
+
   // ------------------------------------------------------------------ turret and gun
   // The gunner wants the gun to point at a world direction (yaw, pitch). The
   // turret traverses toward it at its real speed (power traverse needs the engine

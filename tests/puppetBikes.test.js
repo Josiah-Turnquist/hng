@@ -2,61 +2,17 @@
 // them and the browser only hears where each is and how it is turned
 // (net/online.js, net/protocol.js). Their riders must still sit facing the way
 // the machine goes, lean with it, hold the bars as they turn, pedal, and put a
-// foot down at a stop (Bike.followPose), as offline.
+// foot down at a stop (Bike._followParts), as offline.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeWorld, spawn, rider } from './helpers/vehicleWorld.js';
-import { snapshot } from '../src/net/protocol.js';
-import { OnlineBattle } from '../src/net/online.js';
+import { onlineRide } from './helpers/onlineRide.js';
 import { wrapAngle } from '../src/core/math.js';
 
-const DT = 1 / 120;
 const headingOf = (v) => {
   const e = new THREE.Euler().setFromQuaternion(v.body.quaternion, 'YXZ');
   return e.y;
 };
-
-// The server's machine with its rider, and a browser's OnlineBattle fed its
-// snapshots 20 times a second (as JSON, as they go over the wire), its own
-// copy made by spawnVehicle and moved by nothing else. Each step goes as in
-// game.js: the snapshots first, then the puppets follow.
-function onlineRide(id, yaw = 2) {
-  const server = makeWorld();
-  const v = spawn(server.game, id, 0, 300, yaw, { empty: true });
-  v.id = 5;
-  const man = Object.assign(rider(), { id: 9, yaw, pitch: 0, current: 0, health: 100 });
-  server.game.soldiers.push(man);
-  v.enter(man, 0);
-  const client = makeWorld().game;
-  client.headless = true;
-  client.player = { soldier: { id: 1 } };
-  client.projectiles = { fire() {} };
-  client.spawnVehicle = (def, x, z, y) => spawn(client, def, x, z, y, { empty: true });
-  const net = new OnlineBattle(client, { ws: { readyState: 1, send() {} }, welcome: { you: 1 } });
-  // The rider as the browser has him: a puppet the snapshots seat on the machine.
-  net.puppets.set(9, { id: 9, body: {}, weapons: [], alive: true, puppet: true });
-  let tick = 0;
-  const sim = {
-    v,
-    net,
-    get puppet() {
-      return net.vehicles.get(5);
-    },
-    run(seconds, input, each = null) {
-      for (let t = 0; t < seconds; t += DT) {
-        input(t);
-        v.step(DT);
-        server.game.time += DT;
-        if (++tick % 6 === 0) net._message(JSON.parse(JSON.stringify(snapshot(server.game, tick))));
-        net.update(DT);
-        for (const c of client.vehicles) c.puppet ? c.followPose(DT) : c.step(DT);
-        if (each && sim.puppet) each(sim.puppet);
-      }
-    },
-  };
-  return sim;
-}
 
 test('online, a bicycle rider faces the way his machine goes, leans and steers with it, pedals, and puts a foot down', () => {
   const sim = onlineRide('bicycle');
@@ -86,7 +42,7 @@ test('online, a bicycle rider faces the way his machine goes, leans and steers w
   assert.ok(Math.abs(wrapAngle(pose.yaw - sim.v.yaw)) < 0.05, 'and the way the server has it going');
   assert.ok(b.speed > 3, `it is going (${b.speed.toFixed(1)} m/s)`);
   assert.ok(b.cadence > 30, `he pedals (${b.cadence.toFixed(0)} rpm)`);
-  assert.ok(Math.abs(b.wR.spin * b.wR.radius - b.speed) < 0.2, 'the wheels roll with the ground');
+  assert.ok(Math.abs(b.wR.spin * b.wR.radius - b.followSpeed) < 0.2, 'the wheels roll with the ground');
   assert.equal(b.footDown, 0, 'feet on the pedals while riding');
   // Hands on the grips: as far from the saddle as the server's rider's are.
   const srv = sim.v.riderPose(0, {});

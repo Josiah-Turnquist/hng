@@ -217,6 +217,36 @@ export class WheeledVehicle extends Vehicle {
     this._shift(dt);
   }
 
+  // Online, a puppet (vehicle.js followPose): the wheels roll with its speed and
+  // the front ones steer into the turn it makes (Ackermann, as _drive), and the
+  // steering wheel turns with them.
+  _followParts(dt, moved) {
+    super._followParts(dt, moved);
+    const d = this.def;
+    const u = this.followSpeed;
+    // The front wheels' angle for the turn (+ = left), held when too slow to tell.
+    if (Math.abs(u) > 0.5) {
+      // (Plus what the tires give away to slip in a turn: est. 0.04 rad a g.)
+      const want = clamp(Math.atan((d.wheelbase * this.yawRate) / u) + (0.04 * u * this.yawRate) / 9.81, -1, 1);
+      this._followSteer = approach(this._followSteer || 0, want, 2 * dt);
+    } else if (!this.occupants[0]) this._followSteer = approach(this._followSteer || 0, 0, dt);
+    const a = this._followSteer || 0;
+    // The driver's wheel: the lock that gives it (the inverse of _drive's).
+    const real = Math.atan(Math.tan(Math.abs(a)) * TURN_CIRCLE);
+    this.steer = clamp((-Math.sign(a) * real) / (d.steerMax || 0.6), -1, 1);
+    for (const w of this.wheels) {
+      w.spin = u / w.radius;
+      let steerAngle = 0;
+      if (w.steer && Math.abs(a) > 1e-4) {
+        const R = d.wheelbase / Math.tan(Math.abs(a));
+        const inner = (a > 0 && w.side < 0) || (a < 0 && w.side > 0);
+        steerAngle = Math.sign(a) * Math.atan(d.wheelbase / (R + (inner ? -1 : 1) * (d.track / 2)));
+      }
+      w.steerAngle = steerAngle;
+    }
+    this.wheelSpin = u / d.wheelRadius;
+  }
+
   syncModel(dt = 0) {
     super.syncModel();
     for (const w of this.wheels) {

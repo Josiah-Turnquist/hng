@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RigidBody } from '../physics/rigidbody.js';
 import { FLAG_SOLID, FLAG_SIGHT, FLAG_WALKABLE, RayHit, CollisionWorld, Box } from '../physics/collision.js';
 import { SURFACE_INFO } from '../world/heightfield.js';
-import { G, clamp, rand } from '../core/math.js';
+import { G, clamp, approach, rand } from '../core/math.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -644,19 +644,135 @@ export class Vehicle {
 
   _drive() {}
 
-  // Online (net/online.js): a puppet is placed where the server's snapshots say
-  // and is not stepped. Each step this keeps up what follows from that place:
-  // its collision boxes (they stayed where it was first put, an invisible wall
-  // there), and on bicycles and motorcycles how it and its rider move (Bike).
-  followPose() {
-    if (!this.proxies) return;
+  // ------------------------------------------------------------------ puppets
+  // Online (net/online.js) a puppet is placed where the server's snapshots say
+  // and is not stepped. Each step this works out what follows from that place,
+  // as far as it shows or is heard: its collision boxes (left where it was first
+  // put they made an invisible wall there), its speed, the wheels and tracks
+  // turning, steering and springing, and (from a server that doesn't send them
+  // with its state) the engine's revs, gear and load. Bikes add the rider's
+  // seat on the machine (bike.js).
+  followPose(dt) {
+    const moved = this._followProxies();
+    if (!(dt > 0)) return;
+    this._followMotion(dt);
+    this._followParts(dt, moved);
+    this._followEngine(dt);
+  }
+
+  // The collision boxes, when it has moved (true then).
+  _followProxies() {
     const p = this.body.position,
       q = this.body.quaternion;
     const was = this._proxyAt || (this._proxyAt = { p: new THREE.Vector3(NaN), q: new THREE.Quaternion() });
-    if (was.p.equals(p) && was.q.equals(q)) return;
+    if (was.p.equals(p) && was.q.equals(q)) return false;
     was.p.copy(p);
     was.q.copy(q);
-    this.updateProxies();
+    if (this.proxies) this.updateProxies();
+    return true;
+  }
+
+  // Velocity, turn rate, forward speed (followSpeed) and its change, from the
+  // change of place since the last step, smoothed (between two snapshots the
+  // place moves at a steady pace, then turns a corner).
+  _followMotion(dt) {
+    const b = this.body,
+      p = b.position;
+    const fwd = _f.set(0, 0, -1).applyQuaternion(b.quaternion);
+    const yaw = Math.atan2(-fwd.x, -fwd.z);
+    const pm = this._pm;
+    if (!pm || Math.hypot(p.x - pm.x, p.z - pm.z) > 5) {
+      // Just made, or put somewhere new: no speed to go by yet.
+      this._pm = { x: p.x, y: p.y, z: p.z, yaw };
+      b.velocity.set(0, 0, 0);
+      b.angular.set(0, 0, 0);
+      this.yawRate = this.followSpeed = this.accel = 0;
+      if (!this._state) this.speed = 0;
+      return;
+    }
+    const k = 1 - Math.exp(-10 * dt);
+    const v = b.velocity;
+    v.x += ((p.x - pm.x) / dt - v.x) * k;
+    v.y += ((p.y - pm.y) / dt - v.y) * k;
+    v.z += ((p.z - pm.z) / dt - v.z) * k;
+    let dy = (yaw - pm.yaw) % (Math.PI * 2);
+    if (dy > Math.PI) dy -= Math.PI * 2;
+    else if (dy < -Math.PI) dy += Math.PI * 2;
+    this.yawRate = (this.yawRate || 0) + (dy / dt - (this.yawRate || 0)) * k;
+    b.angular.set(0, this.yawRate, 0);
+    pm.x = p.x;
+    pm.y = p.y;
+    pm.z = p.z;
+    pm.yaw = yaw;
+    const u = v.dot(fwd);
+    this.accel = (this.accel || 0) + ((u - (this.followSpeed || 0)) / dt - (this.accel || 0)) * (1 - Math.exp(-3 * dt));
+    // (The speed as it shows here; the server's own, a tenth of a second
+    // ahead, stands for the HUD when it sends it.)
+    this.followSpeed = u;
+    if (!this._state) this.speed = u;
+  }
+
+  // The wheels on the ground and their springs, from where the ground is under
+  // them (only nearby, and when it has moved: rays cost).
+  _followParts(dt, moved) {
+    if (!moved || !this.wheels.length) return;
+    const cam = this.game.camera?.position;
+    if (cam && cam.distanceTo(this.body.position) > 150) return;
+    if (this.proxies) for (const p of this.proxies) p.box.enabled = false;
+    this._probeWheels();
+    if (this.proxies) for (const p of this.proxies) p.box.enabled = true;
+    const up = _up.set(0, 1, 0).applyQuaternion(this.body.quaternion);
+    for (const w of this.wheels) {
+      w.prevCompression = w.compression;
+      const denom = -up.dot(w.normal);
+      if (!w.onGround || denom > -0.2) {
+        w.compression = Math.max(0, w.compression - dt * 2);
+        continue;
+      }
+      // (As _suspension: from the mount down to the ground, less the wheel.)
+      const dist = (w.planeD - w.normal.dot(w.mount)) / denom;
+      w.compression = clamp(w.rest - (dist - w.radius), 0, w.rest + 0.3);
+      w.contactNow.copy(w.mount).addScaledVector(up, -dist);
+    }
+  }
+
+  // The engine. The server sends its revs, gear, load and whether it runs with
+  // its state (net/protocol.js vehicleState, put on it by applyVehicleState):
+  // those stand. From an older server, without them, they are worked out:
+  // running from the start until wrecked, as there; the throttle the push that
+  // changes the speed as it changes, against the most the engine gives in its
+  // gear; the revs and gear changes then as the vehicle's own (_engineRpm,
+  // _shift).
+  _followEngine(dt) {
+    const d = this.def;
+    if (this._state || !d.gears?.length || !d.engine?.torque) return;
+    const driver = this.occupants[0];
+    const on = this.alive && this.engineOn;
+    const u = this.speed;
+    if (!driver || u > 0.3) this.wantDir = 1;
+    else if (u < -0.3) this.wantDir = -1;
+    let th = 0;
+    if (driver && on) {
+      const a = this.accel * this.wantDir; // (picking up speed the way it goes)
+      // (The push over what holds it back speeds it up by ACCEL_GAIN; slowing
+      // as fast as the ground and the air slow it, or faster: off the throttle.)
+      const F = ((this.m ?? d.mass) * a) / (a > 0 ? ACCEL_GAIN : 1) + Math.max(0, this._resistance());
+      if ((Math.abs(u) > 0.3 || a > 0.3) && F > 0) {
+        const pull = this._pull(this.gear || this.nextGear || 1, Math.max(this.rpm, d.engine.idle));
+        th = clamp(F / Math.max(1, pull), 0.08, 1);
+      }
+      // Turning, the turn's own drag slows it (tires scrubbing, tracks
+      // skidding round), which its speed alone doesn't tell: he keeps the
+      // throttle on through it.
+      if (Math.abs(this.yawRate) > 0.15 && a > -2) th = Math.max(th, 0.5);
+    }
+    th = this._followThrottle = approach(this._followThrottle || 0, th, 4 * dt);
+    this.input.throttle = th;
+    this.input.brake = 0;
+    this._engineRpm(u, d.kind === 'tracked' ? d.sprocketRadius : d.wheelRadius, th, dt);
+    if (driver && on) this._shift(dt);
+    const tmax = d._tmaxAll || (d._tmaxAll = Math.max(...d.engine.torque.map((p) => p[1])));
+    this.load = clamp(this._engineTorque(th) / tmax, 0, 1);
   }
 
   // Position the 3D model from the physics state.
