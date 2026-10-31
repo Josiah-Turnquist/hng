@@ -43,6 +43,9 @@ export const DEFAULT_BINDINGS = {
   ammo2: ['Digit2'],
   ammo3: ['Digit3'],
   scores: ['Tab'],
+  // (New actions go at the end: online, actions travel by their place in this
+  // list, net/protocol.js ACTION_LIST.)
+  map: ['KeyM'],
 };
 
 // The actions as the controls menu shows them, in groups: [action, name, where it
@@ -103,7 +106,10 @@ export const ACTIONS = [
   },
   {
     group: 'Battle',
-    actions: [['scores', 'Scoreboard (hold)', 'any']],
+    actions: [
+      ['scores', 'Scoreboard (hold)', 'any'],
+      ['map', 'Battle map (press to open, again to close)', 'any', 'The points, your side and where you are and face.'],
+    ],
   },
 ];
 const WHERE = Object.fromEntries(ACTIONS.flatMap((g) => g.actions.map(([a, , w]) => [a, w])));

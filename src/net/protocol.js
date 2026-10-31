@@ -25,8 +25,9 @@ import { DEFAULT_BINDINGS } from '../core/input.js';
 import { AMMO } from '../weapons/ammo.js';
 import { SHELLS } from '../vehicles/defs.js';
 
-// (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.)
-export const PROTOCOL_VERSION = 2;
+// (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.
+// 3: the map key, a new action at the end of the list.)
+export const PROTOCOL_VERSION = 3;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
 

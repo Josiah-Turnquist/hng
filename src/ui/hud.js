@@ -25,6 +25,11 @@ export function shotMarkAngle(fx, fz, x, z, camYaw) {
   return Math.atan2(-Math.cos(rel), -Math.sin(rel));
 }
 
+// The living soldiers on s's side, for the maps' green dots.
+export function alliesOf(g, s) {
+  return g.soldiers.filter((x) => x !== s && x.alive && x.team === s.team).map((x) => ({ x: x.body.x, z: x.body.z }));
+}
+
 export class Hud {
   constructor(game) {
     this.game = game;
@@ -66,6 +71,7 @@ export class Hud {
       <div class="hud-scores"></div>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint"></div></div>
       <div class="hud-use"><span class="k"></span><span class="t"></span></div>
+      <div class="hud-map" hidden><div class="mp-box"><canvas class="mp-map"></canvas><div class="mp-key"></div></div></div>
       <div class="hud-deploy" hidden>
         <div class="dp-head"><div class="dp-title">You were killed</div><div class="dp-by"></div></div>
         <div class="dp-body">
@@ -127,7 +133,7 @@ export class Hud {
     this.lastScope = null;
     const k = (a) => game.input.keys(a);
     this.hint(
-      `Click to play. ${['forward', 'left', 'back', 'right'].map((a) => game.input.key(a)).join(' ')} move, ${k('sprint')} sprint, ${k('crouch')} crouch, ${k('prone')} lie down, ${k('jump')} jump, ${k('aim')} aim, ${k('fire')} fire, ${k('reload')} reload, ${k('use')} get in a vehicle. Esc: menu (Settings > Controls has every key and lets you change them).`,
+      `Click to play. ${['forward', 'left', 'back', 'right'].map((a) => game.input.key(a)).join(' ')} move, ${k('sprint')} sprint, ${k('crouch')} crouch, ${k('prone')} lie down, ${k('jump')} jump, ${k('aim')} aim, ${k('fire')} fire, ${k('reload')} reload, ${k('use')} get in a vehicle, ${k('map')} map. Esc: menu (Settings > Controls has every key and lets you change them).`,
       14,
     );
     this.useEl = this.el('.hud-use');
@@ -238,7 +244,7 @@ export class Hud {
         spawns: opts.map((o) => ({ id: o.id, name: o.name, x: o.point.x, z: o.point.z, delay: wait(o) })),
         selected: sel?.id,
         player: { x: s.body.x, z: s.body.z, yaw: s.yaw ?? 0 },
-        friends: g.soldiers.filter((x) => x !== s && x.alive && x.team === team).map((x) => ({ x: x.body.x, z: x.body.z })),
+        friends: alliesOf(g, s),
       });
     }
   }
@@ -380,6 +386,7 @@ export class Hud {
     }
     this._updateVehicle(p);
     this._updateScores(g);
+    this._updateMap(g, p);
     // Compass: 30 px per 15 degrees.
     const yaw = s.vehicle ? p.camera.rotation.y : p.look.yaw;
     const deg = ((-yaw * 180) / Math.PI) % 360;
@@ -894,6 +901,38 @@ export class Hud {
       return `<div class="side ${t === me.team ? 'own' : 'enemy'}"><h3>${f ? (FACTION_ARMY[f] || f) : ''}${g.mode?.points ? (t === 1 ? ' · attacking' : ' · defending') : ''}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th><th>Score</th></tr>${rows}</table></div>`;
     };
     el.innerHTML = teams.map(side).join('');
+  }
+
+  // The battle map, opened and closed with the map key: the points, his side's
+  // soldiers and where he is and faces, as on the deploy screen. (Not while he
+  // is down, when the deploy screen has the map, nor over the battle results.)
+  _updateMap(g, p) {
+    const s = p.soldier;
+    if (g.input.hit('map')) this.mapOpen = !this.mapOpen;
+    const open = !!this.mapOpen && s.alive && !this.deployState && !g.mode?.over;
+    const box = (this.mapEl ??= this.el('.hud-map'));
+    if (!open) {
+      if (!box.hidden) box.hidden = true;
+      return;
+    }
+    if (box.hidden) {
+      box.hidden = false;
+      this.bigMap ??= new BattleMap(this.el('.mp-map'), g.mapDef, { world: g.world });
+      this.bigMap.resize();
+      this.el('.mp-key').textContent = `${g.input.key('map')}: close the map`;
+      this.bigMapT = 0;
+    }
+    // (A few times a second, as the deploy screen's.)
+    const now = performance.now();
+    if (now - this.bigMapT < 120) return;
+    this.bigMapT = now;
+    const team = s.team;
+    this.bigMap.draw({
+      points: g.mode?.points,
+      team,
+      player: { x: s.body.x, z: s.body.z, yaw: s.vehicle ? p.camera.rotation.y : p.look.yaw },
+      friends: alliesOf(g, s),
+    });
   }
 
   // Speed, gear, engine, damage, gun and seat while in a vehicle.
