@@ -130,6 +130,7 @@ export function showFrontEnd(app) {
           <div class="fe-credits"></div>
           <div class="fe-level" title="Player level"></div>
           <div class="fe-army"></div>
+          <button class="fe-friends" hidden title="Friends and party">Friends<i></i></button>
           <button class="fe-account" hidden></button>
           <button class="fe-icon" data-screen="settings" title="Settings">${ICONS.gear}</button>
           <button class="fe-icon fe-fs" title="Full screen">${ICONS.screen}</button>
@@ -160,6 +161,23 @@ export function showFrontEnd(app) {
         location.reload();
       });
     }
+    // Friends and party (signed in, on the game server): the button, with a
+    // count of requests and invites waiting; called into battle by the leader.
+    const lobby = app.lobby || null;
+    let offLobby = null;
+    if (lobby) {
+      const fb = root.querySelector('.fe-friends');
+      fb.hidden = false;
+      const badge = () => {
+        const n = lobby.state.friends.filter((x) => x.status === 'asks').length + lobby.state.invites.length;
+        fb.querySelector('i').textContent = n ? String(n) : '';
+        fb.classList.toggle('party', !!lobby.state.party);
+      };
+      offLobby = lobby.on(badge);
+      badge();
+      fb.addEventListener('click', () => friendsWindow());
+      lobby.onGo = () => partyGo();
+    }
     root.querySelector('.fe-touch').hidden = !matchMedia('(hover: none) and (pointer: coarse)').matches;
     let screen = 'heroes';
     let view = null; // settings pages, when open
@@ -187,6 +205,10 @@ export function showFrontEnd(app) {
       const att = b ? b.att === s.faction : m.side === 'attack';
       // Online (signed in): the game server's battle; the server says which side.
       const online = !b && !!m.online && !!app.account;
+      // His party follows him in.
+      if (online && lobby?.leading) lobby.go();
+      offLobby?.();
+      if (lobby) lobby.onGo = null;
       save();
       window.removeEventListener('keydown', onKey);
       view?.close();
@@ -222,6 +244,136 @@ export function showFrontEnd(app) {
       root.querySelector('.fe-army').innerHTML = `${emblem(s.faction)}<span>${FACTIONS[s.faction].army}</span>`;
       root.querySelectorAll('.fe-tabs button, .fe-icon[data-screen]').forEach((b) => b.classList.toggle('on', b.dataset.screen === screen));
     };
+
+    // Called into battle by his party's leader: with a soldier of the leader's
+    // army if he has one (so they fight side by side), into the online battle.
+    const partyGo = () => {
+      const m = roster.mission;
+      m.online = true;
+      m.war = null;
+      const army = lobby?.leaderArmy;
+      if (army && selected(roster).faction !== army) {
+        const same = roster.soldiers.find((x) => x.faction === army);
+        if (same) select(roster, same.id);
+      }
+      save();
+      show('heroes');
+      main.querySelector('.ready-btn')?.click();
+    };
+
+    // Friends and party: friends (asked by name, requests, who is on), the
+    // party (invites, members and their armies, leaving) and party chat.
+    function friendsWindow() {
+      const W = openWindow('Friends and party', { sub: 'Play in the same battle, on the same side', cls: 'hx-wide' });
+      W.body.innerHTML = `<div class="fr">
+        <section class="fr-col">
+          <h3>Add a friend</h3>
+          <form class="fr-add"><input maxlength="24" placeholder="Their player name" autocomplete="off"><button>Add</button></form>
+          <div class="fr-note"></div>
+          <h3>Friends</h3>
+          <div class="fr-list"></div>
+        </section>
+        <section class="fr-col">
+          <h3>Party</h3>
+          <div class="fr-party"></div>
+          <div class="fr-chat"><div class="fr-log"></div><form class="fr-say"><input maxlength="200" placeholder="Say something to your party" autocomplete="off"><button>Send</button></form></div>
+        </section>
+      </div>`;
+      const add = W.body.querySelector('.fr-add');
+      add.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const inp = add.querySelector('input');
+        if (inp.value.trim()) lobby.ask(inp.value.trim());
+        inp.value = '';
+      });
+      const say = W.body.querySelector('.fr-say');
+      say.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const inp = say.querySelector('input');
+        if (inp.value.trim()) lobby.say(inp.value.trim());
+        inp.value = '';
+      });
+      const button = (text, fn, cls = '') => {
+        const b = el('button', cls);
+        b.textContent = text;
+        b.addEventListener('click', fn);
+        return b;
+      };
+      const WHERE = { menus: 'Online', battle: 'In battle' };
+      const draw = (st) => {
+        if (!W.box.isConnected) return off();
+        W.body.querySelector('.fr-note').textContent = st.note || '';
+        const me = st.me?.id;
+        const p = st.party;
+        const inParty = new Set(p ? [...p.members.map((x) => x.id), ...(p.invited || []).map((x) => x.id)] : []);
+        // Friends: requests first, then who is on, then the rest.
+        const list = W.body.querySelector('.fr-list');
+        list.innerHTML = '';
+        const order = { asks: 0, friend: 1, asked: 2 };
+        const rank = (x) => order[x.status] * 3 + (x.where === 'menus' ? 0 : x.where === 'battle' ? 1 : 2);
+        for (const x of [...st.friends].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))) {
+          const row = el('div', `fr-row ${x.where || 'off'}`);
+          row.innerHTML = '<i class="dot"></i><b></b><small></small><span class="fr-btns"></span>';
+          row.querySelector('b').textContent = x.name || '(no name)';
+          row.querySelector('small').textContent = x.status === 'asks' ? 'Wants to be friends' : x.status === 'asked' ? 'Asked' : WHERE[x.where] || 'Offline';
+          const btns = row.querySelector('.fr-btns');
+          if (x.status === 'asks') {
+            btns.append(button('Accept', () => lobby.accept(x.id), 'gold'), button('Decline', () => lobby.drop(x.id)));
+          } else if (x.status === 'asked') btns.append(button('Cancel', () => lobby.drop(x.id)));
+          else {
+            if (x.where && !inParty.has(x.id) && (!p || p.leader === me)) btns.append(button('Invite', () => lobby.invite(x.id), 'gold'));
+            btns.append(button('Remove', () => lobby.drop(x.id)));
+          }
+          list.appendChild(row);
+        }
+        if (!st.friends.length) list.innerHTML = '<div class="lo-note">No friends yet. Add one by their player name.</div>';
+        // The party, and invites to others.
+        const pb = W.body.querySelector('.fr-party');
+        pb.innerHTML = '';
+        for (const inv of st.invites) {
+          const row = el('div', 'fr-row fr-inv');
+          row.innerHTML = '<b></b><span class="fr-btns"></span>';
+          row.querySelector('b').textContent = `${inv.name} invites you to a party`;
+          row.querySelector('.fr-btns').append(button('Join', () => lobby.take(inv.party), 'gold'), button('No thanks', () => lobby.turnDown(inv.party)));
+          pb.appendChild(row);
+        }
+        if (!p) pb.appendChild(el('div', 'lo-note', 'Not in a party. Invite a friend who is online, and you go into battle together when the party leader presses Ready for battle.'));
+        else {
+          for (const x of p.members) {
+            const row = el('div', `fr-row ${x.where || 'off'}`);
+            row.innerHTML = '<i class="dot"></i><b></b><small></small><span class="fr-btns"></span>';
+            row.querySelector('b').textContent = `${x.name}${x.id === p.leader ? ' (leader)' : ''}${x.id === me ? ' (you)' : ''}`;
+            row.querySelector('small').textContent = [x.army ? FACTIONS[x.army]?.army : null, WHERE[x.where]].filter(Boolean).join(' · ');
+            if (p.leader === me && x.id !== me) row.querySelector('.fr-btns').append(button('Remove', () => lobby.kick(x.id)));
+            pb.appendChild(row);
+          }
+          for (const x of p.invited || []) {
+            const row = el('div', 'fr-row off');
+            row.innerHTML = '<i class="dot"></i><b></b><small>Invited</small>';
+            row.querySelector('b').textContent = x.name;
+            pb.appendChild(row);
+          }
+          const lead = p.members.find((x) => x.id === p.leader);
+          const mine = p.members.find((x) => x.id === me);
+          if (lead?.army && mine?.army && lead.army !== mine.army) pb.appendChild(el('div', 'fr-warn', `Your leader fights for the ${FACTIONS[lead.army].army}. When the party goes in, you take a soldier of that army if you have one.`));
+          pb.appendChild(el('div', 'lo-note', p.leader === me ? 'Press Ready for battle and your party comes with you.' : 'When your leader presses Ready for battle, you go in with them.'));
+          pb.appendChild(button('Leave party', () => lobby.leave()));
+        }
+        W.body.querySelector('.fr-chat').hidden = !p;
+        const log = W.body.querySelector('.fr-log');
+        log.innerHTML = '';
+        for (const l of st.chat) {
+          const line = el('div', `fr-line${l.mine ? ' mine' : ''}`);
+          line.innerHTML = '<b></b><span></span>';
+          line.querySelector('b').textContent = `${l.name}:`;
+          line.querySelector('span').textContent = ` ${l.text}`;
+          log.appendChild(line);
+        }
+        log.scrollTop = log.scrollHeight;
+      };
+      const off = lobby.on(draw);
+      draw(lobby.state);
+    }
 
     const show = (name) => {
       screen = name;
@@ -818,6 +970,8 @@ export function showFrontEnd(app) {
     let onlineChosen = false;
     function readyBox(box, s) {
       const m = roster.mission;
+      // (His party sees which army he has chosen.)
+      lobby?.army(s.faction);
       const war = m.war ? loadWar() : null;
       const wb = war && !war.over && war.army === s.faction && !m.online ? battleOf(war, m.war) : null;
       const mi = MISSIONS.find((x) => x.id === m.map) || MISSIONS[0];

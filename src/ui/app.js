@@ -12,6 +12,8 @@ import { serverConfig } from '../net/auth.js';
 import { PROTOCOL_VERSION } from '../net/protocol.js';
 import { connect, OnlineBattle } from '../net/online.js';
 import { syncProgress, saveNow, takeServerCopy } from '../net/progress.js';
+import { Lobby } from '../net/lobby.js';
+import { BattleChat } from './chat.js';
 import { battleReward } from '../game/rewards.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
@@ -110,6 +112,8 @@ export class App {
         note.remove();
         if (!this.progressSynced) console.warn('Progress is kept in this browser only for now');
       }
+      // Signed in on the game server: friends, party and party chat.
+      if (this.account && cfg?.online && !this.lobby) this.lobby = new Lobby(this.account);
       // An online battle: joined before the map loads (the server says the
       // side, the armies and the battle's dice). If it can't be joined, back
       // to the menu with the reason.
@@ -161,6 +165,10 @@ export class App {
     if (this.conn) {
       game.online = new OnlineBattle(game, this.conn);
       game.online.onReward = (m) => this._serverReward(m);
+      // Chat: his side or everyone, and his party's from the menus.
+      const chat = new BattleChat(game, { send: (text, all) => game.online.say(text, all) });
+      game.online.onChat = (m) => chat.line({ name: m.name, text: m.text, kind: m.all ? 'all' : 'team', mine: m.from === game.player?.soldier?.id });
+      if (this.lobby) this.lobby.onChat = (l) => chat.line({ ...l, kind: 'party' });
     }
     await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();

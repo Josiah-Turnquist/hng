@@ -100,6 +100,7 @@ export class OnlineBattle {
       if (snap.allVehicles) this._dropGone(snap);
     } else if (m.k === 'r') this._roster(m.s);
     else if (m.k === 'c') this._scores(m.s);
+    else if (m.k === 't') this.onChat?.(m);
     else if (m.k === 'g') {
       // What the battle earned him, worked out and kept by the server.
       this.reward = m;
@@ -504,6 +505,15 @@ export class OnlineBattle {
     if (role === 'bowMg' && v.bowAim) return [[v.bowAim.yaw, v.bowAim.pitch], null];
     if (role === 'sidecarMg' && v.mgAim) return [[v.mgAim.yaw, v.mgAim.pitch], null];
     return [[pc.look.yaw, pc.look.pitch], null];
+  }
+
+  // A line of chat to his side, or to everyone (all).
+  say(text, all = false) {
+    try {
+      this.ws.send(JSON.stringify({ k: 't', text, all }));
+    } catch {
+      /* gone */
+    }
   }
 
   // Leaving before the end: the server works out his rewards first (up to a few
