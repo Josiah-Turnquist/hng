@@ -1003,6 +1003,11 @@ export class Hud {
   _drawScope(p) {
     const vc = p.vehicleCtl;
     const v = p.soldier.vehicle;
+    const w = p.soldier.weapon;
+    const show = p.scoped && w?.scope && !v;
+    // (Looking through a scope: the gun's corner of the screen, with the sight's
+    // range, stays readable over the black round the eyepiece.)
+    if (this.root.classList.contains('scoped') !== !!show) this.root.classList.toggle('scoped', !!show);
     if (v && p.soldier.alive && vc && ((vc.role === 'gunner' && vc.sight) || (vc.role === 'bowMg' && vc.view === 'first' && v.def.bowMg.sight))) {
       const sd = vc.role === 'gunner' ? v.def.gun.sight : v.def.bowMg.sight;
       const key = `tank:${v.id}:${vc.role}:${v.sightRange}:${v.loaded}:${this.scope.width}x${this.scope.height}`;
@@ -1012,8 +1017,6 @@ export class Hud {
       this.scope.style.display = 'block';
       return;
     }
-    const w = p.soldier.weapon;
-    const show = p.scoped && w?.scope && !v;
     const key = show ? `${w.def.id}:${this.scope.width}x${this.scope.height}` : null;
     if (key === this.lastScope) return;
     this.lastScope = key;

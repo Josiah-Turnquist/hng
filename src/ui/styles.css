@@ -339,6 +339,9 @@ canvas.game {
 .hud-ammo .loaded { font-size: 34px; font-weight: 700; }
 .hud-ammo .reserve { font-size: 14px; color: var(--ink-dim); }
 .hud-mode { font-size: 11px; color: var(--ink-dim); }
+/* Through a scope: over the black round the eyepiece, and easier to read. */
+.hud.scoped .hud-right { z-index: 1; }
+.hud.scoped .hud-mode { font-size: 13px; color: var(--ink); }
 .hud-scope {
   position: absolute;
   inset: 0;
