@@ -38,7 +38,7 @@
   th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); }
   th { font: 600 12px var(--cond); letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
   .wrap { overflow-x: auto; }
-  #stats { display: grid; gap: 12px; }
+  #stats, #sbody { display: grid; gap: 12px; }
   .sh { display: flex; align-items: center; gap: 12px; }
   .sh h2 { margin: 0; font: 700 20px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
@@ -198,7 +198,7 @@ async function stats() {
       <div class="sgrid">
         <div class="sbox"><h3>Each day</h3>${table(['Day', 'Players', 'Battles'], st.daily.map((d) => [d.day, d.players, d.battles]))}</div>
         <div class="sbox"><h3>Armies and classes</h3>${table(['Army', 'Class', 'Battles'], st.sides.map((x) => [ARMY[x.army] || x.army, x.cls, x.battles]))}</div>
-        <div class="sbox"><h3>How smoothly it runs</h3>${table(['Graphics', 'Minutes', 'Frames a second', 'Worst tenth'], st.perf.map((x) => [x.quality || 'unknown', x.samples, x.fps, x.low]))}</div>
+        <div class="sbox"><h3>How smoothly it runs</h3>${table(['Graphics', 'Minutes', 'FPS', 'Worst 10%'], st.perf.map((x) => [x.quality || 'unknown', x.samples, x.fps, x.low]))}</div>
       </div>
       <div class="sbox err"><h3>Errors</h3>${table(['Error', 'Where', 'Times', 'Players', 'Last'], st.errors.map((x) => [x.message, x.place || '', x.times, x.players, when(x.last)]))}</div>`;
   } catch (e) {
