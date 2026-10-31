@@ -310,6 +310,12 @@ export class SoldierPreview {
     ground.visible = false; // (no floor: he stands against the backdrop)
     scene.add(ground);
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 40);
+    // He stands on a turntable: turning him (on his own, or dragged) turns
+    // the table, not the man. (Turned as a soldier, his feet stay put on the
+    // ground and his legs twist until a foot steps round: in the preview that
+    // read as twitching.)
+    this.stand = new THREE.Group();
+    scene.add(this.stand);
     // Facing the camera (models face -z), turned a little toward the light.
     this.yaw = Math.PI - 0.45;
     this.targetYaw = this.yaw;
@@ -341,7 +347,7 @@ export class SoldierPreview {
     if (k === this.key) return;
     this.key = k;
     if (this.model) {
-      this.scene.remove(this.model.root);
+      this.stand.remove(this.model.root);
       this.model.dispose?.();
     }
     const def = WEAPONS[primary];
@@ -359,10 +365,10 @@ export class SoldierPreview {
     m.root.traverse((o) => {
       if (o.isMesh) o.castShadow = true;
     });
-    this.scene.add(m.root);
+    this.stand.add(m.root);
     this.model = m;
-    // Settle into the pose.
-    this._state.yaw = this.yaw;
+    // Settle into the pose (he faces the table's front; the table turns).
+    this._state.yaw = 0;
     for (let i = 0; i < 90; i++) m.update(1 / 60, this._state);
   }
 
@@ -457,15 +463,17 @@ export class SoldierPreview {
     cam.position.set(0, 1.12, dist);
     cam.lookAt(0, 0.98, 0);
     cam.updateProjectionMatrix();
-    this.targetYaw += dt * 0.05; // a slow turn on his own
-    this.yaw += (this.targetYaw - this.yaw) * Math.min(1, dt * 8);
-    if (this.model) {
-      // (The model takes its facing from the state it is given.)
-      this._state.yaw = this.yaw;
-      this.model.update(dt, this._state);
-    }
+    this._step(dt);
     r.setRenderTarget(null);
     r.render(this.scene, cam);
+  }
+
+  // One frame of his idle (breathing) and of the turntable's turn.
+  _step(dt) {
+    this.targetYaw += dt * 0.05; // a slow turn on his own
+    this.yaw += (this.targetYaw - this.yaw) * Math.min(1, dt * 8);
+    this.stand.rotation.y = this.yaw;
+    if (this.model) this.model.update(dt, this._state);
   }
 
   // A side view of a gun on a clear background, muzzle to the right (data: URL).
@@ -563,7 +571,7 @@ export class SoldierPreview {
 
   dispose() {
     this.stop();
-    if (this.model) this.scene.remove(this.model.root);
+    if (this.model) this.stand.remove(this.model.root);
     this.scene.traverse((o) => {
       o.geometry?.dispose?.();
     });
