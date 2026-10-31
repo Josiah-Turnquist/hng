@@ -134,8 +134,11 @@ export class Soldier {
       this.body.fallDamage = 0;
     }
 
-    // Wounds.
-    if (this.bleed > 0) {
+    // Wounds. (Online the game server keeps his health and bleeding, and sends
+    // them: net/online.js. Here they are only shown.)
+    if (this.game.online) {
+      /* (as the server says) */
+    } else if (this.bleed > 0) {
       this.health -= this.bleed * dt;
       if (this.health <= 0) this.bleedOut();
     } else if (this.game.time - this.lastHitTime > 8 && this.health < this.healCap) {

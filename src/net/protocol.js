@@ -26,7 +26,8 @@ import { AMMO } from '../weapons/ammo.js';
 import { SHELLS } from '../vehicles/defs.js';
 
 // (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.
-// 3: the map key, a new action at the end of the list.)
+// 3: the map key, a new action at the end of the list; how hard a soldier
+// bleeds; which points are closed for coming back in.)
 export const PROTOCOL_VERSION = 3;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
@@ -127,7 +128,10 @@ export function snapshot(game, tick, { events = [], ack = 0, sent = null, full =
   for (const x of game.soldiers) {
     const b = x.body;
     const flags = (x.alive ? ALIVE : 0) | (x.aiming ? AIMING : 0) | (b.sprinting ? SPRINTING : 0) | (x.bleed > 0 ? BLEEDING : 0);
-    s.push([x.id, cm(b.x), cm(b.y), cm(b.z), ang(x.yaw), ang(x.pitch || 0), b.stance, flags, x.current, Math.ceil(x.health), x.vehicle ? x.vehicle.id : 0, x.seat]);
+    const row = [x.id, cm(b.x), cm(b.y), cm(b.z), ang(x.yaw), ang(x.pitch || 0), b.stance, flags, x.current, Math.ceil(x.health), x.vehicle ? x.vehicle.id : 0, x.seat];
+    // (Bleeding: how hard, in tenths of health a second, for his own screen.)
+    if (x.bleed > 0) row.push(Math.max(1, Math.round(x.bleed * 10)));
+    s.push(row);
   }
   const v = [];
   for (const x of game.vehicles) {
@@ -155,7 +159,7 @@ export function readSnapshot(m) {
   return {
     tick: m.t,
     time: m.tm / 1000,
-    soldiers: m.s.map(([id, x, y, z, yaw, pitch, stance, f, weapon, health, vehicle, seat]) => ({ id, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 10000, pitch: pitch / 10000, stance, alive: !!(f & ALIVE), aiming: !!(f & AIMING), sprinting: !!(f & SPRINTING), bleeding: !!(f & BLEEDING), weapon, health, vehicle, seat })),
+    soldiers: m.s.map(([id, x, y, z, yaw, pitch, stance, f, weapon, health, vehicle, seat, bleed]) => ({ id, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 10000, pitch: pitch / 10000, stance, alive: !!(f & ALIVE), aiming: !!(f & AIMING), sprinting: !!(f & SPRINTING), bleeding: !!(f & BLEEDING), bleed: f & BLEEDING ? (bleed || 10) / 10 : 0, weapon, health, vehicle, seat })),
     vehicles: m.v.map(([id, def, x, y, z, qx, qy, qz, qw, turret, gun, hp, alive]) => ({ id, def, x: x / 100, y: y / 100, z: z / 100, q: [qx / 10000, qy / 10000, qz / 10000, qw / 10000], turretYaw: turret / 10000, gunElev: gun / 10000, hp, alive: !!alive })),
     points: m.p.map(([id, owner, c, closed]) => ({ id, owner: owner < 0 ? null : owner, control: c / 100, closed: !!closed })),
     clock: { timeLeft: (m.m?.[0] ?? 0) / 10, suddenDeath: !!m.m?.[1] },

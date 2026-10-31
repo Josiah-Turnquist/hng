@@ -165,6 +165,9 @@ export class OnlineBattle {
     if (!st) return;
     const pc = this.game.player;
     me.health = st.health;
+    // His bleeding as the server has it: the HUD's "Bleeding", the blurred
+    // view, and the bandage key working here as on the server.
+    me.bleed = st.alive ? st.bleed : 0;
     // The first word from the server: where it put him.
     if (!this.placed && st.alive) {
       this.placed = true;

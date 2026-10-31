@@ -365,7 +365,12 @@ export class Hud {
     const w = s.weapon;
     this.healthFill.style.width = `${Math.max(0, s.health)}%`;
     this.healthFill.style.background = s.health > 50 ? '#c9c2a5' : s.health > 25 ? '#d29a4a' : '#c4513f';
-    this.bleedEl.style.display = s.bleed > 0 ? 'inline' : 'none';
+    const bleeding = s.alive && s.bleed > 0;
+    if (bleeding) {
+      const text = s.bandages > 0 ? `Bleeding (${g.input.key('bandage')} to bandage)` : 'Bleeding';
+      if (this.bleedEl.textContent !== text) this.bleedEl.textContent = text;
+    }
+    this.bleedEl.style.display = bleeding ? 'inline' : 'none';
     this.stamFill.style.width = `${b.stamina}%`;
     this.stamFill.style.opacity = b.staminaLock ? 0.35 : 1;
     const act = s.action === 'bandage' ? ' · bandaging' : s.action === 'firstaid' || s.action === 'kit' ? ' · first aid' : s.action === 'repair' ? ' · repairing' : '';
