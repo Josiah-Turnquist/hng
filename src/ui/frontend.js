@@ -342,7 +342,8 @@ export function showFrontEnd(app) {
           for (const x of p.members) {
             const row = el('div', `fr-row ${x.where || 'off'}`);
             row.innerHTML = '<i class="dot"></i><b></b><small></small><span class="fr-btns"></span>';
-            row.querySelector('b').textContent = `${x.name}${x.id === p.leader ? ' (leader)' : ''}${x.id === me ? ' (you)' : ''}`;
+            const tags = [x.id === p.leader ? 'leader' : null, x.id === me ? 'you' : null].filter(Boolean);
+            row.querySelector('b').textContent = tags.length ? `${x.name} (${tags.join(', ')})` : x.name;
             row.querySelector('small').textContent = [x.army ? FACTIONS[x.army]?.army : null, WHERE[x.where]].filter(Boolean).join(' · ');
             if (p.leader === me && x.id !== me) row.querySelector('.fr-btns').append(button('Remove', () => lobby.kick(x.id)));
             pb.appendChild(row);
