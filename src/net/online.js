@@ -476,10 +476,13 @@ export class OnlineBattle {
     const g = this.game;
     for (const e of list) {
       if (e[0] === 'f') {
-        // A round fired: drawn (the player's own already were, as he fired).
+        // A round fired: drawn. The player's own already were, as he fired,
+        // except a vehicle machine gun's (no weapon id): those fire only on the
+        // server, where the vehicle runs.
         const [, who, wid, x, y, z, vx, vy, vz, tracer, sound, aref] = e;
-        if (who === this.me.id) continue;
-        const s = this.puppets.get(who);
+        const mine = who === this.me.id;
+        if (mine && wid !== '') continue;
+        const s = mine ? this.me : this.puppets.get(who);
         const def = WEAPONS[wid];
         // (A tank's shell or a vehicle's machine gun: named by the server.)
         const ammo = ammoOf(aref) || AMMO[def?.ammo] || AMMO[s?.weapon?.def?.ammo];
@@ -488,12 +491,12 @@ export class OnlineBattle {
           py = y / 100,
           pz = z / 100;
         g.projectiles.fire({ x: px, y: py, z: pz, vx: vx / 10, vy: vy / 10, vz: vz / 10, ammo, owner: s || null, weapon: def || { name: wid }, tracer: !!tracer, visual: true });
-        if (s?.view) s.view.recoil = 1;
+        if (s?.view && !mine) s.view.recoil = 1;
         const sp = Math.hypot(vx, vy, vz) || 1;
         if (!ammo.thrown) {
           g.effects.muzzle(px, py, pz, vx / sp, vy / sp, vz / sp, 0.8);
           const report = sound || def?.sound;
-          if (report) g.audio?.gunshot?.(report, px, py, pz, { source: `s${who}` });
+          if (report) g.audio?.gunshot?.(report, px, py, pz, { source: `s${who}`, isLocal: mine });
         }
       } else if (e[0] === 'd') {
         const [, who, by, wid] = e;
