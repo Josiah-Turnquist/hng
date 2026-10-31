@@ -29,6 +29,7 @@ import { MAP, KIND_NAMES } from '../war/warMap.js';
 import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
 import { newWar, nextWar, tick, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
 import { loadWar, saveWar, commandPoints, generalRank, canPromote, promote, hireGeneral, mayLead, GENERAL_RANK, HIRE_PRICE } from '../war/warStore.js';
+import { GAME_NAME, GAME_TAGLINE } from '../core/brand.js';
 
 const TANKS = {
   US: [
@@ -119,7 +120,7 @@ export function showFrontEnd(app) {
     const root = el('div', 'fe');
     root.innerHTML = `
       <header class="fe-top">
-        <div class="fe-brand">HNG<span>Heroes &amp; Generals tribute</span></div>
+        <div class="fe-brand">${esc(GAME_NAME)}<span>${esc(GAME_TAGLINE)}</span></div>
         <nav class="fe-tabs">
           <button data-screen="heroes">Heroes</button>
           <button data-screen="generals">Generals</button>
@@ -1648,10 +1649,10 @@ export function showFrontEnd(app) {
     function about() {
       main.innerHTML = `<div class="fe-panel fe-about">
         <h2>About</h2>
-        <p>An unofficial fan tribute to <b>Heroes &amp; Generals</b>, the WWII game by Reto-Moto (2016 to 2023; its servers closed in May 2023): large battles of infantry, tanks and vehicles fought over a French village. It is not connected with Reto-Moto or the game's later owners and uses none of their art or sound.</p>
+        <p><b>${esc(GAME_NAME)}</b> is a WWII battle game for the browser: soldiers fight large battles of infantry, tanks and vehicles over a French village, and generals fight the war on a map.</p>
         <p>Everything is simulated: bullets fly with real drag and drop for their ammunition and slow down through walls; guns load, cycle and recoil like the originals and are aimed through their real sights; armor stops or fails against each shell by its real thickness and slope; tanks steer like their real transmissions; soldiers tire, bleed and bandage.</p>
-        <p>All models, textures and sounds are generated in code when the game loads. Your soldiers and their ranks are kept in this browser.</p>
-        <p>The war map, assault teams, upgrades and prices come from the original game's data as kept by the Heroes &amp; Generals community project (Raoul de Heer, MIT licence).</p>
+        <p>All models, textures and sounds are generated in code when the game loads. Signed in, your soldiers and their ranks are kept on the game server; otherwise in this browser.</p>
+        <p>Some of the war map, assault teams, upgrades and prices still come from the data kept by the Heroes &amp; Generals community project (Raoul de Heer, MIT licence); they are being replaced with the game's own.</p>
         <p>Play it on a computer with a keyboard and a mouse or touchpad. Settings &gt; Controls lists every key.</p></div>`;
     }
 

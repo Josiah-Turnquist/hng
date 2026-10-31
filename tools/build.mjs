@@ -19,8 +19,8 @@ const css = readFileSync(resolve(root, 'src/ui/styles.css'), 'utf8');
 // Keep "</script" out of inline code.
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
 const workerJs = `window.__HNG_SYNTH_WORKER_SRC = ${JSON.stringify(workerSrc).replace(/</g, '\\u003c')};`;
-const head = `<title>HNG</title>
-<meta name="description" content="A realistic WWII combined-arms shooter in the browser, an unofficial tribute to Heroes &amp; Generals.">
+const head = `<title>Rank &amp; File</title>
+<meta name="description" content="A WWII battle game in the browser: soldiers fight big battles of infantry, tanks and vehicles, and generals fight the war on a map.">
 <style>${css}</style>`;
 const body = `<div id="app"></div>
 <script>${workerJs}</script>

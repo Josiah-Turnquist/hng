@@ -4,6 +4,9 @@
 //
 //   const account = await signInScreen(root)    // { user, token } or null (offline)
 import { serverConfig, session, signIn, signUp } from '../net/auth.js';
+import { GAME_NAME, GAME_TAGLINE } from '../core/brand.js';
+
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -24,7 +27,7 @@ export async function signInScreen(root) {
   return new Promise((resolve) => {
     const box = el('div', 'si');
     box.innerHTML = `<div class="si-panel">
-        <div class="si-brand">HNG<span>Heroes &amp; Generals tribute</span></div>
+        <div class="si-brand">${esc(GAME_NAME)}<span>${esc(GAME_TAGLINE)}</span></div>
         <div class="si-tabs"><button data-tab="in" class="on">Sign in</button><button data-tab="up">Create account</button></div>
         <form class="si-form" novalidate>
           <label class="si-name" hidden>Your name in battle<input name="name" autocomplete="nickname" maxlength="24"></label>

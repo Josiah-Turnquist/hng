@@ -2,7 +2,7 @@
   "name": "hng",
   "version": "0.1.0",
   "private": true,
-  "description": "A realistic WWII combined-arms shooter that runs in the browser, inspired by Heroes & Generals.",
+  "description": "Rank & File: A WWII battle game in the browser: soldiers fight big battles of infantry, tanks and vehicles, and generals fight the war on a map.",
   "type": "module",
   "scripts": {
     "start": "node server/main.mjs",

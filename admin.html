@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HNG Admin</title>
+<title>Rank &amp; File Admin</title>
 <style>
   :root { --bg: #121310; --panel: #1b1c18; --line: rgba(255, 255, 255, 0.12); --ink: #e9e4d6; --dim: #b9b29f; --amber: #e2ac46; --bad: #d5644f; --good: #8fbf6a;
     --font: 'Barlow', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; --cond: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; color-scheme: dark; }
@@ -11,7 +11,7 @@
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); padding: 24px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); }
   main { max-width: 980px; margin: 0 auto; display: grid; gap: 18px; }
   header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  h1 { margin: 0; font: 700 30px var(--cond); letter-spacing: 0.3em; }
+  h1 { margin: 0; font: 700 30px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
   header span { font: 600 13px var(--cond); letter-spacing: 0.22em; text-transform: uppercase; color: var(--amber); }
   header a { margin-left: auto; color: var(--dim); }
   .bar { display: flex; gap: 10px; }
@@ -42,7 +42,7 @@
 </head>
 <body>
 <main>
-  <header><h1>HNG</h1><span>Admin</span><a href="/">Back to the game</a></header>
+  <header><h1>Rank &amp; File</h1><span>Admin</span><a href="/">Back to the game</a></header>
   <div id="gate" class="msg">Checking who you are...</div>
   <section id="tools" hidden>
     <form class="bar" id="find">
