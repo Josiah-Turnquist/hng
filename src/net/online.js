@@ -450,6 +450,12 @@ export class OnlineBattle {
       if (!mp) continue;
       mp.owner = p.owner;
       mp.c = p.control;
+      // Closed for coming back in (enemies on it) as the server has it, so the
+      // deploy screen offers the points the server will put him at.
+      if (mp.threat) {
+        mp.threat[0] = mp.threat[1] = -99;
+        if (p.closed && p.owner !== null) mp.threat[p.owner] = this.game.time;
+      }
     }
     mode.timeLeft = snap.clock.timeLeft;
     mode.suddenDeath = snap.clock.suddenDeath;

@@ -142,7 +142,9 @@ export function snapshot(game, tick, { events = [], ack = 0, sent = null, full =
     }
     v.push(row);
   }
-  const p = (game.mode?.points || []).map((x) => [x.id, x.owner ?? -1, Math.round(x.c * 100)]);
+  // (closed: its side can't come back in there, enemies being on it: assault.js _spawnPoints.)
+  const closed = (x) => (x.owner != null && x.threat && game.time - x.threat[x.owner] <= 10 ? 1 : 0);
+  const p = (game.mode?.points || []).map((x) => [x.id, x.owner ?? -1, Math.round(x.c * 100), closed(x)]);
   const mode = game.mode || {};
   const out = { k: 's', t: tick, tm: Math.round(game.time * 1000), s, v, p, m: [Math.round((mode.timeLeft ?? 0) * 10), mode.suddenDeath ? 1 : 0], e: events, a: ack };
   if (sent) out.vf = full ? 1 : 0;
@@ -155,7 +157,7 @@ export function readSnapshot(m) {
     time: m.tm / 1000,
     soldiers: m.s.map(([id, x, y, z, yaw, pitch, stance, f, weapon, health, vehicle, seat]) => ({ id, x: x / 100, y: y / 100, z: z / 100, yaw: yaw / 10000, pitch: pitch / 10000, stance, alive: !!(f & ALIVE), aiming: !!(f & AIMING), sprinting: !!(f & SPRINTING), bleeding: !!(f & BLEEDING), weapon, health, vehicle, seat })),
     vehicles: m.v.map(([id, def, x, y, z, qx, qy, qz, qw, turret, gun, hp, alive]) => ({ id, def, x: x / 100, y: y / 100, z: z / 100, q: [qx / 10000, qy / 10000, qz / 10000, qw / 10000], turretYaw: turret / 10000, gunElev: gun / 10000, hp, alive: !!alive })),
-    points: m.p.map(([id, owner, c]) => ({ id, owner: owner < 0 ? null : owner, control: c / 100 })),
+    points: m.p.map(([id, owner, c, closed]) => ({ id, owner: owner < 0 ? null : owner, control: c / 100, closed: !!closed })),
     clock: { timeLeft: (m.m?.[0] ?? 0) / 10, suddenDeath: !!m.m?.[1] },
     events: m.e,
     ack: m.a,

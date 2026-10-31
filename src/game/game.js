@@ -40,6 +40,24 @@ const HEAR_RANGE = 300;
 // from a muzzle out over its own hull, and may burst on a wall just in front).
 const OWN_GUN_CLEAR = 40;
 
+// The point the player chose to deploy at, among opts (the deploy screen's
+// list): kept by its name (d.id), so it stays chosen while the list changes
+// round it (points taken and lost, the order by the front, a server's
+// update). Only while it can't be had is another one shown in its place
+// (where it was in the list), and his choice comes back with it. step: -1 or 1
+// for the one before or after (the lean keys), which becomes his choice.
+// Returns its place in opts (d.index).
+export function pickSpawn(opts, d, step = 0) {
+  let i = d.id != null ? opts.findIndex((o) => o.id === d.id) : -1;
+  if (i < 0) i = Math.min(Math.max(0, d.index | 0), opts.length - 1);
+  if (step) {
+    i = (i + step + opts.length) % opts.length;
+    d.id = opts[i].id;
+  }
+  d.id ??= opts[i].id;
+  return i;
+}
+
 export class Game {
   constructor(app, opts) {
     this.app = app;
@@ -396,7 +414,8 @@ export class Game {
     if (ev.type === 'sound') this.audio?.play?.(ev.id, { x: s.body.x, y: s.body.y + 1.2, z: s.body.z }, { volume: 0.8 });
   }
 
-  // Dead player: choose where to go back in (jump deploys, the lean keys change the point).
+  // Dead player: choose where to go back in (jump deploys, the lean keys change
+  // the point, and the deploy screen's map and list: hud.js).
   _playerDeploy(dt) {
     const s = this.player.soldier;
     const d = this.deploy;
@@ -417,9 +436,7 @@ export class Game {
     }
     const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;
     if (opts && opts.length) {
-      if (input.hit('leanLeft')) d.index = (d.index + opts.length - 1) % opts.length;
-      if (input.hit('leanRight')) d.index = (d.index + 1) % opts.length;
-      d.index = Math.min(d.index, opts.length - 1);
+      d.index = pickSpawn(opts, d, input.hit('leanLeft') ? -1 : input.hit('leanRight') ? 1 : 0);
       const o = opts[d.index];
       const wait = Math.max(0, o.delay - d.t);
       this.hud.setDeploy(`Deploy at ${o.id}${o.name !== o.id ? ` ${o.name}` : ''} ${wait > 0 ? `in ${wait.toFixed(0)} s` : `: press ${input.key('jump')}`}   (${input.key('leanLeft')} / ${input.key('leanRight')}: ${opts.length} points)`);

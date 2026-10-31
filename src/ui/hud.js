@@ -193,7 +193,7 @@ export class Hud {
           const r = e.currentTarget.getBoundingClientRect();
           const id = this.dpMap.spawnAt(e.clientX - r.left, e.clientY - r.top);
           const i = this.deployState?.opts.findIndex((o) => o.id === id);
-          if (i >= 0) g.deploy.index = i;
+          if (i >= 0) this._choose(i);
         });
         this.el('.dp-go').addEventListener('click', () => {
           g.deploy.go = true;
@@ -209,23 +209,33 @@ export class Hud {
     const { opts, index, t } = state;
     const sel = opts[Math.min(index, opts.length - 1)];
     const wait = (o) => Math.max(0, o.delay - t);
-    // The list (redrawn when something shown changes).
+    // The list (redrawn when something shown changes). Its buttons are made
+    // again only when the points in it change, so a click isn't lost to a
+    // countdown redrawing the button under the mouse.
     const key = `${opts.map((o) => `${o.id}:${Math.ceil(wait(o))}`).join(',')}|${sel?.id}`;
     const changed = key !== this.dpKey;
     if (changed) {
       this.dpKey = key;
       const list = this.el('.dp-list');
-      list.innerHTML = '';
+      const ids = opts.map((o) => o.id).join(',');
+      if (ids !== this.dpIds) {
+        this.dpIds = ids;
+        list.innerHTML = '';
+        opts.forEach((o, i) => {
+          const b = document.createElement('button');
+          b.className = 'dp-opt';
+          b.innerHTML = '<b></b><span></span><em></em>';
+          b.querySelector('b').textContent = o.id;
+          b.querySelector('span').textContent = o.name !== o.id ? o.name : o.point?.kind === 'objective' ? 'Objective' : o.point?.kind === 'access' ? 'Access point' : 'Capture point';
+          b.addEventListener('click', () => this._choose(i));
+          list.appendChild(b);
+        });
+      }
       opts.forEach((o, i) => {
-        const b = document.createElement('button');
-        b.className = `dp-opt${o === sel ? ' on' : ''}`;
+        const b = list.children[i];
         const w = Math.ceil(wait(o));
-        b.innerHTML = '<b></b><span></span><em></em>';
-        b.querySelector('b').textContent = o.id;
-        b.querySelector('span').textContent = o.name !== o.id ? o.name : o.point?.kind === 'objective' ? 'Objective' : o.point?.kind === 'access' ? 'Access point' : 'Capture point';
+        b.classList.toggle('on', o === sel);
         b.querySelector('em').textContent = w > 0 ? `${w} s` : 'Ready';
-        b.addEventListener('click', () => (g.deploy.index = i));
-        list.appendChild(b);
       });
       const go = this.el('.dp-go');
       const w = sel ? Math.ceil(wait(sel)) : 1;
@@ -247,6 +257,15 @@ export class Hud {
         friends: alliesOf(g, s),
       });
     }
+  }
+
+  // The player picked a point on the deploy screen (its place in the list):
+  // his choice, kept by its name (game.js pickSpawn).
+  _choose(i) {
+    const o = this.deployState?.opts[i];
+    if (!o) return;
+    this.game.deploy.index = i;
+    this.game.deploy.id = o.id;
   }
 
   flash(text, seconds = 1.6) {
