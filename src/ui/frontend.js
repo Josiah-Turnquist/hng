@@ -1463,7 +1463,7 @@ export function showFrontEnd(app) {
           .map((t) => {
             const on = sel?.team === t.id ? ' on' : '';
             const full = t.at === null ? 0 : fullness(t);
-            return `<button class="wr-team${on}${t.at === null ? ' reserve' : ''}${t.battle ? ' fight' : ''}" data-act="team" data-id="${t.id}">${teamSign(t)}<span class="t"><b>${esc(TEAMS[t.type].name)}</b><small>${esc(whereText(t))}</small></span><span class="lv">${teamLevel(t)}</span>${t.at === null ? '' : `<span class="bar"><i style="width:${(full * 100).toFixed(0)}%"></i></span>`}</button>`;
+            return `<button class="wr-team${on}${t.at === null ? ' reserve' : ''}${t.battle ? ' fight' : ''}" data-act="team" data-id="${t.id}">${teamSign(t)}<span class="t"><b>${esc(TEAMS[t.type].name)}</b><small>${esc(whereText(t))}</small></span>${t.at === null ? '' : `<span class="str" title="Strength: how much of its men and machines it has">${(full * 100).toFixed(0)}%</span>`}<span class="lv" title="Team level">${teamLevel(t)}</span></button>`;
           })
           .join('');
         const gen = roster.soldiers.filter((x) => x.faction === army && x.general).sort((a, b) => b.xp - a.xp)[0];
