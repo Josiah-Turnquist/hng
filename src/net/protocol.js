@@ -132,7 +132,8 @@ export function snapshot(game, tick, { events = [], ack = 0, sent = null, full =
   for (const x of game.vehicles) {
     const p = x.body.position,
       q = x.body.quaternion;
-    const row = [x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw || 0), ang(x.gunElev || 0), Math.ceil(x.hp), x.alive ? 1 : 0];
+    // (A tank's turret and gun, or a sidecar's machine gun.)
+    const row = [x.id, x.def.id, cm(p.x), cm(p.y), cm(p.z), ang(q.x), ang(q.y), ang(q.z), ang(q.w), ang(x.turretYaw ?? x.mgYaw ?? 0), ang(x.gunElev ?? x.mgPitch ?? 0), Math.ceil(x.hp), x.alive ? 1 : 0];
     if (sent) {
       const key = row.join(',');
       if (!full && sent.get(x.id) === key) continue;

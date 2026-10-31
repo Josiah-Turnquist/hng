@@ -1669,6 +1669,96 @@ export class Bike extends Vehicle {
     return out.copy(p).sub(this.cg).applyQuaternion(this.body.quaternion).add(this.body.position);
   }
 
+  // ------------------------------------------------------------------ puppets
+  // Online the server rides the machine; the browser hears only where it is and
+  // how it is turned (net/online.js). What the rider and the model go by (the
+  // heading, lean and pitch, the speed, the bars, the wheels and pedals turning,
+  // a foot down at a stop, the stand, the sidecar gun) is worked out from that
+  // here, each step, in place of step(). (Without it a puppet's rider kept the
+  // heading it was made with and twisted round to reach bars pointing elsewhere,
+  // and nothing on the machine moved.)
+  followPose(dt) {
+    super.followPose(dt);
+    if (!(dt > 0)) return;
+    const b = this.body,
+      p = b.position;
+    _e.setFromQuaternion(b.quaternion, 'YXZ');
+    const yaw = _e.y;
+    this.pitch = _e.x;
+    this.lean = -_e.z;
+    const last = this._pup;
+    if (!last || Math.hypot(p.x - last.x, p.z - last.z) > 5) {
+      // Just made, or put somewhere new: no speed to go by yet.
+      this._pup = { x: p.x, y: p.y, z: p.z };
+      this.yaw = yaw;
+      this.vx = this.vz = this.vy = this.yawRate = this.u = this.speed = this.ay = this.accel = 0;
+    } else {
+      // Speeds from the change since the last step, smoothed (between two
+      // updates the place moves at a steady pace, then turns a corner).
+      const k = 1 - Math.exp(-10 * dt);
+      this.vx += ((p.x - last.x) / dt - this.vx) * k;
+      this.vy += ((p.y - last.y) / dt - this.vy) * k;
+      this.vz += ((p.z - last.z) / dt - this.vz) * k;
+      this.yawRate += (wrapAngle(yaw - this.yaw) / dt - this.yawRate) * k;
+      this.yaw = yaw;
+      last.x = p.x;
+      last.y = p.y;
+      last.z = p.z;
+      const u = -this.vx * Math.sin(yaw) - this.vz * Math.cos(yaw);
+      this.accel += ((u - this.u) / dt - this.accel) * (1 - Math.exp(-3 * dt));
+      this.u = this.speed = u;
+      this.ay = this.ayPath = -u * this.yawRate;
+    }
+    const u = this.u,
+      au = Math.abs(u);
+    const d = this.def;
+    // The model origin on the ground under the contact line (see _sync).
+    const cyw = Math.cos(yaw),
+      syw = Math.sin(yaw);
+    _v.copy(this.cg).applyQuaternion(b.quaternion);
+    const ox = p.x - _v.x,
+      oz = p.z - _v.z;
+    this.oy = p.y - _v.y;
+    this.px = ox + (this.cx * cyw + this.cz * syw);
+    this.pz = oz + (-this.cx * syw + this.cz * cyw);
+    // The wheels roll with the ground.
+    for (const w of this.wheels) w.spin = u / w.radius;
+    // The bars: the steer that gives the turn it makes (a single track rolls
+    // where its front wheel points), held as it is when too slow to tell.
+    const rider = this.occupants[0];
+    const lockG = d.steering.lock * Math.cos(this.rake);
+    if (au > 0.5) {
+      const want = clamp(Math.atan((-this.yawRate / u) * d.wheelbase), -lockG, lockG);
+      this.steerG = approach(this.steerG, want, (d.rider?.barRate ?? 2.5) * dt);
+    } else if (!rider) this.steerG = approach(this.steerG, 0, dt);
+    // Lying on its side, or stood on its stand when nobody rides it.
+    this.fallen = !this.rig && Math.abs(this.lean) > Math.max(1, d.lean.crash ?? 0) ? Math.sign(this.lean) : 0;
+    if (rider) this.onStand = false;
+    else if (au < 0.1 && !this.fallen) this.onStand = !this.rig;
+    // A foot down at walking pace, up again once moving (as _rider does).
+    if (!rider || this.fallen) this.footDown = 0;
+    else if (au < 0.8) this.footDown ||= this._footSide();
+    else if (au > 1.6) this.footDown = 0;
+    if (this.pedal) {
+      // Pedaling while he keeps his speed up; coasting while he slows (the
+      // server doesn't say: he slows only by braking or coasting).
+      const pd = d.pedal;
+      if (!rider || this.fallen || au < 0.8 || u < 0) this._pedaling = false;
+      else if (this.accel > -0.2) this._pedaling = true;
+      else if (this.accel < -0.8) this._pedaling = false;
+      const dev = (2 * Math.PI * d.wheelRadius * pd.chainring) / pd.sprocket; // m per crank turn
+      this.cadence = this._pedaling ? (u / dev) * 60 : 0;
+      this.effort = !rider ? 'idle' : this._pedaling ? 'cruise' : 'coast';
+      this.power = this._pedaling ? pd.cruise : 0;
+      this.rpm = this.cadence;
+    }
+    // The sidecar's gun, as the server has it turned (net/protocol.js).
+    if (this.mg) {
+      this.mgYaw = this.turretYaw || 0;
+      this.mgPitch = this.gunElev || 0;
+    }
+  }
+
   // ------------------------------------------------------------------ seats and riders
   // Eye or hip of a seat in the world (for cameras and hit boxes).
   seatPos(i, out = new THREE.Vector3(), kind = 'eye') {

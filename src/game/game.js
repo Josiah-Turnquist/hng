@@ -262,7 +262,8 @@ export class Game {
         p.update(dt);
         p.input.endFrame();
       });
-    for (const v of this.vehicles) if (!v.puppet) this._guard(v, () => v.step(dt));
+    // (Online, vehicles are puppets the server moves: only what shows follows.)
+    for (const v of this.vehicles) this._guard(v, () => (v.puppet ? v.followPose?.(dt) : v.step(dt)));
     for (const s of this.soldiers) {
       if (s.isPlayer || s.remote || s.puppet) continue;
       this._guard(s, () => {

@@ -644,6 +644,21 @@ export class Vehicle {
 
   _drive() {}
 
+  // Online (net/online.js): a puppet is placed where the server's snapshots say
+  // and is not stepped. Each step this keeps up what follows from that place:
+  // its collision boxes (they stayed where it was first put, an invisible wall
+  // there), and on bicycles and motorcycles how it and its rider move (Bike).
+  followPose() {
+    if (!this.proxies) return;
+    const p = this.body.position,
+      q = this.body.quaternion;
+    const was = this._proxyAt || (this._proxyAt = { p: new THREE.Vector3(NaN), q: new THREE.Quaternion() });
+    if (was.p.equals(p) && was.q.equals(q)) return;
+    was.p.copy(p);
+    was.q.copy(q);
+    this.updateProxies();
+  }
+
   // Position the 3D model from the physics state.
   syncModel() {
     const root = this.model.root;
