@@ -702,19 +702,26 @@ export class PlayerController {
       this.breathDebt = Math.max(0, this.breathDebt - dt);
     }
     const breathAmp = this.holdingBreath ? 0.12 : this.breathDebt > 0 ? 2.2 : 1;
-    const rate = 0.22 + breath * 0.45; // breaths per second
+    // Out of breath he breathes deeper and faster, up to a steady heavy
+    // panting (about 33 breaths a minute) that he keeps while winded. Each
+    // breath follows on from the last (the rhythm speeds up and slows down
+    // smoothly instead of jumping).
+    const hard = Math.min(1, breath / 0.8);
+    const rate = 0.22 + hard * 0.33; // breaths per second
+    this.breathPh = ((this.breathPh || 0) + rate * dt) % 2;
+    this.pulsePh = ((this.pulsePh || 0) + (1.2 + hard * 1.0) * dt) % 1;
     this.swayT += dt;
     const t = this.swayT;
-    const breathP = Math.sin(t * rate * 2 * Math.PI) * (0.0016 + breath * 0.004) * breathAmp;
-    const breathY = Math.sin(t * rate * Math.PI + 1.3) * (0.0006 + breath * 0.0018) * breathAmp;
+    const breathP = Math.sin(this.breathPh * 2 * Math.PI) * (0.0016 + hard * 0.0034) * breathAmp;
+    const breathY = Math.sin(this.breathPh * Math.PI + 1.3) * (0.0006 + hard * 0.0014) * breathAmp;
     // Slow drift (random walk pulled back to center) and a fine tremor.
     const dr = this.drift;
-    const driftAmp = 0.0012 * (1 + fatigue + breath);
+    const driftAmp = 0.0012 * (1 + fatigue + 0.4 * hard);
     dr.vy += (gaussRandom() * driftAmp * 6 - dr.yaw * 2.5 - dr.vy * 1.6) * dt;
     dr.vp += (gaussRandom() * driftAmp * 6 - dr.pitch * 2.5 - dr.vp * 1.6) * dt;
     dr.yaw += dr.vy * dt;
     dr.pitch += dr.vp * dt;
-    const pulse = Math.sin(t * (1.2 + breath * 1.3) * 2 * Math.PI) * 0.00018 * (1 + breath * 2);
+    const pulse = Math.sin(this.pulsePh * 2 * Math.PI) * 0.00018 * (1 + hard * 1.5);
     // Walking while aiming shakes a lot.
     const walk = Math.min(1, b.moving / 2) * 0.006;
     const walkP = Math.sin(t * 7.5) * walk,

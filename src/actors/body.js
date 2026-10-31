@@ -62,6 +62,7 @@ export class Body {
     this.staminaLock = false; // exhausted: can't sprint until recovered
     this.staminaDelay = 0;
     this.breath = 0; // 0 calm .. 1 out of breath (drives weapon sway and breathing sound)
+    this.winded = 0; // seconds he stays as out of breath as he is before he starts to recover
     this.load = 20; // kg carried (kit + weapon + ammo)
     this.moving = 0; // current horizontal speed
     this.sprinting = false;
@@ -262,9 +263,13 @@ export class Body {
       const stanceBonus = this.stance === STANCE.PRONE ? 1.3 : this.stance === STANCE.CROUCH ? 1.15 : 1;
       this.stamina += rest * stanceBonus * STAMINA_REGEN * (this.staminaRegenMul || 1) * dt;
     }
-    // Breathing settles more slowly than stamina recovers.
+    // Breathing settles more slowly than stamina recovers, and only after he
+    // has stood panting a few seconds (longer the harder he ran).
     const exertion = 1 - this.stamina / 100;
-    this.breath = damp(this.breath, exertion, this.sprinting ? 0.6 : 0.35, dt);
+    if (this.sprinting) this.winded = 1.5 + 3 * this.breath;
+    else this.winded = Math.max(0, this.winded - dt);
+    const target = this.winded > 0 ? Math.max(exertion, this.breath) : exertion;
+    this.breath = damp(this.breath, target, this.sprinting ? 0.6 : 0.35, dt);
     this.stamina = clamp(this.stamina, 0, 100);
     if (this.stamina <= 1) this.staminaLock = true;
     if (this.staminaLock && this.stamina > 30) this.staminaLock = false;
