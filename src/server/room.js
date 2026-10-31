@@ -21,6 +21,7 @@ import { Recorder, TICK, CHECK_EVERY } from './record.js';
 import { snapshot, roster, scores, watchEvents, PROTOCOL_VERSION } from '../net/protocol.js';
 import { BotBrain } from '../ai/bot.js';
 import { battleReward } from '../game/rewards.js';
+import { cleanChat, chatAllowed } from './social.js';
 import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 import { TANK_IDS } from '../game/ribbons.js';
 
@@ -89,6 +90,16 @@ export class BattleRoom {
     if (!p || p.budget <= 0) return;
     p.budget--;
     p.queue.push(message);
+  }
+
+  // A line of chat: to his side, or to everyone (all).
+  chat(client, text, all = false) {
+    const p = this.players.get(client);
+    const t = cleanChat(text);
+    if (!p || !t || !chatAllowed((p.chat ??= []))) return;
+    const team = p.pc.soldier.team;
+    const msg = JSON.stringify({ k: 't', from: p.pc.soldier.id, name: p.name, team, all: !!all, text: t });
+    for (const [c, q] of this.players) if (all || q.pc.soldier.team === team) this.send(c, msg);
   }
 
   // He is leaving (the pause menu): his rewards now, so he can see them.

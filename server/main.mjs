@@ -41,6 +41,7 @@ import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
 import { adminHandler } from '../src/server/admin.js';
+import { Social } from '../src/server/social.js';
 import { fitLoadout } from '../src/ui/roster.js';
 import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
@@ -55,6 +56,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   const rooms = new Set();
   const progress = progressHandler({ store, check, log });
   const admin = adminHandler({ store, check, admins, log });
+  const social = new Social({ store, log });
   const opening = new Map(); // 'GE-US' -> the battle being made
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
@@ -92,8 +94,10 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   // not yet decided and with a place on his side (the fullest first), else a
   // new one where his army attacks (the Germans against the Americans, the
   // others against the Germans).
-  async function roomFor(faction) {
+  // (party: the battle his party is in, if it has a place for him: that one.)
+  async function roomFor(faction, party = null) {
     const army = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
+    if (party && !party.closed && !party.g?.mode?.over && party.sideOf(army) !== null && party.playersOn(party.sideOf(army)) < party.opts.perSide) return party;
     const open = [...rooms].filter((r) => !r.closed && !r.g?.mode?.over && r.sideOf(army) !== null && r.playersOn(r.sideOf(army)) < r.opts.perSide);
     if (open.length) return open.sort((a, b) => b.players.size - a.players.size)[0];
     for (const [key, p] of opening) if (key.split('-').includes(army)) return p;
@@ -155,9 +159,51 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     }
   });
 
-  const wss = new WebSocketServer({ server: http, path: '/play', maxPayload: 16 * 1024, perMessageDeflate: { threshold: 256 } });
+  // Two kinds of connection on one address: /play (a battle) and /lobby (the
+  // menus: friends, party, chat).
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: { threshold: 256 } });
+  const lobby = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 });
+  http.on('upgrade', (req, socket, head) => {
+    const path = new URL(req.url, 'http://x').pathname;
+    const to = path === '/play' ? wss : path === '/lobby' ? lobby : null;
+    if (!to) return socket.destroy();
+    to.handleUpgrade(req, socket, head, (ws) => to.emit('connection', ws, req));
+  });
+  lobby.on('connection', (ws) => {
+    let who = null;
+    let budget = 20; // messages in ten seconds
+    const refill = setInterval(() => (budget = 20), 10000);
+    const helloTimer = setTimeout(() => !who && ws.close(4000, 'No sign-in'), 10000);
+    ws.on('message', async (data) => {
+      if (--budget < 0) return;
+      let m;
+      try {
+        m = JSON.parse(String(data));
+      } catch {
+        return;
+      }
+      if (who) return social.message(who.id, m);
+      if (m?.k !== 'h' || who === false) return;
+      who = false;
+      clearTimeout(helloTimer);
+      try {
+        const w = await check(m);
+        if (ws.readyState !== 1) return;
+        who = w;
+        social.join(ws, who);
+      } catch {
+        ws.close(4000, 'No sign-in');
+      }
+    });
+    ws.on('close', () => {
+      clearTimeout(helloTimer);
+      clearInterval(refill);
+      if (who) social.leave(ws, who.id);
+    });
+  });
   wss.on('connection', (ws) => {
     let joined = null;
+    let player = null;
     // (retry: a passing trouble; the browser tries again on its own.)
     const refuse = (why, retry = false) => {
       if (ws.readyState === 1) ws.send(JSON.stringify(retry ? { k: 'x', why, retry } : { k: 'x', why }));
@@ -174,6 +220,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       }
       if (joined) {
         if (m.k === 'i') joined.input(ws, m);
+        else if (m.k === 't') joined.chat(ws, m.text, !!m.all);
         else if (m.k === 'l') joined.leaving(ws);
         return;
       }
@@ -207,10 +254,12 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
           if (!kept) return refuse('Your soldier could not be loaded. Try again in a moment.', true);
           me = { ...me, faction: kept.faction, cls: kept.cls, loadout: fitLoadout(kept, s.loadout), tank: kept.cls === 'tanker' ? tankFor(kept, s.tank) : null };
         }
-        const r = await roomFor(me.faction);
+        const r = await roomFor(me.faction, social.partyRoom(who.id));
         if (ws.readyState !== 1) return;
         r.join(ws, { userId: who.id, name: who.name, ...me });
         joined = r;
+        player = who;
+        social.inBattle(who.id, who.name, r);
         log(`${who.name} joined`);
       } catch (e) {
         refuse(e.message || 'Could not join');
@@ -219,13 +268,14 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     ws.on('close', () => {
       clearTimeout(helloTimer);
       if (joined) joined.leave(ws);
+      if (player) social.inBattle(player.id, player.name, null);
     });
   });
 
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())), close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); store?.close().catch(() => {}); http.close(done); }) });
+      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())), close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); lobby.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }
