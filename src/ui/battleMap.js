@@ -1456,11 +1456,13 @@ export class BattleMap {
     this._drawLinks(ctx, points, byId, side);
     const labels = [];
     for (const m of state.marks || []) this._drawMark(ctx, m, labels);
-    for (const f of state.friends || []) if (f.alive !== false) this._dot(ctx, f.body || f, OWN);
-    for (const f of state.enemies || []) if (f.alive !== false) this._dot(ctx, f.body || f, ENEMY);
     const spawns = this._spawnMarkers(state.spawns, points);
     for (const m of spawns) this._drawSpawnRing(ctx, m, m.id === state.selected, m.id === state.hover, state.time);
     for (const p of points) this._drawPoint(ctx, p, side, team);
+    // Soldiers over the points and spawn rings: most of a side stands on or by
+    // its points, and under the markers they didn't show at all.
+    for (const f of state.friends || []) if (f.alive !== false) this._dot(ctx, f.body || f, OWN);
+    for (const f of state.enemies || []) if (f.alive !== false) this._dot(ctx, f.body || f, ENEMY);
     for (const m of spawns) this._drawSpawnTag(ctx, m, m.id === state.selected, m.id === state.hover);
     this._drawNames(ctx, points);
     if (state.player) this._drawPlayer(ctx, state.player.body || state.player, state.player.yaw ?? state.player.body?.yaw ?? 0);
@@ -1662,13 +1664,14 @@ export class BattleMap {
   _dot(ctx, p, col) {
     if (p.x === undefined) return;
     const [x, y] = this.toMap(p.x, p.z);
-    const r = Math.max(2.4, this.R * 0.3);
+    const r = Math.max(2.8, this.R * 0.34);
     ctx.beginPath();
     ctx.arc(x, y, r, 0, TAU);
     ctx.fillStyle = css(col);
     ctx.fill();
+    // (A pale edge: it shows on the dark ground and on a point of its own color.)
     ctx.lineWidth = 1.2;
-    ctx.strokeStyle = css(INK, 0.85);
+    ctx.strokeStyle = css(PAPER, 0.9);
     ctx.stroke();
   }
 
