@@ -559,8 +559,6 @@ canvas.game {
 .pause h2 { margin: 0 0 8px; font-family: var(--cond); font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; font-size: 24px; text-align: center; }
 .pause .box { border-top: 3px solid var(--amber); }
 .pause-home button { padding: 11px 14px; font-family: var(--cond); font-size: 17px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
-.pause-home .resume { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; }
-.pause-home .resume:hover { background: linear-gradient(180deg, #f5c867, #d6a03b); }
 .pause-home .leave:hover { border-color: rgba(208, 87, 74, 0.7); background: rgba(208, 87, 74, 0.12); }
 .pause .box.wide { width: min(680px, calc(100% - 32px)); }
 .pause-home { display: flex; flex-direction: column; gap: 8px; }
@@ -828,18 +826,48 @@ canvas.game {
 .si .ready-btn {
   width: 100%;
   padding: 15px 12px;
+  font-size: 24px;
+}
+/* Every gold button looks like the big Ready for battle button: the amber
+   gradient lit along its top edge, dark text in bold condensed capitals, each
+   at its own size (the big ones with the deeper shadow). */
+.fe .ready-btn,
+.si .ready-btn,
+.cta,
+.pause-home .resume,
+.fe .modal-actions .ok,
+.fe .cust-close,
+.fe .cd-act.buy:not(:disabled),
+.fe .hx-icons button.on,
+.fe .fe-account.sure,
+.fe .fr button.gold,
+.fe .fr-add button,
+.fe .fr-say button,
+.fe .wr-bbtn button[data-act='join'] {
   border: 0;
   background: linear-gradient(180deg, #ecbb56, #c99332);
   color: #1b160c;
   font-family: var(--cond);
-  font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
-.fe .ready-btn:hover,
-.si .ready-btn:hover:not(:disabled) { background: linear-gradient(180deg, #f5c867, #d6a03b); }
+.fe .ready-btn,
+.si .ready-btn,
+.cta { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.fe .ready-btn:hover:not(:disabled),
+.si .ready-btn:hover:not(:disabled),
+.cta:hover,
+.pause-home .resume:hover,
+.fe .modal-actions .ok:hover,
+.fe .cust-close:hover,
+.fe .fe-account.sure:hover,
+.fe .fr button.gold:hover,
+.fe .fr-add button:hover,
+.fe .fr-say button:hover,
+.fe .cd-act.buy:hover:not(:disabled),
+.fe .wr-bbtn button[data-act='join']:hover:not(:disabled) { background: linear-gradient(180deg, #f5c867, #d6a03b); }
 .fe button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 /* Recruit */
@@ -854,7 +882,6 @@ canvas.game {
 .name-row button { width: 40px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14); font-size: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal-actions button { padding: 9px 16px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); font-family: var(--cond); font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; }
-.modal-actions .ok { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; }
 
 /* Generals */
 .fe-generals { display: grid; grid-template-columns: 270px minmax(0, 1fr) 320px; gap: 14px; overflow: hidden; }
@@ -964,8 +991,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .br-unlocks { margin: 0 0 16px; padding: 10px 12px; text-align: left; border: 1px solid var(--panel-edge); background: rgba(201, 162, 74, 0.08); }
 .br-unlocks span { display: block; font-family: var(--cond); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); }
 .br-unlocks b { font-weight: 500; }
-.cta { font: inherit; cursor: pointer; width: 100%; padding: 14px 12px; border: 0; background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; font-family: var(--cond); font-size: 22px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
-.cta:hover { background: linear-gradient(180deg, #f5c867, #d6a03b); }
+.cta { font: inherit; font-family: var(--cond); font-weight: 700; cursor: pointer; width: 100%; padding: 14px 12px; font-size: 22px; }
 @media (max-width: 520px) { .br-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Credits, buying, and the customization screen (weapon upgrades). */
@@ -985,7 +1011,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .cust-title { flex: 1; min-width: 200px; }
 .cust-title h2 { margin: 0; font-family: var(--cond); font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase; text-wrap: balance; }
 .cust-title small { font-size: 12px; color: var(--ink-dim); }
-.cust-close { padding: 8px 22px; font-family: var(--cond); font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; background: var(--amber); color: #15130d; border: 0; }
+.cust-close { padding: 8px 22px; font-size: 16px; }
 .br-credits b { color: var(--amber); }
 .cust-gun { width: 240px; max-width: 45%; }
 .cust-gun img { width: 100%; display: block; }
@@ -1032,7 +1058,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .cd-bar.good .cb-v { color: #9fc27a; }
 .cd-bar.bad .cb-v { color: #d58c70; }
 .cd-act { margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; font-family: var(--cond); font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); }
-.cd-act.buy { background: var(--amber); color: #15130d; border-color: var(--amber); }
 .cd-act:disabled { opacity: 0.6; cursor: default; background: rgba(255, 255, 255, 0.05); color: var(--ink-dim); border-color: rgba(255, 255, 255, 0.1); }
 @media (max-width: 1000px) {
   .cust-body { grid-template-columns: minmax(0, 1fr); }
@@ -1073,7 +1098,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hx-icons { display: flex; gap: 4px; }
 .hx-icons button { width: 34px; height: 32px; display: grid; place-items: center; font-size: 18px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--ink-dim); }
 .hx-icons button:hover { color: var(--ink); border-color: var(--amber); }
-.hx-icons button.on { background: var(--amber); color: #15130d; border-color: var(--amber); cursor: default; }
+.hx-icons button.on { cursor: default; }
 .hx-pts { margin-left: auto; display: flex; align-items: center; gap: 3px; }
 .hx-pts i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); }
 .hx-pts i.on { background: var(--amber); }
@@ -1297,7 +1322,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .wr-battle b { font-family: var(--cond); font-size: 19px; font-weight: 600; }
 .wr-battle small { font-size: 12px; color: var(--ink-dim); }
 .wr-bbtn { display: flex; gap: 6px; margin-top: 6px; }
-.wr-bbtn button[data-act='join'] { flex: 1; background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; }
+.wr-bbtn button[data-act='join'] { flex: 1; }
 .wr-newslist { display: flex; flex-direction: column; gap: 4px; }
 .wr-news { display: grid; grid-template-columns: 62px 1fr; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--ink-dim); }
 .wr-news time { font-family: var(--cond); font-size: 12px; color: rgba(185, 178, 159, 0.7); font-variant-numeric: tabular-nums; }
@@ -1362,7 +1387,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .si-note { margin: 14px 0 0; font-size: 12px; line-height: 1.5; text-align: center; color: var(--ink-dim); }
 .fe-account { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; font-family: var(--cond); font-size: 14px; letter-spacing: 0.06em; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14); cursor: pointer; }
 .fe-account:hover { border-color: var(--amber); }
-.fe-account.sure { color: #1b160c; background: var(--amber); border-color: var(--amber); }
 
 /* Friends and party (frontend.js friendsWindow). */
 .fe-friends { position: relative; padding: 6px 10px; font-family: var(--cond); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14); cursor: pointer; }
@@ -1378,7 +1402,6 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .fr input:focus { border-color: var(--amber); }
 .fr button { padding: 6px 12px; font: 600 13px var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); cursor: pointer; }
 .fr button:hover { border-color: var(--amber); }
-.fr button.gold, .fr-add button, .fr-say button { color: #1b160c; background: var(--amber); border-color: var(--amber); }
 .fr-note { min-height: 1.2em; font-size: 13px; color: var(--ink-dim); }
 .fr-list, .fr-party { display: grid; gap: 4px; }
 .fr-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 6px 8px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); }

@@ -20,8 +20,9 @@
   .bar input { flex: 1; min-width: 0; }
   button { cursor: pointer; font: 600 14px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
   button:hover { border-color: var(--amber); color: var(--amber); }
-  button.main { background: var(--amber); color: #1b160c; border-color: var(--amber); }
-  button.main:hover { color: #1b160c; filter: brightness(1.08); }
+  /* (The gold button as in the game: its gradient, dark bold capitals.) */
+  button.main { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; letter-spacing: 0.18em; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+  button.main:hover { color: #1b160c; background: linear-gradient(180deg, #f5c867, #d6a03b); }
   .note { color: var(--dim); }
   .msg { padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); }
   .msg.bad { border-color: var(--bad); color: #f1b5a8; }
