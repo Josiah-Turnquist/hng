@@ -42,6 +42,7 @@ import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
 import { adminHandler } from '../src/server/admin.js';
 import { Social } from '../src/server/social.js';
+import { Telemetry } from '../src/server/telemetry.js';
 import { fitLoadout } from '../src/ui/roster.js';
 import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
@@ -57,6 +58,8 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   const progress = progressHandler({ store, check, log });
   const admin = adminHandler({ store, check, admins, log });
   const social = new Social({ store, log });
+  const telemetry = new Telemetry({ store, log });
+  const telemetryRoute = telemetry.handler({ check });
   const opening = new Map(); // 'GE-US' -> the battle being made
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
@@ -77,7 +80,8 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
 
   // An online battle's rewards, kept with his soldiers and sent to him
   // ({ k: 'g' }: the result, or null when nothing was earned or kept).
-  async function rewardPlayer({ client, userId, name, soldierId, reward }) {
+  async function rewardPlayer({ client, userId, name, soldierId, reward, info }) {
+    if (info) telemetry.record(userId, 'battle', info);
     let out = null;
     if (store && reward && soldierId) {
       try {
@@ -108,6 +112,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onReward = rewardPlayer;
+      r.onError = (e) => telemetry.record(null, 'error', { where: 'server', message: String(e?.message || e), place: String(e?.stack || '').split('\n')[1]?.trim() || '' });
       r.onClose = () => {
         rooms.delete(r);
         log(`battle closed: ${r.opts.attackers} against ${r.opts.defenders}`);
@@ -133,6 +138,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
       }
       if (url.pathname.startsWith('/api/admin/')) return await admin(req, res, url.pathname.slice('/api/admin/'.length));
+      if (url.pathname === '/api/telemetry') return await telemetryRoute(req, res);
       if (url.pathname === '/admin') return res.writeHead(302, { Location: '/admin.html' }).end();
       if (url.pathname === '/api/progress') {
         const t0 = performance.now();
@@ -171,6 +177,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   });
   lobby.on('connection', (ws) => {
     let who = null;
+    let since = 0;
     let budget = 20; // messages in ten seconds
     const refill = setInterval(() => (budget = 20), 10000);
     const helloTimer = setTimeout(() => !who && ws.close(4000, 'No sign-in'), 10000);
@@ -190,6 +197,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         const w = await check(m);
         if (ws.readyState !== 1) return;
         who = w;
+        since = Date.now();
         social.join(ws, who);
       } catch {
         ws.close(4000, 'No sign-in');
@@ -198,7 +206,11 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     ws.on('close', () => {
       clearTimeout(helloTimer);
       clearInterval(refill);
-      if (who) social.leave(ws, who.id);
+      if (who) {
+        social.leave(ws, who.id);
+        // (A session: from the menus opening to the page closing.)
+        telemetry.record(who.id, 'session', { minutes: (Date.now() - since) / 60000 });
+      }
     });
   });
   wss.on('connection', (ws) => {
@@ -275,7 +287,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   return new Promise((ok) =>
     http.listen(port, () => {
       log(`Game server on port ${http.address().port}`);
-      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())), close: () => new Promise((done) => { for (const r of rooms) r.close(); wss.close(); lobby.close(); store?.close().catch(() => {}); http.close(done); }) });
+      ok({ http, wss, port: http.address().port, room: () => [...rooms].at(-1) ?? null, rooms: () => [...rooms], finish: () => Promise.all([...rooms].map((r) => r.finish())).then(() => telemetry.stop()), close: () => new Promise((done) => { for (const r of rooms) r.close(); telemetry.stop(); wss.close(); lobby.close(); store?.close().catch(() => {}); http.close(done); }) });
     }),
   );
 }

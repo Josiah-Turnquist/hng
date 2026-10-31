@@ -1811,6 +1811,7 @@ export function showFrontEnd(app) {
         <p><b>${esc(GAME_NAME)}</b> is a WWII battle game for the browser: soldiers fight large battles of infantry, tanks and vehicles over a French village, and generals fight the war on a map.</p>
         <p>Everything is simulated: bullets fly with real drag and drop for their ammunition and slow down through walls; guns load, cycle and recoil like the originals and are aimed through their real sights; armor stops or fails against each shell by its real thickness and slope; tanks steer like their real transmissions; soldiers tire, bleed and bandage.</p>
         <p>All models, textures and sounds are generated in code when the game loads. Signed in, your soldiers and their ranks are kept on the game server; otherwise in this browser.</p>
+        <p>To find problems and see how the game runs, the game server keeps a record of signed-in players' battles (side, class, time, kills and deaths), how smoothly the game runs and any errors, for 90 days. It keeps no addresses, emails or chat.</p>
         <p>Some of the war map, assault teams, upgrades and prices still come from the data kept by the Heroes &amp; Generals community project (Raoul de Heer, MIT licence); they are being replaced with the game's own.</p>
         <p>Play it on a computer with a keyboard and a mouse or touchpad. Settings &gt; Controls lists every key.</p></div>`;
     }

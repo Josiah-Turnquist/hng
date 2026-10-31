@@ -32,6 +32,19 @@ const FRIENDS = `CREATE TABLE IF NOT EXISTS friends (
   PRIMARY KEY (a, b)
 )`;
 
+// What happens in the game, for the admin page's stats (server/telemetry.js):
+// sessions, battles, frame rates and errors. No addresses, emails or chat;
+// kept KEEP_DAYS days.
+const EVENTS = `CREATE TABLE IF NOT EXISTS events (
+  id bigserial PRIMARY KEY,
+  at timestamptz NOT NULL DEFAULT now(),
+  user_id text,
+  kind text NOT NULL,
+  data jsonb
+);
+CREATE INDEX IF NOT EXISTS events_kind_at ON events (kind, at)`;
+export const KEEP_DAYS = 90;
+
 export function openProgressStore(url, { log = console.log } = {}) {
   // (A few connections are plenty: a save is one small statement.)
   const pool = new pg.Pool({ connectionString: url, max: 4, idleTimeoutMillis: 30000, connectionTimeoutMillis: 20000 });
@@ -40,7 +53,7 @@ export function openProgressStore(url, { log = console.log } = {}) {
   // asleep when the server starts); tried again after a failure.
   let ready = null;
   const table = () =>
-    (ready ??= pool.query(TABLE).then(() => pool.query(FRIENDS)).catch((e) => {
+    (ready ??= pool.query(TABLE).then(() => pool.query(FRIENDS)).then(() => pool.query(EVENTS)).catch((e) => {
       ready = null;
       throw e;
     }));
@@ -99,6 +112,37 @@ export function openProgressStore(url, { log = console.log } = {}) {
     async unfriend(x, y) {
       await table();
       await pool.query('DELETE FROM friends WHERE (a = $1 AND b = $2) OR (a = $2 AND b = $1)', [x, y]);
+    },
+    // --- Events (telemetry) ---
+    // rows: [{ user_id, kind, data, at }]; old ones go at the same time.
+    async logEvents(rows) {
+      if (!rows.length) return;
+      await table();
+      await pool.query(`INSERT INTO events (at, user_id, kind, data) SELECT at, user_id, kind, data FROM jsonb_to_recordset($1::jsonb) AS x(at timestamptz, user_id text, kind text, data jsonb)`, [JSON.stringify(rows)]);
+      if (Math.random() < 0.02) await pool.query(`DELETE FROM events WHERE at < now() - interval '${KEEP_DAYS} days'`);
+    },
+    // The last few days at a glance (admin page).
+    async stats(days = 7) {
+      await table();
+      const d = Math.max(1, Math.min(KEEP_DAYS, Math.floor(days) || 7));
+      const since = `now() - interval '${d} days'`;
+      const q = async (sql) => (await pool.query(sql)).rows;
+      const [daily, battles, sides, perf, errors, sessions] = await Promise.all([
+        q(`SELECT to_char(date_trunc('day', at), 'YYYY-MM-DD') AS day, count(DISTINCT user_id) AS players, count(*) FILTER (WHERE kind = 'battle') AS battles
+           FROM events WHERE at > ${since} GROUP BY 1 ORDER BY 1`),
+        q(`SELECT count(*) AS battles, count(DISTINCT user_id) AS players, round(avg((data->>'seconds')::numeric) / 60, 1) AS minutes,
+             round(avg((data->>'kills')::numeric), 1) AS kills, round(avg((data->>'deaths')::numeric), 1) AS deaths,
+             count(*) FILTER (WHERE (data->>'won')::boolean) AS won, count(*) FILTER (WHERE (data->>'early')::boolean) AS left_early
+           FROM events WHERE kind = 'battle' AND at > ${since}`),
+        q(`SELECT data->>'army' AS army, data->>'cls' AS cls, count(*) AS battles FROM events WHERE kind = 'battle' AND at > ${since} GROUP BY 1, 2 ORDER BY 3 DESC`),
+        q(`SELECT data->>'quality' AS quality, count(*) AS samples, round(avg((data->>'fps')::numeric)) AS fps, round(avg((data->>'low')::numeric)) AS low
+           FROM events WHERE kind = 'perf' AND at > ${since} GROUP BY 1 ORDER BY 2 DESC`),
+        q(`SELECT data->>'message' AS message, max(data->>'where') AS place, count(*) AS times, count(DISTINCT user_id) AS players, max(at) AS last
+           FROM events WHERE kind = 'error' AND at > ${since} GROUP BY 1 ORDER BY 3 DESC LIMIT 15`),
+        q(`SELECT count(*) AS sessions, count(DISTINCT user_id) AS players, round(avg((data->>'minutes')::numeric), 1) AS minutes
+           FROM events WHERE kind = 'session' AND at > ${since}`),
+      ]);
+      return { days: d, daily, battles: battles[0], sides, perf, errors, sessions: sessions[0] };
     },
     close: () => pool.end(),
   };

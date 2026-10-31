@@ -14,6 +14,7 @@ import { connect, OnlineBattle } from '../net/online.js';
 import { syncProgress, saveNow, takeServerCopy } from '../net/progress.js';
 import { Lobby } from '../net/lobby.js';
 import { BattleChat } from './chat.js';
+import { startTelemetry, report, watchBattle } from '../net/telemetry.js';
 import { battleReward } from '../game/rewards.js';
 import { loadWar, saveWar } from '../war/warStore.js';
 import { battleOf, resolveBattle } from '../war/war.js';
@@ -114,6 +115,8 @@ export class App {
       }
       // Signed in on the game server: friends, party and party chat.
       if (this.account && cfg?.online && !this.lobby) this.lobby = new Lobby(this.account);
+      // (And how the game runs for him, for the admin page's stats: net/telemetry.js.)
+      if (this.account && cfg?.online) startTelemetry(this.account);
       // An online battle: joined before the map loads (the server says the
       // side, the armies and the battle's dice). If it can't be joined, back
       // to the menu with the reason.
@@ -152,6 +155,7 @@ export class App {
 
     this.opts = opts;
     this.loading = this._makeLoading(opts);
+    const loadStart = performance.now();
     const game = new Game(this, opts);
     this.game = game;
     const soundReady = this.audio
@@ -174,6 +178,8 @@ export class App {
     this._resize();
     window.addEventListener('resize', () => this._resize());
     this.loading.el.classList.add('done');
+    report('load', { ms: performance.now() - loadStart, online: !!this.conn, quality: this.settings.quality?.preset || '' });
+    watchBattle(game, { quality: this.settings.quality?.preset || '', online: !!this.conn });
     setTimeout(() => this.loading.el.remove(), 800);
     // Releasing the mouse (Esc) pauses, once the player has started playing.
     this.pause = new PauseMenu(this, game);

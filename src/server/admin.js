@@ -31,6 +31,11 @@ export function adminHandler({ store, check, admins = [], log = console.log }) {
     if (!allowed.has(String(who.email || '').toLowerCase()) && !allowed.has(String(who.id).toLowerCase())) return send(403, { error: 'Not an admin' });
     if (!store) return send(503, { error: 'Saving on the server is not set up' });
     try {
+      if (req.method === 'GET' && path === 'stats') {
+        if (!store.stats) return send(503, { error: 'No stats here' });
+        const days = Number(new URL(req.url, 'http://x').searchParams.get('days')) || 7;
+        return send(200, await store.stats(days));
+      }
       if (req.method === 'GET' && path === 'players') {
         const q = new URL(req.url, 'http://x').searchParams.get('q') || '';
         const rows = await store.list(q.slice(0, 40));

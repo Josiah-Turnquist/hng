@@ -150,7 +150,10 @@ export class BattleRoom {
         for (let n = 0; n < STEPS_AT_ONCE && this.tick < due && !this.closed; n++) this._step();
       } catch (e) {
         // One bad step mustn't stop the server: noted (once a second at most), and on.
-        if (!(this._lastError > performance.now() - 1000)) console.error('battle step failed', e);
+        if (!(this._lastError > performance.now() - 1000)) {
+          console.error('battle step failed', e);
+          this.onError?.(e);
+        }
         this._lastError = performance.now();
       }
       this._timer = setTimeout(loop, this.tick < due ? 0 : 4);
@@ -215,7 +218,9 @@ export class BattleRoom {
     p.rewarded = true;
     const s = p.pc.soldier;
     const reward = battleReward(s, { won, defending: s.team === DEF, seconds: this.g.time - (s.joinedAt ?? 0) });
-    const saving = this.onReward?.({ client, userId: p.userId, name: p.name, soldierId: p.soldierId, reward });
+    // (info: for the stats, telemetry.js.)
+    const info = { army: s.faction, cls: s.cls, gun: s.weapons?.[0]?.def?.id || '', seconds: Math.round(this.g.time - (s.joinedAt ?? 0)), kills: s.kills || 0, deaths: s.deaths || 0, captures: s.captures || 0, won, early: !this.g.mode?.over };
+    const saving = this.onReward?.({ client, userId: p.userId, name: p.name, soldierId: p.soldierId, reward, info });
     if (saving?.then) this.saving.push(saving.catch(() => {}));
   }
 

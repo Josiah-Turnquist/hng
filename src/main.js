@@ -1,9 +1,11 @@
 // Entry point: sets up the page, shows the loading screen and starts the game.
 import { App } from './ui/app.js';
+import { reportError } from './net/telemetry.js';
 
 const root = document.getElementById('app');
 
 function showError(err) {
+  reportError(err);
   const box = document.createElement('div');
   box.className = 'error-box';
   box.textContent = `Something went wrong:\n${err?.stack || err}`;
