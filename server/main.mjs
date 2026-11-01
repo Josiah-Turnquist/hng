@@ -304,6 +304,25 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       try {
         const who = await check(m);
         const s = m.soldier || {};
+        // His connection dropped a moment ago and his soldier is waiting for
+        // him: straight back in (from the battle reconnecting by itself, or
+        // from the menus with the same soldier). Another soldier: that place
+        // is given up and he joins as usual.
+        const held = [...rooms].find((r) => r.holding?.(who.id));
+        if (held && (s.rejoin || s.id === held.held.get(who.id)?.p.soldierId)) {
+          if (ws.readyState !== 1) return;
+          held.rejoin(ws, who.id);
+          joined = held;
+          player = who;
+          social.inBattle(who.id, who.name, held);
+          telemetry.record(who.id, 'rejoin', {});
+          return log(`${who.name} came back`);
+        }
+        if (held) held.release(who.id);
+        if (s.rejoin) {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'Your place in that battle is gone.', gone: true }));
+          return ws.close(4000, 'refused');
+        }
         let me = { faction: s.faction, cls: s.cls, loadout: s.loadout, tank: s.tank, soldierId: typeof s.id === 'string' ? s.id.slice(0, 64) : null };
         // Soldiers kept here: his army, class and what he may carry are the
         // kept soldier's, not what the browser says.
@@ -336,7 +355,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     });
     ws.on('close', () => {
       clearTimeout(helloTimer);
-      if (joined) joined.leave(ws);
+      if (joined) joined.gone(ws);
       if (player) social.inBattle(player.id, player.name, null);
     });
   });

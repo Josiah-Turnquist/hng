@@ -11,6 +11,9 @@
 //   await room.ready
 //   room.join(client, { userId, name, faction, cls, loadout, soldierId, tank })   -> soldier id or throws
 //   room.input(client, message); room.leaving(client); room.leave(client)
+//   room.gone(client)       // his connection closed: held for him if he didn't mean to go
+//   room.holding(userId) -> held soldier's id or null; room.rejoin(client, userId) -> soldier id or null
+//   room.release(userId)    // a held place given up at once (a bot takes over)
 //   room.onClose = () => ...
 //   room.onOver = (team) => ...   // decided: the winning side (ATT or DEF)
 //   (war: { number, id, point } for a battle of the shared war, told to each player)
@@ -34,12 +37,14 @@ const OVER_CLOSE = 15; // seconds after the battle is decided
 const INPUTS_PER_SECOND = 90; // more than this from one player and the rest wait
 const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anything else
 const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
+export const HOLD = 60; // seconds a dropped player's soldier waits for him to come back
 
 export class BattleRoom {
   constructor({ perSide = 12, minutes = 30, attackers = 'US', defenders = 'GE', seed = (Math.random() * 2 ** 31) | 0, send, record = false, vehicles = true, difficulty = 'easy', war = null } = {}) {
     this.opts = { perSide, minutes, attackers, defenders, seed, vehicles, difficulty, war };
     this.send = send;
     this.players = new Map(); // client -> { pc, userId, name, queue, budget }
+    this.held = new Map(); // user id -> { client, p, since } (connection dropped; waiting for him)
     this.tick = 0;
     this.closed = false;
     this.onClose = null;
@@ -61,6 +66,7 @@ export class BattleRoom {
   playersOn(team) {
     let n = 0;
     for (const [, p] of this.players) if (p.pc.soldier.team === team) n++;
+    for (const [, h] of this.held) if (h.p.pc.soldier.team === team) n++;
     return n;
   }
 
@@ -75,15 +81,62 @@ export class BattleRoom {
     if (team === null) throw new Error(`This battle is ${this.opts.attackers} against ${this.opts.defenders}`);
     if (!DEFAULT_LOADOUT[faction]?.[cls]) throw new Error('Unknown class');
     for (const [, p] of this.players) if (p.userId === userId) throw new Error('You are already in this battle');
+    if (this.held.has(userId)) this.release(userId);
     const who = { faction, cls, team, name, loadout: checkLoadout(faction, cls, loadout), tank: cls === 'tanker' ? (TANK_IDS[faction].includes(tank) ? tank : TANK_IDS[faction][0]) : null };
     const pc = addPlayer(g, who);
     this.rec?.join(this.tick, who, pc.soldier.id);
     this.players.set(client, { pc, userId, name, soldierId, queue: [], budget: INPUTS_PER_SECOND });
+    this._welcome(client, pc, false);
+    return pc.soldier.id;
+  }
+
+  _welcome(client, pc, back) {
+    const g = this.g;
     this.fullNext = true; // (he sees every vehicle at once)
-    this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: team, attackers: this.opts.attackers, defenders: this.opts.defenders, war: this.opts.war, tick: this.tick, rate: 1 / TICK }));
+    this.send(client, JSON.stringify({ k: 'w', v: PROTOCOL_VERSION, you: pc.soldier.id, map: g.mapDef.id ?? 'town', seed: this.opts.seed, side: pc.soldier.team, attackers: this.opts.attackers, defenders: this.opts.defenders, war: this.opts.war, back, tick: this.tick, rate: 1 / TICK }));
     this._broadcast(JSON.stringify(roster(g)));
     if (this._scores) this.send(client, this._scores);
-    return pc.soldier.id;
+  }
+
+  // --- A dropped connection ---
+
+  // His connection closed. If he chose to leave (or the battle is decided)
+  // he is gone; else his soldier waits for him, standing where he was, for
+  // HOLD seconds (his rewards wait too).
+  gone(client) {
+    const p = this.players.get(client);
+    if (!p) return;
+    if (p.rewarded || this.g.mode?.over || this.closed) return this.leave(client);
+    this.players.delete(client);
+    p.pc.input.drop();
+    p.queue.length = 0;
+    this.held.set(p.userId, { client, p, since: this.g.time });
+  }
+
+  // The soldier held for this player (his id), or null.
+  holding(userId) {
+    return this.held.get(userId)?.p.pc.soldier.id ?? null;
+  }
+
+  // Back in: the same soldier, wherever he is now. Null if nothing was held.
+  rejoin(client, userId) {
+    const h = this.held.get(userId);
+    if (!h) return null;
+    this.held.delete(userId);
+    h.p.queue = [];
+    h.p.budget = INPUTS_PER_SECOND;
+    this.players.set(client, h.p);
+    this._welcome(client, h.p.pc, true);
+    return h.p.pc.soldier.id;
+  }
+
+  // Not coming back (or gone too long): as if he had left.
+  release(userId) {
+    const h = this.held.get(userId);
+    if (!h) return;
+    this.held.delete(userId);
+    this.players.set(h.client, h.p);
+    this.leave(h.client);
   }
 
   // An input message: kept for the next step (up to a budget a second, so
@@ -203,11 +256,13 @@ export class BattleRoom {
     }
     // Closing: empty for a minute, or a while after the battle is decided.
     if (this.tick % 60 === 0) {
-      this.emptyFor = this.players.size ? 0 : this.emptyFor + 1;
+      this.emptyFor = this.players.size || this.held.size ? 0 : this.emptyFor + 1;
+      for (const [id, h] of this.held) if (g.time - h.since >= HOLD) this.release(id);
       if (g.mode.over) {
         if (this.overFor === 0) {
           this._broadcast(JSON.stringify({ k: 'o', team: g.mode.over.team, why: g.mode.over.why ?? '' }));
           for (const [client, p] of this.players) this._reward(client, p, p.pc.soldier.team === g.mode.over.team);
+          for (const [, h] of this.held) this._reward(h.client, h.p, h.p.pc.soldier.team === g.mode.over.team);
           this.onOver?.(g.mode.over.team);
         }
         this.overFor++;
@@ -232,6 +287,7 @@ export class BattleRoom {
   // far is kept, as if he had left, and the room closes.
   async finish() {
     if (this.g) for (const [client, p] of this.players) this._reward(client, p, false);
+    if (this.g) for (const [, h] of this.held) this._reward(h.client, h.p, false);
     await Promise.all(this.saving);
     this.close();
   }

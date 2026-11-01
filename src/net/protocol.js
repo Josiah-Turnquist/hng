@@ -90,6 +90,15 @@ export class RemoteInput {
     return true;
   }
 
+  // His connection dropped: every key let go (so his soldier stands still
+  // rather than running on), and his next connection counts its inputs anew.
+  drop() {
+    for (const a of this.down) this.released.add(a);
+    this.down.clear();
+    this.wheel = 0;
+    this.seq = 0;
+  }
+
   is(action) {
     return this.down.has(action);
   }

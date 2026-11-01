@@ -487,6 +487,16 @@ Hits judged as the shooter saw them, vehicle prediction, sending only nearby
 information, trimming data, reconnecting after a dropped connection, a battle
 list and Quick battle, the fairness checks.
 
+*Reconnecting is done (November 2026).* When a player's connection drops
+without his choosing to leave, the server holds his soldier for a minute
+(`HOLD` in `src/server/room.js`): it lets go of his keys and stands where it
+is, keeps his place on his side, and his rewards wait. His page tries to get
+back in by itself (every second or so, for most of that minute) and is put
+back into the same soldier; a page reloaded in that time goes back in too
+when he clicks Ready with the same soldier. Not back in time, a bot takes the
+soldier over and his battle so far is rewarded, as when leaving. Tests:
+`tests/rejoin.test.js`.
+
 **Phase 5: run it for real (ongoing).**
 More than one game server, battles started on demand, health checks, logs and
 charts, database backups, report, kick and ban tools, a privacy policy and terms.

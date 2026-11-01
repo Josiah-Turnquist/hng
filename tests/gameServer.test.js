@@ -85,7 +85,8 @@ test('players join a battle over the network, move, see each other, and leave to
     const old = await e.next((m) => m.k === 'x');
     assert.equal(old.reload, true, 'an older copy of the game is told to reload itself');
     assert.match(old.why, /refresh/);
-    // Baker leaves: a bot takes his soldier.
+    // Baker leaves (on purpose: a dropped connection is held for him, tests/rejoin.test.js): a bot takes his soldier.
+    b.ws.send(JSON.stringify({ k: 'l' }));
     b.ws.close();
     const r2 = await a.next((m) => m.k === 'r' && m.s.some((x) => x[0] === wb.you && /\(bot\)/.test(x[2])));
     assert.ok(r2);

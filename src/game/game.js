@@ -431,7 +431,7 @@ export class Game {
     const input = this.input;
     // Online, once chosen: the server puts him in (net/online.js sends the choice).
     if (this.online?.deployAt) {
-      this.hud.setDeploy(this.online.closed ? 'Lost the connection to the game server' : `Deploying at ${this.online.deployAt}...`);
+      this.hud.setDeploy(this.online.rejoining ? 'Connection lost. Getting you back in...' : this.online.closed ? 'Lost the connection to the game server' : `Deploying at ${this.online.deployAt}...`);
       return;
     }
     const opts = this.mode.deployOptions ? this.mode.deployOptions() : null;

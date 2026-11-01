@@ -11,7 +11,10 @@
 //   the kill feed. Only the server decides hits, health, deaths and points.
 //
 //   const conn = await connect(soldier)          // { ws, welcome, roster, inbox } or throws
-//   game.online = new OnlineBattle(game, conn)    // once the world is built
+//   game.online = new OnlineBattle(game, conn, { reconnect })    // once the world is built
+//     (reconnect: () => connect({ ...soldier, rejoin: true }): used when the
+//     connection drops, to get him back into his soldier, which the server
+//     holds for a minute)
 //   (Game calls online.update(dt) each step and online.sendInput() each frame)
 import { ACTION_LIST, encodeInput, readSnapshot, ammoOf, applyVehicleState, PROTOCOL_VERSION } from './protocol.js';
 import { token } from './auth.js';
@@ -46,7 +49,7 @@ export async function connect(soldier, { dev = null, url = null } = {}) {
       if (m.k === 'x') {
         clearTimeout(timer);
         // (retry: worth trying again in a moment, without troubling the player.)
-        return fail(Object.assign(new Error(m.why), { retry: !!m.retry, reload: !!m.reload }));
+        return fail(Object.assign(new Error(m.why), { retry: !!m.retry, reload: !!m.reload, gone: !!m.gone }));
       }
       if (m.k === 'w') welcome = m;
       else inbox.push(m);
@@ -60,9 +63,10 @@ export async function connect(soldier, { dev = null, url = null } = {}) {
 }
 
 export class OnlineBattle {
-  constructor(game, { ws, welcome, inbox = [] }) {
+  constructor(game, { ws, welcome, inbox = [] }, { reconnect = null } = {}) {
     this.game = game;
     this.ws = ws;
+    this.reconnect = reconnect;
     this.welcome = welcome;
     this.me = game.player.soldier;
     this.me.id = welcome.you;
@@ -81,12 +85,54 @@ export class OnlineBattle {
     // Every round fired here is drawn only: the server fires the real one.
     const fire = game.projectiles.fire.bind(game.projectiles);
     game.projectiles.fire = (o) => fire({ ...o, visual: true });
+    this._attach(ws, inbox);
+  }
+
+  _attach(ws, inbox = []) {
+    this.ws = ws;
     for (const m of inbox) this._message(m);
     ws.onmessage = (e) => this._message(JSON.parse(e.data));
     ws.onclose = () => {
+      if (this.ws !== ws) return;
       this.closed = true;
-      if (!this.over) game.hud?.flash('Lost the connection to the game server', 30);
+      // Dropped (not leaving, not over): back in by itself if it can be.
+      if (!this.over && !this.leftOnPurpose && this.reconnect) this._rejoin();
+      else if (!this.over && !this.leftOnPurpose) this.game.hud?.flash('Lost the connection to the game server', 30);
     };
+  }
+
+  // The connection dropped: try again every few seconds for most of the
+  // minute the server holds his soldier. The battle goes on meanwhile; his
+  // soldier there stands still until he is back.
+  async _rejoin() {
+    if (this.rejoining) return;
+    this.rejoining = true;
+    const hud = this.game.hud;
+    const started = performance.now();
+    hud?.flash('Connection lost. Getting you back in...', 60);
+    for (let attempt = 0; !this.over && !this.leftOnPurpose; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt ? Math.min(4000, 1000 * attempt) : 300));
+      if (this.over || this.leftOnPurpose) break;
+      try {
+        const conn = await this.reconnect();
+        if (conn.welcome.you !== this.me.id) {
+          conn.ws.close();
+          throw Object.assign(new Error('Your place in that battle is gone.'), { gone: true });
+        }
+        this.closed = false;
+        this.history.length = 0;
+        this._attach(conn.ws, conn.inbox);
+        hud?.flash('Back in the battle', 3);
+        this.onRejoin?.();
+        break;
+      } catch (e) {
+        if (e.reload || e.gone || performance.now() - started > 55000) {
+          hud?.flash(e.gone ? 'You were away too long: a bot took your place. Press Esc to leave.' : 'Could not get back into the battle. Press Esc to leave.', 60);
+          break;
+        }
+      }
+    }
+    this.rejoining = false;
   }
 
   _message(m) {
@@ -537,6 +583,7 @@ export class OnlineBattle {
   // Leaving before the end: the server works out his rewards first (up to a few
   // seconds' wait for them).
   leave() {
+    this.leftOnPurpose = true;
     if (this.reward || this.closed) return Promise.resolve(this.reward);
     try {
       this.ws.send(JSON.stringify({ k: 'l' }));
@@ -551,6 +598,7 @@ export class OnlineBattle {
 
   close() {
     this.closed = true;
+    this.leftOnPurpose = true;
     try {
       this.ws.close();
     } catch {

@@ -168,7 +168,9 @@ export class App {
       : Promise.resolve();
     await game.load((p, msg) => this._progress(p, msg));
     if (this.conn) {
-      game.online = new OnlineBattle(game, this.conn);
+      // (Dropped: back into the same soldier, which the server holds for a minute.)
+      const me = { id: opts.soldier?.id, faction: opts.faction, cls: opts.cls, loadout: opts.loadout, tank: opts.tank, rejoin: true };
+      game.online = new OnlineBattle(game, this.conn, { reconnect: () => connect(me, { dev: this.account?.dev || null }) });
       game.online.onReward = (m) => this._serverReward(m);
       // Chat: his side or everyone, and his party's from the menus.
       const chat = new BattleChat(game, { send: (text, all) => game.online.say(text, all) });
