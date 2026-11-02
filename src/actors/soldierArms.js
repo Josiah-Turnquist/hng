@@ -3,7 +3,7 @@
 // the left hand reaching the support grip by two-bone IK, recoil, and the
 // reload / bolt / throw / bandage / use gestures.
 import * as THREE from 'three';
-import { B, solveTwoBone, setModelRotation, quatFromAxes, poseHand, gripCenter } from './soldierRig.js';
+import { B, BIND, solveTwoBone, setModelRotation, quatFromAxes, poseHand, gripCenter } from './soldierRig.js';
 import { clamp, lerp, smooth, yawOf, AX, AY, AZ, qAxis, TAU } from './soldierAnim.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -14,6 +14,18 @@ const _q = new THREE.Quaternion(),
   _v2 = new THREE.Vector3(),
   _v3 = new THREE.Vector3(),
   _m = new THREE.Matrix4();
+// (Scratch for turning the shooting hand round the grip.)
+const _rc = new THREE.Vector3(),
+  _ra = new THREE.Vector3(),
+  _rq = new THREE.Quaternion(),
+  _rf = new THREE.Vector3(),
+  _rd = new THREE.Vector3(),
+  _rh = new THREE.Vector3(),
+  _gu = new THREE.Vector3(),
+  _gp = new THREE.Vector3(),
+  _gq = new THREE.Vector3(),
+  _ge = new THREE.Vector3(),
+  _gf = new THREE.Vector3();
 
 // A transform (rotation + position), model space.
 export class Xf {
@@ -192,6 +204,11 @@ export class SoldierArms {
     this.Gt = new Xf(); // desired gun
     this.handR = new Xf();
     this.handL = new Xf();
+    this.gripRoll = null; // the shooting hand's turn round the grip (rad), eased
+    this.gripSwing = 0; // and the elbow's swing round the shoulder-wrist line
+    this._gripBest = { roll: 0, swing: 0 };
+    this._qHG = new THREE.Quaternion();
+    this._tHG = new THREE.Vector3();
     this.tmp = new Xf();
     this.tmp2 = new Xf();
     this.holder = 'right';
@@ -226,6 +243,8 @@ export class SoldierArms {
   }
 
   setWeapon(info) {
+    this.gripRoll = null;
+    this.gripSwing = 0;
     if (this.info?.boltPart && this.info.boltRest) {
       this.info.boltPart.position.copy(this.info.boltRest.p);
       this.info.boltPart.quaternion.copy(this.info.boltRest.q);
@@ -298,8 +317,10 @@ export class SoldierArms {
         L.q.setFromAxisAngle(AY, cy + 0.05).multiply(qAxis(_q, AX, -0.2));
         L.placeAnchor(an.shoulder, this.cp(0.13, 0.25, 0.02, _v));
       } else {
-        L.q.setFromAxisAngle(AY, cy + 0.32 - 0.08 * anim.info.crouch).multiply(qAxis(_q, AX, -0.44 + 0.24 * anim.info.crouch));
-        L.placeAnchor(an.shoulder, this.cp(0.13, 0.08, -0.04, _v));
+        // (Ready, not aiming: across the body, the butt at the hip and the hands
+        // low, so both wrists stay near straight.)
+        L.q.setFromAxisAngle(AY, cy + 0.2 - 0.08 * anim.info.crouch).multiply(qAxis(_q, AX, -0.45 + 0.24 * anim.info.crouch));
+        L.placeAnchor(an.shoulder, this.cp(0.1, -0.08, -0.04, _v));
       }
       // Port arms while sprinting (rifles, SMGs).
       if (sprint > 0.01 && (info.kind === 'rifle' || info.kind === 'smg')) {
@@ -412,6 +433,75 @@ export class SoldierArms {
       pose.q[sh].setFromAxisAngle(AZ, side * e).multiply(qAxis(_q, AY, side * p));
     }
     mp.fk(pose);
+  }
+
+  // Turn a hand holding the grip (H, from gun G) round the grip's axis by a (rad).
+  _rollAboutGrip(H, G, a) {
+    const info = this.info;
+    const c = G.point(info.anchors.gripR, _rc);
+    const axis = _ra.copy(info.gripAxis).applyQuaternion(G.q).normalize();
+    const r = _rq.setFromAxisAngle(axis, a);
+    H.p.sub(c).applyQuaternion(r).add(c);
+    H.q.premultiply(r);
+    return H;
+  }
+
+  // The turn of the shooting hand round the grip (roll, rad) and the swing of
+  // the elbow round the shoulder-wrist line (swing, rad) at which the hand
+  // lines up best with the forearm: least wrist bend, preferring small turns.
+  // out: { roll, swing }.
+  _bestGrip(G, H0, pole, out) {
+    const mp = this.anim.mp;
+    const sh = mp.p[B.upperArmR];
+    const l1 = BIND[B.forearmR].distanceTo(BIND[B.upperArmR]),
+      l2 = BIND[B.handR].distanceTo(BIND[B.forearmR]);
+    const fore = _rf.copy(BIND[B.handR]).sub(BIND[B.forearmR]).normalize();
+    const aim = this.anim.sm.aim;
+    // Where the elbow is for each swing (the wrist taken where the unturned hand puts it).
+    const u = _gu.copy(H0.p).sub(sh);
+    let dist = u.length();
+    u.divideScalar(dist || 1);
+    dist = Math.min((l1 + l2) * 0.999, Math.max(Math.abs(l1 - l2) + 0.01, dist));
+    const along = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist);
+    const h = Math.sqrt(Math.max(0, l1 * l1 - along * along));
+    const perp0 = _gp.copy(pole).addScaledVector(u, -u.dot(pole)).normalize();
+    const H = this._rollH || (this._rollH = new Xf());
+    const cost = (roll, swing) => {
+      const perp = _gq.copy(perp0).applyAxisAngle(u, swing);
+      const elbow = _ge.copy(sh).addScaledVector(u, along).addScaledVector(perp, h);
+      H.p.copy(H0.p);
+      H.q.copy(H0.q);
+      this._rollAboutGrip(H, G, roll);
+      const d = _rh.copy(H.p).sub(elbow).normalize();
+      const f = _gf.copy(fore).applyQuaternion(H.q);
+      // (An elbow held up costs: at rest it hangs well below the shoulder;
+      // aiming, it comes up to about the shoulder's height, no higher.)
+      const high = Math.max(0, elbow.y - (sh.y - lerp(0.24, 0.05, aim)));
+      return Math.acos(clamp(d.dot(f), -1, 1)) + 0.1 * Math.abs(roll) + 0.35 * Math.abs(swing) + 6 * high;
+    };
+    let br = 0,
+      bs = 0,
+      bc = Infinity;
+    // (The hand shifts only a little round a rifle's wrist, about 30 degrees
+    // either way; beyond that the fingers come off the trigger and over the top.)
+    for (let i = -4; i <= 4; i++)
+      for (let j = -4; j <= 4; j++) {
+        const c = cost(i * 0.125, j * 0.25);
+        if (c < bc) [bc, br, bs] = [c, i * 0.125, j * 0.25];
+      }
+    // A finer look round the best.
+    const r0 = br,
+      s0 = bs;
+    for (let i = -2; i <= 2; i++)
+      for (let j = -2; j <= 2; j++) {
+        const r = clamp(r0 + i * 0.0625, -0.5, 0.5),
+          sw = clamp(s0 + j * 0.0625, -1, 1);
+        const c = cost(r, sw);
+        if (c < bc) [bc, br, bs] = [c, r, sw];
+      }
+    out.roll = br;
+    out.swing = bs;
+    return out;
   }
 
   _solveArm(pose, side, target, pole) {
@@ -709,9 +799,36 @@ export class SoldierArms {
       this._solveArm(pose, 1, tR, poleR);
     } else {
       this._solveArm(pose, 1, tR, poleR);
+      // The shooting hand turns round the grip to where its wrist is least
+      // bent for where the elbow is (a hand on a rifle's wrist does: fixed at
+      // one turn, the wrist broke backward or sideways with the elbow out).
+      let qHG = info.qHG,
+        tHG = info.tHG;
+      if (tR === this.handR) {
+        // (And the elbow swings in or out round the shoulder-wrist line, as a
+        // person's does to keep the wrist easy. Searched every third frame,
+        // eased between.)
+        if (this.gripRoll == null || (this._gripN = (this._gripN || 0) + 1) % 3 === 0) this._bestGrip(G, tR, poleR, this._gripBest);
+        const k = this.gripRoll == null ? 1 : Math.min(1, dt * 10);
+        this.gripRoll = (this.gripRoll ?? 0) + (this._gripBest.roll - (this.gripRoll ?? 0)) * k;
+        this.gripSwing = (this.gripSwing ?? 0) + (this._gripBest.swing - (this.gripSwing ?? 0)) * k;
+        if (Math.abs(this.gripRoll) > 1e-4 || Math.abs(this.gripSwing) > 1e-4) {
+          this._rollAboutGrip(tR, G, this.gripRoll);
+          const sh = mp.p[B.upperArmR];
+          const u = _ra.copy(tR.p).sub(sh).normalize();
+          const pole = _rd.copy(poleR).applyAxisAngle(u, this.gripSwing);
+          this._solveArm(pose, 1, tR, pole);
+          // (The gun's place in the rolled hand, so it follows the hand as before.)
+          qHG = this._qHG.copy(tR.q).invert().multiply(G.q);
+          tHG = this._tHG.copy(G.p).sub(tR.p).applyQuaternion(_q.copy(tR.q).invert());
+        }
+      }
+      // (The gun drawn in the hand sits by the same, turned, grip: soldierModel.)
+      this.qHGcur = qHG;
+      this.tHGcur = tHG;
       if (holder === 'right') {
         this._handXf(1, this.tmp);
-        gunFromHand(this.tmp, info.qHG, info.tHG, this.G);
+        gunFromHand(this.tmp, qHG, tHG, this.G);
       } else this.G.copy(G);
       if (tL) this._solveArm(pose, -1, tL, poleL);
       else if (info.qLG) this._solveArm(pose, -1, this._reachGrip(this.G, this.handL), poleL);

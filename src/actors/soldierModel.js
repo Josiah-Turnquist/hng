@@ -350,8 +350,8 @@ export class SoldierModel {
       gun.visible = this.arms.gunVisible;
       if (holder === 'right' && info) {
         parent = this.bones[B.handR];
-        g.q.copy(info.qHG);
-        g.p.copy(info.tHG);
+        g.q.copy(this.arms.qHGcur || info.qHG);
+        g.p.copy(this.arms.tHGcur || info.tHG);
       } else if (holder === 'left' && info?.qLG) {
         parent = this.bones[B.handL];
         g.q.copy(info.qLG);
