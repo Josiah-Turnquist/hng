@@ -158,8 +158,15 @@ function headAngles(lod) {
     return a;
   }
   if (lod === 1) {
+    // (Closer across the face, so its painted brows, eyes and mouth show at 20 to 50 m.)
     const a = [];
-    for (let i = 0; i <= 14; i++) a.push(-PI + (i / 14) * 2 * PI);
+    const add = (t0, t1, n) => {
+      for (let i = 0; i < n; i++) a.push(t0 + ((t1 - t0) * i) / n);
+    };
+    add(-PI, -0.9, 5);
+    add(-0.9, 0.9, 12);
+    add(0.9, PI, 5);
+    a.push(PI);
     return a;
   }
   const a = [];
@@ -182,7 +189,7 @@ function headRows(lod, cutTop) {
     return ys;
   }
   if (lod === 1) {
-    for (let i = 0; i <= 9; i++) ys.push(-0.124 + (i / 9) * 0.2465);
+    for (const y of [-0.124, -0.105, -0.085, -0.072, -0.06, -0.045, -0.025, -0.008, 0.006, 0.02, 0.04, 0.07, 0.1, 0.1225]) ys.push(y);
     return ys;
   }
   const add = (y0, y1, n) => {
@@ -338,7 +345,7 @@ export function buildHead(b, p, { lod = 0, helmet = false, cap = false } = {}) {
     for (const s of [-1, 1]) {
       b.paint(new THREE.Color(0.05, 0.04, 0.035));
       b.part();
-      b.ellipsoid([HC.x + s * EYE_X * f.eyeSpace, HC.y + EYE_Y, HC.z + EYE_Z - 0.006], [0.009, 0.004, 0.006], { nu: 5, nv: 3 });
+      b.ellipsoid([HC.x + s * EYE_X * f.eyeSpace, HC.y + EYE_Y, HC.z + EYE_Z - 0.006], [0.0115, 0.0055, 0.006], { nu: 5, nv: 3 });
     }
     return;
   }

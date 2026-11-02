@@ -197,8 +197,9 @@ test('levels of detail: 2 skinned meshes up close, 1 in the middle distance and 
 
 test('every army and class builds at every level of detail within its triangle budget', () => {
   // (Full detail, within about 16 m and on the Heroes screen, has finer cloth
-  // for its folds: up to 32k triangles.)
-  const budget = [32000, 5000, 1400];
+  // for its folds: up to 32k triangles; the middle distance, enough points
+  // across the face for its features: up to 5.6k.)
+  const budget = [32000, 5600, 1400];
   for (const f of ['US', 'GE', 'SU']) {
     for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker']) {
       for (const role of ['rifle', 'smg']) {
