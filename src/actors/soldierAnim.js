@@ -108,6 +108,12 @@ export class SoldierAnimator {
     sm.kneel = damp(sm.kneel, stance > 0.5 && sm.speed < 0.35 ? 1 : 0, 5, dt);
     sm.crawl = damp(sm.crawl, stance > 1.5 && sm.speed > 0.1 ? 1 : 0, 5, dt);
     sm.air = damp(sm.air || 0, s.onGround === false && !s.seated ? 1 : 0, 10, dt);
+    // Standing easy (still, upright, not aiming, on his feet): his weight on one
+    // leg, the hip on that side up, the other knee loose and its foot a little
+    // forward and out, toes turned out; every 11 s or so onto the other leg.
+    const easy = sm.speed < 0.15 && !s.aiming && stance < 0.3 && !s.seated && s.onGround !== false;
+    sm.relax = damp(sm.relax || 0, easy ? 1 : 0, easy ? 1.2 : 6, dt);
+    sm.weight = damp(sm.weight ?? 1, Math.floor(this.time / 11) % 2 ? 1 : -1, 1.4, dt);
 
     // Root yaw change: planted feet stay put in the world.
     const yaw = s.yaw || 0;
@@ -178,8 +184,11 @@ export class SoldierAnimator {
     const sm = this.sm;
     const side = this.feet[i].side;
     const blade = sm.aim * (1 - sm.moving) * (1 - c);
-    const x = side * (0.105 + 0.03 * c);
-    const z = (side < 0 ? -0.02 : 0.03) * (1 - blade) + (side < 0 ? -0.1 : 0.1) * blade;
+    // (Standing easy: the leg he stands on under him, the other forward and out.)
+    const r = sm.relax || 0;
+    const free = side * (sm.weight ?? 1) < 0 ? r * Math.min(1, Math.abs(sm.weight ?? 1)) : 0;
+    const x = side * (0.105 + 0.03 * c + 0.045 * free - 0.012 * (r - free));
+    const z = (side < 0 ? -0.02 : 0.03) * (1 - blade) + (side < 0 ? -0.1 : 0.1) * blade - 0.08 * free;
     const cy = Math.cos(sm.hipYaw),
       sy = Math.sin(sm.hipYaw);
     out.x = x * cy + z * sy;
@@ -303,18 +312,23 @@ export class SoldierAnimator {
     const roll = -0.05 * walk * Math.cos(mid) * mov;
     let lean = 0.04 + 0.06 * walk + 0.16 * run * (1 - 0.5 * aimK) + 0.22 * sprint + c * (0.32 + 0.1 * mov);
     lean -= 0.03 * aimK;
-    let h = lerp(0.95, 0.68, c) - 0.008 * walk - 0.03 * run - 0.02 * sprint + bob;
+    const relax = sm.relax || 0,
+      wt = (sm.weight ?? 1) * relax;
+    let h = lerp(0.95, 0.68, c) - 0.008 * walk - 0.03 * run - 0.02 * sprint + bob - 0.012 * relax;
     const breath = Math.sin(this.time * 1.6) * 0.008;
     // Lean (peeking): hips shift the other way.
     const leanS = -sm.lean * 0.05;
     const cy = Math.cos(sm.yaw),
       sy = Math.sin(sm.yaw);
-    pose.hips.set(swayX + leanS * cy, h, 0.03 * c - leanS * sy);
+    // (Standing easy: the hips over the leg he stands on, and tilted up on that side.)
+    const hy = sm.hipYaw;
+    pose.hips.set(swayX + leanS * cy + 0.032 * wt * Math.cos(hy), h, 0.03 * c - leanS * sy - 0.032 * wt * Math.sin(hy));
     const hq = pose.q[B.hips];
-    hq.setFromAxisAngle(AY, sm.hipYaw + yawOsc);
-    hq.multiply(qAxis(_q, AX, -0.25 * lean)).multiply(qAxis(_q2, AZ, roll));
-    qAxis(pose.q[B.spine], AX, -0.3 * lean).premultiply(qAxis(_q, AY, -0.7 * yawOsc));
-    qAxis(pose.q[B.chest], AX, -0.45 * lean + breath).premultiply(qAxis(_q, AY, -0.9 * yawOsc));
+    hq.setFromAxisAngle(AY, sm.hipYaw + yawOsc + 0.08 * wt);
+    hq.multiply(qAxis(_q, AX, -0.25 * lean)).multiply(qAxis(_q2, AZ, roll + 0.07 * wt));
+    // (And the shoulders the other way, so he stands straight over it.)
+    qAxis(pose.q[B.spine], AX, -0.3 * lean).premultiply(qAxis(_q, AY, -0.7 * yawOsc)).multiply(qAxis(_q2, AZ, -0.045 * wt));
+    qAxis(pose.q[B.chest], AX, -0.45 * lean + breath).premultiply(qAxis(_q, AY, -0.9 * yawOsc - 0.06 * wt)).multiply(qAxis(_q2, AZ, -0.035 * wt));
 
     // Feet targets.
     const k = sm.kneel * smooth(0.5, 1, c);
@@ -419,7 +433,7 @@ export class SoldierAnimator {
     const sm = this.sm;
     const f = this.feet[i];
     const t = this.ankleT[i];
-    const fy = sm.hipYaw - f.side * 0.08;
+    const fy = sm.hipYaw - f.side * (0.08 + 0.16 * (sm.relax || 0));
     const fwdX = -Math.sin(fy),
       fwdZ = -Math.cos(fy);
     const gy = this.groundOffset ? clamp(this.groundOffset(f.x, f.z), -0.35, 0.35) : 0;

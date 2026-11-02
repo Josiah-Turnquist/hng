@@ -16,7 +16,7 @@
 // distance and 1 far away (outfit and person merged per soldier). Everything
 // uses one material (soldierMaterials.js).
 //
-// Levels of detail (triangles, about): 0 = 16-20k, 1 = 3-4k, 2 = 0.7-1k.
+// Levels of detail (triangles, about): 0 = 23-30k (fine enough for cloth folds), 1 = 3-4k, 2 = 0.7-1k.
 import * as THREE from 'three';
 import { B, BONE_NAMES, PARENT, BIND, OFFSET, EYE_R } from './soldierRig.js';
 import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';

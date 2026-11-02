@@ -189,7 +189,7 @@ export function garmentFolds(g, theta, y) {
     const n = 9 + Math.floor(hash1(seed) * 3);
     const up = bump(y, b + 0.06, 0.08),
       dn = bump(y, b - 0.06, 0.07);
-    d += (up * 0.005 + dn * 0.004) * foldWave(theta * n + ph + (y - b) * 5);
+    d += (up * 0.009 + dn * 0.0075) * foldWave(theta * n + ph + (y - b) * 5);
   }
   // Diagonal folds from the armpits toward the chest and shoulder blades.
   for (const s of [-1, 1]) {
@@ -197,14 +197,14 @@ export function garmentFolds(g, theta, y) {
     if (side < 0.2) continue;
     const w = bump(y, 1.27, 0.1) * smooth01(0.3, 0.8, side);
     const along = (y - 1.27) * 14 + (s * Math.cos(theta) - 0.75) * 4 * (fr > 0 ? 1 : -1);
-    d += w * 0.003 * foldWave(along * 2.0 + seed * 3 + s);
+    d += w * 0.0055 * foldWave(along * 2.0 + seed * 3 + s);
   }
   // Horizontal slack folds across the small of the back.
-  d += bk * bump(y, (g.belt ?? 1.04) + 0.12, 0.08) * 0.0025 * foldWave(y * 70 + noise1(theta * 3, seed) * 3);
+  d += bk * bump(y, (g.belt ?? 1.04) + 0.12, 0.08) * 0.0045 * foldWave(y * 70 + noise1(theta * 3, seed) * 3);
   // Skirt: soft vertical folds.
   if (g.flare && g.hem < 1.0) {
     const n = 8;
-    d += smooth01((g.belt ?? 1.04) - 0.05, g.hem + 0.05, y) * 0.005 * foldWave(theta * n + noise1(theta * 2, seed + 2) * 3);
+    d += smooth01((g.belt ?? 1.04) - 0.05, g.hem + 0.05, y) * 0.009 * foldWave(theta * n + noise1(theta * 2, seed + 2) * 3);
   }
   return d * k;
 }
@@ -310,12 +310,12 @@ function clearLegs(p, rows, clear, w) {
 // up to the collar line, the hem turned under, and an optional front placket.
 // lod 0/1/2. colorFn(x, y, z, color, theta) may repaint (camouflage, wear).
 export function buildTorsoGarment(b, g, lod = 0) {
-  const nu = [30, 16, 9][lod];
+  const nu = [56, 16, 9][lod];
   const top = g.top ?? 1.505;
   const hem = g.hem;
   // Rows: denser around the belt and the shoulders.
   const ys = [];
-  const step = [0.028, 0.06, 0.12][lod];
+  const step = [0.016, 0.06, 0.12][lod];
   for (let y = hem; y < top - 1e-6; y += step) ys.push(y);
   ys.push(top);
   if (g.belt && lod === 0) for (const dy of [-0.045, -0.02, 0, 0.02, 0.045, 0.07]) ys.push(g.belt + dy);
@@ -461,7 +461,7 @@ const sleeveRows = (k, wide) => [
 export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0.555, roll = 0, folds = 1, seed = 1, cuffColor = null, wide = 0 } = {}) {
   const rows = sleeveRows(bulk, wide);
   const sE = BIND[B.upperArmR].distanceTo(BIND[B.forearmR]);
-  const ds = [0.024, 0.05, 0.1][lod];
+  const ds = [0.012, 0.05, 0.1][lod];
   const prof = denseProfile(rows, -0.012, end, ds);
   b.bones(armWeights(side));
   b.part();
@@ -471,15 +471,16 @@ export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0
           // Inner elbow: rings bunched where the arm bends; forearm: a couple of twisting folds.
           const inner = limbFront(a) * 0.8 + 0.2;
           const e = bump(s, sE + 0.01, 0.07);
-          let d = e * inner * 0.0045 * foldWave(s * 190 + seed + Math.sin(a * 2) * 0.8);
-          d += bump(s, sE + 0.12, 0.08) * 0.003 * foldWave(s * 120 + a * 2 + seed * 2);
-          d += bump(s, 0.12, 0.08) * 0.0022 * foldWave(a * 5 + s * 40 + seed);
+          let d = e * inner * 0.0085 * foldWave(s * 190 + seed + Math.sin(a * 2) * 0.8);
+          d += bump(s, sE + 0.12, 0.08) * 0.0055 * foldWave(s * 120 + a * 2 + seed * 2);
+          d += bump(s, 0.12, 0.08) * 0.004 * foldWave(a * 5 + s * 40 + seed);
           // Cuff gathers.
-          if (cuff && !roll) d += bump(s, end - 0.06, 0.04) * 0.002 * foldWave(a * 9 + seed);
+          if (cuff && !roll) d += bump(s, end - 0.06, 0.04) * 0.0035 * foldWave(a * 9 + seed);
           return d * folds;
         }
       : null;
-  limbTube(b, armChain(side), prof, { seg: [12, 8, 5][lod], capStart: 0.75, capEnd: 0, disp });
+  // (A low cap at the shoulder: the sleeve runs on from the shoulder line, not a dome over it.)
+  limbTube(b, armChain(side), prof, { seg: [18, 8, 5][lod], capStart: 0.5, capEnd: 0, disp });
   // The end: a cuff band, a knit cuff or the rolled-up sleeve.
   const P = armChain(side);
   const ringAt = (s, rx, rz) => {
@@ -584,7 +585,7 @@ export function trouserRows(k = 0.004, style = 'straight') {
 export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, style = 'straight', blouse = 0, tuck = end - 0.03, folds = 1, seed = 1 } = {}) {
   const rows = trouserRows(bulk, style);
   const sK = BIND[B.thighR].distanceTo(BIND[B.shinR]);
-  const ds = [0.03, 0.06, 0.12][lod];
+  const ds = [0.014, 0.06, 0.12][lod];
   let prof;
   if (blouse) {
     // Closer rings round the tuck, so the roll of cloth over the edge reads.
@@ -609,18 +610,18 @@ export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, st
       ? (s, a) => {
           let d = 0;
           // Behind the knee: horizontal folds; in front: a soft bag.
-          d += bump(s, sK + 0.02, 0.07) * limbBack(a) * 0.004 * foldWave(s * 170 + seed);
+          d += bump(s, sK + 0.02, 0.07) * limbBack(a) * 0.0075 * foldWave(s * 170 + seed);
           d += bump(s, sK - 0.02, 0.06) * limbFront(a) * 0.0035;
           // Diagonal drape folds from the crotch over the thigh.
-          d += bump(s, 0.14, 0.1) * 0.0025 * foldWave(a * 4 + s * 35 + seed * 2);
+          d += bump(s, 0.14, 0.1) * 0.005 * foldWave(a * 4 + s * 35 + seed * 2);
           // Blousing: a few irregular folds in the roll, none at the edge itself.
           if (blouse) d += bump(s, tuck - 0.02, 0.025) * (0.0015 + blouse * 0.35) * foldWave(a * 5 + noise1(a * 1.3, seed) * 2.5);
           // Shin: a few loose diagonal folds.
-          d += bump(s, sK + 0.18, 0.12) * 0.002 * foldWave(a * 3 - s * 30 + seed);
+          d += bump(s, sK + 0.18, 0.12) * 0.004 * foldWave(a * 3 - s * 30 + seed);
           return d * folds;
         }
       : null;
-  limbTube(b, legChain(side), prof, { seg: [14, 8, 5][lod], capStart: 0.8, capEnd: blouse ? 0.25 : 0.5, disp });
+  limbTube(b, legChain(side), prof, { seg: [20, 8, 5][lod], capStart: 0.8, capEnd: blouse ? 0.25 : 0.5, disp });
 }
 
 // A boot shaft / legging / gaiter: a tube around the lower leg from s0 to s1
