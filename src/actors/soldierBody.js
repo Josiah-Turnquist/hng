@@ -570,7 +570,9 @@ export function trouserRows(k = 0.004, style = 'straight') {
   return [
     [-0.09, 0.072, 0.076, 0],
     [-0.02, 0.093 + k, 0.097 + k, 0],
-    [0.06, 0.095 + k + br * 0.018 + jp * 0.008, 0.1 + k + br * 0.022 + jp * 0.008, 0.002],
+    // (Breeches: the fullness starts below the tunic's skirt, which a full
+    // upper thigh swinging forward would push through.)
+    [0.06, 0.095 + k + br * 0.006 + jp * 0.008, 0.1 + k + br * 0.008 + jp * 0.008, 0.002],
     [0.16, 0.088 + k + br * 0.024 + jp * 0.012, 0.093 + k + br * 0.028 + jp * 0.012, 0.004],
     [0.26, 0.079 + k + br * 0.016 + jp * 0.012, 0.084 + k + br * 0.018 + jp * 0.012, 0.004],
     [0.34, 0.071 + k + jp * 0.01, 0.076 + k + jp * 0.01, 0.001],
@@ -613,7 +615,8 @@ export function buildTrouserLeg(b, side, { lod = 0, bulk = 0.004, end = 0.84, st
           d += bump(s, sK + 0.02, 0.07) * limbBack(a) * 0.0075 * foldWave(s * 170 + seed);
           d += bump(s, sK - 0.02, 0.06) * limbFront(a) * 0.0035;
           // Diagonal drape folds from the crotch over the thigh.
-          d += bump(s, 0.14, 0.1) * 0.005 * foldWave(a * 4 + s * 35 + seed * 2);
+          // (Into the leg, not out: under a tunic's skirt they would show through it.)
+          d -= bump(s, 0.14, 0.1) * 0.005 * foldWave(a * 4 + s * 35 + seed * 2);
           // Blousing: a few irregular folds in the roll, none at the edge itself.
           if (blouse) d += bump(s, tuck - 0.02, 0.025) * (0.0015 + blouse * 0.35) * foldWave(a * 5 + noise1(a * 1.3, seed) * 2.5);
           // Shin: a few loose diagonal folds.

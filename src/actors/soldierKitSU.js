@@ -67,7 +67,7 @@ function belt(o, { y = 1.08, role = o.role, canvas = false } = {}) {
 // M1943 gymnastyorka: stand collar, placket with three buttons, worn outside the
 // breeches under the belt.
 function gymnastyorka(o, { color, pockets = false, board = SU.board, piping = SU.red, cell = CELL.cotton }) {
-  o.torso({ hem: 0.78, belt: 1.055, cinch: 0.013, blouse: 0.014, flare: 0.013, grow: 0.009, placket: true, placketBottom: 1.3, placketTop: 1.47, folds: 1.25 }, { color, cell });
+  o.torso({ hem: 0.78, belt: 1.055, cinch: 0.013, blouse: 0.014, flare: 0.03, grow: 0.012, placket: true, placketBottom: 1.3, placketTop: 1.47, folds: 1.25 }, { color, cell });
   o.collar('stand', color, { cell, h: 0.036 });
   o.sleeves({ color, cell, cuff: 'band', bulk: 0.004 });
   o.buttons([[0.0, 1.335], [0.0, 1.385], [0.0, 1.435], [0.0, 1.475]], { color: 0x4a4836, r: 0.0058 });

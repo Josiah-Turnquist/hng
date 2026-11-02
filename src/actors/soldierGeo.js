@@ -94,7 +94,9 @@ export function torsoWeights(x, y, z, o) {
   if (y < 1.0) {
     const sp = smooth01(0.93, 1.1, y) * 0.5;
     // Skirt and seat over the thighs.
-    const th = (1 - smooth01(0.78, 0.95, y)) * smooth01(0.02, 0.08, ax) * (z < 0 ? 0.42 : 0.3);
+    // (Enough that a thigh stepping forward, standing easy or walking, carries
+    // the front of the skirt with it rather than coming through it.)
+    const th = (1 - smooth01(0.74, 1.04, y)) * smooth01(0.015, 0.07, ax) * (z < 0 ? 0.9 : 0.45);
     if (th > 0.001) return setN(o, [B.hips, (1 - sp) * (1 - th), B.spine, sp * (1 - th), side < 0 ? B.thighL : B.thighR, th]);
     return set2(o, B.hips, B.spine, sp);
   }
