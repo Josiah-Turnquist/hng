@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { addMaterials, PRESETS } from '../render/textures.js';
 import { addPatch, after, replace } from '../render/materialPatch.js';
+import { BONE_COUNT } from './soldierRig.js';
 
 // Texture cells of the atlas.
 export const CELL = {
@@ -35,23 +36,28 @@ export const CAMO_GREY = new THREE.Color(0.5, 0.5, 0.5);
 
 const GLSL = {
   soldierWool: /* glsl */ `
-    // Wool serge, 2/2 twill: diagonal ribs (about 1 mm on real serge, drawn at 1.9 mm so a
-    // 256 px bake still resolves them), fiber fuzz, pilling, mottling.
+    // Wool serge, 2/2 twill: diagonal ribs (about 1 mm on real serge, drawn at 1.9 mm and
+    // a little stronger than life so they still show a couple of meters away), fibres of
+    // slightly different dye (the heathered look of wool cloth), streaks along the yarn,
+    // fuzz, pilling and mottling.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float wob = fbm(uv, vec2(24.0), 3, 311.0) * 0.6;
       float rib = 0.5 + 0.5 * sin(((uv.x + uv.y) * 80.0 + wob) * 6.2831853);
       float fuzz = fbm01(uv, vec2(48.0), 2, 312.0);
       float mott = fbm01(uv, vec2(5.0), 4, 313.0);
       float pill = smoothstep(0.72, 0.9, fbm01(uv, vec2(40.0), 3, 314.0));
-      float a = (0.97 + 0.03 * rib) * (0.88 + 0.24 * fuzz) * (0.9 + 0.2 * mott) * (1.0 + 0.06 * pill);
-      albedo = vec3(0.5 * a / 0.96);
-      rough = 0.88 + 0.1 * fuzz;
+      float fib = vnoise(uv * 240.0, vec2(240.0), 315.0) * 2.0 - 1.0;
+      float streak = fbm01(uv, vec2(36.0, 4.0), 3, 316.0);
+      float a = (0.88 + 0.16 * rib) * (0.8 + 0.4 * fuzz) * (0.86 + 0.28 * streak) * (0.82 + 0.36 * mott) * (1.0 + 0.1 * pill) * (1.0 + 0.08 * fib);
+      albedo = vec3(0.5 * a / 0.97) * vec3(1.0 + 0.05 * fib, 1.0, 1.0 - 0.05 * fib);
+      rough = 0.9 + 0.08 * fuzz;
       metal = 0.0;
-      height = rib * 0.00006 + fuzz * 0.00014 + pill * 0.0002;
+      height = rib * 0.00012 + fuzz * 0.00014 + pill * 0.0002 + streak * 0.00008;
       alpha = 1.0;
     }`,
   soldierCotton: /* glsl */ `
-    // Cotton poplin / drill: fine plain weave, slubs along the warp, mottling.
+    // Cotton poplin / drill: fine plain weave (drawn a little coarser and stronger than
+    // life so it shows), slubs along the warp, faded fibres, mottling.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       vec2 p = uv * 90.0;
       vec2 f = fract(p);
@@ -61,11 +67,12 @@ const GLSL = {
       float w = mix(weft, warp, chk);
       float slub = fbm01(uv, vec2(8.0, 64.0), 3, 322.0);
       float mott = fbm01(uv, vec2(5.0), 4, 323.0);
-      float a = (0.97 + 0.04 * w) * (0.9 + 0.2 * slub) * (0.9 + 0.2 * mott);
-      albedo = vec3(0.5 * a / 0.99);
-      rough = 0.8 + 0.12 * slub;
+      float fib = vnoise(uv * 200.0, vec2(200.0), 324.0) * 2.0 - 1.0;
+      float a = (0.86 + 0.2 * w) * (0.84 + 0.32 * slub) * (0.84 + 0.32 * mott) * (1.0 + 0.06 * fib);
+      albedo = vec3(0.5 * a / 0.97) * vec3(1.0 + 0.03 * fib, 1.0, 1.0 - 0.04 * fib);
+      rough = 0.86 + 0.1 * slub;
       metal = 0.0;
-      height = w * 0.00003 + slub * 0.00014 + mott * 0.0002;
+      height = w * 0.00006 + slub * 0.00014 + mott * 0.0002;
       alpha = 1.0;
     }`,
   soldierHBT: /* glsl */ `
@@ -105,7 +112,8 @@ const GLSL = {
       alpha = 1.0;
     }`,
   soldierWebbing: /* glsl */ `
-    // Woven cotton webbing: ribs along the strap (v), picks across.
+    // Woven cotton webbing: ribs along the strap (v), picks across, loose fibres and
+    // dirty, darker patches where hands and sweat have rubbed.
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       vec2 p = vec2(uv.x * 70.0, uv.y * 140.0);
       float rib = 0.5 + 0.5 * sin(p.x * 6.2831853);
@@ -113,9 +121,10 @@ const GLSL = {
       float h = rib * (0.7 + 0.3 * pick);
       float mott = fbm01(uv, vec2(4.0, 8.0), 4, 352.0);
       float fuzz = fbm01(uv, vec2(60.0), 3, 353.0);
-      float a = (0.76 + 0.3 * h) * (0.88 + 0.24 * mott) * (0.95 + 0.1 * fuzz);
-      albedo = vec3(0.5 * a / 0.92);
-      rough = 0.9;
+      float stain = smoothstep(0.55, 0.8, fbm01(uv, vec2(5.0, 9.0), 4, 354.0));
+      float a = (0.72 + 0.36 * h) * (0.86 + 0.28 * mott) * (0.94 + 0.12 * fuzz) * (1.0 - 0.22 * stain);
+      albedo = vec3(0.5 * a / 0.88);
+      rough = 0.9 - 0.08 * stain;
       metal = 0.0;
       height = h * 0.00035;
       alpha = 1.0;
@@ -138,19 +147,23 @@ const GLSL = {
       alpha = 1.0;
     }`,
   soldierLeather: /* glsl */ `
-    // Smooth leather: fine grain, pores, creases, scuffs (boots, belts, pouches).
+    // Smooth leather: pebbled grain, pores, creases, scuffs that show the paler
+    // leather under the finish, blotches of dubbin and polish (boots, belts, pouches).
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float grain = fbm01(uv, vec2(80.0), 2, 371.0);
+      vec3 peb = voronoi(uv, vec2(120.0), 0.9, 376.0);
+      float pebble = smoothstep(0.0, 0.18, peb.y - peb.x);
       float pores = vnoise(uv * 160.0, vec2(160.0), 372.0);
       float crease = ridged(uv, vec2(5.0, 12.0), 4, 373.0);
-      float cr = smoothstep(0.74, 0.98, crease);
-      float scuff = smoothstep(0.62, 0.86, fbm01(uv, vec2(9.0), 5, 374.0));
+      float cr = smoothstep(0.7, 0.98, crease);
+      float scuff = smoothstep(0.6, 0.84, fbm01(uv, vec2(9.0), 5, 374.0));
+      float scratch = smoothstep(0.985, 1.0, sin((uv.x * 5.0 - uv.y * 3.0 + fbm(uv, vec2(4.0), 2, 377.0)) * 6.2831853 * 14.0)) * step(0.55, fbm01(uv, vec2(7.0), 3, 378.0));
       float big = fbm01(uv, vec2(3.0), 4, 375.0);
-      float a = (0.92 + 0.12 * grain) * (0.84 + 0.32 * big) * (1.0 - 0.1 * cr) * (1.0 + 0.35 * scuff);
-      albedo = vec3(0.5 * a / 1.05);
-      rough = 0.46 + 0.14 * grain + 0.28 * scuff + 0.06 * cr;
+      float a = (0.9 + 0.14 * grain) * (0.94 + 0.08 * pebble) * (0.8 + 0.4 * big) * (1.0 - 0.22 * cr) * (1.0 + 0.5 * scuff) * (1.0 + 0.6 * scratch);
+      albedo = vec3(0.5 * a / 1.08);
+      rough = 0.5 + 0.12 * grain + 0.3 * scuff + 0.1 * cr + 0.1 * (1.0 - pebble);
       metal = 0.0;
-      height = grain * 0.0002 + pores * 0.0001 - cr * 0.00025;
+      height = grain * 0.0002 + pebble * 0.00012 + pores * 0.0001 - cr * 0.0004 - scratch * 0.00008;
       alpha = 1.0;
     }`,
   soldierSuede: /* glsl */ `
@@ -409,7 +422,7 @@ const GLSL = {
       dg = pow(dg, 5.0) * smoothstep(0.45, 0.75, fbm01(uv, vec2(3.0), 2, 504.0));
       float h = clamp(f * keep + 0.7 * dg, 0.0, 1.2);
       height = h * 0.004;
-      albedo = vec3(0.5 * (0.82 + 0.18 * smoothstep(0.0, 0.8, h)) / 0.9);
+      albedo = vec3(0.5 * (0.74 + 0.26 * smoothstep(0.0, 0.8, h)) / 0.87);
       rough = 0.9;
       metal = 0.0;
       alpha = 1.0;
@@ -454,29 +467,68 @@ const ROWS = Math.ceil(CELLS.length / COLS);
 // and `gloss` makes eyes, lips and polished leather shine.
 const VERT_DECL = /* glsl */ `
 attribute vec2 soldierMat;
-flat varying float vSCell;
+flat varying vec2 vSCell;
 varying float vSGloss;
 varying vec2 vSUv;
-varying float vSCrease;`;
+varying float vSCrease;
+varying vec3 vSBind;
+varying vec3 vSBindN;`;
 // Crease strength: some everywhere (base), most where the skin weights blend
 // between bones (elbows, knees, the waist, armpits, the crotch), where cloth
 // bunches. The first-person sleeves, seen from a hand's breadth, get more.
 const vertMain = (base) => /* glsl */ `
-vSCell = soldierMat.x;
+vSCell = vec2( soldierMat.x, 0.0 );
 vSGloss = soldierMat.y;
 vSUv = uv;
+// The bind pose position and normal: fixed on the body however he moves, so
+// the dirt, fading and sweat stay put on the cloth.
+vSBind = position;
+vSBindN = normal;
 #ifdef USE_SKINNING
+  // This man's own wear (setSoldierWear): one spare texel after the bones.
+  {
+    int sSz = textureSize( boneTexture, 0 ).x;
+    int sJ = ${BONE_COUNT * 4};
+    if ( sJ < sSz * sSz ) vSCell.y = texelFetch( boneTexture, ivec2( sJ % sSz, sJ / sSz ), 0 ).x;
+  }
   float sMaxW = max( max( skinWeight.x, skinWeight.y ), max( skinWeight.z, skinWeight.w ) );
   vSCrease = ${base.toFixed(2)} + 0.9 * smoothstep( 0.0, 0.3, 1.0 - sMaxW );
 #else
   vSCrease = ${base.toFixed(2)};
 #endif`;
+// Helpers of the weathering layer (below).
+const WEATHER_FUNCS = /* glsl */ `
+float sHash3( vec3 p ) {
+  p = fract( p * 0.1031 );
+  p += dot( p, p.zyx + 31.32 );
+  return fract( ( p.x + p.y ) * p.z );
+}
+// Smooth value noise in 3D, 0..1.
+float sNoise3( vec3 p ) {
+  vec3 i = floor( p );
+  vec3 f = fract( p );
+  f = f * f * ( 3.0 - 2.0 * f );
+  vec2 e = vec2( 1.0, 0.0 );
+  return mix(
+    mix( mix( sHash3( i ), sHash3( i + e.xyy ), f.x ), mix( sHash3( i + e.yxy ), sHash3( i + e.xxy ), f.x ), f.y ),
+    mix( mix( sHash3( i + e.yyx ), sHash3( i + e.xyx ), f.x ), mix( sHash3( i + e.yxx ), sHash3( i + e.xxx ), f.x ), f.y ),
+    f.z );
+}
+// A line of half width w (m) at distance d (m); aa = the change of d over a pixel.
+// Smoothed over the pixel, and fainter when it is thinner than a pixel.
+float sLine( float d, float w, float aa ) {
+  aa = max( aa, 1e-6 );
+  return ( 1.0 - smoothstep( w - aa, w + aa, abs( d ) ) ) * min( 1.0, w / aa );
+}`;
+
 const FRAG_DECL = /* glsl */ `
 uniform vec4 uSCells[${CELLS.length}];
-flat varying float vSCell;
+flat varying vec2 vSCell;
 varying float vSGloss;
 varying vec2 vSUv;
 varying float vSCrease;
+varying vec3 vSBind;
+varying vec3 vSBindN;
 vec2 sAtlasUv;
 vec2 sDx;
 vec2 sDy;
@@ -485,7 +537,11 @@ vec2 sWDx;
 vec2 sWDy;
 float sSkin = 0.0;
 float sCloth = 0.0;
-float sCrease = 0.0;`;
+float sCrease = 0.0;
+int sCellI = 0;
+float sCav = 1.0; // cavity of the folds and seams (1 = open), darkens the sky light
+float sDust = 0.0; // dust on the surface (a dull, pale sheen)
+${WEATHER_FUNCS}`;
 // First person only: the gun held in the hands darkens the skin and cloth
 // round it (no shadow maps in the view model scene): three capsules in world
 // space (fore-end, grip, the stock between them) occlude the light by their
@@ -524,11 +580,154 @@ const VM_FRAG_AO = /* glsl */ `
   reflectedLight.directSpecular *= sGO;
 }`;
 
+
+// Field wear, painted per pixel over the textures and vertex colors, from the
+// bind pose position and normal (fixed on the body however he moves), so it
+// looks the same at every level of detail and reads from 10 to 50 m:
+//  - cloth: uneven dye and washing, sun-faded shoulders, upper back and outer
+//    sleeves, sweat under the arms and down the spine with a pale rim of salt,
+//    grime at the cuffs, the collar, where the hands wipe and on worn edges;
+//  - the ground: mud round the boots and splashed up the legs, dust thinning
+//    toward the waist, the knees (more on the right, the kneeling knee), the
+//    seat, the elbows and the front from lying prone, dust on top surfaces;
+//  - leather: matte and dusty, polished toes, darker patches of dubbin, creases
+//    round the ankle, paler worn edges; webbing and canvas: dirty dark edges;
+//  - seams with their stitching on the uniforms (close up only).
+// How dirty, faded and sweaty each man is comes from his own seed (setSoldierWear).
+const WEATHER = /* glsl */ `
+{
+  vec3 P = vSBind;
+  vec3 N = normalize( vSBindN );
+  float side = P.x < 0.0 ? -1.0 : 1.0;
+  float ax = abs( P.x );
+  // (Everything that takes a derivative is worked out here, outside the branch.)
+  #ifndef FLAT_SHADED
+    float sCurv = length( fwidth( vNormal ) ) / max( length( fwidth( vViewPosition ) ), 1e-5 );
+  #else
+    float sCurv = 0.0;
+  #endif
+  float edge = smoothstep( 40.0, 160.0, sCurv );
+  // Seams: where the surface turns from front to back (trouser outseams and
+  // inseams, the side seams of the tunic, the shoulder seams on top, the
+  // sleeve seams), and round the armhole. Distance in meters, roughly.
+  float sR = P.y < 0.92 ? 0.08 : ( ax > 0.17 && P.y < 1.38 ? 0.05 : 0.14 );
+  float seamD = abs( N.z ) * sR;
+  if ( P.y > 1.2 && P.y < 1.5 ) seamD = min( seamD, abs( ax - ( 0.165 + ( P.y - 1.32 ) * 0.12 ) ) );
+  float seamAA = fwidth( seamD );
+  int sc = sCellI;
+  float garment = ( sc <= 2 || sc == 5 || ( sc >= 12 && sc <= 14 ) ) ? 1.0 : 0.0;
+  float canvas = ( sc == 3 || sc == 4 || sc == 15 ) ? 1.0 : 0.0;
+  float leath = ( sc == 6 || sc == 7 ) ? 1.0 : 0.0;
+  float paint = sc == 8 ? 1.0 : 0.0;
+  float worn = garment + canvas + leath + paint;
+  if ( worn > 0.5 ) {
+    float sd = vSCell.y;
+    float dirt = sd > 0.0 ? 0.45 + 0.55 * fract( sd * 13.17 ) : 0.65;
+    float fade = sd > 0.0 ? 0.25 + 0.75 * fract( sd * 7.31 + 0.3 ) : 0.5;
+    float sweat = sd > 0.0 ? 0.15 + 0.85 * fract( sd * 3.97 + 0.6 ) : 0.4;
+    vec3 so = vec3( 37.1, 11.7, 23.3 ) * fract( sd * 5.3 );
+    float n2 = sNoise3( P * 3.0 + so );
+    float n1 = sNoise3( P * 8.0 - so );
+    // (The finer noise only where it can show: within 25 m.)
+    float nf = 0.5;
+    float spl = 0.0;
+    if ( length( vViewPosition ) < 25.0 ) {
+      n1 = n1 * 0.65 + sNoise3( P * 19.0 + so.yzx ) * 0.35;
+      nf = sNoise3( P * 55.0 + so.zxy );
+      spl = sNoise3( P * 110.0 + so );
+    }
+    vec3 c = diffuseColor.rgb;
+    float L = dot( c, vec3( 0.3, 0.59, 0.11 ) );
+    float rT = roughnessFactor;
+    float cl = garment + canvas;
+    // ---- cloth ----
+    // Dye lots, washing and wear: never one flat color over a panel.
+    c *= mix( vec3( 1.0 ), ( 0.8 + 0.4 * n2 ) * ( 0.88 + 0.24 * n1 ) * mix( vec3( 1.035, 1.0, 0.94 ), vec3( 0.97, 1.0, 1.04 ), n1 ), cl );
+    // Sun: paler and greyer on top of the shoulders, the upper back and the outer sleeves.
+    float sun = max( smoothstep( 0.15, 0.85, N.y ) * smoothstep( 1.16, 1.36, P.y ), smoothstep( 0.05, 0.75, N.z ) * smoothstep( 0.95, 1.4, P.y ) * 0.85 );
+    sun = max( sun, smoothstep( 0.3, 0.9, N.x * side ) * smoothstep( 0.95, 1.3, P.y ) * 0.5 );
+    sun *= fade * ( 0.5 + 0.5 * n2 ) * cl;
+    c = mix( c, vec3( L ) * vec3( 1.07, 1.04, 0.92 ) * 1.5 + 0.004, sun * 0.5 );
+    // Sweat under the arms and down the spine: darker, a pale rim of salt where it dried.
+    float pit = 1.0 - smoothstep( 0.03, 0.11, length( ( P - vec3( side * 0.15, 1.29, 0.015 ) ) * vec3( 1.3, 0.7, 1.1 ) ) + ( n1 - 0.5 ) * 0.06 );
+    float spine = ( 1.0 - smoothstep( 0.015, 0.075, ax + ( n1 - 0.5 ) * 0.05 ) ) * smoothstep( 0.2, 0.6, N.z ) * smoothstep( 1.0, 1.12, P.y ) * ( 1.0 - smoothstep( 1.3, 1.45, P.y ) );
+    float sw = max( pit, spine * 0.85 ) * garment;
+    float wet = smoothstep( 0.25, 0.6, sw ) * sweat;
+    float salt = smoothstep( 0.06, 0.2, sw ) * ( 1.0 - smoothstep( 0.2, 0.36, sw ) ) * sweat * smoothstep( 0.35, 0.6, n1 );
+    c *= 1.0 - 0.42 * wet;
+    c += vec3( 0.018, 0.017, 0.015 ) * salt;
+    // Grime: cuffs, collar, where the hands wipe on the thighs, worn edges and hems.
+    float cuff = 1.0 - smoothstep( 0.05, 0.13, length( P - vec3( side * 0.212, 0.9, 0.01 ) ) );
+    float collar = smoothstep( 1.41, 1.46, P.y ) * ( 1.0 - smoothstep( 0.085, 0.115, length( P.xz - vec2( 0.0, 0.01 ) ) ) );
+    float wipe = ( 1.0 - smoothstep( 0.03, 0.11, length( P - vec3( side * 0.16, 0.8, -0.07 ) ) ) ) * 0.6;
+    float grime = clamp( max( max( cuff, collar ), wipe ) * ( 0.55 + 0.6 * n1 ) + edge * 0.7, 0.0, 1.0 ) * ( 0.55 + 0.45 * dirt ) * cl;
+    c = mix( c, c * vec3( 0.42, 0.4, 0.37 ), grime * 0.85 );
+    rT = mix( rT, 0.62, grime * 0.5 );
+    // Webbing and canvas: blotchy stains.
+    c *= 1.0 - 0.22 * smoothstep( 0.55, 0.8, n1 ) * canvas;
+    // Seams: a dark groove, the doubled cloth either side, a row of stitches.
+    float sOk = max( 1.0 - smoothstep( 0.55, 0.8, abs( N.y ) ), step( 1.36, P.y ) * step( 0.06, ax ) ) * step( 0.12, P.y ) * garment;
+    float groove = sLine( seamD, 0.0008, seamAA ) * sOk;
+    float allow = clamp( sLine( seamD, 0.006, seamAA ) * sOk - groove, 0.0, 1.0 );
+    float stitch = sLine( seamD - 0.0045, 0.0005, seamAA ) * step( 0.4, fract( ( P.x + P.y + P.z ) * 300.0 ) ) * sOk;
+    c *= ( 1.0 - 0.32 * groove ) * ( 1.0 + 0.1 * allow * ( 0.5 + nf ) ) * ( 1.0 - 0.25 * stitch );
+    sCav *= 1.0 - 0.4 * groove;
+    // ---- leather ----
+    float boot = 1.0 - smoothstep( 0.45, 0.55, P.y );
+    float toe = smoothstep( -0.1, -0.16, P.z ) * ( 1.0 - smoothstep( 0.1, 0.14, P.y ) );
+    float oil = smoothstep( 0.55, 0.75, n2 * 0.5 + n1 * 0.5 );
+    // Creases round the ankle (the folds of a jackboot), across the shaft.
+    float fold = boot * smoothstep( 0.08, 0.12, P.y ) * ( 1.0 - smoothstep( 0.24, 0.34, P.y ) ) * ( 1.0 - abs( N.y ) );
+    float fw = 0.5 + 0.5 * sin( ( P.y + ( n1 - 0.5 ) * 0.025 + ( n2 - 0.5 ) * 0.03 ) * 150.0 );
+    float fcr = pow( fw, 6.0 ) * fold;
+    float crest = smoothstep( 0.5, 0.0, fw ) * fold;
+    vec3 lc = c * ( 1.0 - 0.25 * oil );
+    lc = mix( lc, lc * 1.9 + vec3( 0.014, 0.009, 0.005 ), edge * 0.65 );
+    lc *= 1.0 - 0.45 * fcr;
+    lc = mix( lc, lc * 1.35 + vec3( 0.006, 0.004, 0.002 ), crest * 0.5 );
+    c = mix( c, lc, leath );
+    float lr = mix( 0.74, 0.52, oil );
+    lr = mix( lr, 0.3, toe );
+    lr = mix( lr, 0.9, min( 1.0, edge * 0.6 + fcr * 0.5 ) );
+    rT = mix( rT, clamp( lr + ( roughnessFactor - 0.65 ) * 0.5, 0.0, 1.0 ), leath );
+    // ---- the ground ----
+    // Mud: a band from the soles with a ragged top, thicker in places, and
+    // small splashes above it.
+    float mudLine = 0.05 + 0.17 * dirt + 0.06 * ( n2 - 0.5 );
+    float mudTop = mudLine + ( n1 - 0.5 ) * 0.1 + ( nf - 0.5 ) * 0.04;
+    float mud = ( 1.0 - smoothstep( mudTop - 0.05, mudTop, P.y ) ) * ( 0.55 + 0.45 * smoothstep( 0.3, 0.7, n1 ) );
+    float splash = smoothstep( 0.8, 0.86, spl ) * ( 1.0 - smoothstep( mudLine, mudLine + 0.35, P.y ) );
+    mud = max( mud, splash * 0.8 ) * ( 0.5 + 0.5 * dirt );
+    // (On leather, wiped and polished: caked only round the welt, patchy above.)
+    mud *= mix( 1.0, ( 1.0 - smoothstep( 0.025, 0.06, P.y ) ) * 0.8 + 0.35 * smoothstep( 0.45, 0.75, n1 ) * ( 1.0 - toe ), leath );
+    float dust = ( 1.0 - smoothstep( 0.1, 1.0, P.y ) ) * ( 0.3 + 0.7 * n1 ) * dirt * 0.45;
+    float knee = ( 1.0 - smoothstep( 0.035, 0.11, length( ( P - vec3( side * 0.1, 0.47, -0.06 ) ) * vec3( 1.0, 0.6, 1.0 ) ) + ( n1 - 0.5 ) * 0.06 ) ) * ( 1.0 - smoothstep( -0.4, 0.2, N.z ) ) * ( side > 0.0 ? 1.0 : 0.65 );
+    float seat = ( 1.0 - smoothstep( 0.04, 0.14, length( ( P - vec3( side * 0.075, 0.86, 0.11 ) ) * vec3( 1.0, 0.8, 1.0 ) ) ) ) * smoothstep( -0.2, 0.5, N.z ) * 0.7;
+    float elbow = ( 1.0 - smoothstep( 0.03, 0.1, length( P - vec3( side * 0.21, 1.1, 0.05 ) ) + ( n1 - 0.5 ) * 0.05 ) ) * 0.85;
+    float prone = smoothstep( -0.2, -0.75, N.z ) * smoothstep( 0.5, 0.62, n2 * 0.6 + n1 * 0.4 ) * step( 0.45, P.y ) * step( P.y, 1.42 ) * 0.55;
+    float earth = max( max( knee * 1.3, seat ), max( elbow, prone ) ) * dirt * ( 0.6 + 0.5 * n1 );
+    float top = smoothstep( 0.3, 0.95, N.y ) * ( 0.15 + 0.3 * n1 ) * dirt * ( 1.0 - 0.7 * toe );
+    float dst = clamp( max( dust + earth, top ), 0.0, 0.85 );
+    vec3 dustC = vec3( 0.2, 0.17, 0.13 ) * ( 0.85 + 0.3 * n1 );
+    // (Dust clings less to leather, except in the creases and down by the welt.)
+    c = mix( c, dustC, dst * mix( 0.75, ( 0.12 + 0.5 * max( fcr, 1.0 - smoothstep( 0.02, 0.08, P.y ) ) ) * ( 1.0 - 0.8 * toe ), leath ) );
+    float wetMud = smoothstep( 0.4, 0.75, nf * 0.5 + n1 * 0.5 );
+    vec3 mudC = mix( vec3( 0.12, 0.098, 0.072 ), vec3( 0.05, 0.038, 0.027 ), wetMud );
+    c = mix( c, mudC, mud * 0.9 );
+    rT = mix( rT, 1.0, dst );
+    rT = mix( rT, mix( 0.95, 0.5, wetMud ), mud );
+    sDust = dst;
+    diffuseColor.rgb = c;
+    roughnessFactor = rT;
+  }
+}`;
+
 // (Cells are square in texels; with fewer rows than columns they are shorter
 // in v: the cell's v size is its u size times columns / rows.)
 const FRAG_MAP = /* glsl */ `
 {
-  int sc = int( vSCell + 0.5 );
+  int sc = int( vSCell.x + 0.5 );
+  sCellI = sc;
   vec4 cr = uSCells[ sc ];
   vec2 t = vSUv * cr.w;
   float pad = 0.006;
@@ -567,7 +766,10 @@ const FRAG_MAP = /* glsl */ `
   sWDy = wy;
   float wk = sc <= 2 ? 1.0 : sc == 3 ? 0.6 : sc == 5 ? 0.3 : ( sc >= 12 && sc <= 14 ) ? 1.0 : 0.0;
   sCrease = sc == 10 ? 0.5 * smoothstep( 0.4, 1.0, vSCrease ) : wk * vSCrease; // (the hand cell has its own)
-  if ( sCrease > 0.001 ) diffuseColor.rgb *= mix( 1.0, textureGrad( map, sWrUv, sWDx, sWDy ).r * 2.0, min( 1.0, sCrease ) );
+  if ( sCrease > 0.001 ) {
+    sCav = mix( 1.0, textureGrad( map, sWrUv, sWDx, sWDy ).r * 2.0, min( 1.0, sCrease ) );
+    diffuseColor.rgb *= sCav;
+  }
 }`;
 
 function cellUniforms(atlas) {
@@ -576,6 +778,28 @@ function cellUniforms(atlas) {
     const world = PRESETS[name]?.world || 0.5;
     return new THREE.Vector4(r[0], r[1], r[2] - r[0], 1 / world);
   });
+}
+
+// Each man's own field wear (how dirty, how faded, how sweaty; and where the
+// blotches fall), from his seed. Soldiers with the same kit share their outfit
+// geometry and the material, so the value rides in a spare texel of his
+// skeleton's bone texture, just after the bone matrices (read once per vertex).
+export function setSoldierWear(skeleton, seed) {
+  const n = skeleton.bones.length;
+  const need = n * 4 + 1;
+  let size = Math.max(4, Math.ceil(Math.sqrt(need) / 4) * 4);
+  if (!skeleton.boneTexture || skeleton.boneTexture.image.width < size) {
+    if (skeleton.boneTexture) size = Math.max(size, skeleton.boneTexture.image.width);
+    const data = new Float32Array(size * size * 4);
+    data.set(skeleton.boneMatrices.subarray(0, n * 16));
+    skeleton.boneTexture?.dispose();
+    skeleton.boneMatrices = data;
+    skeleton.boneTexture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.FloatType);
+  }
+  const x = Math.sin(seed * 91.7 + 3.1) * 43758.5453;
+  // (Never 0: 0 means "not set" to the shader.)
+  skeleton.boneMatrices[n * 16] = 0.02 + 0.97 * (x - Math.floor(x));
+  skeleton.boneTexture.needsUpdate = true;
 }
 
 const MATS = new WeakMap();
@@ -635,7 +859,7 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
         fs = after(fs, '#include <map_fragment>', 'diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.84, 0.82, 0.8 ), sSkin ) * ( 1.0 + 0.35 * sCloth );');
       }
       fs = replace(fs, '#include <map_fragment>', FRAG_MAP);
-      fs = replace(fs, '#include <roughnessmap_fragment>', THREE.ShaderChunk.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'textureGrad( roughnessMap, sAtlasUv, sDx, sDy )') + '\nroughnessFactor = mix( roughnessFactor, 0.16, vSGloss );');
+      fs = replace(fs, '#include <roughnessmap_fragment>', THREE.ShaderChunk.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'textureGrad( roughnessMap, sAtlasUv, sDx, sDy )') + '\nroughnessFactor = mix( roughnessFactor, 0.16, vSGloss );\n' + WEATHER);
       fs = replace(fs, '#include <metalnessmap_fragment>', THREE.ShaderChunk.metalnessmap_fragment.replace('texture2D( metalnessMap, vMetalnessMapUv )', 'textureGrad( metalnessMap, sAtlasUv, sDx, sDy )'));
       // (replaceAll: the chunk samples the normal map in both its object and tangent space branches.)
       fs = replace(
@@ -647,7 +871,9 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
       );
       // Cloth is matte: wool and cotton reflect little and have no glossy rim.
       // Skin: a soft sheen, not a bright edge round the face against the sky.
-      fs = after(fs, '#include <lights_physical_fragment>', 'material.specularColor *= 1.0 - 0.6 * sCloth - 0.45 * sSkin * ( 1.0 - vSGloss );\nmaterial.specularF90 = mix( material.specularF90, 0.3, sCloth );\nmaterial.specularF90 = mix( material.specularF90, 0.12, sSkin * ( 1.0 - vSGloss ) );');
+      // The folds, seams and creases keep out some of the sky light.
+      fs = after(fs, '#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= mix( 1.0, sCav, 0.6 );\nreflectedLight.indirectSpecular *= sCav;');
+      fs = after(fs, '#include <lights_physical_fragment>', 'material.specularColor *= 1.0 - 0.75 * sCloth - 0.45 * sSkin * ( 1.0 - vSGloss );\nmaterial.specularF90 = mix( material.specularF90, 0.15, sCloth );\nmaterial.specularF90 = mix( material.specularF90, 0.12, sSkin * ( 1.0 - vSGloss ) );');
       fs = replace(
         fs,
         '#include <lights_physical_pars_fragment>',
@@ -655,7 +881,13 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
           'vec3 irradiance = dotNL * directLight.color;',
           `vec3 irradiance = dotNL * directLight.color;
 	float sWrap = saturate( ( dot( geometryNormal, directLight.direction ) + 0.4 ) / 1.4 );
-	irradiance += max( sWrap - dotNL, 0.0 ) * directLight.color * vec3( 0.42, 0.2, 0.14 ) * sSkin;`,
+	irradiance += max( sWrap - dotNL, 0.0 ) * directLight.color * vec3( 0.42, 0.2, 0.14 ) * sSkin;
+	// Wool and cotton: no glossy highlight but a soft, wide sheen where the
+	// cloth turns away from the eye (loose fibres catching the light), a little
+	// past the shadow line too; paler on dusty cloth.
+	float sNV = saturate( dot( geometryNormal, geometryViewDir ) );
+	float sFz = sCloth * pow( 1.0 - sNV, 3.0 ) * saturate( ( dot( geometryNormal, directLight.direction ) + 0.35 ) / 1.35 );
+	reflectedLight.directDiffuse += directLight.color * sFz * ( material.diffuseColor * 0.55 + vec3( 0.01 + 0.03 * sDust ) );`,
         ),
       );
       shader.fragmentShader = fs;

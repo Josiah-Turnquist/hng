@@ -524,7 +524,8 @@ export class Outfit {
       // trouser bottoms (to ~30 cm).
       const mudH = 1 - smooth01(0.03, 0.2 + 0.08 * n2, y);
       const mudAmt = mudH * smooth01(0.42, 0.72, n + (n2 - 0.5) * 0.6) * (0.4 + 0.6 * level);
-      if (mudAmt > 0) col.lerp(mud, Math.min(0.9, mudAmt) * (leather ? 0.5 : 0.6));
+      // (Leather less: the material adds caked mud round the welts per pixel.)
+      if (mudAmt > 0) col.lerp(mud, Math.min(0.9, mudAmt) * (leather ? 0.2 : 0.6));
       // Dry dust from the ground to the knees, thinner higher up (Normandy,
       // June to August); the knees from kneeling, the elbows, the thighs and
       // the belly from lying prone.

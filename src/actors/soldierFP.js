@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { B, BIND, BONE_NAMES, BONE_COUNT, OFFSET, LEN, FINGER_BONES, HAND_JOINTS, Pose, fingerRotations, frameRotation, poseHand, quatFromAxes, PALM_X } from './soldierRig.js';
 import { SkinBuilder } from './soldierGeo.js';
-import { soldierMaterial } from './soldierMaterials.js';
+import { soldierMaterial, setSoldierWear } from './soldierMaterials.js';
 import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';
 import './soldierKitUS.js';
 import './soldierKitGE.js';
@@ -356,6 +356,7 @@ export class FirstPersonArms {
       this.mesh.geometry.dispose();
       this.root.remove(this.mesh);
     }
+    setSoldierWear(this.skeleton, seed); // the same wear as his body in the world
     const geo = arms.toGeometry();
     const m = new THREE.SkinnedMesh(geo, this.material);
     m.bind(this.skeleton, new THREE.Matrix4());

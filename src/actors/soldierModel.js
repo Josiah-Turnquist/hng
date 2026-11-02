@@ -24,7 +24,7 @@ import './soldierKitUS.js';
 import './soldierKitGE.js';
 import './soldierKitSU.js';
 import { SkinBuilder } from './soldierGeo.js';
-import { soldierMaterial, CELL } from './soldierMaterials.js';
+import { soldierMaterial, setSoldierWear, CELL } from './soldierMaterials.js';
 import { SoldierAnimator, clamp } from './soldierAnim.js';
 import { SoldierArms, weaponInfo, Xf } from './soldierArms.js';
 import { Ragdoll } from './soldierRagdoll.js';
@@ -136,6 +136,7 @@ export class SoldierModel {
     this.root.add(this.bones[0]);
     const inverses = BIND.map((p) => new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
     this.skeleton = new THREE.Skeleton(this.bones, inverses);
+    setSoldierWear(this.skeleton, seed); // his own dirt, fading and sweat (soldierMaterials.js)
     this.meshes = [[], [], []];
     this._geos = [];
     this.lod = -1;
