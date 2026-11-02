@@ -803,7 +803,7 @@ export class Game {
       if (d > ex.radius * 2) continue;
       if (!this.world.collision.lineOfSight(x, y + 0.2, z, s.body.x, s.body.y + 1, s.body.z)) continue;
       const blast = (ex.blast * 900) / Math.max(1, d * d);
-      if (blast > 1) s.damage(blast, { kind: 'explosion', attacker: p.owner, weapon: p.weapon });
+      if (blast > 1) s.damage(blast, { kind: 'explosion', attacker: p.owner, weapon: p.weapon, ox: x, oz: z });
       if (blast > 1 && s === this.player?.soldier) this.hud?.shotFrom?.(x, z, 'hit', blast / 40);
     }
     // Vehicles: blast against thin-skinned ones, tracks of tanks close by.
@@ -849,8 +849,14 @@ export class Game {
       s.hurtByPlayer = { who: a, t: this.time, weapon: cause.weapon };
     }
     if (s !== this.player?.soldier) return;
+    this.hurt(amount);
+  }
+
+  // What the player feels when hit (here, or told by the game server online:
+  // net/online.js): the red at the edges of the screen, the jolt, the grunt.
+  hurt(amount) {
     this.hud?.damage(amount);
-    this.player.flinch?.(amount);
+    this.player?.flinch?.(amount);
     if (amount >= 4) this.audio?.play?.('hurtGrunt', null, { volume: Math.min(1, 0.45 + amount / 60) });
   }
 

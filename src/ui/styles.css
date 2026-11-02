@@ -340,7 +340,7 @@ canvas.game {
 .hud-ammo .reserve { font-size: 14px; color: var(--ink-dim); }
 .hud-mode { font-size: 11px; color: var(--ink-dim); }
 /* Through a scope: over the black round the eyepiece, and easier to read. */
-.hud.scoped .hud-right { z-index: 1; }
+.hud.scoped .hud-right, .hud.scoped .hud-left, .hud.scoped .hud-msg { z-index: 1; }
 .hud.scoped .hud-mode { font-size: 13px; color: var(--ink); }
 .hud-scope {
   position: absolute;
@@ -348,6 +348,14 @@ canvas.game {
   width: 100%;
   height: 100%;
   display: none;
+}
+/* Hurt: red round all the edges of the screen, over a scope's black too (hud.js). */
+.hud-hurt {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 20vmin 7vmin rgba(205, 18, 8, 0.85);
 }
 /* Marks pointing where shots at you came from (drawn in hud.js). */
 .hud-shots {

@@ -289,6 +289,8 @@ export function ammoOf(ref) {
 //       'a:<AMMO key>' or 's:<SHELLS key>' (a tank's shell, a vehicle's gun)
 //   ['d', soldier, killer, weapon]                         a soldier down
 //   ['x', x, y, z, size]                                   a blast
+//   ['h', soldier, amount, fromX, fromZ]                   a player hurt (players only: the
+//       others don't need it); from: where it came from (null for a fall or a crash)
 export function watchEvents(game) {
   const list = [];
   const fire = game.projectiles.fire.bind(game.projectiles);
@@ -301,6 +303,16 @@ export function watchEvents(game) {
   game.onDeath = (s, cause) => {
     list.push(['d', s.id, cause?.attacker?.id ?? 0, cause?.weapon?.id ?? cause?.kind ?? '']);
     return death?.(s, cause);
+  };
+  const hurt = game.onDamage?.bind(game);
+  game.onDamage = (s, amount, cause) => {
+    if (s.remote && amount >= 0.5) {
+      const a = cause?.attacker?.body;
+      const x = cause?.ox ?? (cause?.kind === 'fall' || cause?.kind === 'crash' ? null : a?.x);
+      const z = cause?.oz ?? (x == null ? null : a?.z);
+      list.push(['h', s.id, Math.round(amount), x == null ? null : cm(x), z == null ? null : cm(z)]);
+    }
+    return hurt?.(s, amount, cause);
   };
   const blast = game.effects.explosion;
   game.effects.explosion = (x, y, z, size) => {

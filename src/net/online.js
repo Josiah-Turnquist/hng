@@ -552,6 +552,13 @@ export class OnlineBattle {
         victim.killer = killer || null;
         g.hud?.killFeed?.(killer || null, victim, { weapon: WEAPONS[wid] || { name: String(wid || '') } });
         if (killer === this.me && victim !== this.me) g.hud?.killConfirm?.(victim.name);
+      } else if (e[0] === 'h') {
+        // He was hit (the server decides): the red, the jolt, the grunt, and
+        // where it came from.
+        const [, who, amount, x, z] = e;
+        if (who !== this.me.id || !this.me.alive) continue;
+        g.hurt?.(amount);
+        if (x != null && z != null) g.hud?.shotFrom?.(x / 100, z / 100, 'hit', amount / 40);
       } else if (e[0] === 'x') {
         const [, x, y, z, size] = e;
         g.effects.explosion(x / 100, y / 100, z / 100, size / 10);

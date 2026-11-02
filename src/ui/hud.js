@@ -68,6 +68,7 @@ export class Hud {
       <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
       <canvas class="hud-scope"></canvas>
       <canvas class="hud-shots"></canvas>
+      <div class="hud-hurt"></div>
       <div class="hud-scores"></div>
       <div class="hud-dead"><div class="title">You were killed</div><div class="by"></div><div class="hint"></div></div>
       <div class="hud-use"><span class="k"></span><span class="t"></span></div>
@@ -126,6 +127,7 @@ export class Hud {
     this.shots = []; // { x, z (where the shot came from), kind: 'hit' | 'near', t, life, s }
     this.shotsDrawn = false;
     this.damageFlash = 0;
+    this.hurtEl = this.el('.hud-hurt');
     this.msgT = 0;
     this.hitT = 0;
     this.killT = 0;
@@ -319,6 +321,9 @@ export class Hud {
 
   damage(amount) {
     this.damageFlash = Math.min(1, this.damageFlash + amount / 50);
+    // (A fresh hit: the red comes on strong at once, then fades.)
+    this.hurtPulse = Math.min(1, Math.max(this.hurtPulse || 0, 0.55 + amount / 60));
+    this.hurtT = 0.5;
   }
 
   // A shot from (x, z) hit us ('hit': a red mark), cracked past ('near': a
@@ -364,7 +369,8 @@ export class Hud {
     const b = s.body;
     const w = s.weapon;
     this.healthFill.style.width = `${Math.max(0, s.health)}%`;
-    this.healthFill.style.background = s.health > 50 ? '#c9c2a5' : s.health > 25 ? '#d29a4a' : '#c4513f';
+    // (Just hit: the bar flashes red.)
+    this.healthFill.style.background = this.hurtT > 0 ? '#e0321e' : s.health > 50 ? '#c9c2a5' : s.health > 25 ? '#d29a4a' : '#c4513f';
     const bleeding = s.alive && s.bleed > 0;
     if (bleeding) {
       const text = s.bandages > 0 ? `Bleeding (${g.input.key('bandage')} to bandage)` : 'Bleeding';
@@ -426,6 +432,16 @@ export class Hud {
     this.killT -= dt;
     this.killEl.style.opacity = this.killT > 0 ? Math.min(1, this.killT / 0.6) : 0;
     this.damageFlash = damp(this.damageFlash, s.health < 30 ? 0.35 : 0, 1.5, dt);
+    // (The red round the edges, drawn over everything, a scope's black round
+    // too: strong on a fresh hit, fading in about a second; faint and steady
+    // when badly hurt.)
+    this.hurtT = Math.max(0, (this.hurtT || 0) - dt);
+    this.hurtPulse = Math.max(0, (this.hurtPulse || 0) - dt * 0.9);
+    const hurt = s.alive ? Math.min(1, Math.max(this.hurtPulse, this.damageFlash * 0.6)) : 0;
+    if (Math.abs(hurt - (this._hurtShown ?? -1)) > 0.01) {
+      this._hurtShown = hurt;
+      this.hurtEl.style.opacity = hurt.toFixed(2);
+    }
     this.deadEl.style.display = s.alive || this.deployState ? 'none' : 'flex';
     if (!s.alive && s.killer) this.el('.hud-dead .by').textContent = `by ${s.killer.name}`;
     this._updateCrosshair(p, dt);
@@ -471,10 +487,18 @@ export class Hud {
       const fade = Math.min(1, m.t / 0.7);
       const hit = m.kind === 'hit';
       const heard = m.kind === 'heard';
-      const a = fade * (hit ? 0.6 + 0.35 * m.s : heard ? 0.22 + 0.33 * m.s : 0.45 + 0.3 * m.s);
-      const half = hit ? 0.17 + 0.07 * m.s : heard ? 0.08 : 0.12;
-      const wdt = hit ? 5 + 3 * m.s : heard ? 2 : 3;
-      ctx.strokeStyle = hit ? `rgba(214, 40, 26, ${a})` : heard ? `rgba(226, 206, 150, ${a})` : `rgba(255, 240, 205, ${a})`;
+      const a = fade * (hit ? 0.8 + 0.2 * Math.min(1, m.s) : heard ? 0.22 + 0.33 * m.s : 0.45 + 0.3 * m.s);
+      const half = hit ? 0.24 + 0.1 * Math.min(1, m.s) : heard ? 0.08 : 0.12;
+      const wdt = hit ? 9 + 5 * Math.min(1, m.s) : heard ? 2 : 3;
+      // (A hit: a dark edge under it, so it shows on any ground or sky.)
+      if (hit) {
+        ctx.strokeStyle = `rgba(20, 0, 0, ${a * 0.7})`;
+        ctx.lineWidth = wdt + 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, th - half - 0.01, th + half + 0.01);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = hit ? `rgba(232, 38, 22, ${a})` : heard ? `rgba(226, 206, 150, ${a})` : `rgba(255, 240, 205, ${a})`;
       ctx.lineWidth = wdt;
       ctx.beginPath();
       ctx.arc(cx, cy, R, th - half, th + half);
@@ -483,8 +507,8 @@ export class Hud {
       const ux = Math.cos(th),
         uy = Math.sin(th);
       const r0 = R + wdt / 2,
-        r1 = R + wdt / 2 + (hit ? 12 : heard ? 6 : 8),
-        side = hit ? 6 : heard ? 3 : 4;
+        r1 = R + wdt / 2 + (hit ? 18 : heard ? 6 : 8),
+        side = hit ? 10 : heard ? 3 : 4;
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
       ctx.moveTo(cx + ux * r1, cy + uy * r1);

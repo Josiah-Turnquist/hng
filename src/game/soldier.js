@@ -207,7 +207,7 @@ export class Soldier {
     else if (info.part !== 'head') this.bleed += dmg * 0.012;
     if (info.part?.startsWith('thigh') || info.part?.startsWith('shin') || info.part?.startsWith('foot')) this.body.legWound = Math.min(1, this.body.legWound + dmg / 70);
     if (info.part?.includes('Arm') || info.part?.startsWith('forearm') || info.part?.startsWith('hand')) this.armWound = Math.min(1, this.armWound + dmg / 60);
-    this.damage(dmg, { kind: 'bullet', part: info.part, attacker: projectile.owner, weapon: projectile.weapon, headshot: info.part === 'head' });
+    this.damage(dmg, { kind: 'bullet', part: info.part, attacker: projectile.owner, weapon: projectile.weapon, headshot: info.part === 'head', ox: projectile.ox, oz: projectile.oz });
     // Being hit interrupts actions (and knocks the player's aim: game.onDamage).
     this.action = null;
     return dmg;
