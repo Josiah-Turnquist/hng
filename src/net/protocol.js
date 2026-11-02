@@ -115,6 +115,7 @@ export class RemoteInput {
     this.down.clear();
     this.wheel = 0;
     this.seq = 0;
+    this.gun = null;
   }
 
   is(action) {
