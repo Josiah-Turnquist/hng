@@ -52,6 +52,13 @@ vec3 applyAtmosphere(vec3 c, vec3 cam, vec3 p) {
 // Contact shadows (ambient occlusion) at half resolution from the depth buffer:
 // samples in a disc around each pixel; nearby surfaces above the local tangent plane
 // occlude it. The disc is turned by a 4x4 pattern that the blur pass averages out.
+// Each half-resolution pixel stands for a 2x2 block of screen pixels and takes the
+// one closest to the eye (and so do the neighbors its normal comes from). Picking
+// one fixed pixel of each block instead goes wrong on far trees: leaves there are a
+// pixel thin, and where a near tree fades into its far picture the two are mixed
+// pixel by pixel in a fine pattern. Seen through every second pixel that pattern
+// turns into rows, and the shadows on trees showed as thin horizontal lines (only
+// on High, the one setting that reaches out to those trees).
 export const AO_FRAG = /* glsl */ `
 uniform sampler2D tDepth;
 uniform mat4 uProj;
@@ -65,19 +72,26 @@ float bayer4(vec2 p) {
   float c = floor(q.x * 0.5), d = floor(q.y * 0.5);
   return (8.0 * mod(a + b, 2.0) + 4.0 * b + 2.0 * mod(c + d, 2.0) + d) / 16.0;
 }
+// Nearest depth of the 2x2 screen pixels whose shared corner is uv.
+float nearDepth(vec2 uv) {
+  vec2 h = 0.5 * uTexel;
+  return min(min(texture2D(tDepth, uv - h).r, texture2D(tDepth, uv + vec2(h.x, -h.y)).r),
+             min(texture2D(tDepth, uv + vec2(-h.x, h.y)).r, texture2D(tDepth, uv + h).r));
+}
 void main() {
-  float d = texture2D(tDepth, vUv).r;
+  float d = nearDepth(vUv);
   // (Depth is kept below the largest half-float value, 65504.)
   if (d >= 1.0) { gl_FragColor = vec4(1.0, 6e4, 0.0, 1.0); return; }
   vec3 P = viewPos(vUv, d);
   float z = -P.z;
   if (z > uAO.z) { gl_FragColor = vec4(1.0, z, 0.0, 1.0); return; }
-  // Normal from the neighbors on the side with the smaller step (not across edges).
-  vec2 ox = vec2(uTexel.x, 0.0), oy = vec2(0.0, uTexel.y);
-  vec3 Pr = viewPos(vUv + ox, texture2D(tDepth, vUv + ox).r);
-  vec3 Pl = viewPos(vUv - ox, texture2D(tDepth, vUv - ox).r);
-  vec3 Pu = viewPos(vUv + oy, texture2D(tDepth, vUv + oy).r);
-  vec3 Pd = viewPos(vUv - oy, texture2D(tDepth, vUv - oy).r);
+  // Normal from the neighboring blocks on the side with the smaller step (not
+  // across edges).
+  vec2 ox = vec2(2.0 * uTexel.x, 0.0), oy = vec2(0.0, 2.0 * uTexel.y);
+  vec3 Pr = viewPos(vUv + ox, nearDepth(vUv + ox));
+  vec3 Pl = viewPos(vUv - ox, nearDepth(vUv - ox));
+  vec3 Pu = viewPos(vUv + oy, nearDepth(vUv + oy));
+  vec3 Pd = viewPos(vUv - oy, nearDepth(vUv - oy));
   vec3 dx = abs(Pr.z - P.z) < abs(P.z - Pl.z) ? Pr - P : P - Pl;
   vec3 dy = abs(Pu.z - P.z) < abs(P.z - Pd.z) ? Pu - P : P - Pd;
   vec3 N = normalize(cross(dx, dy));
