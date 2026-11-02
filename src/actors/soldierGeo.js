@@ -761,7 +761,11 @@ export class SkinBuilder {
   // facing it by (r/d)^2 times the cosine (its share of the sky it hides).
   // Darkens armpits, inner arms and thighs, the crotch, under the chin and the
   // helmet brim. spheres: [[x, y, z, r], ...]; vertices from..to.
-  bakeSphereAO(spheres, strength = 0.6, from = 0, to = this.count) {
+  // (inside: what a point inside a sphere gets. 'skip': nothing (the sphere is
+  // its own part's). 'edge': as at the sphere's surface, so a sphere of some
+  // other thing cutting into it (a helmet brim's into the face) shades evenly
+  // across, with no hard edge where the surface goes in.)
+  bakeSphereAO(spheres, strength = 0.6, from = 0, to = this.count, { inside = 'skip' } = {}) {
     const P = this.pos,
       N = this.nor,
       C = this.col;
@@ -780,11 +784,11 @@ export class SkinBuilder {
           ez = s[2] - pz;
         const d2 = ex * ex + ey * ey + ez * ez;
         const r2 = s[3] * s[3];
-        if (d2 <= r2 * 1.02) continue; // inside it: its own surface
+        if (d2 <= r2 * 1.02 && inside === 'skip') continue; // inside it: its own surface
         const d = Math.sqrt(d2);
         const c = (ex * nx + ey * ny + ez * nz) / d;
         if (c <= 0) continue;
-        vis *= 1 - Math.min(0.95, (r2 / d2) * c);
+        vis *= 1 - Math.min(0.95, (r2 / Math.max(d2, r2 * 1.02)) * c);
       }
       const a = 1 - strength * (1 - vis);
       C[i * 3] *= a;

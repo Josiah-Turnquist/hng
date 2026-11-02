@@ -204,7 +204,7 @@ const GLSL = {
       float mott = fbm01(uv, vec2(6.0), 4, 413.0);
       float blot = fbm01(uv, vec2(14.0), 3, 414.0);
       albedo = vec3(0.5) * (0.95 + 0.08 * fine) * (0.94 + 0.12 * mott) * vec3(1.0, 0.985 + 0.03 * blot, 0.975 + 0.04 * blot) * (1.0 - 0.07 * pore);
-      rough = 0.5 + 0.14 * fine + 0.1 * pore;
+      rough = 0.58 + 0.14 * fine + 0.1 * pore;
       metal = 0.0;
       height = -pore * 0.00007 + fine * 0.00005;
       alpha = 1.0;
@@ -646,7 +646,8 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
           .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale;\n\tif ( sCrease > 0.001 ) mapN.xy += ( textureGrad( normalMap, sWrUv, sWDx, sWDy ).xy * 2.0 - 1.0 ) * sCrease;'),
       );
       // Cloth is matte: wool and cotton reflect little and have no glossy rim.
-      fs = after(fs, '#include <lights_physical_fragment>', 'material.specularColor *= 1.0 - 0.6 * sCloth;\nmaterial.specularF90 = mix( material.specularF90, 0.3, sCloth );');
+      // Skin: a soft sheen, not a bright edge round the face against the sky.
+      fs = after(fs, '#include <lights_physical_fragment>', 'material.specularColor *= 1.0 - 0.6 * sCloth - 0.45 * sSkin * ( 1.0 - vSGloss );\nmaterial.specularF90 = mix( material.specularF90, 0.3, sCloth );\nmaterial.specularF90 = mix( material.specularF90, 0.12, sSkin * ( 1.0 - vSGloss ) );');
       fs = replace(
         fs,
         '#include <lights_physical_pars_fragment>',
@@ -654,7 +655,7 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
           'vec3 irradiance = dotNL * directLight.color;',
           `vec3 irradiance = dotNL * directLight.color;
 	float sWrap = saturate( ( dot( geometryNormal, directLight.direction ) + 0.4 ) / 1.4 );
-	irradiance += max( sWrap - dotNL, 0.0 ) * directLight.color * vec3( 0.55, 0.2, 0.12 ) * sSkin;`,
+	irradiance += max( sWrap - dotNL, 0.0 ) * directLight.color * vec3( 0.42, 0.2, 0.14 ) * sSkin;`,
         ),
       );
       shader.fragmentShader = fs;

@@ -128,7 +128,7 @@ function faceRelief(f, x, y) {
   const ex = ax - EYE_X * es,
     ey = y - EYE_Y;
   const sock = g2(ex, ey, 0.019 * f.eyeSize, 0.0125 * f.eyeSize);
-  d -= 0.0125 * sock;
+  d -= 0.0098 * sock;
   // Soft hollow under the brow, above the lid (deeper set eyes with a lower lid fold).
   d -= 0.003 * (1 - f.lid * 0.7) * g2(ex, y - 0.011, 0.016, 0.005);
   // Cheekbones forward and out; hollow cheeks under them.
@@ -254,13 +254,13 @@ function headPainter(p, f, helmet) {
     if (stub > 0) {
       const beard = sstep(-0.035, -0.055, ly) * (lz < 0.03 ? 1 : 0) * (1 - g2(x, ly + 0.067, 0.022, 0.011));
       const mous = g2(x, ly + 0.052, 0.024, 0.007) * (lz < -0.08 ? 1 : 0);
-      col.lerp(stubC, stub * 0.5 * Math.max(beard * sstep(0.074, 0.06, ax + (lz > 0 ? 0.02 : 0)), mous * 0.8));
+      col.lerp(stubC, stub * 0.5 * Math.max(beard * sstep(0.074, 0.06, ax + (lz > 0 ? 0.02 : 0)), mous * 0.35));
     }
     // Lips.
     const lipU = g2(x, ly + 0.0605, 0.021, 0.0042),
       lipL = g2(x, ly + 0.0745, 0.019, 0.0052);
-    if (lz < -0.075) col.lerp(lips, Math.min(1, 1.4 * Math.max(lipU, lipL)) * 0.85);
-    if (lz < -0.075) col.multiplyScalar(1 - 0.45 * g2(x, ly + 0.0675, 0.02, 0.0011));
+    if (lz < -0.075) col.lerp(lips, Math.min(1, 1.6 * Math.max(lipU, lipL)));
+    if (lz < -0.075) col.multiplyScalar(1 - 0.6 * g2(x, ly + 0.0675, 0.021, 0.0012));
     // Brows: thicker toward the nose.
     const bx = ax - 0.034 * f.eyeSpace,
       by = ly - 0.0185 - 0.003 * (1 - Math.min(1, ax / 0.04));
@@ -271,9 +271,9 @@ function headPainter(p, f, helmet) {
     // Painted occlusion: sockets, lid crease, nostrils, mouth corners.
     if (fr) {
       const es = g2(ax - EYE_X * f.eyeSpace, ly - EYE_Y, 0.02, 0.014);
-      col.multiplyScalar(1 - 0.24 * es);
+      col.multiplyScalar(1 - 0.13 * es);
       const ns = g2(ax - 0.0072, ly + 0.0455, 0.0032, 0.0022) * (lz < -0.095 ? 1 : 0);
-      col.multiplyScalar(1 - 0.6 * ns);
+      col.multiplyScalar(1 - 0.4 * ns);
       const mc = g2(ax - 0.024, ly + 0.068, 0.004, 0.004);
       col.multiplyScalar(1 - 0.3 * mc);
       // Under the nose and the lower lip.
@@ -350,7 +350,7 @@ function buildEye(b, s, f, p) {
   const r = EYE_R * Math.sqrt(f.eyeSize);
   // Eyeball: sclera, iris, pupil; glossy.
   const iris = p.eyeColor;
-  const sclera = new THREE.Color().setRGB(0.4, 0.375, 0.345);
+  const sclera = new THREE.Color().setRGB(0.47, 0.44, 0.41);
   const pink = new THREE.Color().setRGB(0.45, 0.28, 0.24);
   b.material(CELL.skin, 1);
   b.part();
@@ -358,29 +358,36 @@ function buildEye(b, s, f, p) {
     const dz = (z - ec.z) / r; // -1 at the front
     const dx = (x - ec.x) / r;
     const ang = Math.sqrt(dx * dx + ((y - ec.y) / r) ** 2);
-    if (dz < 0 && ang < 0.25) col.setRGB(0.01, 0.009, 0.008);
-    else if (dz < 0 && ang < 0.55) col.copy(iris).multiplyScalar(0.5 + 0.5 * (ang - 0.25) * 3.3);
-    else if (dz < 0 && ang < 0.62) col.copy(iris).multiplyScalar(0.25);
+    // (Iris about 11 mm across, pupil 3 to 4 mm, a darker ring at the iris edge.
+    // The iris swatches are dark; lifted so the color reads at a few meters.)
+    if (dz < 0 && ang < 0.16) col.setRGB(0.01, 0.009, 0.008);
+    else if (dz < 0 && ang < 0.42) col.copy(iris).multiplyScalar(2.6 - 1.2 * (ang - 0.16) * 3.8);
+    else if (dz < 0 && ang < 0.48) col.copy(iris).multiplyScalar(0.7);
     else col.copy(sclera).lerp(pink, sstep(0.65, 1.0, Math.abs(dx)) * 0.5);
     // The upper lid shades the top of the eye.
-    col.multiplyScalar(1 - 0.45 * sstep(-0.2, 0.45, (y - ec.y) / r));
+    col.multiplyScalar(1 - 0.3 * sstep(-0.05, 0.6, (y - ec.y) / r));
   };
-  b.ellipsoid([ec.x, ec.y, ec.z], [r, r, r], { nu: 10, nv: 7 });
+  // (Built round the line of sight, with rings at the pupil and iris edges, so
+  // the colors, set at the corners of the mesh, come out as sharp circles.)
+  const azs = [];
+  for (let i = 0; i <= 16; i++) azs.push((i / 16) * 2 * PI);
+  const pols = [0, 0.08, 0.15, 0.175, 0.26, 0.35, 0.42, 0.445, 0.49, 0.52, 0.65, 0.85, 1.1, 1.4, 1.8, 2.4, PI];
+  b.grid(azs, pols, (az, pol, out) => out.set(ec.x + Math.sin(pol) * Math.cos(az) * r, ec.y + Math.sin(pol) * Math.sin(az) * r, ec.z - Math.cos(pol) * r), { center: ec, wrapU: true });
   b.colorFn = null;
   // Lids: shells just over the eyeball, from the lid margin back into the socket.
   b.material(CELL.skin, 0);
-  const lr = r + 0.0017;
+  const lr = r + 0.0011;
   const open = f.lidOpen;
-  const azMax = 1.05;
+  const azMax = 1.18;
   // Lid margins (radians of elevation) across the eye; the outer corner sits a
   // little higher than the inner one (canthal tilt), a lid fold lowers the upper lid.
   const marginUp = (az) => {
     const t = az / azMax; // -1 .. 1, + toward +X
-    return 0.21 * open - 0.29 * t * t - 0.07 * f.lid + 0.035 * t * s;
+    return 0.27 * open - 0.33 * t * t - 0.07 * f.lid + 0.035 * t * s;
   };
   const marginDn = (az) => {
     const t = az / azMax;
-    return -0.3 * open + 0.23 * t * t + 0.035 * t * s - 0.07 * f.lid * t * t;
+    return -0.36 * open + 0.27 * t * t + 0.035 * t * s - 0.07 * f.lid * t * t;
   };
   const shell = (e0fn, e1, up) => {
     const azs = [],
@@ -393,6 +400,12 @@ function buildEye(b, s, f, p) {
     b.colorFn = (x, y, z, col) => {
       const d = Math.hypot(x - ec.x, (y - ec.y) * 1.4) / 0.016;
       col.copy(lidC).multiplyScalar(up ? 0.93 - 0.2 * Math.min(1, d) : 0.88 - 0.12 * Math.min(1, d));
+      // The lash line: a dark edge along the upper lid's margin (lighter on the lower).
+      const el = Math.asin(Math.max(-1, Math.min(1, (y - ec.y) / lr)));
+      const az = Math.atan2(x - ec.x, -(z - ec.z));
+      const m = up ? marginUp(az) : marginDn(az);
+      const near = Math.exp(-(((el - m) / 0.07) ** 2));
+      col.multiplyScalar(1 - (up ? 0.72 : 0.3) * near);
     };
     b.grid(
       azs,
@@ -559,8 +572,8 @@ export function buildNeck(b, { lod = 0, skin, low = 1.43 } = {}) {
     ys,
     (th, y, o) => {
       const t = smooth01(1.43, 1.6, y);
-      const rx = lerp(0.065, 0.055, t),
-        rz = lerp(0.066, 0.059, t);
+      const rx = lerp(0.074, 0.059, Math.sqrt(t)),
+        rz = lerp(0.068, 0.061, t);
       const cz = lerp(0.025, 0.014, t);
       const s = Math.sin(th),
         c = Math.cos(th);

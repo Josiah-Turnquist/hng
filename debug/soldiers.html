@@ -26,7 +26,7 @@
 //   t: action progress 0..1, seconds after death, or extra seconds of a cycle
 //   hitboxes=1  muzzle=1  cam=three|front|side|left|back|top|low  zoom=1.5
 //   focus=i&dist=2  face=i&dist=0.8  pitch=deg yawoff=deg  live=1  flat=1  atlas=1
-//   shadow=0 (no sun shadows)  sunyaw=deg (sun around the soldiers)
+//   bg=ff0000 (background color)  shadow=0 (no sun shadows)  sunyaw=deg (sun around the soldiers)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TextureLibrary } from '../src/render/textures.js';
@@ -50,7 +50,7 @@ const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.45;
-scene.background = new THREE.Color(0x8a9aa8);
+scene.background = new THREE.Color(params.get('bg') ? Number('0x' + params.get('bg')) : 0x8a9aa8);
 const sun = new THREE.DirectionalLight(0xfff2e0, 2.6);
 sun.castShadow = params.get('shadow') !== '0';
 sun.shadow.mapSize.set(2048, 2048);

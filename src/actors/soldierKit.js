@@ -630,6 +630,9 @@ export function personParams(faction, rng) {
   // Small random warmth shift, and a summer in the field: tanned and weathered.
   skin.offsetHSL((r() - 0.5) * 0.015, (r() - 0.5) * 0.08, (r() - 0.5) * 0.03);
   skin.lerp(new THREE.Color(0x9a6a4c), 0.12 + 0.12 * r()).multiplyScalar(0.94);
+  // (Less orange than the swatches: under warm light and the filmic tone
+  // curve they came out like a tan in a bottle.)
+  skin.offsetHSL(0, -0.14, 0);
   const hair = new THREE.Color(HAIR[hairI]).multiplyScalar(0.85 + 0.3 * r());
   const eyeI = dark || asian ? 3 : pickWeighted(rng, [3, 2.5, 1.2, 1.5, 1.2, 0.8]);
   return {
@@ -638,7 +641,7 @@ export function personParams(faction, rng) {
     skin,
     hair,
     brows: hair.clone().multiplyScalar(0.75),
-    lips: skin.clone().lerp(new THREE.Color(0x9a4e44), dark ? 0.22 : 0.42),
+    lips: skin.clone().lerp(new THREE.Color(0x8e4840), dark ? 0.3 : 0.5),
     eyeColor: new THREE.Color(EYES[eyeI]),
     stubble: r() < 0.7 ? 0.25 + 0.75 * r() : 0.05 * r(),
     ruddy: 0.5 + r() * (dark ? 0.3 : 1.0),
@@ -683,7 +686,7 @@ export function buildPerson(params, lod = 0, info = {}) {
   buildNeck(skin, { lod, skin: params.skin });
   // The head and neck are shaded by the body, the collar and the headgear
   // (the hands are on the gun, so not by where they hang in the bind pose).
-  skin.bakeSphereAO(info.spheres || bodySpheres(info.headgear), lod === 2 ? 0.35 : 0.75);
+  skin.bakeSphereAO(info.spheres || bodySpheres(info.headgear), lod === 2 ? 0.35 : 0.75, 0, skin.count, { inside: 'edge' });
   for (const s of [-1, 1]) buildHand(skin, s, { lod, skin: params.skin, glove: info.gloves, dirt: params.dirt });
   if (info.rolled) for (const s of [-1, 1]) buildForearm(skin, s, { lod, skin: params.skin, from: info.rolled - 0.03 });
   // Creases where fingers, lids and ears touch.
