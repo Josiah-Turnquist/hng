@@ -18,6 +18,9 @@ export const TURN_LIMIT = 40;
 const BASE_SENS = 0.0022; // radians per mouse pixel at sensitivity 1 and default FOV
 const NATURAL_FOV = 31.6; // degrees: what "1x" looks like on a typical monitor (for scopes)
 const _nv = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _from = new THREE.Vector3();
+const _Y = new THREE.Vector3(0, 1, 0);
 
 export class PlayerController {
   // input: the keyboard and mouse (core/input.js), or on a game server the
@@ -454,20 +457,60 @@ export class PlayerController {
     return out.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
   }
 
+  // The line a round leaves along (dir) and where it starts (from), before
+  // the gun's scatter: the real bore of the gun as it's held right now, or
+  // through a scope the bore of the gun held still on the sight line (the
+  // reticle). On a server, the line the player's browser sent (gunOffset:
+  // his sway, his sight's setting), or failing that where he faces with the
+  // sway, the muzzle out in front.
+  shotLine(w, dir, from) {
+    const vm = this.viewmodel;
+    if (vm) {
+      dir.copy(this.scoped ? vm.sightBoreWorld : vm.boreWorld);
+      from.copy(this.scoped ? vm.sightMuzzleWorld : vm.muzzleWorld);
+      return;
+    }
+    const gun = this.input?.remote ? this.input.gun : null;
+    if (gun) {
+      const yaw = this.look.yaw + gun[0],
+        pitch = this.look.pitch + gun[1];
+      dir.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
+      from.set(gun[2], gun[3], gun[4]).applyAxisAngle(_Y, this.look.yaw).add(this.eye);
+      return;
+    }
+    this.lookDir(dir);
+    from.copy(this.eye).addScaledVector(dir, Math.min(0.9, (w.def.length || 1) * 0.7));
+  }
+
+  // Where the gun points and its muzzle, from where he looked in the last
+  // frame drawn: [yaw, pitch] off his look (rad) and the muzzle from his eye
+  // (m, turned with his look's yaw). A browser playing online sends it with
+  // the look, so that the server's round leaves along the line of the one
+  // drawn here (net/online.js). Null when there is no gun of his own to send.
+  gunOffset() {
+    const s = this.soldier;
+    const w = s.weapon;
+    if (!this.viewmodel || !this.drawnLook || !s.alive || s.vehicle || !w) return null;
+    const dir = _dir,
+      from = _from;
+    this.shotLine(w, dir, from);
+    const L = this.drawnLook;
+    from.sub(this.eye).applyAxisAngle(_Y, -L.yaw);
+    return [wrapAngle(Math.atan2(-dir.x, -dir.z) - L.yaw), Math.asin(clamp(dir.y, -1, 1)) - L.pitch, from.x, from.y, from.z];
+  }
+
   // Fire one round from the muzzle along the bore.
   fire(w) {
     const g = this.game;
     const s = this.soldier;
-    const vm = this.viewmodel;
     const d = w.def;
     const ammo = w.ammo;
-    // Direction: the real bore direction of the gun as it's held right now
-    // (on a server: where he faces with the sway, the muzzle out in front).
-    const dir = vm ? vm.boreWorld.clone() : this.lookDir(new THREE.Vector3());
+    const dir = new THREE.Vector3();
+    const muzzle = new THREE.Vector3();
+    this.shotLine(w, dir, muzzle);
     this._scatter(dir, this.spread(w, this.hold.aimed));
 
     // Start at the muzzle, unless the muzzle is through a wall (then from the eye).
-    const muzzle = vm ? vm.muzzleWorld.clone() : this.eye.clone().addScaledVector(dir, Math.min(0.9, (d.length || 1) * 0.7));
     const eye = this.eye;
     const toM = muzzle.clone().sub(eye);
     const dist = toM.length();
@@ -498,7 +541,7 @@ export class PlayerController {
     const supported = s.supported || (d.bipod && s.body.stance === STANCE.PRONE);
     const stanceK = s.body.stance === STANCE.PRONE ? 0.6 : s.body.stance === STANCE.CROUCH ? 0.85 : 1;
     const massK = Math.sqrt(4 / Math.max(1.5, d.mass)); // heavier guns kick less
-    vm?.shot(impulse * massK * stanceK, d, supported);
+    this.viewmodel?.shot(impulse * massK * stanceK, d, supported);
     // Part of the kick stays: automatic fire climbs unless you pull down.
     const auto = w.mode === 'auto' || w.mode === 'slow';
     const r = d.recoil || { rise: 1, side: 0.3 };
@@ -608,6 +651,10 @@ export class PlayerController {
     cam.position.copy(this.eye).addScaledVector(right, bobX);
     cam.position.y += bobY;
     const rollLean = -b.lean * 0.17;
+    // (The look this frame is drawn with: what gunOffset measures the gun from.)
+    const L = (this.drawnLook ??= { yaw: 0, pitch: 0 });
+    L.yaw = this.look.yaw;
+    L.pitch = this.look.pitch;
     cam.rotation.set(
       this.look.pitch + this.sway.pitch * aimBlend + shakeP + kk.p,
       this.look.yaw + this.sway.yaw * aimBlend + shakeY + kk.y,

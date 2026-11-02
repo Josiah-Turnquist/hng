@@ -251,6 +251,8 @@ export class ViewModel {
     this.localPose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
     this.muzzleWorld = new THREE.Vector3();
     this.boreWorld = new THREE.Vector3(0, 0, -1);
+    this.sightMuzzleWorld = new THREE.Vector3(); // the muzzle and bore with the gun held still on the sight line
+    this.sightBoreWorld = new THREE.Vector3(0, 0, -1);
     this.hipAim = new THREE.Quaternion(); // hip shots: bore -> point of convergence
     this.ejectWorld = new THREE.Vector3();
     this.eyeOffset = new THREE.Vector3(); // ADS eye point relative to camera (zero when aimed)
@@ -590,6 +592,13 @@ export class ViewModel {
     // convergence (fading out as the gun comes up to the eye).
     const toAim = _q3.identity().slerp(this.hipAim, 1 - a);
     this.boreWorld.set(0, 0, -1).applyQuaternion(finalQ).applyQuaternion(toAim).applyQuaternion(cam.quaternion);
+    // Looking through a scope the gun isn't drawn and the reticle stays in the
+    // middle of the view, so the gun's own motions (lagging behind a turn, the
+    // kick, a knock from a hit) can't be seen: there the round leaves along the
+    // bore of the gun held still on the sight line, where the reticle is.
+    this.sightBoreWorld.set(0, 0, -1).applyQuaternion(adsQ).applyQuaternion(cam.quaternion);
+    _m.compose(this.sightMuzzleWorld.copy(adsPos).applyQuaternion(cam.quaternion).add(cam.position), _q.copy(cam.quaternion).multiply(adsQ), gunRoot.scale);
+    this.sightMuzzleWorld.copy(this.gun.anchors.muzzle || _v.set(0, 0, -0.6)).applyMatrix4(_m);
     if (this.gun.anchors.ejectionPort) this.ejectWorld.copy(this.gun.anchors.ejectionPort).applyMatrix4(gunRoot.matrixWorld);
 
     // Flash.

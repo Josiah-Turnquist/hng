@@ -350,9 +350,14 @@ player's own controls (`src/game/player.js`) run with no screen when given
 `{ view: false }` and the server's stand-in keyboard. `addPlayer` in
 `src/server/battle.js` puts a player in a server battle; his input messages
 move, aim, fire and switch his guns, and a battle with players in it
-records and plays back exactly (`tests/remotePlayer.test.js`). On the server a
-shot leaves along where he faces with his sway; later the browser will send
-where its gun pointed and the server will check it. Then the game server (`server/main.mjs`, `npm start`, what Railway runs): it
+records and plays back exactly (`tests/remotePlayer.test.js`). With his look
+the browser sends where his gun points off it and where its muzzle is (`g` in
+the input message, `gunOffset` in `src/game/player.js`: his own sway, his
+sight's setting, the gun's own motion), and the server's round leaves along
+that line, so it goes where the one drawn in his browser goes; the server
+takes it only within 0.3 radians of his look and with the muzzle within 1.6 m
+of his eye, and still adds the gun's own scatter itself
+(`tests/scopedAim.test.js`). Then the game server (`server/main.mjs`, `npm start`, what Railway runs): it
 hands out the game's files (and nothing else of the repo), answers `/health`,
 and players play over a WebSocket at `/play`. A player's first message
 carries his Neon Auth sign-in token, checked against Neon's public keys

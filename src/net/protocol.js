@@ -4,10 +4,13 @@
 // in Node.
 //
 // From the browser, about 30 a second:
-//   input   { k: 'i', q: number, h: [held actions], p: [actions pressed since the last], l: [yaw, pitch], w: wheel }
+//   input   { k: 'i', q: number, h: [held actions], p: [actions pressed since the last], l: [yaw, pitch], w: wheel, g: gun }
 //           actions by their number in ACTION_LIST (names, not keys: the
 //           player's own key settings stay in the browser); the look as
 //           where he faces (not mouse movement: sensitivity stays a browser
+//           setting). On foot, g: where his gun points off his look and its
+//           muzzle from his eye (player.js gunOffset), so the server's round
+//           leaves along the line drawn in his browser (his sway, his sight's
 //           setting).
 // From the server:
 //   welcome { k: 'w', v: PROTOCOL_VERSION, you: soldier id, map, seed, side }
@@ -28,8 +31,8 @@ import { SHELLS } from '../vehicles/defs.js';
 // (2: the hello names the soldier; rewards 'g', leaving 'l', a vehicle's aim.
 // 3: the map key, a new action at the end of the list; how hard a soldier
 // bleeds; which points are closed for coming back in; a vehicle's speed,
-// engine, damage and guns, vehicleState.)
-export const PROTOCOL_VERSION = 4;
+// engine, damage and guns, vehicleState. 5: the gun's line on foot, g.)
+export const PROTOCOL_VERSION = 5;
 export const ACTION_LIST = Object.keys(DEFAULT_BINDINGS);
 const ACTION_NO = Object.fromEntries(ACTION_LIST.map((a, i) => [a, i]));
 
@@ -41,12 +44,24 @@ const ang = (a) => Math.round(a * 10000);
 
 // deploy: while down, the point he chose to come back in at (its id).
 // In a vehicle, look is where the gun of his seat points, and range a tank
-// gunner's sight setting (m).
-export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0, deploy = null, range = null }) {
+// gunner's sight setting (m). On foot, gun: [yaw, pitch] of his gun off his
+// look (rad) and its muzzle from his eye ([x, y, z] m, turned with his yaw).
+export function encodeInput({ seq, held = [], pressed = [], look = [0, 0], wheel = 0, deploy = null, range = null, gun = null }) {
   const m = { k: 'i', q: seq, h: [...held].map((a) => ACTION_NO[a]).filter((n) => n != null), p: [...pressed].map((a) => ACTION_NO[a]).filter((n) => n != null), l: [ang(look[0]), ang(look[1])], w: wheel | 0 };
   if (deploy) m.d = String(deploy);
   if (range != null) m.r = Math.round(range);
+  // (Hundred-thousandths of a radian and millimetres: a tenth of a millimetre at 10 m.)
+  if (gun) m.g = [Math.round(gun[0] * 1e5), Math.round(gun[1] * 1e5), Math.round(gun[2] * 1000), Math.round(gun[3] * 1000), Math.round(gun[4] * 1000)];
   return m;
+}
+
+// The gun's line from a message, or null. No further off the look than a gun
+// can point (at the hip, kicked or lagging a turn), nor the muzzle further from
+// the eye than a long rifle held out.
+function gunLine(g) {
+  if (!Array.isArray(g) || g.length !== 5 || !g.every(Number.isFinite)) return null;
+  const a = [g[0] / 1e5, g[1] / 1e5, g[2] / 1000, g[3] / 1000, g[4] / 1000];
+  return Math.hypot(a[0], a[1]) <= 0.3 && Math.hypot(a[2], a[3], a[4]) <= 1.6 ? a : null;
 }
 
 export function decodeInput(m) {
@@ -60,6 +75,7 @@ export function decodeInput(m) {
     wheel: Math.max(-5, Math.min(5, Number(m.w) || 0)),
     deploy: typeof m.d === 'string' && m.d.length <= 8 ? m.d : null,
     range: Number.isFinite(m.r) ? Math.max(0, Math.min(5000, m.r)) : null,
+    gun: gunLine(m.g),
   };
 }
 
@@ -75,6 +91,7 @@ export class RemoteInput {
     this.released = new Set();
     this.wheel = 0;
     this.look = null;
+    this.gun = null; // his gun's line, off his look (player.js shotLine)
     this.seq = 0;
   }
 
@@ -87,6 +104,7 @@ export class RemoteInput {
     this.wheel += frame.wheel;
     this.look = frame.look;
     this.range = frame.range;
+    this.gun = frame.gun;
     return true;
   }
 

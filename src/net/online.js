@@ -343,8 +343,8 @@ export class OnlineBattle {
       this.pressed.delete('aim');
     }
     this.seq++;
-    const [look, range] = this._aimOut(pc);
-    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look, range, deploy: this.me.alive ? null : this.deployAt })));
+    const [look, range, gun] = this._aimOut(pc);
+    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look, range, gun, deploy: this.me.alive ? null : this.deployAt })));
     this.pressed.clear();
     const b = this.me.body;
     this.history.push({ seq: this.seq, x: b.x, y: b.y, z: b.z });
@@ -567,15 +567,17 @@ export class OnlineBattle {
     }
   }
 
-  // Where he points: on foot his look; in a vehicle the gun of his seat (and a
-  // tank gunner's sight range), as his own controls set it.
+  // Where he points: on foot his look, and his gun's line off it (with his
+  // sway and his sight's setting, as his rounds are drawn here: the server's
+  // leave along it too); in a vehicle the gun of his seat (and a tank
+  // gunner's sight range), as his own controls set it.
   _aimOut(pc) {
     const v = this.me.vehicle;
     const role = v ? pc.vehicleCtl.role : null;
-    if (role === 'gunner' && v.aim) return [[v.aim.yaw, v.aim.pitch], v.sightRange ?? null];
-    if (role === 'bowMg' && v.bowAim) return [[v.bowAim.yaw, v.bowAim.pitch], null];
-    if (role === 'sidecarMg' && v.mgAim) return [[v.mgAim.yaw, v.mgAim.pitch], null];
-    return [[pc.look.yaw, pc.look.pitch], null];
+    if (role === 'gunner' && v.aim) return [[v.aim.yaw, v.aim.pitch], v.sightRange ?? null, null];
+    if (role === 'bowMg' && v.bowAim) return [[v.bowAim.yaw, v.bowAim.pitch], null, null];
+    if (role === 'sidecarMg' && v.mgAim) return [[v.mgAim.yaw, v.mgAim.pitch], null, null];
+    return [[pc.look.yaw, pc.look.pitch], null, pc.gunOffset?.() ?? null];
   }
 
   // A line of chat to his side, or to everyone (all).
