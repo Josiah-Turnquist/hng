@@ -312,7 +312,7 @@ if (!s) {
     find();
   } catch (e) {
     gate.className = 'msg bad';
-    gate.textContent = e.status === 403 ? `Signed in as ${s.user?.email || s.user?.name}, which is not an admin account.` : e.message;
+    gate.textContent = e.status === 403 ? `Signed in as ${s.user?.email || s.user?.name}, which is not an admin account. Make it one in the Neon Console: Auth, then Users, then "Make admin". (It can take half a minute to count.)` : e.message;
   }
 }
 </script>

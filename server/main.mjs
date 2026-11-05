@@ -24,7 +24,8 @@
 // DATABASE_URL (Neon's Postgres, for saved progress; without it progress
 // stays in each browser),
 // BOT_DIFFICULTY (easy, normal or hard; easy by default), ADMIN_EMAILS (the
-// sign-in emails, comma between, that may open the admin page /admin),
+// sign-in emails, comma between, that may open the admin page /admin, as
+// well as the users made admins in the Neon Console),
 // BATTLE_SIZE (bots and players a side; by default the map's own, its
 // onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
 // running at once, default 3), WAR_SPEED (how many times faster than real

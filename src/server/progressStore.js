@@ -70,6 +70,7 @@ export function openProgressStore(url, { log = console.log } = {}) {
   // The table is made the first time it is needed (the database may be
   // asleep when the server starts); tried again after a failure.
   let ready = null;
+  let roleWarned = false;
   const table = () =>
     (ready ??= pool.query(TABLE).then(() => pool.query(FRIENDS)).then(() => pool.query(EVENTS)).then(() => pool.query(WAR)).catch((e) => {
       ready = null;
@@ -138,6 +139,20 @@ export function openProgressStore(url, { log = console.log } = {}) {
       await table();
       await pool.query(`INSERT INTO events (at, user_id, kind, data) SELECT at, user_id, kind, data FROM jsonb_to_recordset($1::jsonb) AS x(at timestamptz, user_id text, kind text, data jsonb)`, [JSON.stringify(rows)]);
       if (Math.random() < 0.02) await pool.query(`DELETE FROM events WHERE at < now() - interval '${KEEP_DAYS} days'`);
+    },
+    // His role in Neon Auth's own record of him (its neon_auth schema, in this
+    // same database), which the Neon Console's "Make admin" sets ("admin";
+    // several roles go with commas between). null without one, or when there
+    // is no such record here.
+    async authRole(userId) {
+      try {
+        const r = await pool.query('SELECT role FROM neon_auth."user" WHERE id::text = $1', [String(userId)]);
+        return r.rows[0]?.role ?? null;
+      } catch (e) {
+        if (!roleWarned) log(`database: no Neon Auth role to read (${e.message})`);
+        roleWarned = true;
+        return null;
+      }
     },
     // The last few days at a glance (admin page).
     async stats(days = 7) {

@@ -238,6 +238,10 @@ test('the admin page: only admins; find players, set credits and ranks, max ribb
   try {
     assert.equal((await fetch(`http://localhost:${srv.port}/api/admin/players`)).status, 401);
     assert.equal((await as('Pipsy', 'players')).status, 403, 'a player is not an admin');
+    // Made an admin in the Neon Console: Neon Auth's record of him says so.
+    store.authRole = async (id) => ({ 'dev:Neville': 'user,admin', 'dev:Pipsy': 'user' })[id] ?? null;
+    assert.equal((await as('Neville', 'players')).status, 200, 'an admin in Neon is one here');
+    assert.equal((await as('Pipsy', 'players')).status, 403, 'a "user" role is not');
     const found = (await as('Boss', 'players?q=pip')).body.players;
     assert.equal(found.length, 1);
     assert.deepEqual([found[0].name, found[0].credits, found[0].soldiers.length], ['Pipsy', 10, 2]);
@@ -258,5 +262,26 @@ test('the admin page: only admins; find players, set credits and ranks, max ribb
     assert.equal((await as('Boss', 'change', { id: 'nobody', what: 'credits', value: 5 })).status, 400);
   } finally {
     await srv.close();
+  }
+});
+
+test("the database: a user's role in Neon Auth's record of him", { skip: !process.env.TEST_DATABASE_URL && 'set TEST_DATABASE_URL to a Postgres to test against' }, async () => {
+  const store = openProgressStore(process.env.TEST_DATABASE_URL, { log: () => {} });
+  const pg = (await import('pg')).default;
+  const db = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+  await db.connect();
+  try {
+    // (Neon Auth's table, as Better Auth's admin plugin keeps it: id, email, role.)
+    await db.query('CREATE SCHEMA IF NOT EXISTS neon_auth');
+    await db.query('CREATE TABLE IF NOT EXISTS neon_auth."user" (id uuid PRIMARY KEY, email text, role text)');
+    const id = crypto.randomUUID();
+    await db.query('INSERT INTO neon_auth."user" (id, email, role) VALUES ($1, $2, $3)', [id, 'boss@example.com', 'admin']);
+    assert.equal(await store.authRole(id), 'admin');
+    assert.equal(await store.authRole(crypto.randomUUID()), null, 'no such user');
+    assert.equal(await store.authRole('dev:Boss'), null, 'not an id Neon gives');
+    await db.query('DELETE FROM neon_auth."user" WHERE id = $1', [id]);
+  } finally {
+    await db.end();
+    await store.close();
   }
 });

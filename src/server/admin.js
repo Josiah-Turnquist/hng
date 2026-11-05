@@ -1,4 +1,5 @@
-// /api/admin on the game server, for the game's admins (ADMIN_EMAILS: their
+// /api/admin on the game server, for the game's admins (made admins in the
+// Neon Console: Auth, Users, "Make admin"; or listed in ADMIN_EMAILS, their
 // sign-in emails, or for tests their ids): look players up and change what
 // they have, as the admin page (admin.html) does. Everyone else gets 403.
 //
@@ -23,6 +24,21 @@ const MAX_BODY = 16 * 1024;
 
 export function adminHandler({ store, check, admins = [], log = console.log, war = null }) {
   const allowed = new Set(admins.map((a) => String(a).trim().toLowerCase()).filter(Boolean));
+  // An admin: made one in the Neon Console (Auth, Users, "Make admin"), which
+  // his sign-in or Neon Auth's record of him in the database says, or listed
+  // in ADMIN_EMAILS. (The database is asked at most every half minute a user.)
+  const hasAdmin = (role) => String(role || '').split(',').some((r) => r.trim().toLowerCase() === 'admin');
+  const asked = new Map(); // user id -> { admin, at }
+  async function isAdmin(who) {
+    if (allowed.has(String(who.email || '').toLowerCase()) || allowed.has(String(who.id).toLowerCase())) return true;
+    if (hasAdmin(who.role)) return true;
+    if (!store?.authRole) return false;
+    const was = asked.get(who.id);
+    if (was && Date.now() - was.at < 30000) return was.admin;
+    const admin = hasAdmin(await store.authRole(who.id));
+    asked.set(who.id, { admin, at: Date.now() });
+    return admin;
+  }
   return async function handle(req, res, path) {
     const send = (status, body) => res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
     let who;
@@ -32,7 +48,7 @@ export function adminHandler({ store, check, admins = [], log = console.log, war
     } catch {
       return send(401, { error: 'Please sign in' });
     }
-    if (!allowed.has(String(who.email || '').toLowerCase()) && !allowed.has(String(who.id).toLowerCase())) return send(403, { error: 'Not an admin' });
+    if (!(await isAdmin(who))) return send(403, { error: 'Not an admin' });
     if (!store) return send(503, { error: 'Saving on the server is not set up' });
     try {
       if (req.method === 'GET' && path === 'stats') {
