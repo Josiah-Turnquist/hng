@@ -31,7 +31,21 @@ const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : typeof k === 'stri
 const el = () => ({ style: {}, classList: { add() {}, toggle() {}, remove() {} }, appendChild() {}, querySelector: () => el(), set innerHTML(v) {}, set textContent(v) {} });
 globalThis.document ??= { createElement: (tag) => (tag === 'canvas' ? { width: 0, height: 0, getContext: () => ctx2d } : el()) };
 
+// A new battle is built in pieces with a pause between them, so the battles
+// already running get their turns meanwhile (the server does one thing at a
+// time: a battle built in one go stopped every other battle for seconds).
+// Each pause lasts until every running battle has caught up with the clock
+// (a second at most). (running: the server's rooms, each with lag(), the steps
+// it is behind; server/room.js.)
+export const running = new Set();
+export async function breather() {
+  const end = performance.now() + 1000;
+  do await new Promise((r) => setTimeout(r, 1));
+  while (performance.now() < end && [...running].some((r) => r.lag() > 2));
+}
+
 let terrainCache = null;
+let textures = null;
 async function buildTown() {
   const { planVillage, buildVillage } = await import('../world/village/index.js');
   const { PRESETS } = await import('../render/textures.js');
@@ -46,7 +60,9 @@ async function buildTown() {
   })();
   const { terrain, plan } = terrainCache;
   const collision = new CollisionWorld(terrain.hf);
-  const textures = {
+  // (One for the whole program: the vehicles' models are kept by it, so each
+  // kind is built once, not again for every battle.)
+  textures ??= {
     standard(name) {
       const m = new THREE.MeshStandardMaterial();
       m.userData.texWorld = PRESETS[name]?.world ?? 1;
@@ -55,10 +71,13 @@ async function buildTown() {
     // No pictures: every texture a model asks for is none.
     get: () => new Proxy({}, { get: () => null }),
   };
+  await breather();
   const village = buildVillage(plan, { terrain, def, collision, textures });
+  await breather();
   // Trees, hedges and bushes are solid, as in the game (no graphics here).
   const { buildVegetation } = await import('../world/vegetation.js');
   buildVegetation({ terrain, def, collision, village, plan });
+  await breather();
   const riverData = terrain.river;
   const hf = terrain.hf;
   const waterLevelAt = (x, z) => {
@@ -91,10 +110,12 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   };
   const nav = new NavGrid(world, { radius: town.def.playRadius + 60 });
   nav.build({ doors: town.village.doors });
+  await breather();
   // Vehicles plan on their own grid, as in Game.load: more clearance, no
   // doorways, gentler slopes.
   const vnav = new NavGrid(world, { radius: town.def.playRadius + 60 });
   vnav.build({ doors: [], agentRadius: 1.6, maxSlopeDeg: 28 });
+  await breather();
   const g = Object.create(Game.prototype);
   Object.assign(g, {
     headless: true,

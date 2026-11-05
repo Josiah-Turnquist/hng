@@ -18,10 +18,11 @@
 //   room.onOver = (team) => ...   // decided: the winning side (ATT or DEF)
 //   (war: { number, id, point } for a battle of the shared war, told to each player)
 //   room.onReward = ({ client, userId, name, soldierId, reward }) => ...   (reward null: nothing earned)
+//   room.onMinute = ({ perSide, players, step, worstStep, worstLag, lost }) => ...   // how it kept up (ms), each minute anyone plays
 //   await room.finish()   // the server is stopping: everyone's rewards kept, then closed
 //
 // client: any object; send(client, text) sends it a message.
-import { makeBattle, addPlayer, ATT, DEF } from './battle.js';
+import { makeBattle, addPlayer, running, ATT, DEF } from './battle.js';
 import { Recorder, TICK, CHECK_EVERY } from './record.js';
 import { snapshot, roster, scores, watchEvents, PROTOCOL_VERSION } from '../net/protocol.js';
 import { BotBrain } from '../ai/bot.js';
@@ -34,8 +35,12 @@ const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
 const FULL_EVERY = 40; // every 40th snapshot (two seconds) has every vehicle, moved or not
 const EMPTY_CLOSE = 60; // seconds with nobody in it
 const OVER_CLOSE = 15; // seconds after the battle is decided
-const INPUTS_PER_SECOND = 90; // more than this from one player and the rest wait
+const INPUTS_PER_SECOND = 90; // more than this from one player, kept up, and the rest are dropped
+const INPUTS_BURST = 180; // (the two seconds' worth a stalled connection can deliver at once)
 const STEPS_AT_ONCE = 4; // steps run in one go before the server answers anything else
+const CATCH_UP = 60; // steps behind (a second) that are still run, not dropped
+const QUEUE_SLACK = 2; // inputs that may wait a step or two before the oldest are run together
+const QUEUE_MOST = 15; // steps an input may wait while the battle catches up (a quarter second)
 const SLOW_WARN = 10; // seconds between notes in the log that a battle can't keep up
 export const HOLD = 60; // seconds a dropped player's soldier waits for him to come back
 
@@ -143,7 +148,11 @@ export class BattleRoom {
   // nobody can flood the server).
   input(client, message) {
     const p = this.players.get(client);
-    if (!p || p.budget <= 0) return;
+    if (!p) return;
+    const now = performance.now();
+    p.budget = Math.min(INPUTS_BURST, p.budget + ((now - (p.budgetAt ?? now)) / 1000) * INPUTS_PER_SECOND);
+    p.budgetAt = now;
+    if (p.budget < 1) return;
     p.budget--;
     p.queue.push(message);
   }
@@ -189,21 +198,38 @@ export class BattleRoom {
   // machine runs a little slow rather than leaving the server deaf.
   _start() {
     let start = performance.now();
-    let behind = 0;
+    let warned = 0;
+    // (How many steps behind the clock: a battle being built waits for it, battle.js breather.)
+    this.lag = () => Math.floor((performance.now() - start) / 1000 / TICK) - this.tick;
+    this.health = { steps: 0, stepMs: 0, worstStep: 0, worstLag: 0, lost: 0 };
+    running.add(this);
     const loop = () => {
       if (this.closed) return;
       let due = Math.floor((performance.now() - start) / 1000 / TICK);
-      // (More than a quarter second behind: the lost time is dropped.)
-      if (due - this.tick > 15) {
+      // (A hiccup, a new battle being built: the steps missed are run now, so
+      // the players' soldiers go as far as their screens showed them going.
+      // More than CATCH_UP behind: the rest of the lost time is dropped.)
+      const h = this.health;
+      h.worstLag = Math.max(h.worstLag, (due - this.tick) * TICK * 1000);
+      if (due - this.tick > CATCH_UP) {
+        h.lost += (due - this.tick - 1) * TICK * 1000;
         start += (due - this.tick - 1) * TICK * 1000;
         due = this.tick + 1;
-        if (performance.now() - behind > SLOW_WARN * 1000) {
-          behind = performance.now();
+        if (performance.now() - warned > SLOW_WARN * 1000) {
+          warned = performance.now();
           console.warn(`battle ${this.opts.attackers} against ${this.opts.defenders}: the server can't keep up (${this.opts.perSide} a side)`);
         }
       }
       try {
-        for (let n = 0; n < STEPS_AT_ONCE && this.tick < due && !this.closed; n++) this._step();
+        for (let n = 0; n < STEPS_AT_ONCE && this.tick < due && !this.closed; n++) {
+          this.behind = due - this.tick - 1;
+          const t = performance.now();
+          this._step();
+          const ms = performance.now() - t;
+          h.steps++;
+          h.stepMs += ms;
+          h.worstStep = Math.max(h.worstStep, ms);
+        }
       } catch (e) {
         // One bad step mustn't stop the server: noted (once a second at most), and on.
         if (!(this._lastError > performance.now() - 1000)) {
@@ -221,12 +247,16 @@ export class BattleRoom {
     const g = this.g;
     this.tick++;
     for (const [, p] of this.players) {
-      for (const m of p.queue) {
+      // His inputs one a step, in order, as his screen played them (two that
+      // came in together are not run as one step, which put him behind
+      // where his screen had him). If they pile up beyond the steps still to
+      // run (or than a quarter second's worth), the oldest go together, so
+      // they never wait long.
+      const n = Math.min(p.queue.length, 1 + Math.max(0, p.queue.length - Math.min(this.behind || 0, QUEUE_MOST) - QUEUE_SLACK));
+      for (const m of p.queue.splice(0, n)) {
         this.rec?.input(this.tick, p.pc.soldier.id, m);
         g.applyInput(p.pc.soldier.id, m);
       }
-      p.queue.length = 0;
-      if (this.tick % 60 === 0) p.budget = INPUTS_PER_SECOND;
     }
     g.update(TICK);
     // Someone gone from the battle (a bot that made room for a player): everyone is told.
@@ -253,6 +283,12 @@ export class BattleRoom {
         this._scores = text;
         this._broadcast(text);
       }
+    }
+    // How the server kept up this minute (the admin page's stats), while anyone plays.
+    if (this.tick % 3600 === 0) {
+      const h = this.health;
+      if (this.players.size && h.steps) this.onMinute?.({ perSide: this.opts.perSide, players: this.players.size, step: +(h.stepMs / h.steps).toFixed(2), worstStep: Math.round(h.worstStep), worstLag: Math.round(h.worstLag), lost: Math.round(h.lost) });
+      this.health = { steps: 0, stepMs: 0, worstStep: 0, worstLag: 0, lost: 0 };
     }
     // Closing: empty for a minute, or a while after the battle is decided.
     if (this.tick % 60 === 0) {
@@ -299,6 +335,7 @@ export class BattleRoom {
   close() {
     if (this.closed) return;
     this.closed = true;
+    running.delete(this);
     clearTimeout(this._timer);
     this.onClose?.(this);
   }

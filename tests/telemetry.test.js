@@ -42,12 +42,15 @@ test('the database keeps events and sums them up for the admin page', { skip: !p
       { at, user_id: who, kind: 'perf', data: { fps: 55, low: 40, quality: 'test-preset' } },
       { at, user_id: who, kind: 'error', data: { message: `test error ${who}`, where: '/src/x.js:1:2' } },
       { at, user_id: who, kind: 'session', data: { minutes: 12 } },
+      { at, user_id: null, kind: 'server', data: { perSide: 30, players: 1, step: 5.2, worstStep: 40, worstLag: 380, lost: 0 } },
     ]);
     const st = await store.stats(1);
     assert.ok(Number(st.battles.battles) >= 1);
     assert.ok(st.perf.some((p) => p.quality === 'test-preset' && Number(p.fps) === 55));
     assert.ok(st.errors.some((e) => e.message === `test error ${who}`));
     assert.ok(st.daily.length >= 1);
+    // How the server kept up, by day.
+    assert.ok(st.server.length >= 1 && Number(st.server.at(-1).minutes) >= 1 && Number(st.server.at(-1).worst_lag) >= 380);
   } finally {
     await store.close();
   }

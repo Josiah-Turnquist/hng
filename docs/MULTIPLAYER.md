@@ -388,7 +388,15 @@ the snapshots a tenth of a second behind and gliding between them. The
 player's own soldier moves at once from his keys and is quietly put right
 when the server saw him elsewhere (a quarter second's correction, or at once
 when more than 3 m off). He sends his keys and where he looks 60 times a
-second. Every round fired on the page is drawn only: hits, wounds, deaths,
+second. The server runs his keys one step each, in the order sent, and when
+it was held up (busy for a moment, a new battle being built) it runs the
+steps it missed afterwards, up to a second's worth, rather than dropping
+them, which snapped walking players back to where they were seconds before.
+A new battle is built in pieces, each waiting until the running battles have
+caught up, and the vehicles' models are built once per server, not per
+battle. Each minute anyone plays, every battle notes how it kept up (how long
+a step takes, its longest stop, any time lost); the admin page's stats show
+it by day. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do
 nothing online). Getting into a vehicle happens at once on the page and
 follows the server if it disagrees for half a second. Down, he picks where

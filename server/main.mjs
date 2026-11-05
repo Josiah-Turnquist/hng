@@ -125,6 +125,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       await r.ready;
       r.onReward = rewardPlayer;
       r.onError = (e) => telemetry.record(null, 'error', { where: 'server', message: String(e?.message || e), place: String(e?.stack || '').split('\n')[1]?.trim() || '' });
+      r.onMinute = (x) => telemetry.record(null, 'server', x);
       r.onClose = () => {
         rooms.delete(r);
         log(`battle closed: ${r.opts.attackers} against ${r.opts.defenders}`);
@@ -161,6 +162,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         return rewardPlayer(x);
       };
       r.onError = (e) => telemetry.record(null, 'error', { where: 'server', message: String(e?.message || e), place: String(e?.stack || '').split('\n')[1]?.trim() || '' });
+      r.onMinute = (x) => telemetry.record(null, 'server', x);
       r.onOver = (team) => war.result(number, id, team === ATT);
       r.onClose = () => {
         rooms.delete(r);
