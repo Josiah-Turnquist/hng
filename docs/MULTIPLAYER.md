@@ -394,7 +394,12 @@ steps it missed afterwards, up to a second's worth, rather than dropping
 them, which snapped walking players back to where they were seconds before.
 A new battle is built in pieces, each waiting until the running battles have
 caught up, and the vehicles' models are built once per server, not per
-battle. Each minute anyone plays, every battle notes how it kept up (how long
+battle. Every battle runs in a thread of its own (`src/server/roomProxy.js` starts
+it, `src/server/roomWorker.js` runs it), so each gets a processor core to
+itself: one full battle keeps most of a core busy, and two at once in one
+thread fell seconds behind. The main thread signs players in and passes their
+messages along. (`BATTLE_THREADS=0` keeps every battle in the main thread;
+tests that look inside a battle do that.) Each minute anyone plays, every battle notes how it kept up (how long
 a step takes, its longest stop, any time lost); the admin page's stats show
 it by day. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do

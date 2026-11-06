@@ -28,7 +28,8 @@
 // well as the users made admins in the Neon Console),
 // BATTLE_SIZE (bots and players a side; by default the map's own, its
 // onlineSize in src/world/maps.js: 30 for the town), MAX_BATTLES (battles
-// running at once, default 3), WAR_SPEED (how many times faster than real
+// running at once, default 3), BATTLE_THREADS=0 (every battle in the server's
+// own thread rather than each in a thread of its own), WAR_SPEED (how many times faster than real
 // time the shared war runs, default 6), WAR_BATTLE_WAIT (minutes a war battle
 // waits for players before it settles on its own, default 10).
 //
@@ -43,6 +44,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { BattleRoom } from '../src/server/room.js';
+import { RoomProxy } from '../src/server/roomProxy.js';
 import { MAPS } from '../src/world/maps.js';
 import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
@@ -63,7 +65,10 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10 } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10, threads = process.env.BATTLE_THREADS !== '0' } = {}) {
+  // Each battle in its own thread, a processor core to itself (roomProxy.js);
+  // threads: false keeps them in this one (tests that look inside a battle).
+  const Room = threads ? RoomProxy : BattleRoom;
   const rooms = new Set();
   const warRooms = new Map(); // war battle id -> its online battle (or the battle being made)
   const war = new WarService({ store, log, speed: warSpeed, battleWait: warBattleWait });
@@ -114,15 +119,15 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   // (party: the battle his party is in, if it has a place for him: that one.)
   async function roomFor(faction, party = null) {
     const army = ['US', 'GE', 'SU'].includes(faction) ? faction : 'US';
-    if (party && !party.closed && !party.g?.mode?.over && party.sideOf(army) !== null && party.playersOn(party.sideOf(army)) < party.opts.perSide) return party;
-    const open = [...rooms].filter((r) => !r.closed && !r.g?.mode?.over && r.sideOf(army) !== null && r.playersOn(r.sideOf(army)) < r.opts.perSide);
+    if (party && !party.closed && !party.isOver && party.sideOf(army) !== null && party.playersOn(party.sideOf(army)) < party.opts.perSide) return party;
+    const open = [...rooms].filter((r) => !r.closed && !r.isOver && r.sideOf(army) !== null && r.playersOn(r.sideOf(army)) < r.opts.perSide);
     if (open.length) return open.sort((a, b) => b.players.size - a.players.size)[0];
     for (const [key, p] of opening) if (key.split('-').includes(army)) return p;
     if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
     const defenders = army === 'GE' ? 'US' : 'GE';
     const key = `${army}-${defenders}`;
     const p = (async () => {
-      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      const r = new Room({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: army, defenders, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       r.onReward = rewardPlayer;
       r.onError = (e) => telemetry.record(null, 'error', { where: 'server', message: String(e?.message || e), place: String(e?.stack || '').split('\n')[1]?.trim() || '' });
@@ -148,14 +153,14 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     const have = warRooms.get(id);
     if (have) {
       const r = await have;
-      if (r.opts.war.number === number && !r.closed && !r.g?.mode?.over) {
+      if (r.opts.war.number === number && !r.closed && !r.isOver) {
         if (r.playersOn(r.sideOf(faction)) >= r.opts.perSide) throw new Error('Your side of that battle is full');
         return r;
       }
     }
     if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
     const p = (async () => {
-      const r = new BattleRoom({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: b.att, defenders: b.def, war: { number, id, point: MAP.name(b.point) }, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
+      const r = new Room({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: b.att, defenders: b.def, war: { number, id, point: MAP.name(b.point) }, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
       // (The warfunds his heroes earn the army: 40 a man put down, 250 a point taken.)
       r.onReward = (x) => {
@@ -168,7 +173,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       r.onClose = () => {
         rooms.delete(r);
         if (warRooms.get(id) === p) warRooms.delete(id);
-        if (!r.g?.mode?.over) war.closedEarly(number, id);
+        if (!r.isOver) war.closedEarly(number, id);
         log(`war battle closed: ${r.opts.war.point}`);
       };
       rooms.add(r);
@@ -311,10 +316,13 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         // him: straight back in (from the battle reconnecting by itself, or
         // from the menus with the same soldier). Another soldier: that place
         // is given up and he joins as usual.
-        const held = [...rooms].find((r) => r.holding?.(who.id));
-        if (held && (s.rejoin || s.id === held.held.get(who.id)?.p.soldierId)) {
+        const held = [...rooms].find((r) => r.holding?.(who.id) != null);
+        if (held && (s.rejoin || s.id === held.heldSoldier(who.id))) {
           if (ws.readyState !== 1) return;
-          held.rejoin(ws, who.id);
+          if ((await held.rejoin(ws, who.id)) == null) {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'Your place in that battle is gone.', gone: true }));
+            return ws.close(4000, 'refused');
+          }
           joined = held;
           player = who;
           social.inBattle(who.id, who.name, held);
@@ -347,7 +355,8 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         }
         const r = s.war ? (await warReady, await warRoomFor(me.faction, s.war)) : await roomFor(me.faction, social.partyRoom(who.id));
         if (ws.readyState !== 1) return;
-        r.join(ws, { userId: who.id, name: who.name, ...me });
+        await r.join(ws, { userId: who.id, name: who.name, ...me });
+        if (ws.readyState !== 1) return r.leave(ws);
         joined = r;
         player = who;
         social.inBattle(who.id, who.name, r);

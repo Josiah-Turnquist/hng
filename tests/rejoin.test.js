@@ -46,7 +46,7 @@ test('a dropped player lets go of every key, and his next connection counts its 
 });
 
 test('dropped: his soldier waits for him and he comes back to it; not back in time, a bot takes it', async () => {
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
   const open = [];
   try {
     const a = await connect(srv.port);
@@ -104,7 +104,7 @@ test('dropped: his soldier waits for him and he comes back to it; not back in ti
 });
 
 test('leaving on purpose is not held; a page reloaded comes back from the menus; another soldier gives the place up', async () => {
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
   const open = [];
   try {
     const a = await connect(srv.port);

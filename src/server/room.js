@@ -12,7 +12,8 @@
 //   room.join(client, { userId, name, faction, cls, loadout, soldierId, tank })   -> soldier id or throws
 //   room.input(client, message); room.leaving(client); room.leave(client)
 //   room.gone(client)       // his connection closed: held for him if he didn't mean to go
-//   room.holding(userId) -> held soldier's id or null; room.rejoin(client, userId) -> soldier id or null
+//   room.holding(userId) -> held soldier's id or null; room.heldSoldier(userId) -> his roster's id for it
+//   room.rejoin(client, userId) -> soldier id or null; room.isOver: decided
 //   room.release(userId)    // a held place given up at once (a bot takes over)
 //   room.onClose = () => ...
 //   room.onOver = (team) => ...   // decided: the winning side (ATT or DEF)
@@ -121,6 +122,16 @@ export class BattleRoom {
   // The soldier held for this player (his id), or null.
   holding(userId) {
     return this.held.get(userId)?.p.pc.soldier.id ?? null;
+  }
+
+  // Which of his kept soldiers is held (the id in his roster), or null.
+  heldSoldier(userId) {
+    return this.held.get(userId)?.p.soldierId ?? null;
+  }
+
+  // Decided (won or lost)?
+  get isOver() {
+    return !!this.g?.mode?.over;
   }
 
   // Back in: the same soldier, wherever he is now. Null if nothing was held.

@@ -32,7 +32,7 @@ function connect(port) {
 }
 
 test('players join a battle over the network, move, see each other, and leave to a bot', async () => {
-  const srv = await startServer({ port: 0, battleSize: 4, maxBattles: 2, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, maxBattles: 2, check: signInChecker({ jwksUrl: null, allowDevNames: true }), log: () => {} });
   try {
     const a = await connect(srv.port);
     a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US', cls: 'infantry' } }));
@@ -112,7 +112,7 @@ test("online battle rewards are worked out by the server and kept with his soldi
   };
   const kept = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 }, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
   rows.set('dev:Able', { roster: { soldiers: [kept], selectedId: 's1', credits: 0 }, war: null, rev: 1 });
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
   try {
     // A soldier not kept on the server can't join.
     const x = await connect(srv.port);
@@ -160,7 +160,7 @@ test("when the server stops (a new version going up), the players' battles so fa
   };
   const kept = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: { battles: 0, wins: 0, kills: 0, deaths: 0, captures: 0 }, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
   rows.set('dev:Able', { roster: { soldiers: [kept], selectedId: 's1', credits: 0 }, war: null, rev: 1 });
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
   try {
     const a = await connect(srv.port);
     a.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { id: 's1', faction: 'US', cls: 'infantry' } }));
@@ -177,7 +177,7 @@ test("when the server stops (a new version going up), the players' battles so fa
 });
 
 test('the game files are handed out, and nothing else', async () => {
-  const srv = await startServer({ port: 0, check: signInChecker({ jwksUrl: null }), log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, check: signInChecker({ jwksUrl: null }), log: () => {} });
   try {
     const get = (p) => fetch(`http://localhost:${srv.port}${p}`);
     assert.equal((await get('/health')).status, 200);

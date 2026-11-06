@@ -77,7 +77,7 @@ test('friends, a party and its chat; the party goes into one battle and talks th
   const store = memoryStore();
   const soldier = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: {}, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
   for (const n of ['Able', 'Baker']) await store.put(`dev:${n}`, n, { roster: { soldiers: [soldier], selectedId: 's1', credits: 0 } }, 0);
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, log: () => {} });
   const open = [];
   try {
     const a = await connect(srv.port, '/lobby');

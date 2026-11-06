@@ -184,7 +184,7 @@ test('on the game server: watch the war, a general made on the admin page gives 
   const store = memoryStore();
   const soldier = { id: 's1', name: 'Hale', faction: 'US', cls: 'infantry', xp: 0, ribbons: {}, stats: {}, armory: {}, loadout: DEFAULT_LOADOUT.US.infantry };
   await store.put('dev:Pipsy', 'Pipsy', { roster: { soldiers: [soldier], selectedId: 's1', credits: 0 } }, 0);
-  const srv = await startServer({ port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, admins: ['dev:Boss'], log: () => {} });
+  const srv = await startServer({ threads: false, port: 0, battleSize: 4, check: signInChecker({ jwksUrl: null, allowDevNames: true }), store, admins: ['dev:Boss'], log: () => {} });
   const open = [];
   const as = (name, path, body) =>
     fetch(`http://localhost:${srv.port}/api/admin/${path}`, { method: body ? 'POST' : 'GET', headers: { 'X-Dev-Name': name, 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
