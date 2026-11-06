@@ -2,7 +2,7 @@
 // server runs the battle; this page shows it and sends what the player does.
 //
 // - Everyone else (players and bots) and every vehicle are puppets: placed
-//   where the server's snapshots say, a tenth of a second behind, gliding
+//   where the server's snapshots say, 75 thousandths of a second behind, gliding
 //   between snapshots rather than jumping.
 // - The player's own soldier moves at once from his keys, run by the same
 //   controls as offline, and is quietly corrected when the server saw him
@@ -23,9 +23,9 @@ import { attachSoldierModel } from '../game/soldierView.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { AMMO } from '../weapons/ammo.js';
 
-// How far behind the newest snapshot others are shown (seconds): two
-// snapshots' worth, so there is nearly always one on each side.
-export const INTERP_DELAY = 0.1;
+// How far behind the newest snapshot others are shown (seconds): two and a
+// bit snapshots' worth (30 a second), so there is nearly always one on each side.
+export const INTERP_DELAY = 0.075;
 const SEND_EVERY = 1 / 60;
 
 // Join the battle: sign in to the game server with the player's token and

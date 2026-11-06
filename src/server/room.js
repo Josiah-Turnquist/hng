@@ -1,6 +1,6 @@
 // One battle on the game server, with the players in it: the battle runs 60
 // steps a second in real time, each player's inputs are used on the next step,
-// and every player gets a snapshot 20 times a second (net/protocol.js). Bots
+// and every player gets a snapshot 30 times a second (net/protocol.js). Bots
 // fill the sides. A player who leaves is taken over by a bot. With nobody left
 // for a minute (or the battle over), the room closes and stops using the
 // processor, so the server can go to sleep (Railway's Serverless setting).
@@ -32,8 +32,8 @@ import { cleanChat, chatAllowed } from './social.js';
 import { WEAPONS, DEFAULT_LOADOUT, LOADOUT_SLOTS, CLASS_POINTS, loadoutPoints } from '../weapons/defs.js';
 import { TANK_IDS } from '../game/ribbons.js';
 
-const SNAP_EVERY = 3; // 60 steps a second / 3 = 20 snapshots a second
-const FULL_EVERY = 40; // every 40th snapshot (two seconds) has every vehicle, moved or not
+const SNAP_EVERY = 2; // 60 steps a second / 2 = 30 snapshots a second
+const FULL_EVERY = 60; // every 60th snapshot (two seconds) has every vehicle, moved or not
 const EMPTY_CLOSE = 60; // seconds with nobody in it
 const OVER_CLOSE = 15; // seconds after the battle is decided
 const INPUTS_PER_SECOND = 90; // more than this from one player, kept up, and the rest are dropped

@@ -45,7 +45,7 @@ test('players join a battle over the network, move, see each other, and leave to
     // Both are in the roster, by name.
     const r = await a.next((m) => m.k === 'r' && m.s.some((x) => x[2] === 'Baker'));
     assert.ok(r.s.some((x) => x[0] === wa.you && x[2] === 'Able'));
-    // Snapshots come about 20 a second.
+    // Snapshots come about 30 a second.
     const s1 = readSnapshot(await a.next((m) => m.k === 's'));
     const me = () => readSnapshot(a.inbox.filter((m) => m.k === 's').pop()).soldiers.find((x) => x.id === wa.you);
     const start = s1.soldiers.find((x) => x.id === wa.you);
@@ -56,7 +56,7 @@ test('players join a battle over the network, move, see each other, and leave to
     const now = me();
     assert.ok(Math.hypot(now.x - start.x, now.z - start.z) > 3, 'walked forward from his inputs');
     const snaps = a.inbox.filter((m) => m.k === 's');
-    assert.ok(snaps.length > 30, `${snaps.length} snapshots`);
+    assert.ok(snaps.length > 60, `${snaps.length} snapshots in 2.5 s`);
     assert.ok(snaps.at(-1).a > 0, 'the server says which input it has used');
     // The scoreboard as the server counts it, everyone on it.
     const sc = await a.next((m) => m.k === 'c');

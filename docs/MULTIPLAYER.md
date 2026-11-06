@@ -364,7 +364,7 @@ carries his Neon Auth sign-in token, checked against Neon's public keys
 (`src/server/auth.js`; `NEON_AUTH_JWKS_URL` on Railway), and the soldier he
 brings, whose loadout is checked against his army, class and points. One
 battle at a time (`src/server/room.js`): it opens with the first player, runs
-60 steps a second, sends each player 20 snapshots a second, hands a leaving
+60 steps a second, sends each player 30 snapshots a second, hands a leaving
 player's soldier to a bot, and closes a minute after the last player leaves,
 so the server idles and Railway can put it to sleep. `tests/gameServer.test.js`
 plays it over real WebSockets. Signing in: the browser
@@ -384,7 +384,8 @@ map loads (the server says the side, the armies and the battle's dice; the
 first player's army attacks), then builds the town as usual with no bots,
 jeeps or bikes of its own (`AssaultMode` with `online: true` only shows
 points and time). Everyone else and every vehicle is a puppet, placed from
-the snapshots a tenth of a second behind and gliding between them. The
+the snapshots 75 thousandths of a second behind and gliding between them
+(30 snapshots a second; it was 20, a tenth of a second behind). The
 player's own soldier moves at once from his keys and is quietly put right
 when the server saw him elsewhere (a quarter second's correction, or at once
 when more than 3 m off). He sends his keys and where he looks 60 times a
