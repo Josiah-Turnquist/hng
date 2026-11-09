@@ -5,6 +5,7 @@
 // speed, gear and engine), his side on the maps, and the point he chose to
 // deploy at.
 import test from 'node:test';
+import * as THREE from 'three';
 import assert from 'node:assert/strict';
 import { makeBattle, addPlayer } from '../src/server/battle.js';
 import { snapshot, readSnapshot, roster, watchEvents, RemoteInput, encodeInput, vehicleState, applyVehicleState, ACTION_LIST, PROTOCOL_VERSION } from '../src/net/protocol.js';
@@ -46,7 +47,11 @@ async function online({ perSide = 6, vehicles = true } = {}) {
         cli.online._message(JSON.parse(JSON.stringify(roster(srv))));
       }
       if (tick % 3 === 0) cli.online._message(JSON.parse(JSON.stringify(snapshot(srv, tick, { events: ev.take(), sent, full: (tick / 3) % 40 === 0 }))));
+      // (His keys held here too: the vehicle he drives is run here from them.)
+      cli.input.down = new Set(held || []);
       cli.update(1 / 60);
+      cli.player.frameInput(1 / 60);
+      cli.input.endFrame();
     }
   };
   return { srv, cli, pc, me, run };
@@ -211,4 +216,135 @@ test('online, the point he chose stays chosen as the points change, and goes to 
   assert.ok(me.alive, 'back in');
   const p = srv.mode.byId[want];
   assert.ok(Math.hypot(me.body.x - p.x, me.body.z - p.z) < p.radius + 5, 'at the point he chose');
+});
+
+// The browser and the server a connection apart: his inputs reach the server
+// `lag` steps after they go, and its snapshots reach him `lag` steps after.
+async function connected({ lag = 3, seed = 2 } = {}) {
+  const srv = await makeBattle({ perSide: 2, seed, vehicles: true });
+  const ev = watchEvents(srv);
+  const pc = addPlayer(srv, { name: 'Able', faction: 'US', cls: 'infantry' });
+  const cli = await makeBattle({ perSide: 1, seed });
+  cli.soldiers.length = 0;
+  cli.vehicles.length = 0;
+  cli.mode.online = true;
+  delete cli._playerDeploy;
+  const me = new Soldier(cli, { faction: 'US', cls: 'infantry', loadout: DEFAULT_LOADOUT.US.infantry, team: pc.soldier.team, name: 'Able', x: 0, z: 0 });
+  me.isPlayer = true;
+  cli.soldiers.push(me);
+  cli.input = new RemoteInput();
+  Object.assign(cli.input, { key: () => 'Space', lock() {}, unlock() {} });
+  cli.player = new PlayerController(cli, me, { input: cli.input, view: false });
+  cli.deploy = { t: 0, index: 0 };
+  const outbox = [];
+  cli.online = new OnlineBattle(cli, { ws: { send: (t) => outbox.push(t), readyState: 1 }, welcome: { you: pc.soldier.id }, inbox: [roster(srv)] });
+  const toServer = [];
+  const toBrowser = [];
+  const sent = new Map();
+  let tick = 0;
+  // One step of each: the browser's frame (its step, then its keys and what it
+  // sends), the server's step, and what is due to arrive at either end.
+  const step = (held = []) => {
+    tick++;
+    cli.input.down = new Set(held);
+    // (The browser's game runs 120 steps a second, the server 60.)
+    cli.update(1 / 120);
+    cli.update(1 / 120);
+    cli.player.frameInput(1 / 60);
+    cli.online.sendInput(1 / 60);
+    cli.input.endFrame();
+    for (const t of outbox.splice(0)) toServer.push({ at: tick + lag, m: JSON.parse(t) });
+    while (toServer.length && toServer[0].at <= tick) srv.applyInput(pc.soldier.id, toServer.shift().m);
+    srv.update(1 / 60);
+    if (srv.rosterChanged) {
+      srv.rosterChanged = false;
+      toBrowser.push({ at: tick + lag, m: JSON.parse(JSON.stringify(roster(srv))) });
+    }
+    if (tick % 2 === 0) {
+      // (With the input the server last used, as the game server adds for each player.)
+      const snap = snapshot(srv, tick, { events: ev.take(), sent, full: (tick / 2) % 60 === 0 });
+      snap.a = pc.input.seq;
+      toBrowser.push({ at: tick + lag, m: JSON.parse(JSON.stringify(snap)) });
+    }
+    while (toBrowser.length && toBrowser[0].at <= tick) cli.online._message(toBrowser.shift().m);
+  };
+  const run = (seconds, held) => {
+    for (let i = 0; i < Math.round(seconds * 60); i++) step(held);
+  };
+  return { srv, cli, pc, me, step, run, tick: () => tick };
+}
+
+// Into a vehicle on the server (the browser follows), then drive it from the
+// browser: forward, left, right, forward, then stop.
+async function driveOnline(pick, { lag = +(process.env.LAG || 3), seconds = 4 } = {}) {
+  const { srv, cli, pc, me, step, run, tick } = await connected({ lag });
+  run(4);
+  assert.ok(me.alive);
+  const v = pick(srv, pc.soldier);
+  assert.ok(v, 'a vehicle to drive');
+  v.enter(pc.soldier, 0);
+  pc.vehicleCtl.entered(v);
+  run(3);
+  const here = cli.online.vehicles.get(v.id);
+  assert.equal(me.vehicle, here, 'in it here too');
+  assert.equal(cli.online.driving, here, 'driven here');
+  assert.equal(here.puppet, false);
+  const at = (x) => x.body.position.clone();
+  const from = at(here),
+    srvFrom = at(v);
+  let movedHere = null,
+    movedThere = null;
+  const offs = [];
+  const driven = cli.online._driven.bind(cli.online);
+  cli.online._driven = (snap) => {
+    const st = snap.vehicles.find((x) => x.id === here.id);
+    const h = cli.online.vhistory.find((q) => q.seq === snap.ack);
+    if (st && h) offs.push(Math.hypot(st.x - h.p.x, st.z - h.p.z));
+    return driven(snap);
+  };
+  const n = Math.round(seconds * 60);
+  for (let i = 0; i < n; i++) {
+    step(i < n * 0.4 ? ['forward'] : i < n * 0.6 ? ['forward', 'left'] : i < n * 0.8 ? ['forward', 'right'] : ['forward']);
+    if (movedHere === null && at(here).distanceTo(from) > 0.2) movedHere = tick();
+    if (movedThere === null && at(v).distanceTo(srvFrom) > 0.2) movedThere = tick();
+  }
+  offs.sort((a, b) => a - b);
+  const name = v.def.id;
+  if (process.env.SHOW) console.log(`${name}: moved here at ${movedHere}, there at ${movedThere}; drove ${at(v).distanceTo(srvFrom).toFixed(1)} m; apart: middle ${offs[offs.length >> 1]?.toFixed(3)} m, 90% ${offs[Math.floor(offs.length * 0.9)]?.toFixed(3)} m, worst ${offs.at(-1)?.toFixed(3)} m, of ${offs.length}`);
+  assert.ok(movedHere !== null && movedThere !== null, `${name}: both went`);
+  assert.ok(movedHere <= movedThere - 2, `${name}: moved here at step ${movedHere}, on the server at ${movedThere}`);
+  assert.ok(at(v).distanceTo(srvFrom) > 5, `${name}: drove ${at(v).distanceTo(srvFrom).toFixed(1)} m`);
+  // Here and on the server, at the same input: close, all the way (no jumps).
+  assert.ok(offs.length > 40);
+  assert.ok(offs.at(-1) < 1.5, `${name}: worst ${offs.at(-1).toFixed(2)} m apart, middle ${offs[offs.length >> 1].toFixed(2)} m`);
+  // Stopped: in the same place, pointing the same way.
+  run(4, ['back']);
+  run(4);
+  const heading = (x) => {
+    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(x.body.quaternion);
+    return Math.atan2(f.x, f.z);
+  };
+  assert.ok(at(here).distanceTo(at(v)) < 0.5, `${name}: ${at(here).distanceTo(at(v)).toFixed(2)} m apart when stopped`);
+  let turn = Math.abs(heading(here) - heading(v));
+  turn = Math.min(turn, Math.PI * 2 - turn);
+  assert.ok(turn < 0.05, `${name}: pointing ${turn.toFixed(3)} rad apart`);
+  // Out again: a puppet, placed as the server says.
+  if (v.exit(pc.soldier)) pc.exitedVehicle(v);
+  run(1);
+  assert.equal(cli.online.driving, null);
+  assert.equal(here.puppet, true);
+}
+
+test('online, the vehicle he drives answers his keys at once and agrees with the server: a jeep', async () => {
+  await driveOnline((srv) => srv.vehicles.find((v) => !v.isBike && v.def.kind !== 'tracked' && !v.occupants.some(Boolean)));
+});
+
+test('online, driving here: a motorcycle, a bicycle and a tank', async () => {
+  const near = (srv, s, id) => {
+    const v = srv.spawnVehicle(id, s.body.x + 6, s.body.z + 6, 0);
+    return v;
+  };
+  await driveOnline((srv) => srv.vehicles.find((v) => v.isBike && !v.pedal && !v.occupants.some(Boolean)));
+  await driveOnline((srv) => srv.vehicles.find((v) => v.isBike && v.pedal && !v.occupants.some(Boolean)));
+  await driveOnline((srv, s) => near(srv, s, 'm4a1_sherman'), { seconds: 6 });
 });

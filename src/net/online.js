@@ -6,7 +6,9 @@
 //   between snapshots rather than jumping.
 // - The player's own soldier moves at once from his keys, run by the same
 //   controls as offline, and is quietly corrected when the server saw him
-//   somewhere else (compared at the input the server last used).
+//   somewhere else (compared at the input the server last used). So does the
+//   vehicle he drives: run here as offline while he is at its wheel, and put
+//   right the same way (a little at a time, or at once when far off).
 // - Shots, deaths and blasts come as events and are drawn: tracers, impacts,
 //   the kill feed. Only the server decides hits, health, deaths and points.
 //
@@ -22,6 +24,19 @@ import { Soldier } from '../game/soldier.js';
 import { attachSoldierModel } from '../game/soldierView.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { AMMO } from '../weapons/ammo.js';
+import * as THREE from 'three';
+
+// The vehicle he drives, put right: a little over CORRECT_TIME when the
+// server had it more than CORRECT_MIN metres (or CORRECT_TURN radians) off;
+// at once when more than SNAP_DIST metres or SNAP_TURN radians.
+const CORRECT_TIME = 0.3;
+const CORRECT_MIN = 0.08;
+const CORRECT_TURN = 0.02;
+const SNAP_DIST = 5;
+const SNAP_TURN = 0.8;
+const _qd = new THREE.Quaternion();
+const _qi = new THREE.Quaternion();
+const _vd = new THREE.Vector3();
 
 // How far behind the newest snapshot others are shown (seconds): two and a
 // bit snapshots' worth (30 a second), so there is nearly always one on each side.
@@ -76,6 +91,9 @@ export class OnlineBattle {
     this.clock = null; // battle time shown for others
     this.seq = 0;
     this.history = []; // [{ seq, x, y, z }] where the player was as each input went
+    this.driving = null; // the vehicle he drives, run here (not a puppet)
+    this.vhistory = []; // [{ seq, p, q }] where it was as each input went
+    this.vcorrect = null; // { e: Vector3, q: Quaternion, left } still to put right
     this.pressed = new Set();
     this.sendT = 0;
     this.over = null;
@@ -142,6 +160,7 @@ export class OnlineBattle {
       if (this.snaps.length > 30) this.snaps.shift();
       this._events(snap.events);
       this._self(snap);
+      this._driven(snap);
       this._points(snap);
       if (snap.allVehicles) this._dropGone(snap);
     } else if (m.k === 'r') this._roster(m.s);
@@ -296,6 +315,79 @@ export class OnlineBattle {
     }
   }
 
+  // --- The vehicle he drives ------------------------------------------------------------
+
+  // At the wheel of a vehicle (and it whole): it is run here from his keys,
+  // as offline. Out of it, or another seat: a puppet again, placed as the
+  // server says.
+  _driveCheck() {
+    const me = this.me;
+    const v = me.alive && me.seat === 0 && me.vehicle?.alive && this.vehicles.get(me.vehicle.id) === me.vehicle ? me.vehicle : null;
+    if (v === this.driving) return;
+    const was = this.driving;
+    if (was) {
+      was.puppet = true;
+      was._pm = null; // (its speed worked out afresh from the snapshots)
+      was._state = null;
+    }
+    this.driving = v;
+    this.vhistory.length = 0;
+    this.vcorrect = null;
+    if (v) v.puppet = false;
+  }
+
+  // Where the server had it after the input it last used, against where it
+  // was here as that input went: the difference is put right.
+  _driven(snap) {
+    const v = this.driving;
+    if (!v) return;
+    const st = snap.vehicles.find((x) => x.id === v.id);
+    if (!st) return;
+    const hist = this.vhistory;
+    while (hist.length && hist[0].seq < snap.ack) hist.shift();
+    const h = hist[0];
+    if (!h || h.seq !== snap.ack) return;
+    const e = new THREE.Vector3(st.x - h.p.x, st.y - h.p.y, st.z - h.p.z);
+    // The turn from where it pointed here to where it pointed there.
+    const q = new THREE.Quaternion(...st.q).normalize().multiply(_qi.copy(h.q).invert());
+    const turn = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+    const off = Math.hypot(e.x, e.z);
+    if (off > SNAP_DIST || turn > SNAP_TURN) {
+      // Far off (a crash here that didn't happen there, say): where the server has it, at once.
+      this._moveDriven(e, q);
+      this.vcorrect = null;
+    } else if (off > CORRECT_MIN || turn > CORRECT_TURN || Math.abs(e.y) > 0.3) this.vcorrect = { e, q, left: CORRECT_TIME };
+    else this.vcorrect = null;
+  }
+
+  // A share of the correction each step.
+  _correctVehicle(dt) {
+    const c = this.vcorrect;
+    if (!c || !this.driving) return;
+    const k = Math.min(1, dt / c.left);
+    _vd.copy(c.e).multiplyScalar(k);
+    _qd.identity().slerp(c.q, k);
+    this._moveDriven(_vd, _qd);
+    c.e.multiplyScalar(1 - k);
+    c.q.premultiply(_qd.invert());
+    c.left -= dt;
+    if (c.left <= 0) this.vcorrect = null;
+  }
+
+  // Moved by e and turned by q (about its own middle), with where it was
+  // as each input went, so the next comparison counts what is already put right.
+  _moveDriven(e, q) {
+    const b = this.driving.body;
+    b.position.add(e);
+    b.quaternion.premultiply(q).normalize();
+    b.velocity?.applyQuaternion(q);
+    b.updateDerived?.();
+    for (const h of this.vhistory) {
+      h.p.add(e);
+      h.q.premultiply(q).normalize();
+    }
+  }
+
   _place(s, st) {
     const b = s.body;
     b.x = st.x;
@@ -349,12 +441,19 @@ export class OnlineBattle {
     const b = this.me.body;
     this.history.push({ seq: this.seq, x: b.x, y: b.y, z: b.z });
     if (this.history.length > 240) this.history.shift();
+    const v = this.driving;
+    if (v) {
+      this.vhistory.push({ seq: this.seq, p: v.body.position.clone(), q: v.body.quaternion.clone() });
+      if (this.vhistory.length > 240) this.vhistory.shift();
+    }
   }
 
   // --- Everyone else, between snapshots ---------------------------------------------------
 
   update(dt) {
     this._correct(dt);
+    this._driveCheck();
+    this._correctVehicle(dt);
     const snaps = this.snaps;
     if (!snaps.length) return;
     const newest = snaps[snaps.length - 1].time;
@@ -462,6 +561,14 @@ export class OnlineBattle {
         v.puppet = true;
         this.vehicles.set(nb.id, v);
       }
+      // The one he drives goes as it goes here: only its damage, fire and
+      // guns are the server's (where it is: _driven).
+      if (v === this.driving) {
+        v.hp = nb.hp;
+        v.alive = nb.alive;
+        if (nb.state) applyVehicleState(v, nb.state, { motion: false });
+        continue;
+      }
       const na = prev.get(nb.id) || nb;
       const p = v.body.position;
       p.set(lerp(na.x, nb.x, t), lerp(na.y, nb.y, t), lerp(na.z, nb.z, t));
@@ -486,7 +593,7 @@ export class OnlineBattle {
     const inB = new Set(b.vehicles.map((x) => x.id));
     for (const na of a.vehicles) {
       const v = inB.has(na.id) ? null : this.vehicles.get(na.id);
-      if (!v) continue;
+      if (!v || v === this.driving) continue;
       v.body.position.set(na.x, na.y, na.z);
       v.body.quaternion.set(...na.q);
       v.body.updateDerived?.();

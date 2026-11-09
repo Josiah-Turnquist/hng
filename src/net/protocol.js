@@ -185,17 +185,21 @@ export function vehicleState(v) {
 }
 
 // And back, onto a vehicle shown in the browser (a puppet: net/online.js).
-export function applyVehicleState(v, st) {
+// motion: false leaves how it is going (speed, engine, gear, its fall) to the
+// browser, for the vehicle the player drives there himself.
+export function applyVehicleState(v, st, { motion = true } = {}) {
   if (!Array.isArray(st) || st.length < 5) return;
   const [speed, rpm, gear, flags, damage, load = 0, effort = 0, power = 0, guns = []] = st;
-  v.speed = speed / 10;
-  v.rpm = rpm * 10;
-  v.gear = gear;
-  v.engineOn = !!(flags & V_ENGINE);
+  if (motion) {
+    v.speed = speed / 10;
+    v.rpm = rpm * 10;
+    v.gear = gear;
+    v.engineOn = !!(flags & V_ENGINE);
+    v.fallen = flags & V_FALLEN ? (flags & V_FALLEN_RIGHT ? 1 : -1) : 0;
+    v.offroad = !!(flags & V_OFFROAD);
+    v.shiftTimer = flags & V_SHIFTING ? 0.1 : 0;
+  }
   v.fire = flags & V_FIRE ? Math.max(v.fire || 0, 1) : 0;
-  v.fallen = flags & V_FALLEN ? (flags & V_FALLEN_RIGHT ? 1 : -1) : 0;
-  v.offroad = !!(flags & V_OFFROAD);
-  v.shiftTimer = flags & V_SHIFTING ? 0.1 : 0;
   if (v.modules) {
     VEHICLE_PARTS.forEach((k, i) => {
       if (!(k in v.modules)) return;
@@ -205,7 +209,7 @@ export function applyVehicleState(v, st) {
     });
   }
   v.load = load / 10;
-  if (v.isBike) {
+  if (v.isBike && motion) {
     v.effort = EFFORTS[effort] || 'idle';
     v.power = power * 10;
   }

@@ -405,7 +405,12 @@ a step takes, its longest stop, any time lost); the admin page's stats show
 it by day. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do
 nothing online). Getting into a vehicle happens at once on the page and
-follows the server if it disagrees for half a second. Down, he picks where
+follows the server if it disagrees for half a second. The vehicle he drives
+(at its wheel or handlebars) is run on the page from his keys, as offline,
+not placed from the snapshots; it is put right the same way as his soldier,
+comparing where the server had it after the input it last used with where it
+was here as that input went: a little at a time (0.3 s), or at once when more
+than 5 m or about 45 degrees off. Its damage, fire and guns stay the server's. Down, he picks where
 to come back in on the same deploy map as offline; the choice goes with his
 inputs, and the server puts him there once that point's wait is over (at the
 front instead if the point is no longer his side's to spawn at, and after a
