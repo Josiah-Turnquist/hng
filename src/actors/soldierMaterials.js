@@ -493,6 +493,10 @@ vSBindN = normal;
   }
   float sMaxW = max( max( skinWeight.x, skinWeight.y ), max( skinWeight.z, skinWeight.w ) );
   vSCrease = ${base.toFixed(2)} + 0.9 * smoothstep( 0.0, 0.3, 1.0 - sMaxW );
+  // On the body (hips, spine, chest: bones 0 to 2) the creases are much
+  // fainter than on the limbs: they run round, as cloth bunches at an elbow or
+  // knee, and all over a tunic's front they looked like crumpled paper.
+  vSCrease *= 1.0 - 0.65 * dot( skinWeight, vec4( lessThan( skinIndex, vec4( 2.5 ) ) ) );
 #else
   vSCrease = ${base.toFixed(2)};
 #endif`;

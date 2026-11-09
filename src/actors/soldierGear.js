@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { B, HEAD_CENTER } from './soldierRig.js';
 import { rigid, torsoWeights, weightsAt, smooth01 } from './soldierGeo.js';
 import { CELL } from './soldierMaterials.js';
-import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, lerp, hash1, noise1, foldWave } from './soldierBody.js';
+import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, garmentFolds, lerp, hash1, noise1, foldWave } from './soldierBody.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -117,7 +117,10 @@ function cpTheta(c) {
 export function torsoPath(g, cps, out, step = 0.03) {
   const pts = [];
   const at = (t, y) => {
-    const off = g ? garmentOffset({ ...g, blouse: 0 }, t, y) : 0;
+    // (Over the cloth's folds, where they are in the mesh: a strap lies on
+    // their crests, so most of a fold's height is added.)
+    // (A strap presses into the fullness over the belt, but not out of sight.)
+    const off = g ? garmentOffset({ ...g, blouse: (g.blouse ?? 0) * 0.75 }, t, y) + (g.folded ? 0.8 * garmentFolds(g, t, y) : 0) : 0;
     return torsoPoint(t, y, new THREE.Vector3(), off + out);
   };
   for (let i = 0; i < cps.length - 1; i++) {

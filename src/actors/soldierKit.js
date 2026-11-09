@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { SkinBuilder, torsoWeights, armWeights, legWeights, rigid, smooth01, weightsAt } from './soldierGeo.js';
 import { CELL, CAMO_GREY } from './soldierMaterials.js';
-import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, bodySpheres, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
+import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, bodySpheres, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, garmentFolds, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
 import { buildHead, buildNeck, buildHand, buildForearm } from './soldierHead.js';
 import { Frame, torsoFrame, torsoBand, torsoStrap, rigidAt, pouch, buckle, starDecal } from './soldierGear.js';
 
@@ -80,7 +80,9 @@ export class Outfit {
   // folds, seed, top / neckline. color, cell. colorFn(x, y, z, c) optional.
   torso(g, { color, cell = CELL.wool, colorFn = null }) {
     const b = this.b;
-    this.g = { seed: this.variant * 7 + 1, legs: this.legCut, ...g };
+    // (folded: the cloth's folds are in the mesh at full detail; what is sewn
+    // or strapped onto it follows them, or they come through it.)
+    this.g = { seed: this.variant * 7 + 1, legs: this.legCut, folded: this.lod === 0, ...g };
     b.material(cell);
     b.paint(color);
     if (colorFn) this.g.colorFn = colorFn;
@@ -266,6 +268,18 @@ export class Outfit {
     for (let j = 0; j <= n; j++) ts.push(-0.5 + j / n);
     const ct = Math.cos(tilt),
       st = Math.sin(tilt);
+    // The sewn-down edge lies in the shadow of the patch's own thickness: a
+    // darker rim, so a pocket reads as a pocket and not a paler stain.
+    const rim = new Map();
+    const key = (p) => `${Math.round(p.x * 2e4)},${Math.round(p.y * 2e4)},${Math.round(p.z * 2e4)}`;
+    const wasFn = b.colorFn;
+    const base = b.color.clone();
+    if (lod === 0)
+      b.colorFn = (px, py, pz, col, nx, ny, nz) => {
+        if (wasFn) wasFn(px, py, pz, col, nx, ny, nz);
+        const k = rim.get(`${Math.round(px * 2e4)},${Math.round(py * 2e4)},${Math.round(pz * 2e4)}`);
+        if (k) col.multiplyScalar(1 - 0.3 * k);
+      };
     b.grid(
       ss,
       ts,
@@ -282,10 +296,14 @@ export class Outfit {
         const rx = sx * ct - ty * st,
           ry = sx * st + ty * ct;
         const th = th0 + (side < 0 ? -rx : rx) / mpr;
-        garmentPoint(g || {}, th, y + ry, o, lift);
+        // (Sewn to the cloth: it rides the cloth's folds, a little flatter.)
+        garmentPoint(g || {}, th, y + ry, o, lift + (g?.folded && lod === 0 ? 0.85 * garmentFolds(g, th, y + ry) : 0));
+        if (k >= 0.999) rim.set(key(o), 1);
       },
       { normal: (p) => torsoNormal(Math.atan2(p.z - 0.01, p.x), p.y) },
     );
+    b.colorFn = wasFn;
+    b.paint(base);
     return torsoFrame(g, th0, y, thick + bulge);
   }
 

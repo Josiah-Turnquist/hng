@@ -456,14 +456,17 @@ const sleeveRows = (k, wide) => [
   [-0.014, 0.046 + k, 0.05 + k],
   [0.006, 0.054 + k, 0.058 + k],
   [0.055, 0.058 + k + wide * 0.4, 0.06 + k + wide * 0.4],
-  [0.13, 0.054 + k + wide * 0.6, 0.056 + k + wide * 0.6],
-  [0.22, 0.049 + k + wide, 0.051 + k + wide],
-  [0.29, 0.046 + k + wide, 0.047 + k + wide],
-  [0.335, 0.047 + k + wide, 0.048 + k + wide],
-  [0.4, 0.045 + k + wide * 0.8, 0.044 + k + wide * 0.8],
-  [0.47, 0.042 + k + wide * 0.6, 0.04 + k + wide * 0.6],
-  [0.53, 0.04 + k, 0.038 + k],
-  [0.56, 0.04 + k, 0.038 + k],
+  // (Full over the upper arm, drawn in above the elbow, full again over the
+  // forearm's muscle and down to a cuff a hand can just pass: an arm in a
+  // sleeve, not a pipe. A wool sleeve: ~38 cm round the upper arm, 27 at the cuff.)
+  [0.13, 0.055 + k + wide * 0.6, 0.058 + k + wide * 0.6],
+  [0.22, 0.05 + k + wide, 0.053 + k + wide],
+  [0.285, 0.0455 + k + wide, 0.047 + k + wide],
+  [0.335, 0.0475 + k + wide, 0.0485 + k + wide],
+  [0.4, 0.0455 + k + wide * 0.8, 0.0445 + k + wide * 0.8],
+  [0.47, 0.0405 + k + wide * 0.6, 0.039 + k + wide * 0.6],
+  [0.53, 0.0375 + k, 0.036 + k],
+  [0.56, 0.0375 + k, 0.036 + k],
 ];
 export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0.555, roll = 0, folds = 1, seed = 1, cuffColor = null, wide = 0 } = {}) {
   const rows = sleeveRows(bulk, wide);
@@ -582,10 +585,12 @@ export function trouserRows(k = 0.004, style = 'straight') {
     [0.06, 0.095 + k + br * 0.006 + jp * 0.008, 0.1 + k + br * 0.008 + jp * 0.008, 0.002],
     [0.16, 0.088 + k + br * 0.018 + jp * 0.012, 0.093 + k + br * 0.02 + jp * 0.012, 0.004],
     [0.26, 0.079 + k + br * 0.014 + jp * 0.012, 0.084 + k + br * 0.015 + jp * 0.012, 0.004],
-    [0.34, 0.071 + k + jp * 0.01, 0.076 + k + jp * 0.01, 0.001],
-    [0.425, 0.066 + k + jp * 0.008, 0.07 + k + jp * 0.008, -0.004],
-    [0.5, 0.064 + k - br * 0.008 + jp * 0.008, 0.07 + k - br * 0.008 + jp * 0.008, 0.008],
-    [0.6, 0.06 + k - br * 0.012 + jp * 0.008, 0.067 + k - br * 0.012 + jp * 0.008, 0.011],
+    // (Drawn in to the knee and out again over the calf, which stands behind
+    // the shin: a leg in a trouser leg, not a column.)
+    [0.34, 0.068 + k + jp * 0.01, 0.074 + k + jp * 0.01, 0.0],
+    [0.425, 0.0615 + k + jp * 0.008, 0.066 + k + jp * 0.008, -0.005],
+    [0.5, 0.0605 + k - br * 0.008 + jp * 0.008, 0.067 + k - br * 0.008 + jp * 0.008, 0.007],
+    [0.6, 0.059 + k - br * 0.012 + jp * 0.008, 0.068 + k - br * 0.012 + jp * 0.008, 0.013],
     [0.72, 0.052 + k - br * 0.008, 0.056 + k - br * 0.008, 0.006],
     [0.84, 0.049 + k, 0.053 + k, 0.004],
   ];

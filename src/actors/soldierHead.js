@@ -82,13 +82,15 @@ function faceRelief(f, x, y) {
     const ny = y / f.length;
     const prof = interpRows(
       [
-        [-0.056, 0.0],
-        [-0.049, 0.004],
-        [-0.045, 0.014],
-        [-0.04, 0.022],
-        [-0.034, 0.0245],
-        [-0.026, 0.0205],
-        [-0.016, 0.0155],
+        // (The underside is a short step, not a long shelf: lit from above, a
+        // long one was a dark patch over the lip, like a small moustache.)
+        [-0.056, 0.003],
+        [-0.05, 0.0075],
+        [-0.045, 0.0145],
+        [-0.04, 0.0195],
+        [-0.034, 0.021],
+        [-0.026, 0.0188],
+        [-0.016, 0.0152],
         [-0.006, 0.011],
         [0.004, 0.0065],
         [0.012, 0.0035],
@@ -102,9 +104,9 @@ function faceRelief(f, x, y) {
     const depth = (prof * (ny > -0.026 ? bridge : 1) + hook) * f.nose;
     const hw = interpRows(
       [
-        [-0.05, 0.013],
-        [-0.042, 0.0175],
-        [-0.034, 0.0155],
+        [-0.05, 0.0105],
+        [-0.042, 0.0158],
+        [-0.034, 0.0148],
         [-0.02, 0.0115],
         [0.0, 0.0095],
         [0.02, 0.0095],
@@ -133,10 +135,13 @@ function faceRelief(f, x, y) {
   d -= 0.003 * (1 - f.lid * 0.7) * g2(ex, y - 0.011, 0.016, 0.005);
   // Cheekbones forward and out; hollow cheeks under them.
   d += 0.0085 * f.cheek * g2(ax - 0.052, y + 0.02 + f.cheekY, 0.019, 0.015);
-  d -= 0.004 * f.gaunt * g2(ax - 0.045, y + 0.06, 0.016, 0.018);
+  // (Every soldier a little lean in the cheek; `gaunt` more so.)
+  d -= 0.004 * (0.35 + f.gaunt) * g2(ax - 0.045, y + 0.06, 0.016, 0.018);
   // Upper lip, philtrum, lower lip, mouth line.
   const lip = f.lips;
   d += 0.0045 * lip * g2(x, y + 0.059, 0.022, 0.0075) - 0.0013 * g2(x, y + 0.053, 0.0035, 0.006);
+  // The upper lip stands forward under the nose (the teeth behind it).
+  d += 0.0028 * g2(x, y + 0.051, 0.017, 0.0065);
   d += 0.0055 * lip * g2(x, y + 0.0755, 0.019, 0.0062);
   d -= 0.0026 * Math.exp(-(((y + 0.0675) / 0.0014) ** 2)) * sstep(0.026, 0.018, ax);
   // Mentolabial groove and chin.
@@ -144,7 +149,7 @@ function faceRelief(f, x, y) {
   d += 0.008 * f.chin * g2(x, y + 0.104, 0.024, 0.014);
   // Nasolabial folds.
   const nl = Math.abs(ax - (0.019 + (-(y + 0.04)) * 0.38));
-  if (y < -0.035 && y > -0.075) d -= 0.0014 * Math.exp(-((nl / 0.003) ** 2)) * sstep(-0.035, -0.045, y);
+  if (y < -0.035 && y > -0.075) d -= 0.0021 * Math.exp(-((nl / 0.0032) ** 2)) * sstep(-0.035, -0.045, y);
   // Temples.
   d -= 0.003 * g2(ax - 0.062, y - 0.032, 0.012, 0.02);
   return d;
@@ -253,6 +258,8 @@ function headPainter(p, f, helmet) {
       ax = Math.abs(x);
     col.copy(skin);
     const fr = lz < -0.03;
+    // Skin is not one flat color: faint blotches a few centimeters across.
+    col.multiplyScalar(0.965 + 0.07 * noise3(x * 55 + p.tone * 3, y * 55, z * 55));
     // Ruddy cheeks, nose and ears (sun and wind).
     const ck = g2(ax - 0.048, ly + 0.03, 0.022, 0.02) * (fr ? 1 : 0);
     col.lerp(tmp.copy(lips).multiplyScalar(1.05), 0.16 * ck * p.ruddy);
@@ -280,7 +287,12 @@ function headPainter(p, f, helmet) {
       const es = g2(ax - EYE_X * f.eyeSpace, ly - EYE_Y, 0.021, 0.015);
       col.multiplyScalar(1 - 0.26 * es);
       const ns = g2(ax - 0.0072, ly + 0.0455, 0.0032, 0.0022) * (lz < -0.095 ? 1 : 0);
-      col.multiplyScalar(1 - 0.4 * ns);
+      col.multiplyScalar(1 - 0.34 * ns);
+      // Under the nose the skin is lit from the lip below it (painted: the
+      // light here has no bounce), so its underside is not a black patch.
+      if (lz < -0.085) col.multiplyScalar(1 + 0.32 * g2(x, ly + 0.0475, 0.013, 0.0055) * (1 - ns));
+      // Tired under the eyes.
+      col.multiplyScalar(1 - 0.07 * g2(ax - EYE_X * f.eyeSpace, ly + 0.012, 0.014, 0.005));
       const mc = g2(ax - 0.024, ly + 0.068, 0.004, 0.004);
       col.multiplyScalar(1 - 0.3 * mc);
       // Under the nose and the lower lip.
@@ -586,8 +598,9 @@ export function buildNeck(b, { lod = 0, skin, low = 1.43 } = {}) {
     ys,
     (th, y, o) => {
       const t = smooth01(1.43, 1.6, y);
-      const rx = lerp(0.074, 0.059, Math.sqrt(t)),
-        rz = lerp(0.068, 0.061, t);
+      // (A soldier's neck: about 40 cm round, and wider into the shoulders.)
+      const rx = lerp(0.08, 0.0635, Math.sqrt(t)),
+        rz = lerp(0.071, 0.064, t);
       const cz = lerp(0.025, 0.014, t);
       const s = Math.sin(th),
         c = Math.cos(th);
@@ -875,10 +888,35 @@ export function buildForearm(b, side, { lod = 0, skin, from = 0.24 } = {}) {
     const t = (s - sE) / (sW - sE);
     // Forearm flesh: widest below the elbow, flattening to the wrist.
     const rx = t < 0 ? 0.042 : lerp(0.042, 0.03, Math.min(1, t)) + 0.006 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
-    const rz = t < 0 ? 0.04 : lerp(0.04, 0.022, Math.min(1, t)) + 0.006 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
+    const rz = t < 0 ? 0.04 : lerp(0.04, 0.0215, Math.min(1, t) ** 0.85) + 0.005 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
     const c = chainPoint(P, s, new THREE.Vector3());
-    rows.push({ c, rx, rz });
+    rows.push({ c, rx, rz, t });
   }
-  b.tube(rows, { seg: lod ? 6 : 14, capStart: 0, capEnd: 0 });
+  // The forearm is not round: the muscle that turns the wrist stands out on
+  // the thumb side below the elbow (the arm hangs thumb forward), the
+  // flexors fill the inside, the elbow's point is at the back and the end of
+  // the ulna shows at the back of the wrist; toward the wrist it is flat,
+  // tendons front and back. (a: 0 = +X, PI/2 = back, -PI/2 = front.)
+  const bell = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
+  const disp = lod
+    ? null
+    : (k, a, ring) => {
+        const t = ring.t;
+        if (t === undefined) return 0;
+        const front = Math.max(0, -Math.sin(a)),
+          back = Math.max(0, Math.sin(a)),
+          inner = Math.max(0, -Math.cos(a) * side),
+          outer = Math.max(0, Math.cos(a) * side);
+        let d = 0;
+        d += 0.0065 * front ** 1.5 * bell(t, 0.16, 0.2);
+        d += 0.0045 * inner ** 2 * bell(t, 0.24, 0.2);
+        d += 0.003 * outer ** 2 * bell(t, 0.2, 0.2);
+        d += 0.0045 * back ** 3 * bell(t, -0.02, 0.07);
+        d += 0.003 * (back * outer * 2) ** 2 * bell(t, 0.95, 0.05);
+        // The hollow between the two muscle groups, down the outside.
+        d -= 0.0015 * (outer * front * 2) ** 2 * bell(t, 0.35, 0.25);
+        return d;
+      };
+  b.tube(rows, { seg: lod ? 6 : 16, capStart: 0, capEnd: 0, disp });
   b.colorFn = null;
 }
