@@ -277,8 +277,8 @@ function headPainter(p, f, helmet) {
     }
     // Painted occlusion: sockets, lid crease, nostrils, mouth corners.
     if (fr) {
-      const es = g2(ax - EYE_X * f.eyeSpace, ly - EYE_Y, 0.02, 0.014);
-      col.multiplyScalar(1 - 0.13 * es);
+      const es = g2(ax - EYE_X * f.eyeSpace, ly - EYE_Y, 0.021, 0.015);
+      col.multiplyScalar(1 - 0.26 * es);
       const ns = g2(ax - 0.0072, ly + 0.0455, 0.0032, 0.0022) * (lz < -0.095 ? 1 : 0);
       col.multiplyScalar(1 - 0.4 * ns);
       const mc = g2(ax - 0.024, ly + 0.068, 0.004, 0.004);
@@ -357,28 +357,33 @@ function buildEye(b, s, f, p) {
   const r = EYE_R * Math.sqrt(f.eyeSize);
   // Eyeball: sclera, iris, pupil; glossy.
   const iris = p.eyeColor;
-  const sclera = new THREE.Color().setRGB(0.47, 0.44, 0.41);
+  // (Well under white: in daylight the lids and lashes shade it, and a bright
+  // white round the iris read as a stare.)
+  const sclera = new THREE.Color().setRGB(0.27, 0.25, 0.235);
   const pink = new THREE.Color().setRGB(0.45, 0.28, 0.24);
-  b.material(CELL.skin, 1);
+  // (Wet, but not a mirror: at full gloss the whole eye lit up white with the
+  // sky, and showed as a stare from a few meters.)
+  b.material(CELL.skin, 0.35);
   b.part();
   b.colorFn = (x, y, z, col) => {
     const dz = (z - ec.z) / r; // -1 at the front
     const dx = (x - ec.x) / r;
     const ang = Math.sqrt(dx * dx + ((y - ec.y) / r) ** 2);
     // (Iris about 11 mm across, pupil 3 to 4 mm, a darker ring at the iris edge.
-    // The iris swatches are dark; lifted so the color reads at a few meters.)
+    // Kept dark: a pale iris ran into the white of the eye at a few meters and
+    // left only the pupil, a wide-eyed stare.)
     if (dz < 0 && ang < 0.16) col.setRGB(0.01, 0.009, 0.008);
-    else if (dz < 0 && ang < 0.42) col.copy(iris).multiplyScalar(2.6 - 1.2 * (ang - 0.16) * 3.8);
-    else if (dz < 0 && ang < 0.48) col.copy(iris).multiplyScalar(0.7);
+    else if (dz < 0 && ang < 0.4) col.copy(iris).multiplyScalar(0.95 - 0.5 * (ang - 0.16) * 4.2);
+    else if (dz < 0 && ang < 0.48) col.copy(iris).multiplyScalar(0.28);
     else col.copy(sclera).lerp(pink, sstep(0.65, 1.0, Math.abs(dx)) * 0.5);
     // The upper lid shades the top of the eye.
-    col.multiplyScalar(1 - 0.3 * sstep(-0.05, 0.6, (y - ec.y) / r));
+    col.multiplyScalar(1 - 0.45 * sstep(-0.15, 0.5, (y - ec.y) / r));
   };
   // (Built round the line of sight, with rings at the pupil and iris edges, so
   // the colors, set at the corners of the mesh, come out as sharp circles.)
   const azs = [];
   for (let i = 0; i <= 16; i++) azs.push((i / 16) * 2 * PI);
-  const pols = [0, 0.08, 0.15, 0.175, 0.26, 0.35, 0.42, 0.445, 0.49, 0.52, 0.65, 0.85, 1.1, 1.4, 1.8, 2.4, PI];
+  const pols = [0, 0.08, 0.15, 0.175, 0.26, 0.35, 0.395, 0.425, 0.49, 0.52, 0.65, 0.85, 1.1, 1.4, 1.8, 2.4, PI];
   b.grid(azs, pols, (az, pol, out) => out.set(ec.x + Math.sin(pol) * Math.cos(az) * r, ec.y + Math.sin(pol) * Math.sin(az) * r, ec.z - Math.cos(pol) * r), { center: ec, wrapU: true });
   b.colorFn = null;
   // Lids: shells just over the eyeball, from the lid margin back into the socket.
@@ -390,11 +395,11 @@ function buildEye(b, s, f, p) {
   // little higher than the inner one (canthal tilt), a lid fold lowers the upper lid.
   const marginUp = (az) => {
     const t = az / azMax; // -1 .. 1, + toward +X
-    return 0.27 * open - 0.33 * t * t - 0.07 * f.lid + 0.035 * t * s;
+    return 0.15 * open - 0.27 * t * t - 0.07 * f.lid + 0.035 * t * s;
   };
   const marginDn = (az) => {
     const t = az / azMax;
-    return -0.36 * open + 0.27 * t * t + 0.035 * t * s - 0.07 * f.lid * t * t;
+    return -0.27 * open + 0.23 * t * t + 0.035 * t * s - 0.07 * f.lid * t * t;
   };
   const shell = (e0fn, e1, up) => {
     const azs = [],
@@ -406,7 +411,9 @@ function buildEye(b, s, f, p) {
     const lidC = p.skin.clone();
     b.colorFn = (x, y, z, col) => {
       const d = Math.hypot(x - ec.x, (y - ec.y) * 1.4) / 0.016;
-      col.copy(lidC).multiplyScalar(up ? 0.93 - 0.2 * Math.min(1, d) : 0.88 - 0.12 * Math.min(1, d));
+      // (Darker than the cheeks: lids paler than the face round them read as
+      // the whites of wide-open eyes from a few meters.)
+      col.copy(lidC).multiplyScalar(up ? 0.66 - 0.12 * Math.min(1, d) : 0.7 - 0.08 * Math.min(1, d));
       // The lash line: a dark edge along the upper lid's margin (lighter on the lower).
       const el = Math.asin(Math.max(-1, Math.min(1, (y - ec.y) / lr)));
       const az = Math.atan2(x - ec.x, -(z - ec.z));

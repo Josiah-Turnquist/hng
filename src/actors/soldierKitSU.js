@@ -150,7 +150,7 @@ function infantry(o) {
   medals(o);
   // Veshmeshok on the back; the rolled greatcoat over the left shoulder.
   const roll = o.chance(0.5);
-  if (o.chance(0.6) || !roll) veshmeshok(b, backFrame(o.g, 1.36, 0.28, 0.35, 0.012), SU, lod);
+  if (o.chance(0.6) || !roll) veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
   if (roll) skatka(b, o.g, SU, lod);
   headgear(o);
   o.weather(o.dirt);
@@ -203,7 +203,7 @@ function paratrooper(o) {
     const f = o.beltFrame(0.25, 1.06, 0.008);
     knife(b, rigidAt(f), f.point(0, 0, 0.01).toArray(), f.point(0.02, -0.2, 0.012).toArray(), { color: 0x2a2018, lod });
   }
-  veshmeshok(b, backFrame(o.g, 1.36, 0.28, 0.35, 0.012), SU, lod);
+  veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
   if (o.chance(0.5)) {
     o.info.headgear = 'tank';
     buildTankHelmet(b, 'SU', SU, { lod, color: o.shade(0x4a3424, 0.08) });

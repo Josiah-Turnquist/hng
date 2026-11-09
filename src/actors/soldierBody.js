@@ -6,7 +6,9 @@
 // the cut, cloth and colors and add the equipment on top.
 //
 // Sizes: a 1.78 m man (US Army 1946 survey mean stature 1.74 m; chest girth
-// ~0.95 m, waist ~0.80 m; est.) in a wool uniform.
+// ~0.95 m, waist ~0.80 m; est.) in a wool uniform. A young soldier's build:
+// the chest deeper and wider than the waist and hips, the shoulders square
+// out to the arms (the top of the sleeve runs on from the shoulder line).
 import * as THREE from 'three';
 import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { torsoWeights, legWeights, armWeights, footWeights, smooth01 } from './soldierGeo.js';
@@ -90,21 +92,21 @@ export function interpRows(rows, y, out = null) {
 export const TORSO_ROWS = [
   [0.785, 0.008, -0.025, 0.035],
   [0.8, 0.065, -0.058, 0.066],
-  [0.83, 0.12, -0.088, 0.097],
-  [0.87, 0.157, -0.102, 0.118],
-  [0.92, 0.168, -0.106, 0.125],
-  [0.98, 0.163, -0.104, 0.114],
-  [1.04, 0.153, -0.101, 0.099],
-  [1.1, 0.151, -0.104, 0.096],
-  [1.17, 0.158, -0.113, 0.099],
-  [1.24, 0.166, -0.121, 0.104],
-  [1.31, 0.17, -0.124, 0.107],
-  [1.37, 0.171, -0.117, 0.109],
-  [1.415, 0.167, -0.104, 0.104],
-  [1.445, 0.154, -0.086, 0.094],
-  [1.47, 0.128, -0.07, 0.081],
-  [1.49, 0.096, -0.057, 0.072],
-  [1.505, 0.068, -0.048, 0.066],
+  [0.83, 0.118, -0.086, 0.097],
+  [0.87, 0.152, -0.098, 0.117],
+  [0.92, 0.163, -0.1, 0.123],
+  [0.98, 0.158, -0.097, 0.112],
+  [1.04, 0.147, -0.094, 0.096],
+  [1.1, 0.145, -0.097, 0.092],
+  [1.17, 0.154, -0.109, 0.097],
+  [1.24, 0.166, -0.122, 0.104],
+  [1.31, 0.175, -0.13, 0.109],
+  [1.37, 0.179, -0.126, 0.112],
+  [1.415, 0.178, -0.111, 0.107],
+  [1.445, 0.168, -0.093, 0.098],
+  [1.47, 0.144, -0.075, 0.086],
+  [1.49, 0.107, -0.059, 0.075],
+  [1.505, 0.072, -0.048, 0.066],
 ];
 const TORSO_EXP = 2 / 2.3;
 
@@ -168,7 +170,8 @@ export function garmentOffset(g, theta, y) {
   if (g.belt) {
     const b = g.belt;
     o -= (g.cinch ?? 0.004) * bump(y, b, 0.035);
-    o += (g.blouse ?? 0) * bump(y, b + 0.05, 0.07) * (0.6 + 0.4 * fr + 0.3 * bk);
+    // (Fuller at the back and sides than in front, where it made a paunch.)
+    o += (g.blouse ?? 0) * bump(y, b + 0.05, 0.07) * (0.55 + 0.05 * fr + 0.45 * bk);
   }
   // Back fullness (a little slack across the shoulder blades).
   o += 0.003 * bk * bump(y, 1.28, 0.12);
@@ -241,7 +244,8 @@ export function bodySpheres(headgear = null) {
   if (headgear === 'helmet' || headgear === 'tank') {
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * 2 * PI;
-      S.push([HEAD_CENTER.x + Math.sin(a) * 0.118, HEAD_CENTER.y + 0.05, HEAD_CENTER.z + 0.005 - Math.cos(a) * 0.136, 0.03]);
+      // (Light: the helmet's own cast shadow darkens the face too.)
+      S.push([HEAD_CENTER.x + Math.sin(a) * 0.118, HEAD_CENTER.y + 0.05, HEAD_CENTER.z + 0.005 - Math.cos(a) * 0.136, 0.023]);
     }
   }
   return S;
@@ -446,15 +450,18 @@ export function denseProfile(rows, s0, s1, ds) {
 // the wrist, ~0.22 rolled above the elbow), roll (rolled-up sleeve thickness),
 // folds.
 const sleeveRows = (k, wide) => [
-  [-0.012, 0.047 + k, 0.051 + k],
-  [0.0, 0.052 + k, 0.056 + k],
-  [0.06, 0.054 + k + wide * 0.4, 0.056 + k + wide * 0.4],
-  [0.14, 0.051 + k + wide * 0.6, 0.053 + k + wide * 0.6],
-  [0.22, 0.049 + k + wide, 0.05 + k + wide],
-  [0.29, 0.047 + k + wide, 0.048 + k + wide],
-  [0.33, 0.047 + k + wide, 0.047 + k + wide],
-  [0.4, 0.046 + k + wide * 0.8, 0.045 + k + wide * 0.8],
-  [0.47, 0.043 + k + wide * 0.6, 0.041 + k + wide * 0.6],
+  // (The head of the sleeve: narrow where it leaves the shoulder line, full
+  // over the shoulder muscle, then down to the elbow.)
+  [-0.034, 0.03 + k * 0.5, 0.034 + k * 0.5],
+  [-0.014, 0.046 + k, 0.05 + k],
+  [0.006, 0.054 + k, 0.058 + k],
+  [0.055, 0.058 + k + wide * 0.4, 0.06 + k + wide * 0.4],
+  [0.13, 0.054 + k + wide * 0.6, 0.056 + k + wide * 0.6],
+  [0.22, 0.049 + k + wide, 0.051 + k + wide],
+  [0.29, 0.046 + k + wide, 0.047 + k + wide],
+  [0.335, 0.047 + k + wide, 0.048 + k + wide],
+  [0.4, 0.045 + k + wide * 0.8, 0.044 + k + wide * 0.8],
+  [0.47, 0.042 + k + wide * 0.6, 0.04 + k + wide * 0.6],
   [0.53, 0.04 + k, 0.038 + k],
   [0.56, 0.04 + k, 0.038 + k],
 ];
@@ -462,7 +469,7 @@ export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0
   const rows = sleeveRows(bulk, wide);
   const sE = BIND[B.upperArmR].distanceTo(BIND[B.forearmR]);
   const ds = [0.012, 0.05, 0.1][lod];
-  const prof = denseProfile(rows, -0.012, end, ds);
+  const prof = denseProfile(rows, rows[0][0], end, ds);
   b.bones(armWeights(side));
   b.part();
   const disp =
@@ -479,8 +486,8 @@ export function buildSleeve(b, side, { lod = 0, bulk = 0, cuff = 'band', end = 0
           return d * folds;
         }
       : null;
-  // (A low cap at the shoulder: the sleeve runs on from the shoulder line, not a dome over it.)
-  limbTube(b, armChain(side), prof, { seg: [18, 8, 5][lod], capStart: 0.5, capEnd: 0, disp });
+  // (A rounded head at the shoulder, mostly inside the shoulder of the garment.)
+  limbTube(b, armChain(side), prof, { seg: [18, 8, 5][lod], capStart: 0.7, capEnd: 0, disp });
   // The end: a cuff band, a knit cuff or the rolled-up sleeve.
   const P = armChain(side);
   const ringAt = (s, rx, rz) => {
@@ -573,8 +580,8 @@ export function trouserRows(k = 0.004, style = 'straight') {
     // (Breeches: the fullness starts below the tunic's skirt, which a full
     // upper thigh swinging forward would push through.)
     [0.06, 0.095 + k + br * 0.006 + jp * 0.008, 0.1 + k + br * 0.008 + jp * 0.008, 0.002],
-    [0.16, 0.088 + k + br * 0.024 + jp * 0.012, 0.093 + k + br * 0.028 + jp * 0.012, 0.004],
-    [0.26, 0.079 + k + br * 0.016 + jp * 0.012, 0.084 + k + br * 0.018 + jp * 0.012, 0.004],
+    [0.16, 0.088 + k + br * 0.018 + jp * 0.012, 0.093 + k + br * 0.02 + jp * 0.012, 0.004],
+    [0.26, 0.079 + k + br * 0.014 + jp * 0.012, 0.084 + k + br * 0.015 + jp * 0.012, 0.004],
     [0.34, 0.071 + k + jp * 0.01, 0.076 + k + jp * 0.01, 0.001],
     [0.425, 0.066 + k + jp * 0.008, 0.07 + k + jp * 0.008, -0.004],
     [0.5, 0.064 + k - br * 0.008 + jp * 0.008, 0.07 + k - br * 0.008 + jp * 0.008, 0.008],

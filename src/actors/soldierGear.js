@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { B, HEAD_CENTER } from './soldierRig.js';
 import { rigid, torsoWeights, weightsAt, smooth01 } from './soldierGeo.js';
 import { CELL } from './soldierMaterials.js';
-import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, lerp, hash1 } from './soldierBody.js';
+import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, lerp, hash1, noise1, foldWave } from './soldierBody.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -804,17 +804,19 @@ export function shovelUS(b, f, st, lod) {
   b.bones(rigidAt(f));
   b.material(CELL.duck);
   b.paint(st.web);
-  b.part();
-  f.box(b, 0, -0.13, 0.03, 0.17, 0.2, 0.06, { r: 0.012 });
+  // The canvas carrier, shaped to the blade inside it: flat, square at the
+  // top and rounded to the blade's point at the bottom (blade ~15 x 21 cm).
+  softBag(b, f.sub(0, -0.035, 0), { w: 0.165, h: 0.215, d: 0.034, boxy: 0.3, sag: 0.05, lod, creases: 0.3, seed: 5 });
   if (lod) return;
-  // Handle sticking up out of the carrier (wood, OD painted).
+  // The T handle sticking up out of the carrier (wood, OD painted).
   b.material(CELL.paint);
   b.paint(0x3c3a2a);
-  f.cyl(b, [0, -0.03, 0.03], [0, 0.17, 0.03], 0.016, 0.017, { seg: 8 });
-  f.box(b, 0, 0.18, 0.03, 0.04, 0.03, 0.035, { r: 0.012 });
+  b.part();
+  f.cyl(b, [0, -0.04, 0.017], [0, 0.15, 0.017], 0.0135, 0.0145, { seg: 8 });
+  f.cyl(b, [-0.045, 0.158, 0.017], [0.045, 0.158, 0.017], 0.014, 0.014, { seg: 8 });
   b.material(CELL.metal);
   b.paint(0x3a3a34);
-  f.box(b, 0, -0.035, 0.03, 0.04, 0.02, 0.036, { r: 0.004 });
+  f.cyl(b, [0, -0.05, 0.017], [0, -0.025, 0.017], 0.018, 0.016, { seg: 8 });
 }
 // German short spade in a leather carrier, blade down; ~55 cm overall.
 export function spadeGE(b, f, st, lod) {
@@ -937,41 +939,126 @@ export function messTin(b, f, st, lod) {
   f.box(b, 0, -0.08, 0.106, 0.016, 0.16, 0.003, { r: 0.001 });
 }
 
-// Pack on the back (US M1928 haversack rolled, musette bag, veshmeshok). The
-// frame is on the upper back facing backward.
-export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, round = 0.04, flap = true, straps = null, strapColor = null } = {}) {
+// A soft cloth bag lying against the back: full and sagging toward the bottom,
+// flat where it rests on the back, its cloth creased. The frame is on the
+// upper back facing backward (X to the wearer's right, Y up, Z out of the
+// back); the bag hangs from the frame's origin down.
+//   w, h, d: width, height and depth (m); neck: the width of its top as a
+//   share of w (a drawstring sack's gathered mouth; 1 for a pack with a flat
+//   top); boxy: 0 a pillow .. 1 square corners; sag: how much fuller the
+//   bottom is than the top; lean: how far the top stands off the back less
+//   than the bottom (m); seed: crease variation.
+export function softBag(b, f, { w, h, d, neck = 1, boxy = 0.4, sag = 0.35, seed = 1, lod = 0, creases = 1 } = {}) {
+  const nu = lod ? 8 : 22,
+    nv = lod ? 5 : 14;
+  const us = [],
+    vs = [];
+  for (let i = 0; i <= nu; i++) us.push((i / nu) * 2 * PI);
+  for (let j = 0; j <= nv; j++) vs.push(j / nv);
+  const e = lerp(0.95, 0.42, boxy); // superellipse exponent of the cross-section
+  const se = (c) => Math.sign(c) * Math.pow(Math.abs(c), e);
+  const p = new THREE.Vector3();
+  b.part();
+  b.grid(
+    us,
+    vs,
+    (a, v, o) => {
+      // Closed at the top (to the neck's width) and rounded under at the bottom.
+      const topIn = lerp(neck, 1, smooth01(0, neck < 1 ? 0.42 : 0.12, v)) * (neck < 1 ? 1 : lerp(0.86, 1, smooth01(0, 0.1, v)));
+      const under = Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, (v - 0.8) / 0.2), 2.4)));
+      const cap = v <= 0 ? (neck < 1 ? 1 : 0.02) : 1;
+      const hw = (w / 2) * topIn * lerp(0.55, 1, under) * (v >= 1 ? 0.02 : 1) * cap;
+      const full = lerp(1 - sag, 1, smooth01(0.05, 0.7, v));
+      const dd = d * full * lerp(0.35, 1, under) * (neck < 1 ? lerp(0.5, 1, smooth01(0, 0.35, v)) : 1) * (v >= 1 ? 0.02 : 1) * cap;
+      const c = Math.cos(a),
+        sn = Math.sin(a);
+      let x = hw * se(c);
+      // Against the back the cloth lies nearly flat; outward it bellies.
+      let z = sn < 0 ? dd * 0.5 * (1 + se(sn) * 0.82) : dd * 0.5 * (1 + se(sn));
+      if (creases && !lod) {
+        const outer = Math.max(0, sn);
+        // Gathers running down from a drawn mouth; slack creases across the belly.
+        const g = neck < 1 ? (1 - smooth01(0.05, 0.5, v)) * 0.007 * foldWave(a * 7 + seed) : 0;
+        const k = 0.0045 * outer * foldWave(v * 17 + noise1(a * 2.2, seed) * 4 + seed) * smooth01(0, 0.15, v) * (1 - smooth01(0.85, 1, v));
+        const r = 1 + (g + k * creases) / Math.max(0.03, Math.hypot(x, z - dd * 0.5));
+        x *= r;
+        z = dd * 0.5 + (z - dd * 0.5) * r;
+      }
+      o.copy(f.point(x, -h * v, Math.max(0, z), p));
+    },
+    { center: f.point(0, -h * 0.55, d * 0.5), wrapU: true },
+  );
+}
+
+// Pack on the back (US M1928 haversack rolled, musette bag). The frame is on
+// the upper back facing backward.
+export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, round = 0.04, flap = true, straps = null, strapColor = null, seed = 1 } = {}) {
   b.bones(rigidAt(f));
   b.material(cell);
   b.paint(color);
-  b.part();
-  f.box(b, 0, -h / 2, d / 2, w, h, d, { r: round, seg: lod ? null : [12, 8] });
+  softBag(b, f, { w, h, d, boxy: 0.62, sag: 0.22, seed, lod });
   if (lod) return;
+  const out = f.dir(0, 0, 1);
   if (flap) {
+    // The flap over the top, down the outside to its edge two thirds of the way.
     b.part();
-    f.box(b, 0, -h * 0.25, d + 0.003, w * 0.96, h * 0.55, 0.006, { r: 0.01, rot: [0.04, 0, 0] });
+    b.paint(new THREE.Color(color).multiplyScalar(0.94));
+    const n = 7;
+    const path = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const y = -h * (0.02 + 0.6 * t);
+      const z = d * lerp(0.62, 1.0, smooth01(0, 0.35, t)) * lerp(0.82, 1, smooth01(0.05, 0.7, 0.02 + 0.6 * t)) + 0.004;
+      path.push(f.point(0, y, z));
+    }
+    b.strap(path, w * 0.9, 0.004, () => out);
+    b.paint(color);
   }
   if (straps) {
     b.material(CELL.webbing);
     b.paint(strapColor ?? color);
-    // Straps over the flap down to their buckles (flat ribbons on the front).
-    const out = f.dir(0, 0, 1);
-    for (const x of straps) b.strap([f.point(x, -0.03, d + 0.0075), f.point(x, -h * 0.55, d + 0.0045), f.point(x, -h + 0.03, d + 0.002)], 0.022, 0.003, () => out);
+    // Straps over the flap down to their buckles (flat ribbons on the outside).
+    for (const x of straps) b.strap([f.point(x, -0.03, d * 0.86 + 0.009), f.point(x, -h * 0.4, d + 0.01), f.point(x, -h * 0.72, d + 0.006), f.point(x, -h + 0.04, d * 0.86 + 0.004)], 0.022, 0.003, () => out);
   }
 }
 
-// Soviet veshmeshok: a drawstring sack carried on the back with its rope
-// loop over the shoulders.
-export function veshmeshok(b, f, st, lod) {
+// Soviet veshmeshok: a drawstring sack carried on the back, its mouth
+// gathered and tied with the same strap that goes over the shoulders.
+// g: the garment (for the straps to lie on).
+export function veshmeshok(b, f, st, lod, g = null) {
   b.bones(rigidAt(f));
   b.material(CELL.duck);
   b.paint(st.bag);
-  b.part();
-  f.ell(b, 0, -0.2, 0.07, 0.15, 0.15, 0.075, { nu: lod ? 6 : 14, nv: lod ? 4 : 9 });
+  softBag(b, f.sub(0, -0.035, 0), { w: 0.31, h: 0.36, d: 0.14, neck: 0.3, boxy: 0.25, sag: 0.4, seed: 3, lod });
   if (lod) return;
-  // Gathered neck and tie.
-  f.ell(b, 0, -0.04, 0.05, 0.05, 0.035, 0.035, { nu: 10, nv: 6 });
-  b.paint(new THREE.Color(st.bag).multiplyScalar(0.75));
-  f.cyl(b, [0, -0.07, 0.05], [0, -0.06, 0.05], 0.045, 0.045, { seg: 10 });
+  // The tuft of the mouth above the tie, and the tie.
+  b.part();
+  f.cyl(b, [0, -0.04, 0.045], [0, 0.0, 0.05], 0.03, 0.042, { seg: 10 });
+  b.paint(new THREE.Color(st.bag).multiplyScalar(0.7));
+  f.cyl(b, [0, -0.048, 0.045], [0, -0.036, 0.045], 0.036, 0.036, { seg: 10 });
+  if (!g) return;
+  // The straps: from the tied mouth over each shoulder, under the arm and
+  // back to the sack's lower corners.
+  b.material(CELL.webbing);
+  b.paint(new THREE.Color(st.bag).multiplyScalar(0.85));
+  const yN = f.p.y - 0.04;
+  for (const sd of [-1, 1]) {
+    torsoStrap(
+      b,
+      g,
+      [
+        { x: sd * 0.035, y: yN + 0.03, side: 1 },
+        { x: sd * 0.085, y: 1.478, side: 1 },
+        { x: sd * 0.105, y: 1.44, side: -1 },
+        { x: sd * 0.135, y: 1.33, side: -1 },
+        { t: sd > 0 ? -0.25 : PI + 0.25, y: 1.2 },
+        { x: sd * 0.12, y: f.p.y - 0.33, side: 1 },
+      ],
+      0.028,
+      0.003,
+      { out: 0.003, lod },
+    );
+  }
 }
 
 // Soviet skatka: the greatcoat rolled into a horseshoe over the left shoulder,

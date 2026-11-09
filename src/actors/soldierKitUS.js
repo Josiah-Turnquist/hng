@@ -177,10 +177,10 @@ function infantry(o, { recon = false } = {}) {
   if (!haversack && lod < 2) shovelUS(b, o.beltFrame(2.35, belt.y - 0.065, 0.008), US, lod);
   if (o.chance(0.7) && lod < 2) bayonet(b, o.beltFrame(2.85, belt.y - 0.06, 0.006), { len: 0.27, color: 0x3a3a2c, grip: 0x2a2a26, lod });
   if (haversack) {
-    const f = backFrame(o.g, 1.455, 0.24, 0.33, 0.012);
+    const f = backFrame(o.g, 1.44, 0.26, 0.36, 0.004);
     // The rolled M1928 pack with the entrenching tool carrier on its flap.
-    backpack(b, f, { w: 0.24, h: 0.33, d: 0.1, color: o.shade(US.web, 0.05), lod, round: 0.035, straps: [-0.06, 0.06], strapColor: US.web });
-    if (lod < 2) shovelUS(b, f.sub(0, -0.2, 0.1), US, lod);
+    backpack(b, f, { w: 0.27, h: 0.36, d: 0.12, color: o.shade(US.web, 0.05), lod, round: 0.035, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
+    if (lod < 2) shovelUS(b, f.sub(0, -0.17, 0.125), US, lod);
   }
   // A cloth bandolier for Garand men; a fragmentation grenade on a suspender.
   if (role === 'rifle' && o.chance(0.3)) bandolier(b, o.g, US, { lod, kind: 'US', color: o.shade(0x8a8060, 0.05) });
@@ -301,7 +301,7 @@ function paratrooper(o) {
     firstAidUS(b, o.beltFrame(-PI / 2 - 0.55, 1.33, 0.012), US, lod);
   }
   // Musette bag on the back, the M3 knife on the right leg.
-  backpack(b, backFrame(o.g, 1.38, 0.27, 0.27, 0.012), { w: 0.27, h: 0.27, d: 0.09, color: o.shade(US.web, 0.05), lod, round: 0.03, straps: [-0.07, 0.07], strapColor: US.web });
+  backpack(b, backFrame(o.g, 1.38, 0.27, 0.27, 0.004), { w: 0.28, h: 0.28, d: 0.1, color: o.shade(US.web, 0.05), lod, round: 0.03, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
   if (lod < 2) {
     const P = legChain(1);
     const a = chainPoint(P, 0.6, new THREE.Vector3()),
