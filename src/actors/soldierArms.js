@@ -523,9 +523,15 @@ export class SoldierArms {
     const ph = anim.phase * TAU;
     const sw = side < 0 ? -Math.cos(ph) : Math.cos(ph);
     const ua = side > 0 ? B.upperArmR : B.upperArmL;
-    pose.q[ua].setFromAxisAngle(AX, 0.06 + amp * sw).multiply(qAxis(_q, AZ, side * 0.1));
-    pose.q[ua + 1].setFromAxisAngle(AX, 0.2 + 0.3 * walk + 1.1 * g.run + 0.3 * g.sprint + Math.max(0, sw) * 0.3 * walk);
-    pose.q[ua + 2].setFromAxisAngle(AX, 0.1);
+    // Hanging easy: the arm close by the side (it was held 10 degrees out,
+    // like a shop dummy's), the elbow a little bent, the forearm turned in so
+    // the back of the hand leads and the palm faces the thigh, the hand in
+    // line with it. The right arm a touch more bent than the left: nobody
+    // stands quite evenly. Running, the arms come out from the body again.
+    const out = 0.015 + 0.07 * g.run + 0.05 * g.sprint;
+    pose.q[ua].setFromAxisAngle(AX, 0.05 + amp * sw).multiply(qAxis(_q, AZ, side * out));
+    pose.q[ua + 1].setFromAxisAngle(AX, 0.24 + (side > 0 ? 0.05 : 0) + 0.3 * walk + 1.1 * g.run + 0.3 * g.sprint + Math.max(0, sw) * 0.3 * walk).multiply(qAxis(_q, AY, side * 0.32));
+    pose.q[ua + 2].setFromAxisAngle(AX, 0.06).multiply(qAxis(_q, AZ, side * -0.06));
     if (prone > 0.01) {
       // Hands on the ground in front.
       anim.mp.fk(pose);

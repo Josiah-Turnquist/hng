@@ -887,8 +887,11 @@ export function buildForearm(b, side, { lod = 0, skin, from = 0.24 } = {}) {
     const s = from + ((sW + 0.01 - from) * i) / n;
     const t = (s - sE) / (sW - sE);
     // Forearm flesh: widest below the elbow, flattening to the wrist.
-    const rx = t < 0 ? 0.042 : lerp(0.042, 0.03, Math.min(1, t)) + 0.006 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
-    const rz = t < 0 ? 0.04 : lerp(0.04, 0.0215, Math.min(1, t) ** 0.85) + 0.005 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
+    // (The wrist is flat the way the hand is: the arm hangs palm to the body,
+    // so the wrist is wide front to back and thin across. Built the other way
+    // round it stood out over the hand like a paper cuff.)
+    const rx = t < 0 ? 0.041 : lerp(0.041, 0.0205, Math.min(1, t) ** 0.85) + 0.005 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
+    const rz = t < 0 ? 0.041 : lerp(0.041, 0.0285, Math.min(1, t)) + 0.006 * Math.exp(-(((t - 0.2) / 0.25) ** 2));
     const c = chainPoint(P, s, new THREE.Vector3());
     rows.push({ c, rx, rz, t });
   }
