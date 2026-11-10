@@ -104,7 +104,7 @@ export function clearOutfitCache() {
 
 const FACTIONS = new Set(['US', 'GE', 'SU']);
 const CLASSES = new Set(['infantry', 'recon', 'paratrooper', 'tanker']);
-const ROLES = new Set(['rifle', 'smg', 'mg', 'at']);
+const ROLES = new Set(['rifle', 'smg', 'mg', 'mgBelt', 'at']);
 const KINDS = new Set(['rifle', 'smg', 'lmg', 'pistol', 'launcher', 'grenade', 'melee', 'binoculars', 'none']);
 const _v = new THREE.Vector3(),
   _v2 = new THREE.Vector3(),
@@ -112,8 +112,8 @@ const _v = new THREE.Vector3(),
 
 export class SoldierModel {
   // opts: seed (face, variant), lod (0 near, 1 middle, 2 far), cls (infantry |
-  // recon | paratrooper | tanker), role (primary weapon: rifle | smg | mg | at,
-  // picks the ammunition pouches), variant (outfit variant, else from the seed),
+  // recon | paratrooper | tanker), role (primary weapon: rifle | smg | mg |
+  // mgBelt | at: soldierKit.js roleOf; picks the ammunition he carries), variant (outfit variant, else from the seed),
   // camo (a camouflage print his uniform is made in: an id of soldierCamo.js
   // CAMOS; none = his army's own issue).
   constructor(faction = 'US', textures = null, { seed = 1, lod = 0, variant, cls = 'infantry', role = 'rifle', camo = null } = {}) {

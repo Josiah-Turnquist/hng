@@ -626,13 +626,17 @@ export function variantCount(faction, cls) {
 }
 
 // Build an outfit. role: the primary weapon's kind ('rifle' | 'smg' | 'mg' |
-// 'at'), for the ammunition pouches.
+// 'mgBelt' | 'at'), for the ammunition he carries.
 export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true, camo = null } = {}) {
   const t = OUTFITS[faction] || OUTFITS.US;
   const def = t[cls] || t.infantry;
   const v = variant % def.variants;
   const rng = mulberry(hashStr(`${faction}|${cls}|${v}`));
-  const o = new Outfit(faction, cls, v, lod, role, rng);
+  // (role 'mgBelt': a machine gunner whose gun is fed by belt. He is kitted as
+  // any gunner, and carries a spare belt of rounds: Outfit.beltFed.)
+  const beltFed = role === 'mgBelt';
+  const o = new Outfit(faction, cls, v, lod, beltFed ? 'mg' : role, rng);
+  o.beltFed = beltFed;
   // camo: the id of a print (soldierCamo.js CAMOS) the uniform is made in.
   o.camo = camo ? camoCell(camo) : null;
   def.build(o);
@@ -743,4 +747,8 @@ export function buildPerson(params, lod = 0, info = {}) {
 }
 
 // Helpers shared by the army modules.
+// The kit a weapon calls for: what a soldier's outfit is built for (defs.js
+// weapons: type, and for machine guns how they are fed).
+export const roleOf = (def) => (!def ? 'rifle' : def.type === 'smg' ? 'smg' : def.type === 'lmg' ? (def.feed === 'belt' ? 'mgBelt' : 'mg') : def.type === 'launcher' || def.type === 'atRifle' ? 'at' : 'rifle');
+
 export { CELL, CAMO_GREY, torsoTheta, torsoPoint, torsoNormal, garmentPoint, garmentOffset, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, lerp, smooth01, torsoWeights, armWeights, legWeights, rigid, weightsAt, B, BIND, HEAD_CENTER, Frame, torsoFrame, rigidAt, pouch, buckle, starDecal };

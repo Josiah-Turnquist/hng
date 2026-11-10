@@ -228,10 +228,11 @@ function infantry(o) {
     f.cyl(b, [-0.15, 0, 0.0], [0.15, 0, 0.0], 0.04, 0.04, { seg: lod ? 6 : 12 });
   }
   headgear(o, GE);
-  // More to throw and to feed the gun: a second stick grenade in the belt,
-  // and on a machine gunner's mate a belt of fifty rounds round the neck.
+  // A second stick grenade in the belt on some.
   if (o.chance(0.4) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 + 0.35, 1.06, 0.012), lod);
-  if (o.chance(o.role === 'mg' ? 0.8 : 0.12) && lod < 2) ammoBelt(b, o.g, { lod });
+  // A man with a belt-fed gun (MG 34, MG 42) carries the next belt round his
+  // neck. Nobody else does: it is for his gun, not decoration.
+  if (o.beltFed && lod < 2) ammoBelt(b, o.g, { lod });
   o.weather(o.dirt);
 }
 

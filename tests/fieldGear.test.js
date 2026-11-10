@@ -5,7 +5,8 @@
 // roll and gas mask bag. And a man's kit is the same however far off he is.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOutfit, variantCount } from '../src/actors/soldierKit.js';
+import { buildOutfit, variantCount, roleOf } from '../src/actors/soldierKit.js';
+import { WEAPONS } from '../src/weapons/defs.js';
 import '../src/actors/soldierKitUS.js';
 import '../src/actors/soldierKitGE.js';
 import '../src/actors/soldierKitSU.js';
@@ -23,7 +24,7 @@ test('a kit takes the same random draws at every level of detail (it does not ch
   let n = 0;
   for (const army of ['US', 'GE', 'SU'])
     for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker'])
-      for (const role of ['rifle', 'smg', 'mg'])
+      for (const role of ['rifle', 'smg', 'mg', 'mgBelt'])
         for (const v of variants(army, cls)) {
           const infos = [0, 1, 2].map((lod) => buildOutfit(army, cls, v, lod, role).info);
           for (const lod of [1, 2]) {
@@ -43,12 +44,17 @@ test("German infantry: some carry the assault frame with the shelter quarter rol
   assert.ok(framed.length >= 2 && framed.length <= 6, `${framed.length} of 8 with the frame`);
   // At the middle distance it is still there, in fewer points.
   assert.ok(count(buildOutfit('GE', 'infantry', framed[0], 1, 'rifle').b, CELL.splinter, behind) > 20);
-  // The belt of rounds: several hundred points of metal down the chest.
+  // A belt of rounds round the neck (several hundred points of metal down the
+  // chest): on every man whose own gun is fed by belt, and on nobody else.
   const chest = (x, y, z) => z < -0.08 && y > 1.15 && y < 1.46 && Math.abs(x) > 0.05;
-  const plain = variants('GE', 'infantry').map((v) => count(buildOutfit('GE', 'infantry', v, 0, 'rifle').b, CELL.metal, chest));
-  const gunners = variants('GE', 'infantry').map((v) => count(buildOutfit('GE', 'infantry', v, 0, 'mg').b, CELL.metal, chest));
-  const belted = gunners.filter((n, v) => n > plain[v] + 300 || n > 600).length;
-  assert.ok(belted >= 4, `${belted} of 8 gunners with a belt of rounds`);
+  for (const v of variants('GE', 'infantry')) {
+    const of = (role) => count(buildOutfit('GE', 'infantry', v, 0, role).b, CELL.metal, chest);
+    const rifle = of('rifle');
+    assert.ok(of('mgBelt') > rifle + 300, `variant ${v}: a belt-fed gunner carries a belt`);
+    // (A gunner with a magazine-fed gun has his pouch and pistol, no belt.)
+    assert.ok(of('mg') < rifle + 300, `variant ${v}: a gunner with a magazine-fed gun does not`);
+    assert.ok(rifle < 500, `variant ${v}: a rifleman does not (${rifle})`);
+  }
 });
 
 test('Soviet infantry: some carry the gas mask bag at the left hip', () => {
@@ -63,4 +69,15 @@ test('US infantry: some packs have the blanket rolled over them', () => {
   const behind = (x, y, z) => z > 0.14 && y > 1.15;
   const rolls = variants('US', 'infantry').filter((v) => count(buildOutfit('US', 'infantry', v, 0, 'rifle').b, CELL.wool, behind) > 100);
   assert.ok(rolls.length >= 2 && rolls.length <= 5, `${rolls.length} of 8 with a blanket roll`);
+});
+
+test('the kit a weapon calls for: belt-fed machine guns are told from magazine-fed ones', () => {
+  assert.equal(roleOf(WEAPONS.mg42), 'mgBelt');
+  assert.equal(roleOf(WEAPONS.mg34), 'mgBelt');
+  assert.equal(roleOf(WEAPONS.fg42), 'mg');
+  assert.equal(roleOf(WEAPONS.bar_m1918a2), 'mg');
+  assert.equal(roleOf(WEAPONS.dp28), 'mg');
+  assert.equal(roleOf(WEAPONS.kar98k), 'rifle');
+  assert.equal(roleOf(null), 'rifle');
+  for (const w of Object.values(WEAPONS)) assert.ok(['rifle', 'smg', 'mg', 'mgBelt', 'at'].includes(roleOf(w)), w.name);
 });

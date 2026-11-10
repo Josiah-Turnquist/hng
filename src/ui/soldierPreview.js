@@ -21,9 +21,9 @@ import { partOf, partKey, buildPart } from '../weapons/models/upgradeParts.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { upgradedDef } from '../weapons/upgrades.js';
 import { SoldierModel } from '../actors/soldierModel.js';
+import { roleOf } from '../actors/soldierKit.js';
 
 const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', binoculars: 'binoculars', firstaid: 'grenade', medkit: 'grenade', wrench: 'grenade' };
-const ROLE = { smg: 'smg', lmg: 'mg', launcher: 'at', atRifle: 'at' };
 
 // A perspective camera looking at obj along dir (from obj toward the camera),
 // as close as it can be with obj inside `fill` of the picture both ways,
@@ -354,7 +354,7 @@ export class SoldierPreview {
     const kind = KIND[def?.type] || 'rifle';
     let m;
     try {
-      m = new SoldierModel(faction, this.lib, { seed, lod: 0, cls, role: ROLE[def?.type] || 'rifle', variant });
+      m = new SoldierModel(faction, this.lib, { seed, lod: 0, cls, role: roleOf(def), variant });
     } catch (e) {
       console.warn('Soldier preview failed', e);
       this.model = null;

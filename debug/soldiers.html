@@ -34,6 +34,8 @@ import { TextureLibrary } from '../src/render/textures.js';
 import { makeGunMaterials } from '../src/weapons/models/kit.js';
 import { MODELS, buildGun } from '../src/weapons/models/index.js';
 import { SoldierModel } from '../src/actors/soldierModel.js';
+import { roleOf } from '../src/actors/soldierKit.js';
+import { WEAPONS } from '../src/weapons/defs.js';
 import { soldierMaterial } from '../src/actors/soldierMaterials.js';
 
 const params = new URLSearchParams(location.search);
@@ -80,7 +82,6 @@ if (params.has('fp')) {
   // fp=kar98k&aim=1&f=GE&cls=infantry&seed=3, act=boltBack&u=0.5 for a reload step,
   // fpzoom=handL|handR|hands (the player's view narrowed onto the hands), fporbit=az,el,dist.
   const { ViewModel } = await import('../src/weapons/viewmodel.js');
-  const { WEAPONS } = await import('../src/weapons/defs.js');
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
   const f = (params.get('f') || 'US').split(',')[0];
   const vm = new ViewModel(lib, f, scene.environment);
@@ -207,7 +208,8 @@ const kindFor = (id) =>
     : /schreck|faust|bazooka|ptrd/.test(id) ? 'launcher'
     : /grenade|granate|rgd/.test(id) ? 'grenade'
     : 'rifle');
-const roleFor = (kind) => params.get('role') || (kind === 'smg' ? 'smg' : kind === 'lmg' ? 'mg' : kind === 'launcher' ? 'at' : 'rifle');
+const roleFor = (kind) => params.get('role') || // role=mgBelt: a gunner with a belt-fed gun
+  (kind === 'smg' ? 'smg' : kind === 'lmg' ? 'mg' : kind === 'launcher' ? 'at' : 'rifle');
 
 // A mock two-wheeler for the riding poses: frame lines and wheels, with the
 // rider's targets (saddle, grips, pedals or footboards) following the interface
@@ -314,7 +316,7 @@ if (strip) {
   strip.forEach((tt, i) => {
     const f = factions[0];
     const id = gunFor(f, classes[0]);
-    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: roleFor(kindFor(id)), camo: camoOf(0) });
+    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: params.get('role') || roleOf(WEAPONS[id]), camo: camoOf(0) });
     if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kindFor(id));
     m.setGround(ground);
     const z0 = i * 1.4;
@@ -327,7 +329,7 @@ if (strip) {
     factions.forEach((f, i) => {
       const id = gunFor(f, cls);
       const kind = kindFor(id);
-      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: roleFor(kind), variant: params.has('variant') ? Number(params.get('variant')) : undefined, camo: camoOf(i) });
+      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: params.get('role') || roleOf(WEAPONS[id]), variant: params.has('variant') ? Number(params.get('variant')) : undefined, camo: camoOf(i) });
       if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kind);
       m.setGround(ground);
       const wide = /prone|crawl|dead/.test(pose);
