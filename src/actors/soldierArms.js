@@ -1030,12 +1030,30 @@ export class SoldierArms {
     const reach = (0.306 + 0.266) * 0.985;
     const slideMax = info.kind === 'pistol' ? 0 : Math.min(0.32, Math.max(0, info.anchors.gripR.z - info.anchors.gripL.z - 0.12));
     const t = this._tSlide || (this._tSlide = new THREE.Vector3());
-    for (let k = 0; k <= 8; k++) {
-      const slide = (slideMax * k) / 8;
+    const at = (slide) => {
       t.copy(info.tLG).sub(_v2.set(0, 0, slide).applyQuaternion(info.qLG));
       out.q.copy(G.q).multiply(_q.copy(info.qLG).invert());
       out.p.copy(t).applyQuaternion(out.q).negate().add(G.p);
-      if (out.p.distanceTo(sh) <= reach) break;
+    };
+    // The hand slides back along the fore-end just as far as the arm needs to
+    // reach it: worked out exactly, not tried in steps. (In steps of a few
+    // centimetres the hand jumped a step, and the elbow with it, whenever a
+    // breath took the reach over the edge.)
+    at(0);
+    let slide = 0;
+    const far = out.p.distanceTo(sh);
+    if (far > reach && slideMax > 0) {
+      const p0 = (this._p0 || (this._p0 = new THREE.Vector3())).copy(out.p);
+      at(slideMax);
+      // The hand's place is p0 + d * slide: where that line comes within reach.
+      const d = (this._pd || (this._pd = new THREE.Vector3())).copy(out.p).sub(p0).divideScalar(slideMax);
+      const a = d.lengthSq(),
+        b = 2 * p0.sub(sh).dot(d),
+        c = far * far - reach * reach;
+      const disc = b * b - 4 * a * c;
+      // (Out of reach all along it: where it comes nearest.)
+      slide = Math.min(slideMax, Math.max(0, disc >= 0 ? (-b - Math.sqrt(disc)) / (2 * a) : -b / (2 * a)));
+      at(slide);
     }
     this.tLGcur = t;
     return out;

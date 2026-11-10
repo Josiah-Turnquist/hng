@@ -257,8 +257,9 @@ export class SoldierAnimator {
           f.sz = f.z;
           f.sh = f.h;
           f.sp = f.pitch;
-          f.swingT = moving ? Math.max(0.12, (1 - g.duty) * g.T) : 0.3;
-          f.lift = moving ? g.lift : 0.06;
+          f.swingT = moving ? Math.max(0.12, (1 - g.duty) * g.T) : 0.42;
+          f.lift = moving ? g.lift : 0.045;
+          f.gentle = !moving;
           f.landPitch = moving ? g.landPitch : -0.05;
           swinging++;
           // Heel-off: start the swing from the lifted ankle position.
@@ -280,7 +281,9 @@ export class SoldierAnimator {
         f.x = lerp(f.sx, tx, e);
         f.z = lerp(f.sz, tz, e);
         // Lift: the foot rises early (heel kicks up when running) and comes down softly.
-        f.h = f.sh * (1 - e) + f.lift * Math.sin(Math.PI * Math.pow(f.u, lerp(0.85, 0.6, g.run)));
+        // (A man shifting his feet while he stands lifts the foot gently: the
+        // early rise snapped his knee forward in a single frame.)
+        f.h = f.sh * (1 - e) + f.lift * (f.gentle ? Math.sin(Math.PI * f.u) ** 2 : Math.sin(Math.PI * Math.pow(f.u, lerp(0.85, 0.6, g.run))));
         f.pitch = lerp(f.sp, f.landPitch, smooth(0.15, 0.95, f.u)) + (moving ? 0.25 * g.run * Math.sin(Math.PI * f.u) : 0);
         if (f.u >= 1) {
           f.planted = true;
