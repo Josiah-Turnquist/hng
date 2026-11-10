@@ -282,6 +282,9 @@ export class Game {
       });
     // (Online, vehicles are puppets the server moves: only what shows follows.)
     for (const v of this.vehicles) this._guard(v, () => (v.puppet ? v.followPose?.(dt) : v.step(dt)));
+    // (With a screen, drawing puts each vehicle's parts in place: render. With
+    // none, here: its muzzle, seats and armour are found from them.)
+    if (this.headless) for (const v of this.vehicles) this._guard(v, () => v.syncMoved(dt));
     for (const s of this.soldiers) {
       if (s.isPlayer || s.remote || s.puppet) continue;
       this._guard(s, () => {

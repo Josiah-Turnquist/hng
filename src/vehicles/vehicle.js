@@ -786,6 +786,42 @@ export class Vehicle {
     root.updateMatrixWorld(true);
   }
 
+  // With no screen (the game server) nothing draws the vehicle, so nothing
+  // put its parts in place either, and the gun's muzzle, the seats and the
+  // armour are all found from them: a tank that had driven off still fired
+  // from, and was hit at, where it came in. So there its parts are put in
+  // place after each step in which it moved or its gun turned (a parked one
+  // costs nothing). True if it did.
+  syncMoved(dt = 0) {
+    const p = this.body.position;
+    const q = this.body.quaternion;
+    const k = this._placed || (this._placed = new Float64Array(9).fill(NaN));
+    const yaw = this.turretYaw ?? this.mgYaw ?? 0;
+    const elev = this.gunElev ?? this.mgPitch ?? 0;
+    const same =
+      Math.abs(k[0] - p.x) < 1e-3 &&
+      Math.abs(k[1] - p.y) < 1e-3 &&
+      Math.abs(k[2] - p.z) < 1e-3 &&
+      Math.abs(k[3] - q.x) < 1e-5 &&
+      Math.abs(k[4] - q.y) < 1e-5 &&
+      Math.abs(k[5] - q.z) < 1e-5 &&
+      Math.abs(k[6] - q.w) < 1e-5 &&
+      Math.abs(k[7] - yaw) < 1e-4 &&
+      Math.abs(k[8] - elev) < 1e-4;
+    if (same) return false;
+    k[0] = p.x;
+    k[1] = p.y;
+    k[2] = p.z;
+    k[3] = q.x;
+    k[4] = q.y;
+    k[5] = q.z;
+    k[6] = q.w;
+    k[7] = yaw;
+    k[8] = elev;
+    this.syncModel(dt);
+    return true;
+  }
+
   // World position of a model anchor (e.g. 'driverEye', 'muzzle'). Anchors on
   // the turret or gun turn and elevate with them.
   anchorWorld(name, out = new THREE.Vector3()) {

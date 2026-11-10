@@ -79,6 +79,7 @@ export class VehicleController {
     if (v.aim) {
       v.aim.yaw = this.orbit.yaw + v.turretYaw;
       v.aim.pitch = 0;
+      v.layRange = null;
     }
   }
 
@@ -105,7 +106,8 @@ export class VehicleController {
     if (role === 'gunner') {
       this.sight = this.aimToggled || this.view === 'first';
       if (this.sight) {
-        // In the sight the mouse lays the gun directly.
+        // In the sight the mouse lays the gun directly, and the range is his to set.
+        v.layRange = null;
         v.aim.yaw -= mx * sens * 0.6;
         v.aim.pitch = clamp(v.aim.pitch - my * sens * 0.6 * inv, -0.6, 0.7);
       } else {
@@ -173,6 +175,8 @@ export class VehicleController {
         v.aim.pitch = clamp(look[1], -0.6, 0.7);
       }
       if (input.range != null && input.range !== v.sightRange) v.setSightRange(input.range);
+      // (Laid from the outside view: the distance to the point he aims at.)
+      v.layRange = input.lay ?? null;
       if (input.hit('fire')) this.wantFire = true;
       if (v.coax) v.coax.trigger = input.is('handbrake');
       if (input.hit('ammo1')) this._ammo(v, 0);
@@ -370,6 +374,9 @@ export class VehicleController {
     const dist = hit ? _hit.t : 2000;
     this.aimPoint.copy(cam.position).addScaledVector(dir, dist);
     const from = v.muzzleWorld(_v);
+    // The gun is raised for the distance to that point, so the shell lands on
+    // it (at the sky: for the range set on the sight).
+    v.layRange = hit ? clamp(from.distanceTo(this.aimPoint), 5, 3000) : null;
     const to = _v2.copy(this.aimPoint).sub(from).normalize();
     v.aim.yaw = Math.atan2(-to.x, -to.z);
     v.aim.pitch = Math.asin(clamp(to.y, -1, 1));

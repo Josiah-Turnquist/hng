@@ -28,7 +28,8 @@ export function spawnVehicle(game, id, x, z, yaw = 0) {
   if (!model) model = buildPlaceholder(def, STANDIN_COLOR[def.faction]);
   const V = def.kind === 'tracked' ? TrackedVehicle : def.kind === 'bike' ? Bike : WheeledVehicle;
   const v = new V(game, def, model, x, z, yaw);
-  if (def.kind === 'tracked') {
+  // (The drawn track links: only where there is a screen.)
+  if (def.kind === 'tracked' && !game.headless) {
     let mat = null;
     try {
       mat = models.makeVehicleMaterials?.(game.world.textures)?.track;

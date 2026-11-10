@@ -125,6 +125,8 @@ export class TrackedVehicle extends Vehicle {
     this.nextAmmo = this.ammoTypes[0];
     this.sightRange = 400;
     this.superElev = 0;
+    // Laid from the outside view: how far off the point aimed at is (m). null: the sight's range setting.
+    this.layRange = null;
     this._zeroCache = new Map();
     this.coax = new MountedGun(def.coax);
     this.bowMg = new MountedGun(def.bowMg);
@@ -520,7 +522,7 @@ export class TrackedVehicle extends Vehicle {
     // Elevation: in the turret's frame.
     _q.setFromAxisAngle(_v2.set(0, 1, 0), this.turretYaw).premultiply(hullQ);
     const inTurret = _v2.copy(aimDir).applyQuaternion(_q.invert());
-    const wantRel = Math.atan2(inTurret.y, Math.hypot(inTurret.x, inTurret.z)) + this.superElev;
+    const wantRel = Math.atan2(inTurret.y, Math.hypot(inTurret.x, inTurret.z)) + this.laidElev;
     const [lo, hi] = t.elevation;
     const rate = t.elevRate * DEG;
     // Pitch of the turret itself along the line of the gun.
@@ -553,7 +555,7 @@ export class TrackedVehicle extends Vehicle {
   // Line of sight of the gunner's telescope: the bore minus the range setting.
   sightDir(out = new THREE.Vector3()) {
     _q.setFromAxisAngle(_v.set(0, 1, 0), this.turretYaw).premultiply(this.body.quaternion);
-    const e = this.gunElev - this.superElev;
+    const e = this.gunElev - this.laidElev;
     out.set(0, Math.sin(e), -Math.cos(e)).applyQuaternion(_q);
     return out;
   }
@@ -562,6 +564,29 @@ export class TrackedVehicle extends Vehicle {
     if (this.anchorWorld('muzzle', out)) return out;
     // No model anchor: estimate from the turret.
     return out.copy(this.body.position).addScaledVector(this.boreDir(_v), this.def.dims[2] * 0.6).add(_v.set(0, this.def.dims[1] * 0.45, 0));
+  }
+
+  // How far the gun is raised above the line it is aimed along. Through the
+  // sight: by the range set on it. Laid from the outside view (layRange): by
+  // what the shell in the gun drops over the very distance to the point aimed
+  // at, so that it lands there. (It was the sight's 400 m whatever the
+  // distance: at 60 m a shell aimed at a man's feet went ten metres past him.)
+  get laidElev() {
+    const r = this.layRange;
+    if (r == null) return this.superElev;
+    const shell = SHELLS[this.loaded || this.nextAmmo || this.ammoTypes[0]];
+    if (!shell) return this.superElev;
+    // (Worked out once for each few metres: finer than the gun itself shoots.)
+    const step = r < 300 ? 5 : 25;
+    const range = clamp(Math.round(r / step) * step, 5, 3000);
+    const key = `lay:${shell.id}:${range}`;
+    let a = this._zeroCache.get(key);
+    if (a === undefined) {
+      if (this._zeroCache.size > 600) this._zeroCache.clear();
+      a = solveZero(shell, shell.mv, 0, range, this.world.atmosphere);
+      this._zeroCache.set(key, a);
+    }
+    return a;
   }
 
   // Sight range drum: raises the gun above the line of sight for the distance.

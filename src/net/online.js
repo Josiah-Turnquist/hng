@@ -438,8 +438,8 @@ export class OnlineBattle {
       this.pressed.delete('aim');
     }
     this.seq++;
-    const [look, range, gun] = this._aimOut(pc);
-    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look, range, gun, deploy: this.me.alive ? null : this.deployAt })));
+    const [look, range, gun, lay = null] = this._aimOut(pc);
+    this.ws.send(JSON.stringify(encodeInput({ seq: this.seq, held, pressed: [...this.pressed], look, range, gun, lay, deploy: this.me.alive ? null : this.deployAt })));
     this.pressed.clear();
     const b = this.me.body;
     this.history.push({ seq: this.seq, x: b.x, y: b.y, z: b.z });
@@ -669,7 +669,7 @@ export class OnlineBattle {
   _aimOut(pc) {
     const v = this.me.vehicle;
     const role = v ? pc.vehicleCtl.role : null;
-    if (role === 'gunner' && v.aim) return [[v.aim.yaw, v.aim.pitch], v.sightRange ?? null, null];
+    if (role === 'gunner' && v.aim) return [[v.aim.yaw, v.aim.pitch], v.sightRange ?? null, null, v.layRange ?? null];
     if (role === 'bowMg' && v.bowAim) return [[v.bowAim.yaw, v.bowAim.pitch], null, null];
     if (role === 'sidecarMg' && v.mgAim) return [[v.mgAim.yaw, v.mgAim.pitch], null, null];
     return [[pc.look.yaw, pc.look.pitch], null, pc.gunOffset?.() ?? null];

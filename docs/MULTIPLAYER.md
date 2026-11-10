@@ -424,7 +424,15 @@ follows the server if it disagrees for half a second. The vehicle he drives
 not placed from the snapshots; it is put right the same way as his soldier,
 comparing where the server had it after the input it last used with where it
 was here as that input went: a little at a time (0.3 s), or at once when more
-than 5 m or about 45 degrees off. Its damage, fire and guns stay the server's. Down, he picks where
+than 5 m or about 45 degrees off. Its damage, fire and guns stay the server's.
+(The server draws nothing, and it is drawing that puts a vehicle's parts in
+place on the page: so after each step the server does that itself for every
+vehicle that moved, `Vehicle.syncMoved`. The gun's muzzle, the seats and the
+armour are all found from those parts; before, a tank that had driven off
+still fired from, and was hit at, where it came in, and its gun's kick,
+taken at a gun thought to be far away, spun the hull.) A tank gun laid from
+the outside view sends the distance to the point aimed at with the inputs, so
+the server raises the gun as the page does. Down, he picks where
 to come back in on the same deploy map as offline; the choice goes with his
 inputs, and the server puts him there once that point's wait is over (at the
 front instead if the point is no longer his side's to spawn at, and after a

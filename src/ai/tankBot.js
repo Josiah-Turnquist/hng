@@ -259,6 +259,7 @@ export class TankBrain {
     // The gunner sets the range drum to his estimate (within ~10%).
     if (!this.rangeEst || Math.abs(this.rangeEst - d) > d * 0.15) this.rangeEst = d * (0.92 + rand() * 0.16);
     v.setSightRange(this.rangeEst);
+    v.layRange = null; // (a player's laying, if he sat here before)
     // Fire when the sight is on and (unless stabilized) the hull is nearly still.
     this.fireDelay -= dt;
     const dir = v.sightDir(_v2);
