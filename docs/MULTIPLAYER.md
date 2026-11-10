@@ -384,8 +384,13 @@ map loads (the server says the side, the armies and the battle's dice; the
 first player's army attacks), then builds the town as usual with no bots,
 jeeps or bikes of its own (`AssaultMode` with `online: true` only shows
 points and time). Everyone else and every vehicle is a puppet, placed from
-the snapshots 75 thousandths of a second behind and gliding between them
-(30 snapshots a second; it was 20, a tenth of a second behind). The
+the snapshots a moment behind and gliding between them (30 snapshots a
+second; `src/net/shown.js`). How far behind follows the connection: 75
+thousandths of a second when snapshots come evenly, up to 150 when they come
+late or in bursts. When one is later still, others carry on the way they were
+going for up to an eighth of a second rather than stopping dead and jumping
+forward, and are eased onto where the next snapshots put them. A man put
+somewhere new between two snapshots (a respawn) is there at once, standing. The
 player's own soldier moves at once from his keys and is quietly put right
 when the server saw him elsewhere (a quarter second's correction, or at once
 when more than 3 m off). He sends his keys and where he looks 60 times a

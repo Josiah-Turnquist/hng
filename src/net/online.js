@@ -2,8 +2,9 @@
 // server runs the battle; this page shows it and sends what the player does.
 //
 // - Everyone else (players and bots) and every vehicle are puppets: placed
-//   where the server's snapshots say, 75 thousandths of a second behind, gliding
-//   between snapshots rather than jumping.
+//   where the server's snapshots say, a moment behind (75 to 150 thousandths
+//   of a second, as the connection allows), gliding between snapshots rather
+//   than jumping, and carried on a moment when one is late (shown.js).
 // - The player's own soldier moves at once from his keys, run by the same
 //   controls as offline, and is quietly corrected when the server saw him
 //   somewhere else (compared at the input the server last used). So does the
@@ -20,6 +21,7 @@
 //   (Game calls online.update(dt) each step and online.sendInput() each frame)
 import { ACTION_LIST, encodeInput, readSnapshot, ammoOf, applyVehicleState, PROTOCOL_VERSION } from './protocol.js';
 import { token } from './auth.js';
+import { Shown, MIN_DELAY } from './shown.js';
 import { Soldier } from '../game/soldier.js';
 import { attachSoldierModel } from '../game/soldierView.js';
 import { WEAPONS } from '../weapons/defs.js';
@@ -38,9 +40,9 @@ const _qd = new THREE.Quaternion();
 const _qi = new THREE.Quaternion();
 const _vd = new THREE.Vector3();
 
-// How far behind the newest snapshot others are shown (seconds): two and a
-// bit snapshots' worth (30 a second), so there is nearly always one on each side.
-export const INTERP_DELAY = 0.075;
+// How far behind the newest snapshot others are shown at the least (seconds):
+// shown.js, which stretches it when snapshots come unevenly.
+export const INTERP_DELAY = MIN_DELAY;
 const SEND_EVERY = 1 / 60;
 
 // Join the battle: sign in to the game server with the player's token and
@@ -88,7 +90,7 @@ export class OnlineBattle {
     this.puppets = new Map(); // soldier id -> Soldier
     this.vehicles = new Map(); // vehicle id -> Vehicle
     this.snaps = []; // the last few snapshots, oldest first
-    this.clock = null; // battle time shown for others
+    this.shown = new Shown(); // when and where the others are shown (shown.js)
     this.seq = 0;
     this.history = []; // [{ seq, x, y, z }] where the player was as each input went
     this.driving = null; // the vehicle he drives, run here (not a puppet)
@@ -158,6 +160,7 @@ export class OnlineBattle {
       const snap = readSnapshot(m);
       this.snaps.push(snap);
       if (this.snaps.length > 30) this.snaps.shift();
+      this.shown.arrived(snap.time, performance.now() / 1000);
       this._events(snap.events);
       this._self(snap);
       this._driven(snap);
@@ -456,44 +459,25 @@ export class OnlineBattle {
     this._correctVehicle(dt);
     const snaps = this.snaps;
     if (!snaps.length) return;
-    const newest = snaps[snaps.length - 1].time;
-    // The shown time runs with the clock, kept INTERP_DELAY behind the newest
-    // snapshot (nudged, so a late snapshot doesn't make others jump).
-    if (this.clock === null || Math.abs(newest - INTERP_DELAY - this.clock) > 1) this.clock = newest - INTERP_DELAY;
-    else this.clock += dt * (1 + Math.max(-0.1, Math.min(0.1, (newest - INTERP_DELAY - this.clock) * 2)));
-    let a = snaps[0],
-      b = snaps[snaps.length - 1];
-    for (let i = 0; i < snaps.length - 1; i++) {
-      if (snaps[i].time <= this.clock && snaps[i + 1].time >= this.clock) {
-        a = snaps[i];
-        b = snaps[i + 1];
-        break;
-      }
-    }
-    const span = b.time - a.time;
-    const t = span > 0 ? Math.max(0, Math.min(1, (this.clock - a.time) / span)) : 1;
-    this._vehiclesAt(a, b, t);
-    this._soldiersAt(a, b, t, span, dt);
+    // The moment in the past that is shown, and the two snapshots either side
+    // of it (shown.js).
+    const at = this.shown.at(snaps, dt);
+    this._vehiclesAt(at.a, at.b, at.t);
+    this._soldiersAt(at.a, at.b, at);
   }
 
-  _soldiersAt(a, b, t, span, dt) {
+  _soldiersAt(a, b, at) {
+    const dt = at.dt;
+    // (Turning and looking stop at the newest snapshot; only his going carries on past it.)
+    const t = Math.min(1, at.t);
     const prev = new Map(a.soldiers.map((x) => [x.id, x]));
     for (const nb of b.soldiers) {
       const s = this.puppets.get(nb.id);
       if (!s) continue;
       const na = prev.get(nb.id) || nb;
       const bd = s.body;
-      const x = lerp(na.x, nb.x, t),
-        y = lerp(na.y, nb.y, t),
-        z = lerp(na.z, nb.z, t);
-      // His speed, for the walking and running of his legs.
-      if (span > 0) {
-        bd.vx = (nb.x - na.x) / span;
-        bd.vz = (nb.z - na.z) / span;
-      }
-      bd.x = x;
-      bd.y = y;
-      bd.z = z;
+      // Where he is, and his speed for the walking and running of his legs.
+      this.shown.place(bd, na, nb, at);
       bd.yaw = lerpAngle(na.yaw, nb.yaw, t);
       s.yaw = bd.yaw;
       s.pitch = lerp(na.pitch, nb.pitch, t);
@@ -545,8 +529,10 @@ export class OnlineBattle {
 
   // Vehicles between two updates. (One left out of an update hasn't moved: it
   // stays where it is.)
-  _vehiclesAt(a, b, t) {
+  _vehiclesAt(a, b, t0) {
     const g = this.game;
+    // (Turning stops at the newest snapshot; going carries on a moment past it.)
+    const t = Math.min(1, t0);
     const prev = new Map(a.vehicles.map((x) => [x.id, x]));
     for (const nb of b.vehicles) {
       let v = this.vehicles.get(nb.id);
@@ -571,7 +557,9 @@ export class OnlineBattle {
       }
       const na = prev.get(nb.id) || nb;
       const p = v.body.position;
-      p.set(lerp(na.x, nb.x, t), lerp(na.y, nb.y, t), lerp(na.z, nb.z, t));
+      // (Carried on past the newest snapshot the way it was going, unless it was put somewhere new; its turning stops there.)
+      const tp = Math.hypot(nb.x - na.x, nb.y - na.y, nb.z - na.z) > 6 ? t : t0;
+      p.set(lerp(na.x, nb.x, tp), lerp(na.y, nb.y, tp), lerp(na.z, nb.z, tp));
       const q = v.body.quaternion;
       q.set(...na.q);
       q.slerp(v._qb || (v._qb = q.clone()), 0);

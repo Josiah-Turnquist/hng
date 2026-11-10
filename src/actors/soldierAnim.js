@@ -37,6 +37,10 @@ const _q = new THREE.Quaternion(),
   _v2 = new THREE.Vector3(),
   _v3 = new THREE.Vector3();
 
+// A planted foot further than this from where it would rest (m) has been left
+// behind (a running stride puts it 0.85 m back at most): it is picked up.
+const FAR_BEHIND = 0.92;
+
 class Foot {
   constructor(side) {
     this.side = side;
@@ -46,6 +50,7 @@ class Foot {
     this.h = 0; // height above the ground (swing)
     this.pitch = 0; // + = heel up
     this.u = 0; // swing progress
+    this.stood = true; // has stood on it since it last came down (it may lift)
     this.sx = 0;
     this.sz = 0;
     this.sh = 0;
@@ -93,8 +98,13 @@ export class SoldierAnimator {
     dt = Math.min(Math.max(dt, 0), 0.1);
     this.time += dt;
     const sm = this.sm;
-    sm.vx = damp(sm.vx, s.localVelX || 0, 12, dt);
-    sm.vz = damp(sm.vz, s.localVelZ || 0, 12, dt);
+    // (No man runs at more than TOP m/s: a speed above it is a mistake of
+    // whoever worked it out, a jump taken for a move, and would fling his feet.)
+    const TOP = 10;
+    const sp = Math.hypot(s.localVelX || 0, s.localVelZ || 0);
+    const cap = sp > TOP ? TOP / sp : 1;
+    sm.vx = damp(sm.vx, (s.localVelX || 0) * cap, 12, dt);
+    sm.vz = damp(sm.vz, (s.localVelZ || 0) * cap, 12, dt);
     sm.speed = Math.hypot(sm.vx, sm.vz);
     sm.moving = damp(sm.moving, sm.speed > 0.15 ? 1 : 0, 6, dt);
     sm.aim = damp(sm.aim, s.aiming ? 1 : 0, 9, dt);
@@ -235,7 +245,16 @@ export class SoldierAnimator {
         f.z -= sm.vz * dt;
         let lift = false;
         if (moving) {
-          if (f.prevPsi < g.duty && psi >= g.duty) lift = true;
+          // It lifts once its share of the stride on the ground is over. (By
+          // where the stride is, not by the moment it passes that point: a
+          // man breaking into a run has less of each stride on the ground,
+          // and a foot already past the new point missed its moment, stayed
+          // down a whole stride and was dragged metres behind him.) A foot
+          // that came down early waits for its next turn.
+          if (psi < g.duty) f.stood = true;
+          else if (f.stood) lift = true;
+          // (And one left far behind however it happened is picked up at once.)
+          if (!lift && Math.hypot(f.x - rest.x, f.z - rest.z) > FAR_BEHIND) lift = true;
           const roll = g.heelOff * Math.pow(smooth(g.duty * g.heelStart, g.duty, Math.min(psi, g.duty)), 1.5);
           f.pitch = Math.max(roll, f.pitch * (psi > g.duty * 0.5 ? 1 : 0));
           if (psi < 0.1) f.pitch = lerp(f.landPitch, 0, smooth(0, 0.1, psi));
@@ -257,7 +276,9 @@ export class SoldierAnimator {
           f.sz = f.z;
           f.sh = f.h;
           f.sp = f.pitch;
-          f.swingT = moving ? Math.max(0.12, (1 - g.duty) * g.T) : 0.42;
+          // (Down again as the stride comes round: sooner for one lifted late.)
+          f.swingT = moving ? Math.max(0.12, (1 - Math.max(psi, g.duty)) * g.T) : 0.42;
+          f.stood = false;
           f.lift = moving ? g.lift : 0.045;
           f.gentle = !moving;
           f.landPitch = moving ? g.landPitch : -0.05;
@@ -288,6 +309,8 @@ export class SoldierAnimator {
         if (f.u >= 1) {
           f.planted = true;
           f.h = 0;
+          // (Standing still, any foot may shift next.)
+          f.stood = !moving;
         }
       }
       f.prevPsi = psi;
@@ -385,6 +408,7 @@ export class SoldierAnimator {
     f.x = r.x;
     f.z = r.z;
     f.planted = true;
+    f.stood = true;
     f.h = 0;
     f.pitch = 0;
   }

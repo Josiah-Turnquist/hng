@@ -362,6 +362,8 @@ function baseState(pose, t) {
     case 'walk': mv(-1.5); break;
     case 'run': mv(-3.7); break;
     case 'sprint': mv(-6.1); s.sprinting = true; break;
+    // (A walk for walkfor seconds, then a sprint for t seconds: the stride as he breaks into a run.)
+    case 'walkrun': mv(-1.5); break;
     case 'strafe': mv(0, 1.2); s.aiming = true; break;
     case 'back': mv(1.1); break;
     case 'crouch': s.stance = 1; s.stanceBlend = 1; break;
@@ -394,13 +396,19 @@ for (const S of soldiers) {
   const tT = S.t ?? T;
   const s = baseState(pose, tT);
   const act = s.action;
-  const warm = 2.0 + (cycles.includes(pose) || S.ride ? tT ?? 0 : 0);
+  const walkFor = Number(params.get('walkfor') || 1.6);
+  const warm = pose === 'walkrun' ? walkFor + (tT ?? 0.7) : 2.0 + (cycles.includes(pose) || S.ride ? tT ?? 0 : 0);
   const steps = Math.round(warm / dt);
   let x = S.x0, z = S.z0;
   const actT = act ? tT ?? 0.4 : 0;
   const ts = steps - Math.round((actT * 2) / dt);
   if (S.ride) s.ride = {};
   for (let k = 0; k < steps; k++) {
+    if (pose === 'walkrun' && k >= Math.round(walkFor / dt)) {
+      s.localVelZ = -6.1;
+      s.speed = 6.1;
+      s.sprinting = true;
+    }
     // Move the feet with the body velocity (world = local at yaw 0).
     x += s.localVelX * dt;
     z += s.localVelZ * dt;
