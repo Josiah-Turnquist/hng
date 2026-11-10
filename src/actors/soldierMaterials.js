@@ -6,7 +6,8 @@
 // about 0.5 and add weave, grain, wear and normal detail. The camouflage cells
 // carry their own colors (paint those parts mid-grey).
 import * as THREE from 'three';
-import { addMaterials, PRESETS } from '../render/textures.js';
+import { addMaterials, addPhotos, PRESETS } from '../render/textures.js';
+import { CLOTH_PHOTOS } from './clothPhotoData.js';
 import { addPatch, after, replace } from '../render/materialPatch.js';
 import { BONE_COUNT } from './soldierRig.js';
 
@@ -54,6 +55,14 @@ const GLSL = {
       metal = 0.0;
       height = rib * 0.00012 + fuzz * 0.00014 + pill * 0.0002 + streak * 0.00008;
       alpha = 1.0;
+      if (uPhotoOn > 0.5) {
+        // Real wool cloth (a photograph): its fibres, nap and mottling in place
+        // of the drawn ones. The twill's ribs stay, fainter.
+        vec2 ph = photo(uv);
+        albedo = vec3(0.5 * (0.95 + 0.08 * rib) * mix(1.0, ph.x, 0.95)) * vec3(1.0 + 0.04 * fib, 1.0, 1.0 - 0.04 * fib);
+        rough = 0.9 + 0.08 * clamp(1.5 - ph.x, 0.0, 1.0);
+        height = rib * 0.00006 + ph.y * 4.0;
+      }
     }`,
   soldierCotton: /* glsl */ `
     // Cotton poplin / drill: fine plain weave (drawn a little coarser and stronger than
@@ -74,6 +83,13 @@ const GLSL = {
       metal = 0.0;
       height = w * 0.00006 + slub * 0.00014 + mott * 0.0002;
       alpha = 1.0;
+      if (uPhotoOn > 0.5) {
+        // Real plain-woven cloth (a photograph): its threads and slubs. A little
+        // of the drawn, coarser weave stays so the cloth still reads from a few metres.
+        vec2 ph = photo(uv);
+        albedo = vec3(0.5 * (0.94 + 0.08 * w) * (1.0 + 2.4 * (ph.x - 1.0)) * (0.93 + 0.14 * slub) * (0.93 + 0.14 * mott));
+        height = w * 0.00003 + ph.y * 7.0 + mott * 0.0001;
+      }
     }`,
   soldierHBT: /* glsl */ `
     // Herringbone twill: diagonal ribs reversing in 4.5 mm columns.
@@ -92,6 +108,12 @@ const GLSL = {
       metal = 0.0;
       height = rib * 0.0002 * edge + fuzz * 0.0001;
       alpha = 1.0;
+      if (uPhotoOn > 0.5) {
+        // The herringbone is drawn; its yarn is real cotton's (a photograph).
+        vec2 ph = photo(uv);
+        albedo = vec3(0.5 * a / 0.88 * (1.0 + 2.0 * (ph.x - 1.0)));
+        height = rib * 0.00016 * edge + ph.y * 5.0;
+      }
     }`,
   soldierDuck: /* glsl */ `
     // Cotton duck canvas: coarse plain weave of about 1.3 mm threads.
@@ -110,6 +132,12 @@ const GLSL = {
       metal = 0.0;
       height = h * 0.0003 + slub * 0.0001;
       alpha = 1.0;
+      if (uPhotoOn > 0.5) {
+        // Real canvas (a photograph): its own threads, knots and slubs.
+        vec2 ph = photo(uv);
+        albedo = vec3(0.5 * (1.0 + 1.5 * (ph.x - 1.0)) * (0.95 + 0.1 * slub) * (0.92 + 0.16 * mott));
+        height = ph.y * 5.0 + h * 0.00006;
+      }
     }`,
   soldierWebbing: /* glsl */ `
     // Woven cotton webbing: ribs along the strap (v), picks across, loose fibres and
@@ -165,6 +193,15 @@ const GLSL = {
       metal = 0.0;
       height = grain * 0.0002 + pebble * 0.00012 + pores * 0.0001 - cr * 0.0004 - scratch * 0.00008;
       alpha = 1.0;
+      if (uPhotoOn > 0.5) {
+        // Real worn leather (a photograph): its creases, and the scuffs and
+        // scratches that show the paler hide. The fine grain and pores stay drawn.
+        vec2 ph = photo(uv);
+        float worn = smoothstep(1.15, 1.7, ph.x);
+        albedo = vec3(0.5 * (0.93 + 0.1 * grain) * (0.95 + 0.07 * pebble) * mix(1.0, ph.x, 0.8));
+        rough = 0.5 + 0.12 * grain + 0.32 * worn + 0.1 * (1.0 - pebble);
+        height = ph.y * 2.0 + grain * 0.0001 + pebble * 0.0001 + pores * 0.00008;
+      }
     }`,
   soldierSuede: /* glsl */ `
     // Rough-out (flesh side out) leather with dubbing: fuzzy, blotchy, matte.
@@ -429,15 +466,16 @@ const GLSL = {
     }`,
 };
 
-// Presets: [name, glsl material, tile size (m), normal strength].
+// Presets: [name, tile size (m), normal strength, the photograph of the real
+// stuff it is made from (clothPhotoData.js), if any].
 const CELLS = [
-  ['soldierWool', 0.15, 1],
-  ['soldierCotton', 0.15, 1],
-  ['soldierHBT', 0.18, 1],
-  ['soldierDuck', 0.14, 1],
+  ['soldierWool', 0.15, 1, 'wool'],
+  ['soldierCotton', 0.15, 1, 'cotton'],
+  ['soldierHBT', 0.18, 1, 'cotton'],
+  ['soldierDuck', 0.14, 1, 'canvas'],
   ['soldierWebbing', 0.1, 1],
   ['soldierKnit', 0.1, 1],
-  ['soldierLeather', 0.2, 1],
+  ['soldierLeather', 0.2, 1, 'leather'],
   ['soldierSuede', 0.15, 1],
   ['soldierPaint', 0.2, 1],
   ['soldierMetal', 0.1, 1],
@@ -451,11 +489,14 @@ const CELLS = [
   ['soldierHand', 1, 1], // one hand per cell
 ];
 const presets = {};
-for (const [name, world, ns] of CELLS) {
+for (const [name, world, ns, photo] of CELLS) {
   if (!GLSL[name]) continue;
-  presets[`${name}Tex`] = { mat: name, world, normalScale: ns };
+  presets[`${name}Tex`] = { mat: name, world, normalScale: ns, ...(photo ? { photo } : {}) };
 }
-if (!PRESETS.soldierWoolTex) addMaterials(GLSL, presets);
+if (!PRESETS.soldierWoolTex) {
+  addPhotos(CLOTH_PHOTOS);
+  addMaterials(GLSL, presets);
+}
 export const CELL_PRESETS = CELLS.map(([name]) => (GLSL[name] ? `${name}Tex` : name));
 const COLS = 4;
 const ROWS = Math.ceil(CELLS.length / COLS);

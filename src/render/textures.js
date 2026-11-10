@@ -21,6 +21,17 @@ uniform float uNormalScale;
 uniform float uHeightRange;
 uniform vec3 uPaintA;
 uniform vec3 uPaintB;
+uniform sampler2D uPhoto;
+uniform float uPhotoOn;
+uniform float uPhotoRange;
+// A photograph of the real stuff, for a preset that names one (see addPhotos):
+// x = how light it is against its own middle (1 = the middle), y = how high
+// its surface stands, in metres. Read it only when uPhotoOn is 1 (the
+// photograph has arrived; until then a material draws its own pattern).
+vec2 photo(vec2 uv) {
+  vec4 t = texture2D(uPhoto, uv);
+  return vec2(t.r * 2.0, (t.g - 0.5) * uPhotoRange * uWorld);
+}
 ${NOISE_GLSL}
 ${MATERIALS[name]}
 void main() {
@@ -163,6 +174,72 @@ export function addMaterials(materials = {}, presets = {}) {
   Object.assign(PRESETS, presets);
 }
 
+// Photographs a material can read while it is baked: a preset names one with
+// `photo: 'wool'` and its GLSL reads it with photo(uv). Each is a picture of
+// two squares side by side, `size` points each (src/actors/clothPhotoData.js:
+// lightness on the left, height on the right over `range` widths of the tile).
+// A browser takes a moment to unpack a picture, so textures are first baked
+// without (the material's own drawn pattern) and baked again, into the same
+// textures, as soon as their photographs are in.
+const PHOTOS = {};
+export function addPhotos(photos = {}) {
+  for (const [name, p] of Object.entries(photos)) PHOTOS[name] ??= { ...p, tex: null, ready: false, wait: [] };
+}
+function photoOf(name) {
+  const p = PHOTOS[name];
+  if (!p) throw new Error(`Unknown photograph ${name}`);
+  if (!p.tex) {
+    p.tex = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
+    p.tex.needsUpdate = true;
+    if (typeof Image !== 'undefined' && typeof document !== 'undefined') {
+      const img = new Image();
+      img.onload = () => {
+        const n = p.size;
+        const canvas = document.createElement('canvas');
+        canvas.width = n * 2;
+        canvas.height = n;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, n * 2, n);
+        const src = ctx.getImageData(0, 0, n * 2, n).data;
+        const px = new Uint8Array(n * n * 4);
+        for (let y = 0; y < n; y++)
+          for (let x = 0; x < n; x++) {
+            const o = (y * n + x) * 4;
+            px[o] = src[(y * n * 2 + x) * 4];
+            px[o + 1] = src[(y * n * 2 + n + x) * 4];
+            px[o + 3] = 255;
+          }
+        const tex = new THREE.DataTexture(px, n, n);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = true;
+        tex.needsUpdate = true;
+        p.tex.dispose();
+        p.tex = tex;
+        p.ready = true;
+        for (const fn of p.wait.splice(0)) {
+          try {
+            fn();
+          } catch (e) {
+            console.warn('Texture photograph', name, e);
+          }
+        }
+      };
+      img.src = `data:image/webp;base64,${p.webp}`;
+    }
+  }
+  return p;
+}
+function setPhoto(u, preset) {
+  if (!preset.photo) return null;
+  const p = photoOf(preset.photo);
+  u.uPhoto.value = p.tex;
+  u.uPhotoOn.value = p.ready ? 1 : 0;
+  u.uPhotoRange.value = p.range;
+  return p;
+}
+
 // Terrain layers (index = layer in the texture arrays; matches SURF ids 0..8).
 export const TERRAIN_LAYERS = ['grass', 'dryGrass', 'dirt', 'mud', 'rock', 'plowed', 'cobble', 'forest', 'sand'];
 
@@ -194,6 +271,9 @@ export class TextureLibrary {
           uHeightRange: { value: 0.1 },
           uPaintA: { value: new THREE.Color(0.5, 0.5, 0.5) },
           uPaintB: { value: new THREE.Color(0.4, 0.4, 0.4) },
+          uPhoto: { value: null },
+          uPhotoOn: { value: 0 },
+          uPhotoRange: { value: 0 },
         },
         depthTest: false,
         depthWrite: false,
@@ -214,6 +294,8 @@ export class TextureLibrary {
     if (preset.b) u.uPaintB.value.copy(preset.b);
     // Extra vec4 shape parameters (vegetation presets).
     if (preset.uniforms) for (const [k, v] of Object.entries(preset.uniforms)) (u[k] ??= { value: new THREE.Vector4() }).value.fromArray(v);
+    u.uPhotoOn.value = 0;
+    setPhoto(u, preset);
     this.quad.material = mat;
     return u;
   }
@@ -246,16 +328,18 @@ export class TextureLibrary {
     if (this.cache.has(key)) return this.cache.get(key);
     const preset = PRESETS[name];
     if (!preset) throw new Error(`Unknown texture preset ${name}`);
-    const u = this._setup(preset, size);
     const map = this._target(size, true);
-    u.uMode.value = 0;
-    this._render(map);
     const normal = this._target(size, false);
-    u.uMode.value = 1;
-    this._render(normal);
     const orm = this._target(size, false);
-    u.uMode.value = 2;
-    this._render(orm);
+    const bake = () => {
+      const u = this._setup(preset, size);
+      [map, normal, orm].forEach((t, mode) => {
+        u.uMode.value = mode;
+        this._render(t);
+      });
+    };
+    bake();
+    if (preset.photo && !photoOf(preset.photo).ready) photoOf(preset.photo).wait.push(() => !this.disposed && bake());
     const set = {
       map: map.texture,
       normalMap: normal.texture,
@@ -339,6 +423,7 @@ export class TextureLibrary {
     // (copies share the compiled program), so a whole atlas is a single render.
     const scene = new THREE.Scene();
     const mats = [];
+    const pending = new Map(); // photographs not in yet -> the cells waiting for them
     cells.forEach((name, i) => {
       if (!name) return;
       const preset = PRESETS[name];
@@ -352,6 +437,11 @@ export class TextureLibrary {
       if (preset.a) u.uPaintA.value.copy(preset.a);
       if (preset.b) u.uPaintB.value.copy(preset.b);
       if (preset.uniforms) for (const [k, v] of Object.entries(preset.uniforms)) u[k] = { value: new THREE.Vector4().fromArray(v) };
+      // (The clone's uniforms are its own, the photograph is shared.)
+      u.uPhoto.value = null;
+      u.uPhotoOn.value = 0;
+      const ph = setPhoto(u, preset);
+      if (ph && !ph.ready) pending.set(ph, [...(pending.get(ph) || []), [u, preset]]);
       const c = i % cols,
         r = Math.floor(i / cols);
       const x0 = (c / cols) * 2 - 1,
@@ -380,21 +470,36 @@ export class TextureLibrary {
       });
     const targets = [mk(true), normals ? mk(false) : null, orm ? mk(false) : null];
     const r = this.renderer;
-    const prev = r.getRenderTarget();
-    const prevColor = r.getClearColor(new THREE.Color());
-    const prevAlpha = r.getClearAlpha();
-    r.setClearColor(0x000000, 0);
-    targets.forEach((t, mode) => {
-      if (!t) return;
-      for (const m of mats) m.uniforms.uMode.value = mode;
-      r.setRenderTarget(t);
-      r.clear();
-      r.render(scene, this.camera);
-    });
-    r.setRenderTarget(prev);
-    r.setClearColor(prevColor, prevAlpha);
-    scene.traverse((o) => o.geometry?.dispose());
-    for (const m of mats) m.dispose();
+    const bake = () => {
+      const prev = r.getRenderTarget();
+      const prevColor = r.getClearColor(new THREE.Color());
+      const prevAlpha = r.getClearAlpha();
+      r.setClearColor(0x000000, 0);
+      targets.forEach((t, mode) => {
+        if (!t) return;
+        for (const m of mats) m.uniforms.uMode.value = mode;
+        r.setRenderTarget(t);
+        r.clear();
+        r.render(scene, this.camera);
+      });
+      r.setRenderTarget(prev);
+      r.setClearColor(prevColor, prevAlpha);
+    };
+    const done = () => {
+      scene.traverse((o) => o.geometry?.dispose());
+      for (const m of mats) m.dispose();
+    };
+    bake();
+    if (!pending.size) done();
+    // Baked again, into the same textures, once every photograph is in.
+    for (const [ph, waiting] of pending)
+      ph.wait.push(() => {
+        for (const [u, preset] of waiting) setPhoto(u, preset);
+        pending.delete(ph);
+        if (pending.size || this.disposed) return;
+        bake();
+        done();
+      });
     const set = {
       map: targets[0].texture,
       normalMap: targets[1]?.texture ?? null,
@@ -412,6 +517,7 @@ export class TextureLibrary {
   }
 
   dispose() {
+    this.disposed = true;
     for (const set of this.cache.values()) for (const t of set.targets) t.dispose();
     for (const m of this.programs.values()) m.dispose();
   }

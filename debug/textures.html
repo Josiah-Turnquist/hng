@@ -11,6 +11,7 @@
 // Shows every procedural texture tiled 2x2 so seams and repetition are easy to spot.
 import * as THREE from 'three';
 import { TextureLibrary, PRESETS } from '../src/render/textures.js';
+import '../src/actors/soldierMaterials.js'; // (adds the soldiers' cloth, leather and skin)
 const params = new URLSearchParams(location.search);
 const names = (params.get('names') || Object.keys(PRESETS).join(',')).split(',');
 const kind = params.get('kind') || 'map';
@@ -41,6 +42,8 @@ names.forEach((n, i) => {
 });
 renderer.setClearColor(0x335533);
 renderer.render(scene, cam);
+// (Again a little later: textures made from photographs are baked a second time once those are in.)
+for (const ms of [500, 1500, 3000]) setTimeout(() => renderer.render(scene, cam), ms);
 window.__done = true;
 </script>
 </body>
