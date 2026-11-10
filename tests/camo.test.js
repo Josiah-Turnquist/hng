@@ -46,7 +46,7 @@ test('a uniform asked for in a print is made of it; without, it is as before', (
     ['US', 'paratrooper', 'frogGreen'],
     ['US', 'infantry', 'daub'],
     ['SU', 'infantry', 'leaf'],
-    ['SU', 'recon', 'palm'],
+    ['SU', 'recon', 'stairStep'],
   ]) {
     const plain = cells(buildOutfit(army, cls, 1, 0, 'rifle').b);
     const printed = cells(buildOutfit(army, cls, 1, 0, 'rifle', { camo }).b);

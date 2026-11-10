@@ -9,8 +9,10 @@
 //   camoCell('oakSpring')   the cell number to give b.material()
 //   camosFor('GE')          the prints an army's soldiers can wear
 //
-// The patterns are drawn from photographs of surviving garments (shapes,
-// proportions, colors by eye): they are not copies of any one bolt of cloth.
+// The patterns are drawn from memory of what the real ones look like (their
+// kinds of shape, how many colors, roughly which): none was checked against a
+// photograph or a surviving garment, and none is a copy of a real bolt of
+// cloth. Who really wore each, and on what, is in docs/CAMOUFLAGE.md.
 import { addMaterials, PRESETS } from '../render/textures.js';
 
 export const CAMO_BASE = 32;
@@ -28,7 +30,7 @@ export const CAMOS = [
   { id: 'daub', name: 'Painted jump suit', army: 'US', world: 0.7 },
   { id: 'amoebaAutumn', name: 'Amoeba, autumn', army: 'SU', world: 0.7 },
   { id: 'leaf', name: 'Leaf', army: 'SU', world: 0.6 },
-  { id: 'palm', name: 'Palm', army: 'SU', world: 0.6 },
+  { id: 'stairStep', name: 'Three-color, 1944', army: 'SU', world: 0.6 },
 ];
 
 const END = /* glsl */ `
@@ -144,8 +146,8 @@ const GLSL = {
       float n = fbm01(uv, vec2(5.0), 5, 451.0);
       float n2 = fbm01(uv, vec2(9.0), 4, 452.0);
       vec3 c = mix(srgb(vec3(0.63, 0.54, 0.33)), srgb(vec3(0.2, 0.15, 0.11)), smoothstep(0.55, 0.575, n + (n2 - 0.5) * 0.25));${END}`,
-  // Soviet "leaf" (TTsMKK, 1944): ragged leaf shapes of green on a pale
-  // yellow-green, with brown amoeba blots over both.
+  // Soviet leaf pattern (1940-41): ragged leaf and twig shapes of green on a
+  // pale yellow-green, with darker blots over both.
   camoLeaf: /* glsl */ `${HEAD}
       float jag = vnoise(uv * 70.0, vec2(70.0), 691.0) - 0.5;
       float n1 = fbm01(uv + w, vec2(5.0), 3, 692.0) + jag * 0.07;
@@ -153,16 +155,16 @@ const GLSL = {
       vec3 c = srgb(vec3(0.58, 0.6, 0.38));
       c = mix(c, srgb(vec3(0.33, 0.42, 0.24)), smoothstep(0.5, 0.51, n1));
       c = mix(c, srgb(vec3(0.26, 0.2, 0.14)), smoothstep(0.585, 0.6, n2));${END}`,
-  // Soviet "palm" (1944): branching fronds printed dark on olive, with paler
-  // patches between.
-  camoPalm: /* glsl */ `${HEAD}
-      float fr = ridged(uv + w, vec2(5.0), 3, 701.0);
-      float fr2 = ridged(uv - w + 0.3, vec2(8.0), 2, 702.0);
-      float where = fbm01(uv, vec2(3.0), 3, 703.0);
-      vec3 c = srgb(vec3(0.43, 0.45, 0.28));
-      c = mix(c, srgb(vec3(0.6, 0.6, 0.41)), smoothstep(0.56, 0.58, fbm01(uv + 0.2, vec2(4.0), 4, 704.0)));
-      float frond = max(smoothstep(0.8, 0.84, fr), smoothstep(0.84, 0.88, fr2) * 0.9) * smoothstep(0.38, 0.5, where);
-      c = mix(c, srgb(vec3(0.19, 0.22, 0.14)), frond);${END}`,
+  // Soviet three-color suit of 1944 (TTsMKK): two greens over a yellow-tan
+  // ground, their edges cut in steps like a staircase.
+  camoStairStep: /* glsl */ `${HEAD}
+      // (The steps: the shapes are read on a grid of 12 mm squares.)
+      vec2 q = (floor(uv * 48.0) + 0.5) / 48.0;
+      float n1 = fbm01(q, vec2(4.0), 4, 701.0);
+      float n2 = fbm01(q + 0.37, vec2(5.0), 4, 702.0);
+      vec3 c = srgb(vec3(0.64, 0.58, 0.37));
+      c = mix(c, srgb(vec3(0.4, 0.47, 0.26)), step(0.5, n1));
+      c = mix(c, srgb(vec3(0.2, 0.27, 0.17)), step(0.56, n2));${END}`,
 };
 
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
