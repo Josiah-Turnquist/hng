@@ -116,6 +116,7 @@
     <div class="panel">
       <div class="head"><h2>Recent players</h2><div class="end"><button id="refresh">Refresh</button></div></div>
       <div id="recent" class="note">Loading...</div>
+      <p class="note">A visit runs from opening the game to closing it, time sitting in the menus included. "In battles" is the time spent in online battles, which shows who really plays. Both add up the last 90 days.</p>
       <p class="note">Where a player is from is read from the time zone their computer is set to. The game keeps no internet addresses.</p>
     </div>
     <div class="panel">
@@ -331,7 +332,7 @@ async function recent() {
     const { players } = await api('recent');
     playerTable(
       box,
-      ['Player', 'Last played', 'Played for', 'From', 'All visits'],
+      ['Player', 'Last played', 'Played for', 'From', 'In battles', 'All visits'],
       players.map((p) => {
         const place = placeName(p.tz);
         return {
@@ -341,6 +342,7 @@ async function recent() {
             p.now ? '<span class="pill">Playing now</span>' : `<span title="${esc(when(p.at))}">${esc(ago(p.at))}</span>`,
             esc(p.now ? `${span(p.minutes)} so far` : span(p.minutes)),
             place ? esc(place) : '<span class="unknown">Not known</span>',
+            p.battles ? `${esc(span(p.battleMinutes))}<span class="sub">${esc(p.battles === 1 ? '1 battle' : `${fmt(p.battles)} battles`)}</span>` : '<span class="unknown">None</span>',
             `${esc(span(p.total))}<span class="sub">${esc(p.sessions === 1 ? '1 visit' : `${fmt(p.sessions)} visits`)}</span>`,
           ],
         };

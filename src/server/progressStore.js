@@ -47,6 +47,8 @@ const EVENTS = `CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_kind_at ON events (kind, at)`;
 export const KEEP_DAYS = 90;
+// Minutes away after which coming back is a new visit (recent players).
+export const VISIT_GAP = 5;
 
 // The shared war (server/warService.js): one row, the war as war.js saves it.
 // And its generals, chosen by hand on the admin page for the beta: one row a
@@ -158,22 +160,30 @@ export function openProgressStore(url, { log = console.log } = {}) {
     // The players who last had the game open, the latest first (admin page):
     // [{ user_id, name, at (when that visit ended), minutes (how long it
     // was), tz (his time zone then, if told), total (minutes over all the
-    // visits kept), sessions (how many) }].
+    // visits kept), sessions (how many visits), battles (how many online
+    // battles, over the days kept), battle_minutes (the time in them) }].
+    // A visit: the game open without a break of VISIT_GAP minutes. The page
+    // reconnects by itself when the server restarts or the line drops, and
+    // each connection is kept as a session of its own: the ones that follow
+    // on (or overlap, from two tabs) are one visit, counted once.
     async recent(limit = 30) {
       await table();
       const n = Math.max(1, Math.min(200, Math.floor(limit) || 30));
       const r = await pool.query(
-        `SELECT s.user_id, p.name, s.at, s.minutes, z.tz, t.total, t.sessions
-         FROM (SELECT DISTINCT ON (user_id) user_id, at, round((data->>'minutes')::numeric, 1) AS minutes
-               FROM events WHERE kind = 'session' AND user_id IS NOT NULL ORDER BY user_id, at DESC) s
-         JOIN (SELECT user_id, round(sum((data->>'minutes')::numeric)) AS total, count(*) AS sessions
-               FROM events WHERE kind = 'session' AND user_id IS NOT NULL GROUP BY 1) t USING (user_id)
-         LEFT JOIN (SELECT DISTINCT ON (user_id) user_id, data->>'tz' AS tz
-               FROM events WHERE kind = 'session' AND data ? 'tz' ORDER BY user_id, at DESC) z USING (user_id)
-         LEFT JOIN progress p ON p.user_id = s.user_id
-         ORDER BY s.at DESC LIMIT ${n}`,
+        `WITH s AS (SELECT user_id, at, at - ((data->>'minutes')::numeric * interval '1 minute') AS started
+                    FROM events WHERE kind = 'session' AND user_id IS NOT NULL),
+              m AS (SELECT *, CASE WHEN started - max(at) OVER (PARTITION BY user_id ORDER BY at ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) < interval '${VISIT_GAP} minutes' THEN 0 ELSE 1 END AS fresh FROM s),
+              g AS (SELECT *, sum(fresh) OVER (PARTITION BY user_id ORDER BY at) AS visit FROM m),
+              v AS (SELECT user_id, visit, max(at) AS at, extract(epoch FROM max(at) - min(started)) / 60 AS minutes FROM g GROUP BY 1, 2),
+              l AS (SELECT DISTINCT ON (user_id) user_id, at, round(minutes::numeric, 1) AS minutes FROM v ORDER BY user_id, at DESC),
+              t AS (SELECT user_id, round(sum(minutes)::numeric) AS total, count(*) AS sessions FROM v GROUP BY 1),
+              z AS (SELECT DISTINCT ON (user_id) user_id, data->>'tz' AS tz FROM events WHERE kind = 'session' AND data ? 'tz' ORDER BY user_id, at DESC),
+              b AS (SELECT user_id, count(*) AS battles, round(sum((data->>'seconds')::numeric) / 60) AS battle_minutes FROM events WHERE kind = 'battle' AND user_id IS NOT NULL GROUP BY 1)
+         SELECT l.user_id, p.name, l.at, l.minutes, z.tz, t.total, t.sessions, coalesce(b.battles, 0) AS battles, coalesce(b.battle_minutes, 0) AS battle_minutes
+         FROM l JOIN t USING (user_id) LEFT JOIN z USING (user_id) LEFT JOIN b USING (user_id) LEFT JOIN progress p ON p.user_id = l.user_id
+         ORDER BY l.at DESC LIMIT ${n}`,
       );
-      return r.rows.map((x) => ({ ...x, minutes: Number(x.minutes), total: Number(x.total), sessions: Number(x.sessions) }));
+      return r.rows.map((x) => ({ ...x, minutes: Number(x.minutes), total: Number(x.total), sessions: Number(x.sessions), battles: Number(x.battles), battle_minutes: Number(x.battle_minutes) }));
     },
     // The last few days at a glance (admin page).
     async stats(days = 7) {

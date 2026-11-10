@@ -3,11 +3,13 @@
 // sign-in emails, or for tests their ids): look players up and change what
 // they have, as the admin page (admin.html) does. Everyone else gets 403.
 //
-//   GET  /api/admin/recent           -> { players: [{ id, name, now, at, minutes, tz, total, sessions }] }
+//   GET  /api/admin/recent           -> { players: [{ id, name, now, at, minutes, tz, total, sessions, battles, battleMinutes }] }
 //     who last had the game open, the latest first: those in it now (now:
 //     true, minutes so far), then the rest (at: when they left, minutes: how
 //     long that visit was); tz: the time zone of his computer, which is all
-//     the game knows of where he is; total, sessions: over the days kept
+//     the game knows of where he is; total, sessions: his visits over the
+//     days kept (a visit: the game open without a few minutes' break);
+//     battles, battleMinutes: his online battles and the time in them
 //   GET  /api/admin/player?id=       -> { player } (one, as below)
 //   GET  /api/admin/players?q=name   -> { players: [{ id, name, updated, credits, soldiers: [...] }] }
 //   POST /api/admin/change  { id, what, value, soldier? }  -> { player }
@@ -24,6 +26,7 @@
 import { RANK_XP, rankOf } from '../ui/roster.js';
 import { RIBBONS, RIBBON_XP, ribbonInfo } from '../game/ribbons.js';
 import { WEAPONS } from '../weapons/defs.js';
+import { VISIT_GAP } from './progressStore.js';
 
 const TOP = RIBBON_XP[RIBBON_XP.length - 1];
 const MAX_BODY = 16 * 1024;
@@ -102,10 +105,24 @@ export function adminHandler({ store, check, admins = [], log = console.log, war
           .sort((a, b) => b.since - a.since)
           .map((p) => {
             const was = past.get(p.id);
+            // (Back within a few minutes of leaving, as when the server
+            // restarts under him: the same visit, going on.)
+            const on = was && p.since - Date.parse(was.at) < VISIT_GAP * 60000;
             const minutes = (now - p.since) / 60000;
-            return { id: p.id, name: was?.name || p.name, now: true, at: new Date(p.since).toISOString(), minutes: Math.round(minutes * 10) / 10, tz: p.tz || was?.tz || null, total: Math.round((was?.total || 0) + minutes), sessions: (was?.sessions || 0) + 1 };
+            return {
+              id: p.id,
+              name: was?.name || p.name,
+              now: true,
+              at: new Date(p.since).toISOString(),
+              minutes: Math.round(((on ? was.minutes : 0) + minutes) * 10) / 10,
+              tz: p.tz || was?.tz || null,
+              total: Math.round((was?.total || 0) + minutes),
+              sessions: (was?.sessions || 0) + (on ? 0 : 1),
+              battles: was?.battles || 0,
+              battleMinutes: was?.battle_minutes || 0,
+            };
           });
-        for (const r of kept) if (!here.has(r.user_id)) rows.push({ id: r.user_id, name: r.name || '', now: false, at: r.at, minutes: r.minutes, tz: r.tz || null, total: r.total, sessions: r.sessions });
+        for (const r of kept) if (!here.has(r.user_id)) rows.push({ id: r.user_id, name: r.name || '', now: false, at: r.at, minutes: r.minutes, tz: r.tz || null, total: r.total, sessions: r.sessions, battles: r.battles || 0, battleMinutes: r.battle_minutes || 0 });
         return send(200, { players: rows.slice(0, 40) });
       }
       if (req.method === 'GET' && path === 'player') {

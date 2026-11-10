@@ -239,7 +239,22 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     if (!to) return socket.destroy();
     to.handleUpgrade(req, socket, head, (ws) => to.emit('connection', ws, req));
   });
+  // A page that has gone without closing (a laptop shut, the line cut) is
+  // dropped within a minute, so its visit ends when it really did: each is
+  // pinged every half minute and must have answered the ping before.
+  const beat = setInterval(() => {
+    for (const ws of lobby.clients) {
+      if (ws.alive === false) ws.terminate();
+      else {
+        ws.alive = false;
+        ws.ping();
+      }
+    }
+  }, 30000);
+  beat.unref?.();
+  lobby.on('close', () => clearInterval(beat));
   lobby.on('connection', (ws) => {
+    ws.on('pong', () => (ws.alive = true));
     let who = null;
     let since = 0;
     let zone = null;

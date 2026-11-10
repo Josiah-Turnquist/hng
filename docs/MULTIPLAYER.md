@@ -406,7 +406,12 @@ it by day. The admin page opens on the players who last had the game open:
 when, for how long, and where they are from. All the game knows of where a
 player is comes from the time zone his computer is set to, which his browser
 sends when the game opens (`src/core/timeZones.js` turns it into a country and
-a city); no internet address is kept or looked up. Every round fired on the page is drawn only: hits, wounds, deaths,
+a city); no internet address is kept or looked up. A visit is the game
+open without a break of five minutes: the page reconnects by itself when the
+server restarts or the line drops, and those connections count as one visit.
+A page that stops answering (a laptop shut) is dropped within a minute. Time
+in the menus counts toward a visit, so the list also shows each player's time
+in online battles. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do
 nothing online). Getting into a vehicle happens at once on the page and
 follows the server if it disagrees for half a second. The vehicle he drives
