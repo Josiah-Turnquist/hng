@@ -41,8 +41,8 @@ import { soldierMaterial } from '../src/actors/soldierMaterials.js';
 const params = new URLSearchParams(location.search);
 const camos = (params.get('camo') || '').split(',').filter(Boolean);
 const camoOf = (i) => (camos.length ? camos[i % camos.length] : null);
-// carry=gpbk: what he carries beside his gun (g grenades, p pistol, b binoculars, k knife; carry=none: nothing). Not given: the kit decides.
-const carry = params.has('carry') ? { grenades: /g/.test(params.get('carry')), pistol: /p/.test(params.get('carry')), binoculars: /b/.test(params.get('carry')), knife: /k/.test(params.get('carry')) } : null;
+// carry=gpbksa: what he carries beside his gun (g grenades, p pistol, b binoculars, k knife, s spade, a first aid; carry=none: nothing). Not given: the kit decides.
+const carry = params.has('carry') && params.get('carry') === 'none' ? {} : params.has('carry') ? { grenades: /g/.test(params.get('carry')), pistol: /p/.test(params.get('carry')), binoculars: /b/.test(params.get('carry')), knife: /k/.test(params.get('carry')), spade: /s/.test(params.get('carry')), aid: /a/.test(params.get('carry')) } : null;
 const W = innerWidth, H = innerHeight;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W, H);

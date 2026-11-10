@@ -84,9 +84,9 @@ test('the kit a weapon calls for: belt-fed machine guns are told from magazine-f
 });
 
 test('what shows on a soldier is what he carries: grenades, pistol, binoculars and knife from his loadout', () => {
-  const none = { grenades: false, pistol: false, binoculars: false, knife: false };
+  const none = { grenades: false, pistol: false, binoculars: false, knife: false, spade: false, aid: false };
   // From a loadout (empty slots allowed).
-  assert.deepEqual(carryOf([WEAPONS.m1_garand, WEAPONS.m1911a1, WEAPONS.mk2_grenade, null, null, WEAPONS.spade_m1910, null]), { ...none, grenades: true, pistol: true });
+  assert.deepEqual(carryOf([WEAPONS.m1_garand, WEAPONS.m1911a1, WEAPONS.mk2_grenade, null, null, WEAPONS.spade_m1910, null]), { ...none, grenades: true, pistol: true, spade: true });
   assert.deepEqual(carryOf([WEAPONS.mp40, null, WEAPONS.binoc_ge, WEAPONS.knife_m3]), { ...none, binoculars: true, knife: true });
   assert.deepEqual(carryOf([WEAPONS.kar98k, WEAPONS.nagant_m1895]), { ...none, pistol: true });
   assert.deepEqual(carryOf([]), none);
@@ -98,7 +98,7 @@ test('what shows on a soldier is what he carries: grenades, pistol, binoculars a
     for (const v of variants(army, 'infantry')) {
       const bare = size(army, 'infantry', v, none);
       // Each thing he carries adds its piece; nothing shows that he does not carry.
-      for (const what of ['grenades', 'pistol', 'binoculars']) {
+      for (const what of ['grenades', 'pistol', 'binoculars', 'knife', 'spade', 'aid']) {
         const with1 = size(army, 'infantry', v, { ...none, [what]: true });
         assert.ok(with1 > bare, `${army} infantry variant ${v}: ${what} show when carried (${with1} against ${bare})`);
       }
@@ -130,4 +130,48 @@ test('what shows on a soldier is what he carries: grenades, pistol, binoculars a
   const m = new SoldierModel('GE', null, { seed: 4, carry: { ...none, grenades: true } });
   m.prepareLods();
   assert.ok(m.stats(0).triangles > 30000);
+});
+
+test('every class shows the knife, shovel, first-aid pouch, grenades, pistol and binoculars it carries', () => {
+  const none = { grenades: false, pistol: false, binoculars: false, knife: false, spade: false, aid: false };
+  assert.deepEqual(carryOf([WEAPONS.firstaid_us, WEAPONS.medic_ge, WEAPONS.bayonet_s84_98, WEAPONS.spade_mpl50, WEAPONS.bat_us, WEAPONS.wrench]), { ...none, aid: true, knife: true, spade: true });
+  for (const army of ['US', 'GE', 'SU'])
+    for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker'])
+      for (const what of Object.keys(none)) {
+        // (A US tank crewman without a pistol wears a pistol belt in place of the
+        // shoulder holster's harness: not fewer points, so not told this way.)
+        if (army === 'US' && cls === 'tanker' && what === 'pistol') continue;
+        // (Not seen from far off: looked for at full detail.)
+        const bare = buildOutfit(army, cls, 0, 0, 'smg', { carry: none }).b.count;
+        const with1 = buildOutfit(army, cls, 0, 0, 'smg', { carry: { ...none, [what]: true } }).b.count;
+        assert.ok(with1 > bare, `${army} ${cls}: ${what} show when carried (${with1} against ${bare})`);
+      }
+});
+
+test('a soldier model changes its gear when what he carries changes, and keeps the man', () => {
+  const full = { grenades: true, pistol: true, binoculars: false, knife: false, spade: true, aid: false };
+  const m = new SoldierModel('US', null, { seed: 9, carry: full });
+  m.prepareLods();
+  m.setLod(1);
+  const man = m.meshes[0][1].geometry;
+  const before = [0, 1, 2].map((l) => m.stats(l).triangles);
+  assert.equal(m.setCarry({ ...full }), false, 'nothing changed');
+  assert.equal(m.setCarry({ ...full, grenades: false }), true);
+  const after = [0, 1, 2].map((l) => m.stats(l).triangles);
+  assert.ok(after[0] < before[0], `the grenade is gone at full detail (${after[0]} against ${before[0]})`);
+  // Every level of detail he had is there again, the one in use shown, the man the same.
+  assert.deepEqual(
+    m.meshes.map((ms) => ms.length),
+    [2, 1, 1],
+  );
+  assert.equal(m.lod, 1);
+  assert.equal(m.meshes[1][0].visible, true);
+  assert.equal(m.meshes[0][0].visible, false);
+  assert.equal(m.meshes[0][1].geometry, man);
+  for (const ms of m.meshes) for (const mesh of ms) assert.equal(mesh.parent, m.root);
+  assert.equal(m.root.children.filter((c) => c.isSkinnedMesh).length, 4);
+  // And back: the grenades from a crate.
+  assert.equal(m.setCarry(full), true);
+  assert.equal(m.stats(0).triangles, before[0]);
+  m.dispose();
 });

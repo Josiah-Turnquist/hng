@@ -63,7 +63,8 @@ export class Outfit {
     // has. null: not known (a model looked at on its own), and the kit decides.
     this.carry = null;
   }
-  // Does he carry `what` ('grenades' | 'pistol' | 'binoculars' | 'knife')?
+  // Does he carry `what` ('grenades' | 'pistol' | 'binoculars' | 'knife' |
+  // 'spade' | 'aid')?
   // otherwise: the kit's own answer (its draw, or what the class is issued),
   // used when his loadout is not known.
   carries(what, otherwise) {
@@ -759,20 +760,24 @@ export function buildPerson(params, lod = 0, info = {}) {
 
 // Helpers shared by the army modules.
 // What a soldier carries that shows on him, from his loadout (weapon
-// definitions, empty slots allowed): { grenades, pistol, binoculars, knife }.
+// definitions, empty slots allowed): { grenades, pistol, binoculars, knife,
+// spade, aid } (knife: a knife or bayonet; aid: a first-aid or medic's kit).
 // carryKey: the same as a short string (for caches).
+const CARRIED = ['grenades', 'pistol', 'binoculars', 'knife', 'spade', 'aid'];
 export function carryOf(defs = []) {
-  const c = { grenades: false, pistol: false, binoculars: false, knife: false };
+  const c = { grenades: false, pistol: false, binoculars: false, knife: false, spade: false, aid: false };
   for (const d of defs) {
     if (!d) continue;
     if (d.type === 'grenade') c.grenades = true;
     else if (d.type === 'pistol' || d.type === 'revolver') c.pistol = true;
     else if (d.type === 'binoculars') c.binoculars = true;
     else if (d.type === 'melee' && /knife|bayonet/.test(d.id || '')) c.knife = true;
+    else if (d.type === 'melee' && /spade/.test(d.id || '')) c.spade = true;
+    else if (d.type === 'firstaid' || d.type === 'medkit') c.aid = true;
   }
   return c;
 }
-export const carryKey = (c) => (c ? ['grenades', 'pistol', 'binoculars', 'knife'].map((k) => (c[k] ? k[0] : '-')).join('') : '');
+export const carryKey = (c) => (c ? CARRIED.map((k) => (c[k] ? k[0] : '-')).join('') : '');
 
 // The kit a weapon calls for: what a soldier's outfit is built for (defs.js
 // weapons: type, and for machine guns how they are fed).

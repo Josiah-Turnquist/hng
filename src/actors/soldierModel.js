@@ -194,9 +194,9 @@ export class SoldierModel {
       const og = outfitFor(this.faction, this.cls, this.variant, this.role, lod, this.camo, this.carry);
       this.outfitInfo = og.info;
       if (lod === 0) {
-        const pg = buildPerson(this.person, 0, og.info).toGeometry();
+        // (The man himself is built once: a change of what he carries keeps him.)
+        const pg = (this._person0 ??= buildPerson(this.person, 0, og.info).toGeometry());
         const outfit = tintedGeometry(og.geo, this.seed);
-        this._geos.push(pg);
         this._tinted = outfit;
         this.meshes[0].push(this._mesh(outfit, this.material), this._mesh(pg, this.material));
       } else {
@@ -208,6 +208,30 @@ export class SoldierModel {
       }
     }
     for (let l = 0; l < LODS; l++) for (const m of this.meshes[l]) m.visible = l === lod;
+  }
+
+  // What he carries has changed (a grenade thrown, a pistol picked up): the
+  // gear on him is built again to match, at every level of detail he had.
+  // carry: as the constructor's. Returns true if anything changed.
+  // (Only what he carries, not his weapon's role: a kit's draws depend on the
+  // role, and a change of gun would change his helmet with his pouches.)
+  setCarry(carry) {
+    if (carryKey(carry) === carryKey(this.carry)) return false;
+    const had = this.meshes.map((ms) => ms.length > 0);
+    const lod = this.lod;
+    for (const ms of this.meshes) for (const m of ms) this.root.remove(m);
+    this._free();
+    this.meshes = [[], [], []];
+    this.carry = carry;
+    this.lod = -1;
+    for (let l = 0; l < LODS; l++) if (had[l] && l !== lod) this.setLod(l);
+    this.setLod(lod);
+    return true;
+  }
+  // The outfits he would wear carrying `carry`, built ahead of need (they are
+  // shared and kept): no hitch when he comes to wear one.
+  warmCarry(carry) {
+    for (let l = 0; l < LODS; l++) outfitFor(this.faction, this.cls, this.variant, this.role, l, this.camo, carry);
   }
 
   // Build every level of detail now (avoids a hitch when one is first needed).
@@ -404,7 +428,8 @@ export class SoldierModel {
     return this.mp.point(h, _v.copy(BIND[h]).add(_v2.set(side * -0.03, -0.08, 0)), out).applyMatrix4(this.root.matrixWorld);
   }
 
-  dispose() {
+  // His own geometry freed (the shared outfit's stays).
+  _free() {
     for (const g of this._geos) g.dispose();
     this._geos.length = 0;
     if (this._tinted) {
@@ -415,6 +440,11 @@ export class SoldierModel {
       g.dispose();
       this._tinted = null;
     }
+  }
+  dispose() {
+    this._free();
+    this._person0?.dispose();
+    this._person0 = null;
     this.root.removeFromParent();
   }
 }

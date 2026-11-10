@@ -5,7 +5,7 @@
 // soldier's army, class and primary weapon; three levels of detail by distance.
 import { badgeValue } from './badges.js';
 import { SoldierModel } from '../actors/soldierModel.js';
-import { roleOf, carryOf } from '../actors/soldierKit.js';
+import { roleOf, carryOf, carryKey } from '../actors/soldierKit.js';
 import { buildGun, gunLodForDistance, MODELS } from '../weapons/models/index.js';
 import { makeGunMaterials } from '../weapons/models/kit.js';
 import { throwActionT } from './throwing.js';
@@ -45,6 +45,12 @@ export function worldGunMaterials(game) {
   return mats;
 }
 
+// What shows on a soldier of what he carries now (soldierKit.js carryOf): his
+// loadout, less the grenades once the last is thrown.
+const carried = (s) => carryOf((s.weapons || []).map((w) => (w && !(w.def.type === 'grenade' && w.loaded <= 0) ? w.def : null)));
+// The same without his grenades (what he will look like when they are gone).
+const withoutGrenades = (c) => ({ ...c, grenades: false });
+
 export function attachSoldierModel(game, s) {
   const tex = game.world.textures;
   let model;
@@ -52,7 +58,7 @@ export function attachSoldierModel(game, s) {
     const primary = s.weapons?.[0]?.def;
     // The player looks like his soldier on the Heroes screen (face and uniform).
     const look = s.look ?? (s.isPlayer ? game.opts?.soldier : null);
-    model = new SoldierModel(s.faction, tex, { seed: look?.seed ?? s.id * 7919 + 13, variant: look?.variant, camo: look?.camo, lod: 0, cls: s.cls, role: roleOf(primary), carry: carryOf((s.weapons || []).map((w) => w?.def)) });
+    model = new SoldierModel(s.faction, tex, { seed: look?.seed ?? s.id * 7919 + 13, variant: look?.variant, camo: look?.camo, lod: 0, cls: s.cls, role: roleOf(primary), carry: carried(s) });
     // Build every level of detail now so none is first built mid-battle.
     model.prepareLods();
   } catch (e) {
@@ -63,7 +69,9 @@ export function attachSoldierModel(game, s) {
   model.setGround((x, z) => hf.getHeight(x, z));
   game.world.add(model.root);
   s.model = model;
-  s.view = { gunId: null, gunLod: 1, guns: new Map(), recoil: 0, lod: 0, deathSeen: false, ride: {} };
+  s.view = { gunId: null, gunLod: 1, guns: new Map(), recoil: 0, lod: 0, deathSeen: false, ride: {}, carryT: 0, carryKey: carryKey(model.carry) };
+  // He will throw his grenades: the kit without them is built now, not then.
+  if (model.carry?.grenades) model.warmCarry(withoutGrenades(model.carry));
   setSoldierWeapon(game, s);
   // The player's first-person arms wear the same sleeves, cuffs and hands.
   if (s.isPlayer) game.player?.viewmodel?.setOutfit?.({ faction: model.faction, cls: model.cls, seed: model.seed, role: model.role, variant: model.variant });
@@ -150,6 +158,17 @@ export function updateSoldierView(game, s, dt, camPos, firstPersonPlayer) {
   // hit zones (hitboxes.js builds them from his body instead).
   m.poseValid = !(hidden && s.alive);
   if (hidden && s.alive) return;
+  // The gear on him follows what he carries: looked at twice a second (a
+  // thrown grenade, a weapon picked up or put back at a crate).
+  if (s.alive && (s.view.carryT -= dt) <= 0) {
+    s.view.carryT = 0.5;
+    const c = carried(s);
+    const k = carryKey(c);
+    if (k !== s.view.carryKey) {
+      s.view.carryKey = k;
+      if (m.setCarry(c)) m.setLod(s.view.lod ?? m.lod);
+    }
+  }
   const st = _state;
   const smooth = (t) => t * t * (3 - 2 * t);
   st.stance = b.targetStance;

@@ -45,6 +45,27 @@ export const US = {
   metal: 0x48463e,
 };
 
+// The M3 knife strapped to the right shin.
+function legKnife(o) {
+  if (o.lod === 2) return;
+  const P = legChain(1);
+  const a = chainPoint(P, 0.6, new THREE.Vector3()),
+    c = chainPoint(P, 0.78, new THREE.Vector3());
+  knife(o.b, B.shinR, [a.x + 0.06, a.y, a.z - 0.01], [c.x + 0.055, c.y, c.z - 0.006], { color: 0x5a3a24, lod: o.lod });
+}
+// A fragmentation grenade hooked on at (theta, y) (a suspender, a pocket flap).
+function grenadeOn(o, theta, y) {
+  const b = o.b;
+  const f = o.beltFrame(theta, y, 0.012);
+  b.bones(rigidAt(f));
+  b.material(CELL.paint);
+  b.paint(0x4a4c36);
+  f.ell(b, 0, -0.03, 0.026, 0.026, 0.04, 0.026, { nu: 10, nv: 6 });
+  b.material(CELL.metal);
+  b.paint(0x55524a);
+  f.box(b, 0.01, 0.012, 0.03, 0.012, 0.03, 0.012, { r: 0.002 });
+}
+
 function weaponKit(o, belt, role) {
   // Ammunition on the belt for the primary weapon.
   const b = o.b;
@@ -172,16 +193,18 @@ function infantry(o, { recon = false } = {}) {
   }
   // Canteen right rear, first aid pouch front left, entrenching tool left rear, bayonet.
   canteenUS(b, o.beltFrame(0.95, belt.y - 0.065, 0.008), US, lod);
-  firstAidUS(b, o.beltFrame(-2.25, belt.y - 0.065, 0.006), US, lod);
+  if (o.carries('aid', true)) firstAidUS(b, o.beltFrame(-2.25, belt.y - 0.065, 0.006), US, lod);
   const haversack = !recon && o.chance(0.55);
-  if (!haversack && lod < 2) shovelUS(b, o.beltFrame(2.35, belt.y - 0.065, 0.008), US, lod);
-  if (o.chance(0.7) && lod < 2) bayonet(b, o.beltFrame(2.85, belt.y - 0.06, 0.006), { len: 0.27, color: 0x3a3a2c, grip: 0x2a2a26, lod });
+  const tool = o.carries('spade', true);
+  if (!haversack && lod < 2 && tool) shovelUS(b, o.beltFrame(2.35, belt.y - 0.065, 0.008), US, lod);
+  const blade = o.chance(0.7);
+  if (o.carries('knife', blade) && lod < 2) bayonet(b, o.beltFrame(2.85, belt.y - 0.06, 0.006), { len: 0.27, color: 0x3a3a2c, grip: 0x2a2a26, lod });
   let packFrame = null;
   if (haversack) {
     const f = (packFrame = backFrame(o.g, 1.44, 0.26, 0.36, 0.004));
     // The rolled M1928 pack with the entrenching tool carrier on its flap.
     backpack(b, f, { w: 0.27, h: 0.36, d: 0.12, color: o.shade(US.web, 0.05), lod, round: 0.035, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
-    if (lod < 2) shovelUS(b, f.sub(0, -0.17, 0.125), US, lod);
+    if (lod < 2 && tool) shovelUS(b, f.sub(0, -0.17, 0.125), US, lod);
   }
   // A cloth bandolier for Garand men; a fragmentation grenade on a suspender.
   if (role === 'rifle' && o.chance(0.3)) bandolier(b, o.g, US, { lod, kind: 'US', color: o.shade(0x8a8060, 0.05) });
@@ -335,16 +358,16 @@ function paratrooper(o) {
         { color: US.web, cell: CELL.webbing },
       );
     }
-    firstAidUS(b, o.beltFrame(-PI / 2 - 0.55, 1.33, 0.012), US, lod);
+    if (o.carries('aid', true)) firstAidUS(b, o.beltFrame(-PI / 2 - 0.55, 1.33, 0.012), US, lod);
   }
+  // (A paratrooper's folding shovel on the belt, a grenade on a suspender and
+  // binoculars on the chest: when he carries them.)
+  if (o.carry?.spade && lod < 2) shovelUS(b, o.beltFrame(2.35, beltY - 0.065, 0.008), US, lod);
+  if (o.carry?.grenades && lod === 0) grenadeOn(o, -PI / 2 + 0.62, 1.27);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.3, 1.2, 0.014), { color: 0x4a3a28, lod });
   // Musette bag on the back, the M3 knife on the right leg.
   backpack(b, backFrame(o.g, 1.38, 0.27, 0.27, 0.004), { w: 0.28, h: 0.28, d: 0.1, color: o.shade(US.web, 0.05), lod, round: 0.03, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
-  if (lod < 2 && o.carries('knife', true)) {
-    const P = legChain(1);
-    const a = chainPoint(P, 0.6, new THREE.Vector3()),
-      c = chainPoint(P, 0.78, new THREE.Vector3());
-    knife(b, B.shinR, [a.x + 0.06, a.y, a.z - 0.01], [c.x + 0.055, c.y, c.z - 0.006], { color: 0x5a3a24, lod });
-  }
+  if (o.carries('knife', true)) legKnife(o);
   // M2 helmet: net and scrim, chin cup.
   buildHelmet(b, 'M2', US, { lod, cover: o.camo, net: o.chance(0.85), scrim: o.chance(0.6), band: o.chance(0.3), chin: o.pick(['chin', 'chin', 'loose']), seed: o.variant + 50, paint: o.shade(US.helmet, 0.05) });
   o.weather(o.dirt);
@@ -409,6 +432,12 @@ function tanker(o) {
     if (pistol) holster(b, o.beltFrame(0.15, beltY - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
     if (o.role === 'smg') magPouch(b, o.beltFrame(-PI / 2 - 0.6, beltY - 0.004, 0.005), { kind: 'thompson', color: US.web, lod });
   }
+  // (A crewman has what else he carries, and nothing by issue.)
+  if (o.carry?.knife) legKnife(o);
+  if (o.carry?.spade && lod < 2) shovelUS(b, o.beltFrame(2.35, 1.0, 0.008), US, lod);
+  if (o.carry?.aid) firstAidUS(b, o.beltFrame(-2.25, 1.0, 0.006), US, lod);
+  if (o.carry?.grenades && lod === 0) grenadeOn(o, -PI / 2 + 0.55, 1.3);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 - 0.3, 1.22, 0.014), { color: 0x4a3a28, lod });
   buildTankHelmet(b, 'US', US, { lod, goggles: o.chance(0.75), color: o.shade(US.tankHelmet, 0.08) });
   o.weather(o.dirt);
 }

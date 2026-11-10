@@ -110,11 +110,9 @@ function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade =
     if (o.chance(0.8) && tin && lod < 2) messTin(b, f.sub(-0.08, -0.02, 0.082), GE, lod);
   }
   if (can) gasMaskCan(b, o.beltFrame(2.05, y + 0.08, 0.02), GE, lod, { cape: o.chance(0.7) });
-  if (spade && lod < 2) {
-    const f = o.beltFrame(2.75, y - 0.045, 0.006);
-    spadeGE(b, f, GE, lod);
-    bayonet(b, f.sub(0.0, 0.02, 0.032), { len: 0.3, color: 0x1e1e1c, grip: 0x3a2618, lod, frog: GE.leather });
-  }
+  // The spade on the left hip and the bayonet beside it: each when he carries it.
+  sideArms(o, y, spade, spade);
+  firstAid(o, y);
 }
 
 // Field blouse: M40 or M43.
@@ -155,6 +153,25 @@ function feldbluse(o, model, { color, piping = GE.piping } = {}) {
     for (const d of [-1, 1]) f.box(b, d * 0.022, 0.004, 0, 0.042, 0.012, 0.0015, { r: 0.002, rot: [0, 0, d * -0.22] });
     f.box(b, 0, -0.006, 0, 0.012, 0.014, 0.0015, { r: 0.003 });
   }
+}
+
+// The spade and the bayonet on the left hip. hasSpade, hasBlade: what the kit
+// would give him when his loadout is not known.
+function sideArms(o, y, hasSpade, hasBlade) {
+  const b = o.b;
+  const lod = o.lod;
+  const spade = o.carries('spade', hasSpade),
+    blade = o.carries('knife', hasBlade);
+  if ((!spade && !blade) || lod === 2) return;
+  const f = o.beltFrame(2.75, y - 0.045, 0.006);
+  if (spade) spadeGE(b, f, GE, lod);
+  if (blade) bayonet(b, f.sub(0.0, 0.02, 0.032), { len: 0.3, color: 0x1e1e1c, grip: 0x3a2618, lod, frog: GE.leather });
+}
+// A pouch of dressings on the left of the belt, for a man who carries a
+// first-aid kit (his loadout says so; the kit alone never gives one).
+function firstAid(o, y) {
+  if (!o.carry?.aid || o.lod === 2) return;
+  pouch(o.b, o.beltFrame(-2.98, y - 0.004, 0.006), { w: 0.07, h: 0.09, d: 0.03, flap: 0.45, color: GE.canvas, cell: CELL.duck, fastener: 'strap', lod: o.lod, r: 0.008, metal: GE.metal });
 }
 
 // The assault frame on the upper back, with what it carries.
@@ -290,6 +307,9 @@ function paratrooper(o) {
   const smg = o.role === 'smg';
   beltKit(o, { bread: true, can: false, spade: o.chance(0.6), harness: true, bandolierFJ: !smg });
   if (!smg) bandolier(b, o.g, GE, { lod, kind: 'FJ', color: water ? 0x7c7860 : 0x6a6c5a });
+  // (A stick grenade in the belt and binoculars on the chest: when he carries them.)
+  if (o.carry?.grenades && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.04, 0.012), lod);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.018), { color: 0x1c1a17, lod });
   // FJ gas mask in its cloth bag on the left.
   const maskBagC = o.shade(GE.fjTrousers, 0.04);
   if (lod < 2) pouch(b, o.beltFrame(2.2, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: maskBagC, cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
@@ -338,6 +358,11 @@ function tanker(o) {
   o.belt(1.04, 0.045, { color: GE.leather, cell: CELL.leather });
   buckle(b, o.beltFrame(-PI / 2, 1.0175, 0.006), { w: 0.055, h: 0.045, color: 0x4a4a46, frame: true, lod });
   if (o.carries('pistol', true)) holster(b, o.beltFrame(-PI / 2 - 0.9, 1.01, 0.008), { color: GE.leather, lod, kind: 'GE' });
+  // (A crewman has no spade or bayonet unless he carries one.)
+  sideArms(o, 1.04, false, false);
+  firstAid(o, 1.04);
+  if (o.carry?.grenades && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.03, 0.012), lod);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.012), { color: 0x1c1a17, lod });
   if (o.role === 'smg') magPouch(b, o.beltFrame(-PI / 2 + 0.85, 1.036, 0.006), { kind: 'MP40', color: o.shade(GE.canvas, 0.06), lod });
   if (o.chance(0.5)) buildSideCap(b, GE, { lod, color: black, badge: 'eagle', tilt: 0.1, german: true });
   else buildFieldCap(b, GE, { lod, color: black });

@@ -47,6 +47,18 @@ export const SU = {
   metal: 0x55534a,
 };
 
+// A knife on the belt at the right hip (the NR-40 scouts' knife).
+function beltKnife(o) {
+  if (o.lod === 2) return;
+  const f = o.beltFrame(0.25, 1.06, 0.008);
+  knife(o.b, rigidAt(f), f.point(0, 0, 0.01).toArray(), f.point(0.02, -0.2, 0.012).toArray(), { color: 0x2a2018, lod: o.lod });
+}
+// A pouch of dressings behind the left hip, for a man who carries a first-aid kit.
+function firstAid(o, y) {
+  if (!o.carry?.aid || o.lod === 2) return;
+  pouch(o.b, o.beltFrame(2.98, y - 0.004, 0.006), { w: 0.07, h: 0.09, d: 0.03, flap: 0.45, color: SU.pouchCloth, cell: CELL.duck, fastener: 'button', lod: o.lod, r: 0.008 });
+}
+
 function belt(o, { y = 1.08, role = o.role, canvas = false } = {}) {
   const b = o.b;
   const lod = o.lod;
@@ -64,7 +76,8 @@ function belt(o, { y = 1.08, role = o.role, canvas = false } = {}) {
   canteenSU(b, o.beltFrame(1.1, y - 0.05, 0.008), SU, lod);
   // His pistol, if he carries one: at the right hip in front of the shovel.
   if (o.carry?.pistol) holster(b, o.beltFrame(-0.28, y - 0.03, 0.008), { color: SU.leather, lod, kind: 'GE' });
-  if (lod < 2) shovelSU(b, o.beltFrame(0.45, y - 0.045, 0.008), SU, lod);
+  if (lod < 2 && o.carries('spade', true)) shovelSU(b, o.beltFrame(0.45, y - 0.045, 0.008), SU, lod);
+  firstAid(o, y);
 }
 
 // M1943 gymnastyorka: stand collar, placket with three buttons, worn outside the
@@ -166,6 +179,7 @@ function infantry(o) {
   // (by 1944 it held bread, tobacco and grenades as often as a mask), and the
   // mess pot tied to the sack.
   if (o.chance(0.6)) slungBag(b, o.g, { theta: 2.12, y: 1.05, w: 0.19, h: 0.24, d: 0.06, color: o.shade(0x7c7556, 0.06), strap: 0x6c6448, lod, r: 0.025 });
+  if (o.carry?.knife) beltKnife(o);
   if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.26, 0.012), { color: 0x3a2a1c, lod });
   if (sack && o.chance(0.6) && lod < 2) messTin(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004).sub(0.02, -0.2, 0.125), { messTin: 0x4a5238, leather: SU.leather }, lod);
   o.weather(o.dirt);
@@ -191,11 +205,8 @@ function recon(o) {
   }
   o.tallBoots({ color: SU.boots, sole: SU.sole, s0: 0.47, gloss: 0.15, folds: 1.4 });
   belt(o, { canvas: o.chance(0.5) });
-  if (lod < 2 && o.carries('knife', true)) {
-    // NR-40 knife on the belt.
-    const f = o.beltFrame(0.25, 1.06, 0.008);
-    knife(b, rigidAt(f), f.point(0, 0, 0.01).toArray(), f.point(0.02, -0.2, 0.012).toArray(), { color: 0x2a2018, lod });
-  }
+  // The scouts' knife on the belt.
+  if (o.carries('knife', true)) beltKnife(o);
   const glasses = o.chance(0.4);
   if (o.carries('binoculars', glasses)) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.26, 0.012), { color: 0x3a2a1c, lod });
   headgear(o, { capChance: 0.6 });
@@ -215,11 +226,9 @@ function paratrooper(o) {
   for (const s of [-1, 1]) o.pocket(s * 0.088, 1.4, 0.11, 0.13, { color: c, flapH: 0.04, button: 0x3a3a30 });
   o.tallBoots({ color: SU.boots, sole: SU.sole, s0: 0.47, gloss: 0.15, folds: 1.2 });
   belt(o, { role: o.role === 'rifle' ? 'rifle' : 'smg' });
-  if (lod < 2 && o.carries('knife', true)) {
-    const f = o.beltFrame(0.25, 1.06, 0.008);
-    knife(b, rigidAt(f), f.point(0, 0, 0.01).toArray(), f.point(0.02, -0.2, 0.012).toArray(), { color: 0x2a2018, lod });
-  }
+  if (o.carries('knife', true)) beltKnife(o);
   veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.26, 0.012), { color: 0x3a2a1c, lod });
   const bag = o.chance(0.45);
   if (bag) slungBag(b, o.g, { theta: 2.12, y: 1.05, w: 0.19, h: 0.24, d: 0.06, color: o.shade(0x7c7556, 0.06), strap: 0x6c6448, lod, r: 0.025 });
   if (o.chance(0.5)) {
@@ -244,6 +253,12 @@ function tanker(o) {
   o.belt(1.08, 0.045, { color: SU.leather, cell: CELL.leather });
   buckle(b, o.beltFrame(-PI / 2, 1.0575, 0.006), { w: 0.055, h: 0.05, color: SU.buckleSteel, frame: true, lod });
   if (o.carries('pistol', true)) holster(b, o.beltFrame(-0.2, 1.05, 0.008), { color: SU.leather, lod, kind: 'GE' });
+  // (A crewman has what else he carries, and nothing by issue.)
+  if (o.carry?.knife) beltKnife(o);
+  if (o.carry?.spade && lod < 2) shovelSU(b, o.beltFrame(0.6, 1.035, 0.008), SU, lod);
+  firstAid(o, 1.08);
+  if (o.carry?.grenades && lod < 2) pouch(b, o.beltFrame(-PI + 0.35, 1.076, 0.006), { w: 0.1, h: 0.13, d: 0.06, flap: 0.4, color: SU.pouchCloth, cell: CELL.duck, fastener: 'button', lod, r: 0.012 });
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.26, 0.012), { color: 0x3a2a1c, lod });
   if (o.role === 'smg') magPouch(b, o.beltFrame(-PI / 2 - 0.85, 1.078, 0.006), { kind: 'drum', color: o.shade(SU.pouchCloth, 0.06), lod });
   buildTankHelmet(b, 'SU', SU, { lod, color: o.shade(SU.tankHelmet, 0.1) });
   o.weather(o.dirt);
