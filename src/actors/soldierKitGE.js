@@ -109,7 +109,8 @@ function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade =
     // (The mess tin: strapped to the bread bag, unless it rides on an assault frame.)
     if (o.chance(0.8) && tin && lod < 2) messTin(b, f.sub(-0.08, -0.02, 0.082), GE, lod);
   }
-  if (can) gasMaskCan(b, o.beltFrame(2.05, y + 0.08, 0.02), GE, lod, { cape: o.chance(0.7) });
+  // (Far enough round the back to leave the spade on the left hip clear.)
+  if (can) gasMaskCan(b, o.beltFrame(1.95, y + 0.08, 0.02), GE, lod, { cape: o.chance(0.7) });
   // The spade on the left hip and the bayonet beside it: each when he carries it.
   sideArms(o, y, spade, spade);
   firstAid(o, y);
@@ -163,7 +164,7 @@ function sideArms(o, y, hasSpade, hasBlade) {
   const spade = o.carries('spade', hasSpade),
     blade = o.carries('knife', hasBlade);
   if ((!spade && !blade) || lod === 2) return;
-  const f = o.beltFrame(2.75, y - 0.045, 0.006);
+  const f = o.beltFrame(2.9, y - 0.045, 0.006);
   if (spade) spadeGE(b, f, GE, lod);
   if (blade) bayonet(b, f.sub(0.0, 0.02, 0.032), { len: 0.3, color: 0x1e1e1c, grip: 0x3a2618, lod, frog: GE.leather });
 }
@@ -312,7 +313,7 @@ function paratrooper(o) {
   if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.018), { color: 0x1c1a17, lod });
   // FJ gas mask in its cloth bag on the left.
   const maskBagC = o.shade(GE.fjTrousers, 0.04);
-  if (lod < 2) pouch(b, o.beltFrame(2.2, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: maskBagC, cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
+  if (lod < 2) pouch(b, o.beltFrame(1.95, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: maskBagC, cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
   buildHelmet(b, 'FJ', GE, {
     lod,
     cover: ((own) => o.camo ?? own)(o.chance(0.45) ? 'splinter' : null),

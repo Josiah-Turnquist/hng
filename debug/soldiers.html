@@ -468,7 +468,8 @@ const cy = low ? 0.35 : 0.95;
 const cams = { three: [-0.48, 0.32, -0.87], front: [0, 0.03, -1], side: [1, 0.05, 0], left: [-1, 0.05, 0], back: [0.3, 0.2, 1], top: [0.1, 0.9, 0.45], low: [-0.4, 0.05, -0.9] };
 const riding = poses.some((p) => RIDES.includes(p));
 const dist = strip ? 2.2 + strip.length * 0.9 : riding ? 2.5 + soldiers.length * 1.25 : 4.6 + (factions.length - 3) * 1.2 + (nRows - 1) * 2.2;
-const dir = new THREE.Vector3(...(cams[(strip || riding) && !params.has('cam') ? 'side' : view] || cams.three)).normalize();
+// (camdir=x,y,z: any direction to look from; z is behind the soldiers, x their right.)
+const dir = new THREE.Vector3(...(params.has('camdir') ? params.get('camdir').split(',').map(Number) : cams[(strip || riding) && !params.has('cam') ? 'side' : view] || cams.three)).normalize();
 const camera = new THREE.PerspectiveCamera(32, W / H, 0.02, 200);
 const target = new THREE.Vector3(center.x, center.y + cy, center.z);
 camera.position.copy(target).addScaledVector(dir, dist);

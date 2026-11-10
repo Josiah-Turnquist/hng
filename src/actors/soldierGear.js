@@ -845,20 +845,65 @@ export function firstAidUS(b, f, st, lod) {
   pouch(b, f, { w: 0.09, h: 0.11, d: 0.045, flap: 0.45, color: st.web, lod, r: 0.008 });
 }
 
-// Entrenching tools in their carriers.
-// US M1943 folding shovel: carrier 25 x 19 x 6 cm, handle up.
+
+// The blade of an entrenching tool, or the cover it is carried in, flat against
+// the body: square across the top, drawn in to its point below, its face bowed
+// out a little with the rib of the handle's socket down the middle. The frame
+// is at the top of the blade (X across, Y up, Z out from the body).
+//   w, h: width and height (m); t: thickness; back: how far it stands off;
+//   v0: how far down the sides run straight (0..1); tip: the width at the
+//   point, as a share of w; pw: 1 straight sides to the point, 2 rounded;
+//   dish, rib: how far the face and the rib stand out; uv: a painted rectangle
+//   to lay it in (its sides on the blade's edges, its bottom at the point).
+function spadeBlade(b, f, { w, h, t = 0.014, back = 0.004, v0 = 0.45, tip = 0.12, pw = 2, dish = 0.005, rib = 0.005, lod = 0, uv = null }) {
+  const nu = lod ? 8 : 20,
+    nv = lod ? 4 : 10;
+  const us = [],
+    vs = [0, 0.004];
+  for (let i = 0; i <= nu; i++) us.push((i / nu) * 2 * PI);
+  for (let j = 1; j < nv; j++) vs.push(j / nv);
+  vs.push(0.996, 1);
+  const se = (c, e) => Math.sign(c) * Math.pow(Math.abs(c), e);
+  const p = new THREE.Vector3();
+  b.part();
+  b.grid(
+    us,
+    vs,
+    (a, v, o) => {
+      const s = Math.max(0, (v - v0) / (1 - v0));
+      const end = v <= 0 || v >= 1 ? 0.02 : 1;
+      const hw = (w / 2) * lerp(1, tip, Math.pow(s, pw));
+      const sn = Math.sin(a);
+      const k = se(Math.cos(a), 0.4);
+      const x = hw * k * end;
+      let z = t / 2 + (t / 2) * se(sn, 0.5) * end;
+      if (sn > 0) z += (dish * (1 - k * k) * (1 - 0.6 * s) + rib * Math.exp(-((x / 0.013) ** 2)) * (1 - smooth01(0.15, 0.7, v))) * sn * end;
+      o.copy(f.point(x, -h * v, back + z, p));
+    },
+    {
+      center: f.point(0, -h * 0.5, back + t / 2),
+      wrapU: true,
+      uv: uv ? (i, j) => [lerp(uv[0], uv[2], 0.5 + 0.5 * se(Math.cos(us[i]), 0.4)), lerp(uv[1], uv[3], vs[j])] : null,
+    },
+  );
+}
+
+// US M1910 entrenching shovel, T handle up: the blade in its canvas cover,
+// which is cut to the blade's shape and bound round the edge; the top of the
+// steel blade and its socket show above the cover's mouth. Frame: where the
+// handle crosses the top of the pack or the belt.
 export function shovelUS(b, f, st, lod) {
   b.bones(rigidAt(f));
   b.material(CELL.pack);
   b.paint(st.web);
-  // The canvas carrier, shaped to the blade inside it: flat, square at the
-  // top and rounded to the blade's point at the bottom (blade ~15 x 21 cm).
-  // Its edges are bound in tape and stitched (the painted flap's cloth).
-  const from = b.count;
   const fc = f.sub(0, -0.035, 0);
-  softBag(b, fc, { w: 0.165, h: 0.215, d: 0.034, boxy: 0.3, sag: 0.05, lod, creases: 0.3, seed: 5 });
-  layFlat(b, from, fc, 0.165, 0.06, -0.215, PACK_UV.flap);
+  spadeBlade(b, fc, { w: 0.165, h: 0.215, t: 0.016, v0: 0.4, tip: 0.16, pw: 2, lod, uv: PACK_UV.flap });
   if (lod) return;
+  // The steel of the blade standing out of the cover (painted olive drab, worn).
+  b.material(CELL.paint, 0.4);
+  b.paint(0x45473c);
+  b.part();
+  fc.box(b, 0, 0.006, 0.012, 0.148, 0.016, 0.0045, { r: 0.0015 });
   // The T handle sticking up out of the carrier (wood, OD painted).
   b.material(CELL.paint);
   b.paint(0x3c3a2a);
@@ -869,14 +914,34 @@ export function shovelUS(b, f, st, lod) {
   b.paint(0x3a3a34);
   f.cyl(b, [0, -0.05, 0.017], [0, -0.025, 0.017], 0.018, 0.016, { seg: 8 });
 }
-// German short spade in a leather carrier, blade down; ~55 cm overall.
+// German short spade, blade down; ~55 cm overall. Its carrier is a leather
+// frame round the edges of the blade with a strap across, so the square steel
+// blade shows.
 export function spadeGE(b, f, st, lod) {
   b.bones(rigidAt(f));
+  const w = 0.15,
+    h = 0.185;
+  // (Out from the hip, clear of the tunic's skirt, in line with the handle.)
+  const fb = f.sub(0, -0.005, 0.02);
+  // (Black paint worn down to grey steel, with a dull shine: it must not read as more leather.)
+  b.material(CELL.paint, 0.45);
+  b.paint(0x54564f);
+  spadeBlade(b, fb, { w, h, t: 0.008, v0: 0.8, tip: 0.8, pw: 2, dish: 0.006, rib: 0.004, lod });
+  if (lod) return;
+  // The leather frame: down each side, round the bottom, a band across the
+  // top and a strap across the middle with its stud.
+  const out = f.dir(0, 0, 1);
+  const zE = 0.004 + 0.008 + 0.0005;
   b.material(CELL.leather);
   b.paint(st.leather);
   b.part();
-  f.box(b, 0, -0.1, 0.022, 0.16, 0.19, 0.03, { r: 0.012 });
-  if (lod) return;
+  for (const sd of [-1, 1]) b.strap([fb.point(sd * (w / 2 - 0.009), 0.004, zE), fb.point(sd * (w / 2 - 0.009), -h * 0.78, zE), fb.point(sd * (w / 2 - 0.016), -h + 0.012, zE)], 0.02, 0.003, () => out);
+  b.strap([fb.point(-w / 2 + 0.012, -h + 0.01, zE + 0.001), fb.point(0, -h + 0.008, zE + 0.0025), fb.point(w / 2 - 0.012, -h + 0.01, zE + 0.001)], 0.02, 0.003, () => out);
+  b.strap([fb.point(-w / 2 + 0.002, -0.012, zE + 0.001), fb.point(0, -0.012, zE + 0.0075), fb.point(w / 2 - 0.002, -0.012, zE + 0.001)], 0.026, 0.003, () => out);
+  b.strap([fb.point(-w / 2 + 0.002, -h * 0.5, zE + 0.001), fb.point(-w * 0.22, -h * 0.5, zE + 0.005), fb.point(0, -h * 0.5, zE + 0.0065), fb.point(w * 0.22, -h * 0.5, zE + 0.005), fb.point(w / 2 - 0.002, -h * 0.5, zE + 0.001)], 0.018, 0.003, () => out);
+  b.material(CELL.metal);
+  b.paint(0x55554e);
+  fb.cyl(b, [w * 0.2, -h * 0.5, zE + 0.008], [w * 0.2, -h * 0.5, zE + 0.0105], 0.0045, 0.004, { seg: 6 });
   // Wooden handle up to the belt.
   b.material(CELL.paint);
   b.paint(0x5a4630);
@@ -885,14 +950,34 @@ export function spadeGE(b, f, st, lod) {
   b.paint(st.leather);
   f.box(b, 0, 0.015, 0.03, 0.03, 0.04, 0.03, { r: 0.006 });
 }
-// Soviet MPL-50 small infantry shovel in a canvas cover.
+// Soviet MPL-50 small infantry shovel, blade down, in its canvas cover: cut
+// to the five-sided blade, bound round the edge, a strap buttoned across it;
+// the top of the steel blade and the collar of the handle show above it.
 export function shovelSU(b, f, st, lod) {
+  // (Clear of the tunic's skirt, which flares out below the belt.)
+  f = f.sub(0, 0, 0.012);
   b.bones(rigidAt(f));
-  b.material(CELL.duck);
+  const w = 0.15,
+    h = 0.19;
+  const fb = f.sub(0, -0.025, 0.006);
+  b.material(CELL.pack);
   b.paint(st.pouchCloth ?? 0x6e6648);
-  b.part();
-  f.box(b, 0, -0.12, 0.02, 0.15, 0.19, 0.025, { r: 0.012 });
+  spadeBlade(b, fb, { w, h, t: 0.015, v0: 0.5, tip: 0.1, pw: 1.25, lod, uv: PACK_UV.flap });
   if (lod) return;
+  const out = f.dir(0, 0, 1);
+  b.material(CELL.webbing);
+  b.paint(new THREE.Color(st.pouchCloth ?? 0x6e6648).multiplyScalar(0.8));
+  b.part();
+  b.strap([fb.point(-w / 2 + 0.002, -h * 0.3, 0.021), fb.point(-w * 0.2, -h * 0.3, 0.0255), fb.point(0, -h * 0.3, 0.029), fb.point(w * 0.2, -h * 0.3, 0.0255), fb.point(w / 2 - 0.002, -h * 0.3, 0.021)], 0.02, 0.0025, () => out);
+  b.material(CELL.metal);
+  b.paint(0x4c4a40);
+  fb.cyl(b, [w * 0.24, -h * 0.3, 0.027], [w * 0.24, -h * 0.3, 0.0295], 0.005, 0.0045, { seg: 6 });
+  // The steel standing out of the cover, and the collar that holds the handle.
+  b.material(CELL.paint, 0.4);
+  b.paint(0x484a44);
+  b.part();
+  fb.box(b, 0, 0.006, 0.0115, 0.132, 0.016, 0.0045, { r: 0.0015 });
+  f.cyl(b, [0, -0.03, 0.019], [0, 0.03, 0.021], 0.0175, 0.016, { seg: 8 });
   b.material(CELL.paint);
   b.paint(0x6a5238);
   f.cyl(b, [0, -0.02, 0.02], [0.0, 0.2, 0.03], 0.014, 0.015, { seg: 8 });
