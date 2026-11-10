@@ -5,82 +5,144 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rank &amp; File Admin</title>
 <style>
-  :root { --bg: #121310; --panel: #1b1c18; --line: rgba(255, 255, 255, 0.12); --ink: #e9e4d6; --dim: #b9b29f; --amber: #e2ac46; --bad: #d5644f; --good: #8fbf6a;
+  :root { --bg: #121310; --panel: #1a1b17; --raised: #22231e; --line: rgba(255, 255, 255, 0.1); --soft: rgba(255, 255, 255, 0.055); --ink: #e9e4d6; --dim: #a9a391; --amber: #e2ac46; --bad: #d5644f; --good: #8fbf6a;
     --font: 'Barlow', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; --cond: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); padding: 24px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); }
-  main { max-width: 980px; margin: 0 auto; display: grid; gap: 18px; }
-  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  h1 { margin: 0; font: 700 30px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
-  header span { font: 600 13px var(--cond); letter-spacing: 0.22em; text-transform: uppercase; color: var(--amber); }
-  header a { margin-left: auto; color: var(--dim); }
-  .bar { display: flex; gap: 10px; }
-  input, select, button { font: inherit; color: var(--ink); background: #23241f; border: 1px solid var(--line); padding: 8px 10px; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); padding: 28px max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left)); }
+  main { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+  main > *, .page > *, .sgrid > *, .panel > * { min-width: 0; }
+  a { color: var(--amber); }
+
+  /* The top: the name, the pages, the way back. */
+  header { display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  h1 { margin: 0; font: 700 28px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
+  .brand span { font: 600 13px var(--cond); letter-spacing: 0.22em; text-transform: uppercase; color: var(--amber); }
+  nav { display: flex; gap: 6px; }
+  nav a { padding: 7px 16px; border: 1px solid transparent; color: var(--dim); text-decoration: none; font: 600 14px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; }
+  nav a:hover { color: var(--ink); background: var(--soft); }
+  /* (The page you are on: tinted and outlined all round.) */
+  nav a.on { color: var(--amber); background: rgba(226, 172, 70, 0.1); border-color: rgba(226, 172, 70, 0.45); }
+  header .back { margin-left: auto; color: var(--dim); font-size: 14px; }
+  @media (max-width: 640px) { header .back { margin-left: 0; } }
+
+  h2 { margin: 0; font: 700 19px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; }
+  h3 { margin: 0 0 8px; font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); }
+  .note { color: var(--dim); font-size: 14px; margin: 0; }
+  .page { display: grid; gap: 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); padding: 18px 20px; display: grid; gap: 14px; min-width: 0; align-content: start; }
+  .head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .head .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  input, select, button { font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); padding: 7px 10px; }
   input:focus, select:focus { outline: none; border-color: var(--amber); }
-  .bar input { flex: 1; min-width: 0; }
-  button { cursor: pointer; font: 600 14px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
+  button { cursor: pointer; font: 600 13px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; }
   button:hover { border-color: var(--amber); color: var(--amber); }
+  button:disabled, select:disabled, input:disabled { opacity: 0.5; cursor: default; }
   /* (The gold button as in the game: its gradient, dark bold capitals.) */
-  button.main { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; letter-spacing: 0.18em; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+  button.main { background: linear-gradient(180deg, #ecbb56, #c99332); color: #1b160c; border: 0; font-weight: 700; letter-spacing: 0.18em; padding: 8px 18px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
   button.main:hover { color: #1b160c; background: linear-gradient(180deg, #f5c867, #d6a03b); }
-  .note { color: var(--dim); }
-  .msg { padding: 10px 12px; border: 1px solid var(--line); background: var(--panel); }
+  button.sure { border-color: var(--bad); color: var(--bad); }
+  .bar { display: flex; gap: 10px; }
+  .bar input { flex: 1; min-width: 0; }
+
+  .msg { padding: 10px 14px; border: 1px solid var(--line); background: var(--panel); }
   .msg.bad { border-color: var(--bad); color: #f1b5a8; }
   .msg.good { border-color: var(--good); color: #cfe6bc; }
-  .player { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 12px; }
-  .ph { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
-  .ph b { font: 700 22px var(--cond); letter-spacing: 0.04em; }
-  .ph small { color: var(--dim); }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .row label { font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); min-width: 74px; }
-  .row input[type=number] { width: 160px; }
+
+  /* Tables: plain rows with a thin grey line between. */
+  .wrap { overflow-x: auto; margin: 0 -8px; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); }
-  th { font: 600 12px var(--cond); letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
-  .wrap { overflow-x: auto; }
-  #stats, #sbody { display: grid; gap: 12px; }
-  .sh { display: flex; align-items: center; gap: 12px; }
-  .sh h2 { margin: 0; font: 700 20px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-  .tile { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
-  .tile b { display: block; font: 700 26px var(--cond); }
-  .tile span { font: 600 12px var(--cond); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
-  .sgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
-  .sbox { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; min-width: 0; }
-  .sbox.wide { grid-column: 1 / -1; }
-  .sbox h3 { margin: 0 0 6px; font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); }
-  .err td:first-child { word-break: break-word; }
+  th, td { text-align: left; padding: 9px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
+  thead th { border-top: 0; padding-top: 2px; font: 600 12px var(--cond); letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .sub { display: block; color: var(--dim); font-size: 13px; }
   td select { padding: 4px 6px; }
-  #war { display: grid; gap: 12px; }
-  .warline { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
-  .warline b { font: 700 18px var(--cond); letter-spacing: 0.06em; }
-  .on { color: var(--good); }
-  button.sure { border-color: var(--bad); color: var(--bad); }
+  .empty td { color: var(--dim); }
+  /* A row that opens a player. */
+  tr.pick { cursor: pointer; }
+  tr.pick:hover td { background: var(--soft); }
+  tr.pick.open td { background: rgba(226, 172, 70, 0.07); }
+  tr.pick td:first-child { font-weight: 600; }
+  tr.pick td:last-child { text-align: right; color: var(--dim); font: 600 12px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
+  tr.pick:hover td:last-child, tr.pick.open td:last-child { color: var(--amber); }
+  tr.detail > td { padding: 0 8px 14px; border-top: 0; background: rgba(226, 172, 70, 0.07); }
+  .pill { display: inline-block; padding: 1px 9px; border: 1px solid rgba(143, 191, 106, 0.5); background: rgba(143, 191, 106, 0.12); color: #cfe6bc; font: 600 12px var(--cond); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+  .unknown { color: var(--dim); }
+
+  /* One player, opened under his row. */
+  .player { background: var(--bg); border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 14px; cursor: default; }
+  .player .facts { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--dim); font-size: 14px; }
+  .player .facts b { color: var(--ink); font-weight: 600; }
+  .sets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px 24px; }
+  .set { display: grid; gap: 6px; align-content: start; }
+  .set.all { grid-column: 1 / -1; }
+  .set label { font: 600 12px var(--cond); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); }
+  .set .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .set input[type=number] { width: 150px; }
+
+  /* Stats. */
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .tile { background: var(--panel); padding: 14px 16px; }
+  .tile b { display: block; font: 700 28px/1.1 var(--cond); }
+  .tile span { font: 600 12px var(--cond); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+  .sgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; }
+  .sgrid .wide { grid-column: 1 / -1; }
+  .err td:first-child { word-break: break-word; }
+
+  /* The war. */
+  .armies { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .army { background: var(--panel); padding: 12px 16px; }
+  .army b { display: block; font: 700 17px var(--cond); letter-spacing: 0.06em; }
+  .army span { color: var(--dim); font-size: 14px; }
+  .army span.led { color: var(--good); }
+  .warline { font: 700 19px var(--cond); letter-spacing: 0.06em; }
+  .warline span { color: var(--dim); font-weight: 600; margin-left: 10px; }
 </style>
 </head>
 <body>
 <main>
-  <header><h1>Rank &amp; File</h1><span>Admin</span><a href="/">Back to the game</a></header>
+  <header>
+    <div class="brand"><h1>Rank &amp; File</h1><span>Admin</span></div>
+    <nav id="tabs" hidden><a href="#players">Players</a><a href="#stats">Stats</a><a href="#war">The war</a></nav>
+    <a class="back" href="/">Back to the game</a>
+  </header>
   <div id="gate" class="msg">Checking who you are...</div>
-  <section id="war" hidden>
-    <div class="sh"><h2>The war</h2><button id="restart">Start a new war</button></div>
-    <div id="wbody" class="note">Loading...</div>
-  </section>
-  <section id="stats" hidden>
-    <div class="sh"><h2>Stats</h2><select id="days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></div>
-    <div id="sbody" class="note">Loading...</div>
-  </section>
-  <section id="tools" hidden>
-    <form class="bar" id="find">
-      <input id="q" placeholder="Player name (leave empty for the latest players)" autocomplete="off">
-      <button class="main">Find</button>
-    </form>
-  </section>
   <div id="status" hidden></div>
-  <div id="list" style="display:grid;gap:14px"></div>
+
+  <section id="players" class="page" hidden>
+    <div class="panel">
+      <div class="head"><h2>Recent players</h2><div class="end"><button id="refresh">Refresh</button></div></div>
+      <div id="recent" class="note">Loading...</div>
+      <p class="note">Where a player is from is read from the time zone their computer is set to. The game keeps no internet addresses.</p>
+    </div>
+    <div class="panel">
+      <div class="head"><h2>Find a player</h2></div>
+      <form class="bar" id="find">
+        <input id="q" placeholder="Player name, or part of it" autocomplete="off">
+        <button class="main">Find</button>
+      </form>
+      <div id="found" hidden></div>
+    </div>
+  </section>
+
+  <section id="stats" class="page" hidden>
+    <div class="head"><h2>Stats</h2><div class="end"><select id="days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></div></div>
+    <div id="sbody" class="page"><div class="note">Loading...</div></div>
+  </section>
+
+  <section id="war" class="page" hidden>
+    <div class="panel">
+      <div class="head"><h2>The war</h2><div class="end"><button id="restart">Start a new war</button></div></div>
+      <div id="wbody" class="page"><div class="note">Loading...</div></div>
+    </div>
+  </section>
 </main>
 <script type="module">
 import { session, token, serverConfig } from './src/net/auth.js';
+import { placeName } from './src/core/timeZones.js';
 
 const $ = (s) => document.querySelector(s);
 const MAX_RANK = 22;
@@ -111,38 +173,67 @@ function status(text, kind = '') {
 }
 
 let generals = new Map(); // player id -> { army, name, seen, watching }
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const when = (t) => (t ? new Date(t).toLocaleString() : '');
+const clock = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// "12 min ago", "3 h ago", "Yesterday at 2:05 PM", "Nov 3 at 2:05 PM".
+function ago(t) {
+  const d = new Date(t);
+  const min = Math.floor((Date.now() - d) / 60000);
+  if (min < 1) return 'Just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
+  if (min < 48 * 60) return `Yesterday at ${clock(d)}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${clock(d)}`;
+}
+// "Under a minute", "48 min", "1 h 20 min".
+function span(minutes) {
+  const m = Math.round(Number(minutes) || 0);
+  if (m < 1) return 'Under a minute';
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+}
 
+// A table: head (the column names; { name, num } for a column of numbers),
+// rows of cells already made safe to show.
+function table(head, rows, none = 'Nothing yet') {
+  const cols = head.map((h) => (typeof h === 'string' ? { name: h } : h));
+  const cell = (c, i, tag) => `<${tag}${cols[i].num ? ' class="num"' : ''}>${c}</${tag}>`;
+  return `<div class="wrap"><table><thead><tr>${cols.map((c, i) => cell(esc(c.name), i, 'th')).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => cell(c, i, 'td')).join('')}</tr>`).join('') || `<tr class="empty"><td colspan="${cols.length}">${esc(none)}</td></tr>`}</tbody></table></div>`;
+}
+const cells = (row) => row.map(esc);
+
+// --- One player: what he has, and the things an admin may change ---
 function card(p) {
   const el = document.createElement('div');
   el.className = 'player';
   el.innerHTML = `
-    <div class="ph"><b></b><small class="seen"></small><small class="cr"></small></div>
-    <div class="row"><label>Credits</label><input type="number" min="0" step="1000" class="credits"><button class="setc">Set credits</button></div>
-    <div class="row"><label>General</label><select class="gen"><option value="">Not a general</option><option value="US">General of the US Army</option><option value="GE">General of the Wehrmacht</option><option value="SU">General of the Red Army</option></select><button class="setg">Set</button></div>
-    <div class="row"><label>Everyone</label>
-      <select class="rankall"></select><button class="setr">Set rank</button>
-      <button class="rib">Max ribbons</button><button class="spec">Max specialist ribbons</button></div>
-    <div class="wrap"><table><thead><tr><th>Soldier</th><th>Army</th><th>Class</th><th>Rank</th><th>XP</th></tr></thead><tbody></tbody></table></div>`;
+    <div class="facts"><span class="cr"></span><span class="seen"></span></div>
+    <div class="sets">
+      <div class="set"><label>Credits</label><div class="row"><input type="number" min="0" step="1000" class="credits"><button class="setc">Set credits</button></div></div>
+      <div class="set"><label>General</label><div class="row"><select class="gen"><option value="">Not a general</option><option value="US">General of the US Army</option><option value="GE">General of the Wehrmacht</option><option value="SU">General of the Red Army</option></select><button class="setg">Set</button></div></div>
+      <div class="set all"><label>Every soldier</label><div class="row"><select class="rankall"></select><button class="setr">Set rank</button><button class="rib">Max ribbons</button><button class="spec">Max specialist ribbons</button></div></div>
+    </div>
+    <div class="wrap"><table><thead><tr><th>Soldier</th><th>Army</th><th>Class</th><th>Rank</th><th class="num">XP</th></tr></thead><tbody></tbody></table></div>`;
   const ranks = (sel, value) => {
     sel.innerHTML = '';
     for (let r = 0; r <= MAX_RANK; r++) sel.add(new Option(`Rank ${r}`, r, false, r === value));
   };
   const draw = (pl) => {
-    el.querySelector('b').textContent = pl.name || '(no name)';
-    el.querySelector('.seen').textContent = `Last saved ${when(pl.updated)}`;
-    el.querySelector('.cr').textContent = `${fmt(pl.credits)} credits`;
+    el.querySelector('.cr').innerHTML = `<b>${esc(fmt(pl.credits))}</b> credits`;
+    el.querySelector('.seen').textContent = pl.updated ? `Last saved ${when(pl.updated)}` : '';
     el.querySelector('.credits').value = pl.credits;
     ranks(el.querySelector('.rankall'), 12);
     el.querySelector('.gen').value = generals.get(pl.id)?.army || '';
     const tb = el.querySelector('tbody');
-    tb.innerHTML = '';
+    tb.innerHTML = pl.soldiers.length ? '' : '<tr class="empty"><td colspan="5">No soldiers yet</td></tr>';
     for (const s of pl.soldiers) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td></td><td></td><td></td><td><select></select></td><td></td>';
+      tr.innerHTML = '<td></td><td></td><td></td><td><select></select></td><td class="num"></td>';
       tr.cells[0].textContent = s.name;
-      tr.cells[1].textContent = s.faction;
+      tr.cells[1].textContent = ARMY[s.faction] || s.faction;
       tr.cells[2].textContent = s.cls;
       tr.cells[4].textContent = fmt(s.xp);
       const sel = tr.querySelector('select');
@@ -187,23 +278,107 @@ function card(p) {
   return el;
 }
 
-async function find() {
-  status('Looking...');
-  try {
-    const { players } = await api(`players?q=${encodeURIComponent($('#q').value.trim())}`);
-    const list = $('#list');
-    list.innerHTML = '';
-    for (const p of players) list.appendChild(card(p));
-    status(players.length ? '' : 'Nobody by that name.');
-  } catch (e) {
-    status(e.message, 'bad');
-  }
+// A list of players, one a row; a click on a row opens that player under it
+// (and closes him again). rows: [{ id, cells: [...], player? }]; a row
+// without its player has him fetched when it is opened.
+function playerTable(box, head, rows, none) {
+  box.className = '';
+  box.hidden = false;
+  box.innerHTML = table([...head, ''], rows.map((r) => [...r.cells, 'Open']), none);
+  [...box.querySelectorAll('tbody tr')].forEach((tr, i) => {
+    const row = rows[i];
+    if (!row) return;
+    tr.className = 'pick';
+    tr.tabIndex = 0;
+    let detail = null;
+    const toggle = async () => {
+      if (detail) {
+        detail.remove();
+        detail = null;
+        tr.classList.remove('open');
+        tr.lastElementChild.textContent = 'Open';
+        return;
+      }
+      tr.classList.add('open');
+      tr.lastElementChild.textContent = 'Close';
+      detail = document.createElement('tr');
+      detail.className = 'detail';
+      const td = detail.insertCell();
+      td.colSpan = head.length + 1;
+      td.innerHTML = '<div class="player note">Loading...</div>';
+      tr.after(detail);
+      const mine = detail;
+      try {
+        row.player ||= (await api(`player?id=${encodeURIComponent(row.id)}`)).player;
+        if (detail === mine) td.replaceChildren(card(row.player));
+      } catch (e) {
+        if (detail === mine) td.firstChild.textContent = e.status === 404 ? 'This player has nothing saved yet.' : e.message;
+      }
+    };
+    tr.addEventListener('click', toggle);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle();
+    });
+  });
 }
 
+// --- Recent players: who had the game open last, for how long, from where ---
+async function recent() {
+  const box = $('#recent');
+  try {
+    const { players } = await api('recent');
+    playerTable(
+      box,
+      ['Player', 'Last played', 'Played for', 'From', 'All visits'],
+      players.map((p) => {
+        const place = placeName(p.tz);
+        return {
+          id: p.id,
+          cells: [
+            esc(p.name || '(no name)'),
+            p.now ? '<span class="pill">Playing now</span>' : `<span title="${esc(when(p.at))}">${esc(ago(p.at))}</span>`,
+            esc(p.now ? `${span(p.minutes)} so far` : span(p.minutes)),
+            place ? esc(place) : '<span class="unknown">Not known</span>',
+            `${esc(span(p.total))}<span class="sub">${esc(p.sessions === 1 ? '1 visit' : `${fmt(p.sessions)} visits`)}</span>`,
+          ],
+        };
+      }),
+      'Nobody has played yet',
+    );
+  } catch (e) {
+    box.className = 'msg bad';
+    box.textContent = e.message;
+  }
+}
+$('#refresh').addEventListener('click', recent);
+
+// --- Find a player by name ---
+async function find() {
+  const q = $('#q').value.trim();
+  const box = $('#found');
+  status('');
+  try {
+    const { players } = await api(`players?q=${encodeURIComponent(q)}`);
+    playerTable(
+      box,
+      ['Player', 'Last saved', { name: 'Credits', num: true }, { name: 'Soldiers', num: true }],
+      players.map((p) => ({ id: p.id, player: p, cells: [esc(p.name || '(no name)'), `<span title="${esc(when(p.updated))}">${esc(ago(p.updated))}</span>`, esc(fmt(p.credits)), esc(p.soldiers.length)] })),
+      q ? 'Nobody by that name' : 'No players yet',
+    );
+  } catch (e) {
+    box.hidden = false;
+    box.className = 'msg bad';
+    box.textContent = e.message;
+  }
+}
+$('#find').addEventListener('submit', (e) => {
+  e.preventDefault();
+  find();
+});
+
 // --- Stats: how many play, their battles, how smoothly the game runs, errors ---
-const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
-const table = (head, rows) => `<div class="wrap"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${head.length}" class="note">Nothing yet</td></tr>`}</tbody></table></div>`;
 async function stats() {
   const box = $('#sbody');
   try {
@@ -211,19 +386,20 @@ async function stats() {
     const b = st.battles || {};
     const se = st.sessions || {};
     const tile = (n, label) => `<div class="tile"><b>${esc(n ?? 0)}</b><span>${esc(label)}</span></div>`;
-    box.className = '';
+    const n = (name) => ({ name, num: true });
+    box.className = 'page';
     box.innerHTML = `<div class="tiles">
-        ${tile(se.players, 'Players')}${tile(se.sessions, 'Sessions')}${tile(se.minutes ?? '-', 'Minutes a session')}
+        ${tile(se.players, 'Players')}${tile(se.sessions, 'Visits')}${tile(se.minutes ?? '-', 'Minutes a visit')}
         ${tile(b.battles, 'Battles')}${tile(b.minutes ?? '-', 'Minutes a battle')}${tile(b.battles ? Math.round((100 * b.left_early) / b.battles) + '%' : '-', 'Left early')}
         ${tile(b.kills ?? '-', 'Kills a battle')}${tile(b.deaths ?? '-', 'Deaths a battle')}
       </div>
       <div class="sgrid">
-        <div class="sbox"><h3>Each day</h3>${table(['Day', 'Players', 'Battles'], st.daily.map((d) => [d.day, d.players, d.battles]))}</div>
-        <div class="sbox"><h3>Armies and classes</h3>${table(['Army', 'Class', 'Battles'], st.sides.map((x) => [ARMY[x.army] || x.army, x.cls, x.battles]))}</div>
-        <div class="sbox"><h3>How smoothly it runs</h3>${table(['Graphics', 'Minutes', 'FPS', 'Worst 10%'], st.perf.map((x) => [x.quality || 'unknown', x.samples, x.fps, x.low]))}</div>
-        <div class="sbox wide"><h3>How the server keeps up</h3>${table(['Day', 'Minutes played', 'Step (ms)', 'Slowest step (ms)', 'Longest stop (ms)', 'Time lost (s)'], (st.server || []).map((x) => [x.day, x.minutes, x.step, x.worst_step, x.worst_lag, x.lost]))}<p class="note">A step should take well under 17 ms. A stop under 1000 ms is caught up; time lost snaps players back.</p></div>
-      </div>
-      <div class="sbox err"><h3>Errors</h3>${table(['Error', 'Where', 'Times', 'Players', 'Last'], st.errors.map((x) => [x.message, x.place || '', x.times, x.players, when(x.last)]))}</div>`;
+        <div class="panel"><h3>Each day</h3>${table(['Day', n('Players'), n('Battles')], st.daily.map((d) => cells([d.day, d.players, d.battles])))}</div>
+        <div class="panel"><h3>Armies and classes</h3>${table(['Army', 'Class', n('Battles')], st.sides.map((x) => cells([ARMY[x.army] || x.army, x.cls, x.battles])))}</div>
+        <div class="panel"><h3>How smoothly it runs</h3>${table(['Graphics', n('Minutes'), n('FPS'), n('Worst 10%')], st.perf.map((x) => cells([x.quality || 'unknown', x.samples, x.fps, x.low])))}</div>
+        <div class="panel wide"><h3>How the server keeps up</h3>${table(['Day', n('Minutes played'), n('Step (ms)'), n('Slowest step (ms)'), n('Longest stop (ms)'), n('Time lost (s)')], (st.server || []).map((x) => cells([x.day, x.minutes, x.step, x.worst_step, x.worst_lag, x.lost])))}<p class="note">A step should take well under 17 ms. A stop under 1000 ms is caught up; time lost snaps players back.</p></div>
+        <div class="panel wide err"><h3>Errors</h3>${table(['Error', 'Where', n('Times'), n('Players'), 'Last'], st.errors.map((x) => cells([x.message, x.place || '', x.times, x.players, when(x.last)])), 'No errors')}</div>
+      </div>`;
   } catch (e) {
     box.className = 'msg bad';
     box.textContent = e.message;
@@ -236,12 +412,13 @@ function showWar(info) {
   generals = new Map(info.generals.map((g) => [g.id, g]));
   const w = info.war;
   const day = w ? `Day ${Math.floor(w.t / 86400) + 1}` : '';
-  const armies = ['US', 'GE', 'SU'].map((a) => `${ARMY[a]}: ${w?.humans?.includes(a) ? '<span class="on">led by its generals</span>' : 'led by the computer'}`).join(' · ');
-  const rows = info.generals.map((g) => [g.name || g.id, ARMY[g.army] || g.army, g.watching ? 'In the game now' : g.seen ? when(g.seen) : 'Never', '']);
-  $('#wbody').className = '';
-  $('#wbody').innerHTML = `<div class="warline">${w ? `<b>War ${w.number}</b><span>${day}${w.over ? ` · won by the ${ARMY[w.over]}` : ''}</span>` : '<b>Loading</b>'}</div>
-    <div class="note">${armies}.<br>An army with no general, or whose generals have been away a day, is led by the computer. Make a player a general from their card below.</div>
-    ${table(['General', 'Army', 'Last seen', ''], rows)}`;
+  const armies = ['US', 'GE', 'SU'].map((a) => `<div class="army"><b>${ARMY[a]}</b>${w?.humans?.includes(a) ? '<span class="led">Led by its generals</span>' : '<span>Led by the computer</span>'}</div>`).join('');
+  const rows = info.generals.map((g) => [esc(g.name || g.id), esc(ARMY[g.army] || g.army), g.watching ? '<span class="pill">In the game now</span>' : esc(g.seen ? ago(g.seen) : 'Never'), '']);
+  $('#wbody').className = 'page';
+  $('#wbody').innerHTML = `<div class="warline">${w ? `War ${esc(w.number)}<span>${esc(day)}${w.over ? `, won by the ${esc(ARMY[w.over])}` : ''}</span>` : 'Loading'}</div>
+    <div class="armies">${armies}</div>
+    <div><h3>Generals</h3>${table(['General', 'Army', 'Last seen', ''], rows, 'No generals: the computer leads every army')}</div>
+    <p class="note">An army with no general, or whose generals have been away a day, is led by the computer. To make a player a general, open them on the Players page.</p>`;
   // (Each name has a button to stand him down.)
   [...$('#wbody').querySelectorAll('tbody tr')].forEach((tr, i) => {
     const g = info.generals[i];
@@ -252,11 +429,11 @@ function showWar(info) {
       try {
         showWar(await api('general', { id: g.id, army: null }));
         status(`${g.name}: no longer a general.`, 'good');
-        find();
       } catch (e) {
         status(e.message, 'bad');
       }
     });
+    tr.cells[3].style.textAlign = 'right';
     tr.cells[3].appendChild(b);
   });
 }
@@ -290,10 +467,15 @@ $('#restart').addEventListener('click', async (e) => {
   }
 });
 
-$('#find').addEventListener('submit', (e) => {
-  e.preventDefault();
-  find();
-});
+// --- The pages: Players (first), Stats, The war. The address keeps which. ---
+const PAGES = ['players', 'stats', 'war'];
+function show() {
+  const page = PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'players';
+  for (const p of PAGES) $(`#${p}`).hidden = p !== page;
+  for (const a of $('#tabs').children) a.classList.toggle('on', a.hash === `#${page}`);
+  status('');
+}
+window.addEventListener('hashchange', show);
 
 // Who is this? Only admins get further.
 const s = dev ? { user: { name: dev } } : await session().catch(() => null);
@@ -304,12 +486,11 @@ if (!s) {
   try {
     await api('players?q=');
     gate.hidden = true;
-    $('#tools').hidden = false;
-    $('#stats').hidden = false;
-    $('#war').hidden = false;
+    $('#tabs').hidden = false;
+    show();
     stats();
     await war();
-    find();
+    recent();
   } catch (e) {
     gate.className = 'msg bad';
     gate.textContent = e.status === 403 ? `Signed in as ${s.user?.email || s.user?.name}, which is not an admin account. Make it one in the Neon Console: Auth, then Users, then "Make admin". (It can take half a minute to count.)` : e.message;

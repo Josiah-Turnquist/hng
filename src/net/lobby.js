@@ -52,7 +52,15 @@ export class Lobby {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/lobby`);
     this.ws = ws;
     ws.onopen = () => {
-      ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, token: t, dev: this.account.dev || null }));
+      // (tz: the time zone this computer is set to, which is all the game
+      // knows of where a player is: core/timeZones.js.)
+      let tz = null;
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      } catch {
+        /* (Not told: fine.) */
+      }
+      ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, token: t, dev: this.account.dev || null, tz }));
       if (this._army) ws.send(JSON.stringify({ k: 'army', army: this._army }));
       if (this._watching) ws.send(JSON.stringify({ k: 'ww', on: true }));
     };

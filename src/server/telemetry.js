@@ -1,8 +1,10 @@
 // What happens in the game, kept for the admin page's stats
 // (progressStore.js events): the server's own records (sessions, battles,
 // its errors) and what signed-in players' browsers send to /api/telemetry
-// (frame rate, load time, errors on their screen). No addresses, emails or
-// chat. Without a database it keeps nothing.
+// (frame rate, load time, errors on their screen). A session carries the time
+// zone the player's computer is set to (core/timeZones.js), which is all the
+// game knows of where he is. No addresses, emails or chat. Without a database
+// it keeps nothing.
 //
 //   const t = new Telemetry({ store, log })
 //   t.record(userId, kind, data)        // kept with the next batch (every 10 s)

@@ -50,6 +50,7 @@ import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
 import { adminHandler } from '../src/server/admin.js';
+import { cleanZone } from '../src/core/timeZones.js';
 import { Social } from '../src/server/social.js';
 import { Telemetry } from '../src/server/telemetry.js';
 import { WarService } from '../src/server/warService.js';
@@ -74,7 +75,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   const war = new WarService({ store, log, speed: warSpeed, battleWait: warBattleWait });
   const warReady = war.start().catch((e) => log(`war: ${e.message}`));
   const progress = progressHandler({ store, check, log });
-  const admin = adminHandler({ store, check, admins, log, war });
+  // Who has the game open now (its menus or a battle): socket -> { id, name, since, tz }.
+  const playing = new Map();
+  const admin = adminHandler({ store, check, admins, log, war, playing: () => [...playing.values()] });
   const social = new Social({ store, log, war });
   const telemetry = new Telemetry({ store, log });
   const telemetryRoute = telemetry.handler({ check });
@@ -239,6 +242,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   lobby.on('connection', (ws) => {
     let who = null;
     let since = 0;
+    let zone = null;
     let budget = 20; // messages in ten seconds
     const held = [];
     const refill = setInterval(() => (budget = 20), 10000);
@@ -262,6 +266,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         if (ws.readyState !== 1) return;
         who = w;
         since = Date.now();
+        // (Where he is, as near as the game knows: his computer's time zone.)
+        zone = cleanZone(m.tz);
+        playing.set(ws, { id: who.id, name: who.name, since, tz: zone });
         social.join(ws, who);
         for (const x of held.splice(0)) await social.message(who.id, x);
       } catch {
@@ -273,8 +280,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       clearInterval(refill);
       if (who) {
         social.leave(ws, who.id);
+        playing.delete(ws);
         // (A session: from the menus opening to the page closing.)
-        telemetry.record(who.id, 'session', { minutes: (Date.now() - since) / 60000 });
+        telemetry.record(who.id, 'session', { minutes: (Date.now() - since) / 60000, ...(zone ? { tz: zone } : {}) });
       }
     });
   });

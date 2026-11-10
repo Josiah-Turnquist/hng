@@ -35,8 +35,9 @@ const FRIENDS = `CREATE TABLE IF NOT EXISTS friends (
 )`;
 
 // What happens in the game, for the admin page's stats (server/telemetry.js):
-// sessions, battles, frame rates and errors. No addresses, emails or chat;
-// kept KEEP_DAYS days.
+// sessions (with the time zone the player's computer is set to, which is all
+// the game knows of where he is), battles, frame rates and errors. No
+// addresses, emails or chat; kept KEEP_DAYS days.
 const EVENTS = `CREATE TABLE IF NOT EXISTS events (
   id bigserial PRIMARY KEY,
   at timestamptz NOT NULL DEFAULT now(),
@@ -79,7 +80,7 @@ export function openProgressStore(url, { log = console.log } = {}) {
   return {
     async get(userId) {
       await table();
-      const r = await pool.query('SELECT name, roster, war, rev FROM progress WHERE user_id = $1', [userId]);
+      const r = await pool.query('SELECT name, roster, war, rev, updated_at FROM progress WHERE user_id = $1', [userId]);
       return r.rows[0] || null;
     },
     async put(userId, name, { roster = null, war = null }, rev) {
@@ -153,6 +154,26 @@ export function openProgressStore(url, { log = console.log } = {}) {
         roleWarned = true;
         return null;
       }
+    },
+    // The players who last had the game open, the latest first (admin page):
+    // [{ user_id, name, at (when that visit ended), minutes (how long it
+    // was), tz (his time zone then, if told), total (minutes over all the
+    // visits kept), sessions (how many) }].
+    async recent(limit = 30) {
+      await table();
+      const n = Math.max(1, Math.min(200, Math.floor(limit) || 30));
+      const r = await pool.query(
+        `SELECT s.user_id, p.name, s.at, s.minutes, z.tz, t.total, t.sessions
+         FROM (SELECT DISTINCT ON (user_id) user_id, at, round((data->>'minutes')::numeric, 1) AS minutes
+               FROM events WHERE kind = 'session' AND user_id IS NOT NULL ORDER BY user_id, at DESC) s
+         JOIN (SELECT user_id, round(sum((data->>'minutes')::numeric)) AS total, count(*) AS sessions
+               FROM events WHERE kind = 'session' AND user_id IS NOT NULL GROUP BY 1) t USING (user_id)
+         LEFT JOIN (SELECT DISTINCT ON (user_id) user_id, data->>'tz' AS tz
+               FROM events WHERE kind = 'session' AND data ? 'tz' ORDER BY user_id, at DESC) z USING (user_id)
+         LEFT JOIN progress p ON p.user_id = s.user_id
+         ORDER BY s.at DESC LIMIT ${n}`,
+      );
+      return r.rows.map((x) => ({ ...x, minutes: Number(x.minutes), total: Number(x.total), sessions: Number(x.sessions) }));
     },
     // The last few days at a glance (admin page).
     async stats(days = 7) {

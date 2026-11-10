@@ -3,6 +3,12 @@
 // sign-in emails, or for tests their ids): look players up and change what
 // they have, as the admin page (admin.html) does. Everyone else gets 403.
 //
+//   GET  /api/admin/recent           -> { players: [{ id, name, now, at, minutes, tz, total, sessions }] }
+//     who last had the game open, the latest first: those in it now (now:
+//     true, minutes so far), then the rest (at: when they left, minutes: how
+//     long that visit was); tz: the time zone of his computer, which is all
+//     the game knows of where he is; total, sessions: over the days kept
+//   GET  /api/admin/player?id=       -> { player } (one, as below)
 //   GET  /api/admin/players?q=name   -> { players: [{ id, name, updated, credits, soldiers: [...] }] }
 //   POST /api/admin/change  { id, what, value, soldier? }  -> { player }
 //     what: 'credits' (value: how many), 'rank' (value 0-22; soldier: one, or
@@ -22,7 +28,7 @@ import { WEAPONS } from '../weapons/defs.js';
 const TOP = RIBBON_XP[RIBBON_XP.length - 1];
 const MAX_BODY = 16 * 1024;
 
-export function adminHandler({ store, check, admins = [], log = console.log, war = null }) {
+export function adminHandler({ store, check, admins = [], log = console.log, war = null, playing = () => [] }) {
   const allowed = new Set(admins.map((a) => String(a).trim().toLowerCase()).filter(Boolean));
   // An admin: made one in the Neon Console (Auth, Users, "Make admin"), which
   // his sign-in or Neon Auth's record of him in the database says, or listed
@@ -83,6 +89,30 @@ export function adminHandler({ store, check, admins = [], log = console.log, war
           return send(200, warInfo());
         }
         return send(404, { error: 'No such thing' });
+      }
+      if (req.method === 'GET' && path === 'recent') {
+        const kept = store.recent ? await store.recent(40) : [];
+        const past = new Map(kept.map((r) => [r.user_id, r]));
+        // Those in the game now come first (a player with two tabs open, once:
+        // by his earlier one).
+        const here = new Map();
+        for (const p of playing()) if (!here.has(p.id) || p.since < here.get(p.id).since) here.set(p.id, p);
+        const now = Date.now();
+        const rows = [...here.values()]
+          .sort((a, b) => b.since - a.since)
+          .map((p) => {
+            const was = past.get(p.id);
+            const minutes = (now - p.since) / 60000;
+            return { id: p.id, name: was?.name || p.name, now: true, at: new Date(p.since).toISOString(), minutes: Math.round(minutes * 10) / 10, tz: p.tz || was?.tz || null, total: Math.round((was?.total || 0) + minutes), sessions: (was?.sessions || 0) + 1 };
+          });
+        for (const r of kept) if (!here.has(r.user_id)) rows.push({ id: r.user_id, name: r.name || '', now: false, at: r.at, minutes: r.minutes, tz: r.tz || null, total: r.total, sessions: r.sessions });
+        return send(200, { players: rows.slice(0, 40) });
+      }
+      if (req.method === 'GET' && path === 'player') {
+        const id = new URL(req.url, 'http://x').searchParams.get('id') || '';
+        const kept = id ? await store.get(id) : null;
+        if (!kept) return send(404, { error: 'No such player' });
+        return send(200, { player: summary({ user_id: id, name: kept.name, roster: kept.roster, updated_at: kept.updated_at ?? null }) });
       }
       if (req.method === 'GET' && path === 'players') {
         const q = new URL(req.url, 'http://x').searchParams.get('q') || '';

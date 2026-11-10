@@ -402,7 +402,11 @@ thread fell seconds behind. The main thread signs players in and passes their
 messages along. (`BATTLE_THREADS=0` keeps every battle in the main thread;
 tests that look inside a battle do that.) Each minute anyone plays, every battle notes how it kept up (how long
 a step takes, its longest stop, any time lost); the admin page's stats show
-it by day. Every round fired on the page is drawn only: hits, wounds, deaths,
+it by day. The admin page opens on the players who last had the game open:
+when, for how long, and where they are from. All the game knows of where a
+player is comes from the time zone his computer is set to, which his browser
+sends when the game opens (`src/core/timeZones.js` turns it into a country and
+a city); no internet address is kept or looked up. Every round fired on the page is drawn only: hits, wounds, deaths,
 blasts and points come from the server alone (`Soldier.hit` and `damage` do
 nothing online). Getting into a vehicle happens at once on the page and
 follows the server if it disagrees for half a second. The vehicle he drives
