@@ -58,6 +58,16 @@ export class Outfit {
     // A camouflage print the whole uniform is made in (its material cell:
     // soldierCamo.js), or null for the army's own issue.
     this.camo = null;
+    // What he carries beside his main weapon, when it is known (carryOf): the
+    // grenades, holster, binocular case and knife on him are then those he
+    // has. null: not known (a model looked at on its own), and the kit decides.
+    this.carry = null;
+  }
+  // Does he carry `what` ('grenades' | 'pistol' | 'binoculars' | 'knife')?
+  // otherwise: the kit's own answer (its draw, or what the class is issued),
+  // used when his loadout is not known.
+  carries(what, otherwise) {
+    return this.carry ? !!this.carry[what] : otherwise;
   }
   // The color and cloth of a garment as this man wears it: the kit's own, or
   // his camouflage print when he has one and the piece is of cloth (not
@@ -627,7 +637,7 @@ export function variantCount(faction, cls) {
 
 // Build an outfit. role: the primary weapon's kind ('rifle' | 'smg' | 'mg' |
 // 'mgBelt' | 'at'), for the ammunition he carries.
-export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true, camo = null } = {}) {
+export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true, camo = null, carry = null } = {}) {
   const t = OUTFITS[faction] || OUTFITS.US;
   const def = t[cls] || t.infantry;
   const v = variant % def.variants;
@@ -637,6 +647,7 @@ export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, rol
   const beltFed = role === 'mgBelt';
   const o = new Outfit(faction, cls, v, lod, beltFed ? 'mg' : role, rng);
   o.beltFed = beltFed;
+  o.carry = carry;
   // camo: the id of a print (soldierCamo.js CAMOS) the uniform is made in.
   o.camo = camo ? camoCell(camo) : null;
   def.build(o);
@@ -747,6 +758,22 @@ export function buildPerson(params, lod = 0, info = {}) {
 }
 
 // Helpers shared by the army modules.
+// What a soldier carries that shows on him, from his loadout (weapon
+// definitions, empty slots allowed): { grenades, pistol, binoculars, knife }.
+// carryKey: the same as a short string (for caches).
+export function carryOf(defs = []) {
+  const c = { grenades: false, pistol: false, binoculars: false, knife: false };
+  for (const d of defs) {
+    if (!d) continue;
+    if (d.type === 'grenade') c.grenades = true;
+    else if (d.type === 'pistol' || d.type === 'revolver') c.pistol = true;
+    else if (d.type === 'binoculars') c.binoculars = true;
+    else if (d.type === 'melee' && /knife|bayonet/.test(d.id || '')) c.knife = true;
+  }
+  return c;
+}
+export const carryKey = (c) => (c ? ['grenades', 'pistol', 'binoculars', 'knife'].map((k) => (c[k] ? k[0] : '-')).join('') : '');
+
 // The kit a weapon calls for: what a soldier's outfit is built for (defs.js
 // weapons: type, and for machine guns how they are fed).
 export const roleOf = (def) => (!def ? 'rifle' : def.type === 'smg' ? 'smg' : def.type === 'lmg' ? (def.feed === 'belt' ? 'mgBelt' : 'mg') : def.type === 'launcher' || def.type === 'atRifle' ? 'at' : 'rifle');

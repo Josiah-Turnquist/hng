@@ -41,6 +41,8 @@ import { soldierMaterial } from '../src/actors/soldierMaterials.js';
 const params = new URLSearchParams(location.search);
 const camos = (params.get('camo') || '').split(',').filter(Boolean);
 const camoOf = (i) => (camos.length ? camos[i % camos.length] : null);
+// carry=gpbk: what he carries beside his gun (g grenades, p pistol, b binoculars, k knife; carry=none: nothing). Not given: the kit decides.
+const carry = params.has('carry') ? { grenades: /g/.test(params.get('carry')), pistol: /p/.test(params.get('carry')), binoculars: /b/.test(params.get('carry')), knife: /k/.test(params.get('carry')) } : null;
 const W = innerWidth, H = innerHeight;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W, H);
@@ -85,7 +87,7 @@ if (params.has('fp')) {
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
   const f = (params.get('f') || 'US').split(',')[0];
   const vm = new ViewModel(lib, f, scene.environment);
-  vm.setOutfit({ faction: f, cls: params.get('cls') || 'infantry', seed: Number(params.get('seed') || 1), camo: camoOf(0) });
+  vm.setOutfit({ faction: f, cls: params.get('cls') || 'infantry', seed: Number(params.get('seed') || 1), camo: camoOf(0), carry });
   const def = WEAPONS[params.get('fp')] || WEAPONS.kar98k;
   vm.setWeapon(def, new Atmosphere(0, 15));
   vm.scene.background = new THREE.Color(0x8a9aa8);
@@ -149,7 +151,7 @@ if (params.has('heads')) {
   const row = new THREE.Group();
   const models = [];
   for (let i = 0; i < n; i++) {
-    const m = new SoldierModel(f[i % f.length], lib, { seed: Number(params.get('seed') || 1) + i * 13, cls: params.get('cls') || 'infantry', camo: camoOf(i) });
+    const m = new SoldierModel(f[i % f.length], lib, { seed: Number(params.get('seed') || 1) + i * 13, cls: params.get('cls') || 'infantry', camo: camoOf(i), carry });
     m.root.position.set((i - (n - 1) / 2) * 0.32, 0, 0);
     m.update(0, { stance: 0, yaw: (Number(params.get('yaw') || 0) * Math.PI) / 180, aimPitch: 0, alive: true });
     row.add(m.root);
@@ -316,7 +318,7 @@ if (strip) {
   strip.forEach((tt, i) => {
     const f = factions[0];
     const id = gunFor(f, classes[0]);
-    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: params.get('role') || roleOf(WEAPONS[id]), camo: camoOf(0) });
+    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: params.get('role') || roleOf(WEAPONS[id]), camo: camoOf(0), carry });
     if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kindFor(id));
     m.setGround(ground);
     const z0 = i * 1.4;
@@ -329,7 +331,7 @@ if (strip) {
     factions.forEach((f, i) => {
       const id = gunFor(f, cls);
       const kind = kindFor(id);
-      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: params.get('role') || roleOf(WEAPONS[id]), variant: params.has('variant') ? Number(params.get('variant')) : undefined, camo: camoOf(i) });
+      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: params.get('role') || roleOf(WEAPONS[id]), variant: params.has('variant') ? Number(params.get('variant')) : undefined, camo: camoOf(i), carry });
       if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kind);
       m.setGround(ground);
       const wide = /prone|crawl|dead/.test(pose);

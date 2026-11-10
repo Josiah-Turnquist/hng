@@ -5,7 +5,8 @@
 // roll and gas mask bag. And a man's kit is the same however far off he is.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOutfit, variantCount, roleOf } from '../src/actors/soldierKit.js';
+import { buildOutfit, variantCount, roleOf, carryOf, carryKey } from '../src/actors/soldierKit.js';
+import { SoldierModel } from '../src/actors/soldierModel.js';
 import { WEAPONS } from '../src/weapons/defs.js';
 import '../src/actors/soldierKitUS.js';
 import '../src/actors/soldierKitGE.js';
@@ -80,4 +81,53 @@ test('the kit a weapon calls for: belt-fed machine guns are told from magazine-f
   assert.equal(roleOf(WEAPONS.kar98k), 'rifle');
   assert.equal(roleOf(null), 'rifle');
   for (const w of Object.values(WEAPONS)) assert.ok(['rifle', 'smg', 'mg', 'mgBelt', 'at'].includes(roleOf(w)), w.name);
+});
+
+test('what shows on a soldier is what he carries: grenades, pistol, binoculars and knife from his loadout', () => {
+  const none = { grenades: false, pistol: false, binoculars: false, knife: false };
+  // From a loadout (empty slots allowed).
+  assert.deepEqual(carryOf([WEAPONS.m1_garand, WEAPONS.m1911a1, WEAPONS.mk2_grenade, null, null, WEAPONS.spade_m1910, null]), { ...none, grenades: true, pistol: true });
+  assert.deepEqual(carryOf([WEAPONS.mp40, null, WEAPONS.binoc_ge, WEAPONS.knife_m3]), { ...none, binoculars: true, knife: true });
+  assert.deepEqual(carryOf([WEAPONS.kar98k, WEAPONS.nagant_m1895]), { ...none, pistol: true });
+  assert.deepEqual(carryOf([]), none);
+  assert.equal(carryKey(null), '');
+  assert.notEqual(carryKey(none), carryKey({ ...none, pistol: true }));
+
+  const size = (army, cls, v, carry) => buildOutfit(army, cls, v, 0, 'rifle', { carry }).b.count;
+  for (const army of ['US', 'GE', 'SU'])
+    for (const v of variants(army, 'infantry')) {
+      const bare = size(army, 'infantry', v, none);
+      // Each thing he carries adds its piece; nothing shows that he does not carry.
+      for (const what of ['grenades', 'pistol', 'binoculars']) {
+        const with1 = size(army, 'infantry', v, { ...none, [what]: true });
+        assert.ok(with1 > bare, `${army} infantry variant ${v}: ${what} show when carried (${with1} against ${bare})`);
+      }
+    }
+  // A man with no grenades has none on him, whatever his variant would have drawn.
+  const belt = (x, y, z) => z < -0.05 && y > 0.9 && y < 1.2 && Math.abs(x) < 0.09;
+  for (const v of variants('GE', 'infantry')) {
+    const wood = (carry) => count(buildOutfit('GE', 'infantry', v, 0, 'rifle', { carry }).b, CELL.paint, belt);
+    assert.ok(wood({ ...none, grenades: true }) > wood(none), `variant ${v}: a stick grenade in the belt`);
+  }
+  // Paratroopers and scouts wear their knife only when they carry one.
+  for (const [army, cls] of [
+    ['US', 'paratrooper'],
+    ['SU', 'recon'],
+    ['SU', 'paratrooper'],
+  ])
+    assert.ok(size(army, cls, 0, { ...none, knife: true }) > size(army, cls, 0, none), `${army} ${cls}: the knife`);
+  // The loadout does not change the kit's draws (the rest of it stays the same), at any level of detail.
+  for (const lod of [0, 1, 2]) {
+    const a = buildOutfit('SU', 'infantry', 3, lod, 'rifle', { carry: none }).info,
+      b = buildOutfit('SU', 'infantry', 3, lod, 'rifle', { carry: { ...none, grenades: true, pistol: true, binoculars: true, knife: true } }).info,
+      c = buildOutfit('SU', 'infantry', 3, lod, 'rifle').info;
+    assert.equal(a.draws, b.draws);
+    assert.equal(a.draws, c.draws);
+    assert.equal(a.headgear, c.headgear);
+  }
+  // Not known (a model looked at on its own): the kit decides, as before.
+  assert.equal(new SoldierModel('GE', null, { seed: 4 }).carry, null);
+  const m = new SoldierModel('GE', null, { seed: 4, carry: { ...none, grenades: true } });
+  m.prepareLods();
+  assert.ok(m.stats(0).triangles > 30000);
 });

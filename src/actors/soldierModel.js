@@ -19,7 +19,7 @@
 // Levels of detail (triangles, about): 0 = 23-30k (fine enough for cloth folds), 1 = 3.5-5.2k, 2 = 0.7-1k.
 import * as THREE from 'three';
 import { B, BONE_NAMES, PARENT, BIND, OFFSET, EYE_R } from './soldierRig.js';
-import { buildOutfit, buildPerson, personParams, variantCount, mulberry } from './soldierKit.js';
+import { buildOutfit, buildPerson, personParams, variantCount, mulberry, carryKey } from './soldierKit.js';
 import './soldierKitUS.js';
 import './soldierKitGE.js';
 import './soldierKitSU.js';
@@ -39,11 +39,11 @@ export const LODS = 3;
 // variant, weapon role and level of detail (the geometry for LOD 0, the builder
 // for merging with each soldier's own person at LOD 1 and 2).
 const OUTFIT_CACHE = new Map();
-function outfitFor(faction, cls, variant, role, lod, camo = null) {
-  const key = `${faction}|${cls}|${variant}|${role}|${lod}|${camo || ''}`;
+function outfitFor(faction, cls, variant, role, lod, camo = null, carry = null) {
+  const key = `${faction}|${cls}|${variant}|${role}|${lod}|${camo || ''}|${carryKey(carry)}`;
   let g = OUTFIT_CACHE.get(key);
   if (!g) {
-    const { b, info } = buildOutfit(faction, cls, variant, lod, role, { camo });
+    const { b, info } = buildOutfit(faction, cls, variant, lod, role, { camo, carry });
     g = { b, info, geo: lod === 0 ? b.toGeometry() : null };
     OUTFIT_CACHE.set(key, g);
   }
@@ -115,13 +115,16 @@ export class SoldierModel {
   // recon | paratrooper | tanker), role (primary weapon: rifle | smg | mg |
   // mgBelt | at: soldierKit.js roleOf; picks the ammunition he carries), variant (outfit variant, else from the seed),
   // camo (a camouflage print his uniform is made in: an id of soldierCamo.js
-  // CAMOS; none = his army's own issue).
-  constructor(faction = 'US', textures = null, { seed = 1, lod = 0, variant, cls = 'infantry', role = 'rifle', camo = null } = {}) {
+  // CAMOS; none = his army's own issue), carry (what else he carries, so the
+  // grenades, holster, binocular case and knife on him are his own).
+  constructor(faction = 'US', textures = null, { seed = 1, lod = 0, variant, cls = 'infantry', role = 'rifle', camo = null, carry = null } = {}) {
     this.faction = FACTIONS.has(faction) ? faction : 'US';
     this.cls = CLASSES.has(cls) ? cls : 'infantry';
     this.role = ROLES.has(role) ? role : 'rifle';
     this.seed = seed;
     this.camo = camoCell(camo) === null ? null : camo;
+    // What he carries that shows on him (soldierKit.js carryOf), or null: the kit decides.
+    this.carry = carry;
     const rng = mulberry(seed * 9973 + 17);
     this.variant = (variant ?? Math.floor(rng() * 1000)) % variantCount(this.faction, this.cls);
     this.person = personParams(this.faction, rng);
@@ -188,7 +191,7 @@ export class SoldierModel {
     if (lod === this.lod) return;
     this.lod = lod;
     if (!this.meshes[lod].length) {
-      const og = outfitFor(this.faction, this.cls, this.variant, this.role, lod, this.camo);
+      const og = outfitFor(this.faction, this.cls, this.variant, this.role, lod, this.camo, this.carry);
       this.outfitInfo = og.info;
       if (lod === 0) {
         const pg = buildPerson(this.person, 0, og.info).toGeometry();

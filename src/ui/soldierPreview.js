@@ -21,7 +21,7 @@ import { partOf, partKey, buildPart } from '../weapons/models/upgradeParts.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { upgradedDef } from '../weapons/upgrades.js';
 import { SoldierModel } from '../actors/soldierModel.js';
-import { roleOf } from '../actors/soldierKit.js';
+import { roleOf, carryOf } from '../actors/soldierKit.js';
 
 const KIND = { rifle: 'rifle', semi: 'rifle', sniper: 'rifle', assault: 'rifle', carbine: 'rifle', atRifle: 'rifle', smg: 'smg', lmg: 'lmg', pistol: 'pistol', revolver: 'pistol', launcher: 'launcher', grenade: 'grenade', binoculars: 'binoculars', firstaid: 'grenade', medkit: 'grenade', wrench: 'grenade' };
 
@@ -341,9 +341,10 @@ export class SoldierPreview {
   }
 
   // Dress and arm the soldier (rebuilt only when something changed).
-  show({ faction, cls, seed, variant, primary, picks = null }) {
+  // (loadout: all he carries, as weapon ids, so the gear on him is his own.)
+  show({ faction, cls, seed, variant, primary, picks = null, loadout = null }) {
     const mid = modelId(primary, picks);
-    const k = `${faction}|${cls}|${seed}|${variant}|${primary}|${mid}`;
+    const k = `${faction}|${cls}|${seed}|${variant}|${primary}|${mid}|${loadout ? loadout.join(',') : ''}`;
     if (k === this.key) return;
     this.key = k;
     if (this.model) {
@@ -354,7 +355,7 @@ export class SoldierPreview {
     const kind = KIND[def?.type] || 'rifle';
     let m;
     try {
-      m = new SoldierModel(faction, this.lib, { seed, lod: 0, cls, role: roleOf(def), variant });
+      m = new SoldierModel(faction, this.lib, { seed, lod: 0, cls, role: roleOf(def), variant, carry: loadout ? carryOf(loadout.map((id) => WEAPONS[id])) : null });
     } catch (e) {
       console.warn('Soldier preview failed', e);
       this.model = null;

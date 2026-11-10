@@ -65,11 +65,15 @@ function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade =
   if (role === 'smg') {
     for (const s of [-1, 1]) magPouch(b, o.beltFrame(-PI / 2 + s * 0.85, y - 0.004, 0.006), { kind: 'MP40', color: o.shade(GE.canvas, 0.06), lod, metal: GE.metal });
   } else if (role === 'mg') {
-    holster(b, o.beltFrame(-PI / 2 - 0.9, y - 0.03, 0.008), { color: GE.leather, lod, kind: 'GE' });
+    // (A gunner's pistol in place of the left pouch: when he has one.)
+    if (o.carries('pistol', true)) holster(b, o.beltFrame(-PI / 2 - 0.9, y - 0.03, 0.008), { color: GE.leather, lod, kind: 'GE' });
     pouch(b, o.beltFrame(-PI / 2 + 0.8, y - 0.004, 0.006), { w: 0.11, h: 0.12, d: 0.04, color: GE.leather, cell: CELL.leather, lod, fastener: 'strap' });
   } else if (!bandolierFJ) {
     for (const s of [-1, 1]) k98Pouches(b, o.beltFrame(-PI / 2 + s * 0.78, y - 0.002, 0.006), GE, lod);
   }
+  // Any other man's pistol, if he carries one: at the right hip, between the
+  // pouches and the bread bag. Binoculars hang on the chest.
+  if (role !== 'mg' && o.carry?.pistol) holster(b, o.beltFrame(-0.12, y - 0.03, 0.008), { color: GE.leather, lod, kind: 'GE' });
   // Y-straps: from the front pouches over the shoulders to a ring at the back,
   // one strap down to the belt.
   if (harness && lod < 2) {
@@ -217,7 +221,9 @@ function infantry(o) {
   const frame = o.chance(0.4);
   const roll = o.chance(0.3);
   beltKit(o, { tin: !frame });
-  if (o.chance(0.35) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.06, 0.012), lod);
+  // Stick grenades in the belt: his own, when his loadout is known.
+  const g1 = o.chance(0.35);
+  if (o.carries('grenades', g1) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.06, 0.012), lod);
   if (frame) assaultFrame(o);
   else if (roll && lod < 2) {
     const f = o.beltFrame(PI / 2, 1.0, 0.03);
@@ -229,7 +235,8 @@ function infantry(o) {
   }
   headgear(o, GE);
   // A second stick grenade in the belt on some.
-  if (o.chance(0.4) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 + 0.35, 1.06, 0.012), lod);
+  if (o.chance(0.4) && o.carries('grenades', true) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 + 0.35, 1.06, 0.012), lod);
+  if (o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.012), { color: 0x1c1a17, lod });
   // A man with a belt-fed gun (MG 34, MG 42) carries the next belt round his
   // neck. Nobody else does: it is for his gun, not decoration.
   if (o.beltFed && lod < 2) ammoBelt(b, o.g, { lod });
@@ -248,7 +255,8 @@ function recon(o) {
   for (const s of [-1, 1]) o.patch(s * 0.1, 1.33, 0.13, 0.03, { color: CAMO_GREY, cell: CELL.splinter, thick: 0.006, bulge: 0.002 });
   o.tallBoots({ color: GE.boots, sole: GE.sole, s0: 0.46, gloss: 0.3, folds: 1 });
   beltKit(o, { bread: true, can: o.chance(0.5), spade: o.chance(0.5) });
-  binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.012), { color: 0x1c1a17, lod });
+  if (o.carries('binoculars', true)) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.35, 1.25, 0.012), { color: 0x1c1a17, lod });
+  if (o.carry?.grenades && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.06, 0.012), lod);
   headgear(o, GE, { allowCap: true, cover: 0.6, net: 0.2 });
   o.weather(o.dirt);
 }
@@ -329,7 +337,7 @@ function tanker(o) {
   o.shoes({ color: GE.boots, sole: GE.sole, high: 0.14, gloss: 0.25 });
   o.belt(1.04, 0.045, { color: GE.leather, cell: CELL.leather });
   buckle(b, o.beltFrame(-PI / 2, 1.0175, 0.006), { w: 0.055, h: 0.045, color: 0x4a4a46, frame: true, lod });
-  holster(b, o.beltFrame(-PI / 2 - 0.9, 1.01, 0.008), { color: GE.leather, lod, kind: 'GE' });
+  if (o.carries('pistol', true)) holster(b, o.beltFrame(-PI / 2 - 0.9, 1.01, 0.008), { color: GE.leather, lod, kind: 'GE' });
   if (o.role === 'smg') magPouch(b, o.beltFrame(-PI / 2 + 0.85, 1.036, 0.006), { kind: 'MP40', color: o.shade(GE.canvas, 0.06), lod });
   if (o.chance(0.5)) buildSideCap(b, GE, { lod, color: black, badge: 'eagle', tilt: 0.1, german: true });
   else buildFieldCap(b, GE, { lod, color: black });

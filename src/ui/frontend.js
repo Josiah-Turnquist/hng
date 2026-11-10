@@ -478,7 +478,7 @@ export function showFrontEnd(app) {
       const stage = main.querySelector('.fe-stage');
       if (preview) {
         // (His main gun with the upgrades fitted to it: a scope shows on it.)
-        preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0], picks: picksOf(s, s.loadout[0]) });
+        preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: s.loadout[0], picks: picksOf(s, s.loadout[0]), loadout: s.loadout });
         preview.frame(stage);
         if (!stage.dataset.drag) {
           preview.enableDrag(stage);
@@ -872,7 +872,7 @@ export function showFrontEnd(app) {
           b.addEventListener('click', () => {
             s.variant = v;
             save();
-            preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: v, primary: s.loadout[0] });
+            preview?.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: v, primary: s.loadout[0], loadout: s.loadout });
             draw();
           });
           grid.appendChild(b);
@@ -1103,7 +1103,7 @@ export function showFrontEnd(app) {
         const picks = picksOf(s, gun);
         // The gun as fitted now, at the top; and in his hands behind, when it is his main gun.
         const fittedPic = preview?.gunPicture(gun, 360, 120, picks) || gunPic;
-        if (preview && gun === s.loadout[0]) preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: gun, picks });
+        if (preview && gun === s.loadout[0]) preview.show({ faction: s.faction, cls: s.cls, seed: s.seed, variant: s.variant, primary: gun, picks, loadout: s.loadout });
         const list = upgradesOf(gun)
           .filter((u) => u.slot === slot)
           .sort((a, b) => a.level - b.level || a.credits - b.credits);

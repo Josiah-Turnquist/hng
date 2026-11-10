@@ -16,7 +16,7 @@
 // Colors: OD shade 3 (cotton), OD 33 (wool), OD 7 (1943 items), khaki webbing.
 import * as THREE from 'three';
 import { registerOutfits, CELL, PI, V, torsoWeights, B, legChain, chainPoint, pouch, buckle, rigidAt } from './soldierKit.js';
-import { buildHelmet, buildTankHelmet, canteenUS, firstAidUS, shovelUS, bayonet, backpack, backFrame, bandolier, holster, binocularCase, knife, magPouch, slungBag, packRoll } from './soldierGear.js';
+import { buildHelmet, buildTankHelmet, canteenUS, firstAidUS, shovelUS, bayonet, backpack, backFrame, bandolier, holster, binocularCase, knife, magPouch, slungBag, packRoll, torsoFrame } from './soldierGear.js';
 
 export const US = {
   jacketM41: 0x8c805c, // OD shade 3 cotton poplin
@@ -185,7 +185,9 @@ function infantry(o, { recon = false } = {}) {
   }
   // A cloth bandolier for Garand men; a fragmentation grenade on a suspender.
   if (role === 'rifle' && o.chance(0.3)) bandolier(b, o.g, US, { lod, kind: 'US', color: o.shade(0x8a8060, 0.05) });
-  if (o.chance(0.4) && lod === 0) {
+  // A grenade on a suspender: his own, when his loadout is known.
+  const gren = o.chance(0.4);
+  if (o.carries('grenades', gren) && lod === 0) {
     const f = o.beltFrame(-PI / 2 - 0.62, 1.26, 0.012);
     b.bones(rigidAt(f));
     b.material(CELL.paint);
@@ -195,7 +197,10 @@ function infantry(o, { recon = false } = {}) {
     b.paint(0x55524a);
     f.box(b, 0.01, 0.012, 0.03, 0.012, 0.03, 0.012, { r: 0.002 });
   }
-  if (recon) binocularCase(b, o.beltFrame(-2.5, belt.y - 0.06, 0.008), { color: 0x4a3a28, lod });
+  if (recon && o.carries('binoculars', true)) binocularCase(b, o.beltFrame(-2.5, belt.y - 0.06, 0.008), { color: 0x4a3a28, lod });
+  // (Any other man's binoculars hang on his chest; his pistol at the right hip.)
+  if (!recon && o.carry?.binoculars) binocularCase(b, torsoFrame(o.g, -PI / 2 + 0.3, 1.24, 0.014), { color: 0x4a3a28, lod });
+  if (o.carry?.pistol) holster(b, o.beltFrame(0.15, belt.y - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
   // Helmet.
   const net = recon || o.chance(0.6);
   // (What follows was added later: after the helmet's draws, so every man
@@ -216,7 +221,7 @@ function infantry(o, { recon = false } = {}) {
     const second = role === 'rifle' && v % 4 === 1;
     const secondC = second ? o.shade(0x8a8060, 0.05) : null;
     if (second && lod < 2) bandolier(b, o.g, US, { lod, kind: 'US', color: secondC });
-    if (lod === 0 && v % 2 === 0) {
+    if (lod === 0 && v % 2 === 0 && o.carries('grenades', true)) {
       const f = o.beltFrame(-PI / 2 + 0.62, 1.27, 0.012);
       b.bones(rigidAt(f));
       b.material(CELL.paint);
@@ -311,7 +316,7 @@ function paratrooper(o) {
   o.belt(beltY, 0.057, { color: US.web, cell: CELL.webbing });
   buckle(b, o.beltFrame(-PI / 2, beltY - 0.028, 0.006), { w: 0.05, h: 0.04, color: US.metal, frame: false, lod });
   weaponKit(o, { y: beltY, kind: 'pistol' }, o.role === 'rifle' ? 'rifle' : 'smg');
-  holster(b, o.beltFrame(0.15, beltY - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
+  if (o.carries('pistol', true)) holster(b, o.beltFrame(0.15, beltY - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
   canteenUS(b, o.beltFrame(0.9, beltY - 0.06, 0.008), US, lod);
   if (lod < 2) {
     for (const s of [-1, 1]) {
@@ -334,7 +339,7 @@ function paratrooper(o) {
   }
   // Musette bag on the back, the M3 knife on the right leg.
   backpack(b, backFrame(o.g, 1.38, 0.27, 0.27, 0.004), { w: 0.28, h: 0.28, d: 0.1, color: o.shade(US.web, 0.05), lod, round: 0.03, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
-  if (lod < 2) {
+  if (lod < 2 && o.carries('knife', true)) {
     const P = legChain(1);
     const a = chainPoint(P, 0.6, new THREE.Vector3()),
       c = chainPoint(P, 0.78, new THREE.Vector3());
@@ -380,7 +385,9 @@ function tanker(o) {
   o.shoes({ color: o.shade(US.shoes, 0.08), sole: US.sole, suede: true, high: 0.13 });
   if (leggings) o.leggings({ color: o.shade(US.leggings, 0.06) });
   // Pistol: M3 shoulder holster under the left arm, or on a pistol belt.
-  if (o.chance(0.5) && lod < 2) {
+  // (No pistol, no holster: neither the shoulder rig nor the one on the belt.)
+  const pistol = o.carries('pistol', true);
+  if (o.chance(0.5) && lod < 2 && pistol) {
     o.strap(
       [
         { x: 0.1, y: 1.36, side: -1 },
@@ -399,7 +406,7 @@ function tanker(o) {
     const beltY = 1.07;
     o.belt(beltY, 0.057, { color: US.web, cell: CELL.webbing });
     buckle(b, o.beltFrame(-PI / 2, beltY - 0.028, 0.006), { w: 0.05, h: 0.04, color: US.metal, lod });
-    holster(b, o.beltFrame(0.15, beltY - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
+    if (pistol) holster(b, o.beltFrame(0.15, beltY - 0.05, 0.008), { color: US.leather, lod, kind: 'US' });
     if (o.role === 'smg') magPouch(b, o.beltFrame(-PI / 2 - 0.6, beltY - 0.004, 0.005), { kind: 'thompson', color: US.web, lod });
   }
   buildTankHelmet(b, 'US', US, { lod, goggles: o.chance(0.75), color: o.shade(US.tankHelmet, 0.08) });
