@@ -82,7 +82,7 @@ test("online, a tank's tracks run each at its side's speed, and its engine and t
     whine = 0;
   const r = drive('m4a1_sherman', (phase, v, b, sim) => {
     if (b.trackSpeed.every((x, i) => Math.abs(x - v.trackSpeed[i]) < 0.6)) tracked++;
-    if (phase === 'turn' && v.speed > 2 && b.trackSpeed[0] > b.trackSpeed[1] + 0.3) turning++;
+    if (phase === 'turn' && v.speed > 2 && b.trackSpeed[0] > b.trackSpeed[1] + 0.15) turning++;
     // The gunner swings the turret round meanwhile.
     if (phase === 'coast') sim.v.aim.yaw = sim.v._hullYaw() + 1.5;
     if (phase === 'coast' && Math.abs(v.turretRate) > 0.05 && Math.abs(b.turretRate - v.turretRate) < 0.3 * Math.abs(v.turretRate)) whine++;

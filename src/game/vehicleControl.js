@@ -232,7 +232,10 @@ export class VehicleController {
     if (this.role === 'gunner' && this.wantFire) {
       this.wantFire = false;
       const p = v.fireMain(s);
-      if (p) this.shake = 1;
+      if (p) {
+        this.shake = 1;
+        this.shakeT = 0;
+      }
       else if (!v.loaded) this.game.audio?.play?.('dryFire', null, { volume: 0.4 });
     }
     this.wantFire = false;
@@ -337,8 +340,14 @@ export class VehicleController {
       else if (role === 'sidecarMg' && v.mg) this._aimMgFromCamera(v);
     }
     if (this.shake > 0.01) {
-      cam.rotation.x += (Math.random() - 0.5) * this.shake * 0.02;
-      cam.rotation.y += (Math.random() - 0.5) * this.shake * 0.02;
+      // The gun's jolt: a nod and a wobble that die away in half a second,
+      // sized to the view so that a telescope is not thrown about. (It was
+      // a new random direction every frame, up to half a degree: through a
+      // sight of twelve degrees, a fit.)
+      this.shakeT = (this.shakeT || 0) + dt;
+      const k = this.shake * this.shake * 0.006 * (cam.fov / 70);
+      cam.rotation.x += k * Math.sin(this.shakeT * 38);
+      cam.rotation.y += k * 0.6 * Math.sin(this.shakeT * 29 + 1);
     }
     if (Math.abs(fov - cam.fov) > 0.01) {
       cam.fov = fov;

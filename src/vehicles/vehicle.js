@@ -78,8 +78,9 @@ const ANCHOR_PART = {
 // vehicle picks up speed twice as fast (the push left over after the hill, the
 // ground and the air is doubled, and gear changes take half the time, so the
 // top speeds stay where they were), and turns much sharper (a turning circle
-// TURN_CIRCLE the size at the same speed; tanks pivot and turn TURN_RATE times
-// as fast). The bicycle's rider gets three times the push (bike.js).
+// TURN_CIRCLE the size at the same speed). The bicycle's rider gets three
+// times the push (bike.js). Tanks are apart: heavy machines, with their own
+// figures in tracked.js.
 // At speed, where grip sets the limit, cars and trucks turn harder still: their
 // tires grip TURN_GRIP times as hard sideways (braking and pulling away stay as
 // they were), and their weight sits ROLL_CG as high as the real one (sidecar
@@ -534,7 +535,8 @@ export class Vehicle {
   _startShift(g, time = this.def.shiftTime) {
     this.nextGear = g;
     this.gear = 0;
-    this.shiftTimer = time / ACCEL_GAIN; // (gameplay: quicker changes, see ACCEL_GAIN)
+    // (Gameplay: quicker changes, see ACCEL_GAIN. Not for tanks: tracked.js.)
+    this.shiftTimer = this.def.kind === 'tracked' ? time : time / ACCEL_GAIN;
     if (time > 0.25) this.game.audio?.play?.('gearShift', this.body.position, { volume: 0.35 });
   }
 

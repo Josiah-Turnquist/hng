@@ -83,11 +83,124 @@ test('Willys MB: brakes from 60 km/h in a plausible distance', () => {
   assert.ok(stopped > 12 && stopped < 40, `stopping distance ${stopped}`);
 });
 
-test('tank top speeds match the real ones', () => {
-  const expect = { m4a1_sherman: [36, 42], panzer4_h: [37, 44], t34_76: [48, 56], t34_85: [48, 57], tiger1: [36, 46], m5a1_stuart: [50, 61] };
-  for (const [id, [lo, hi]] of Object.entries(expect)) {
+test('every tank tops out at 28 km/h (the players asked: heavy machines), on the road and downhill', () => {
+  for (const id of ['m4a1_sherman', 'panzer4_h', 't34_76', 't34_85', 'tiger1', 'm5a1_stuart']) {
     const { v } = accelerate(id, 80);
-    assert.ok(kmh(v) > lo && kmh(v) < hi, `${id} top speed ${kmh(v)}`);
+    assert.ok(kmh(v) > 26.5 && kmh(v) < 28.6, `${id} top speed ${kmh(v).toFixed(1)}`);
+  }
+  // Down a 10 degree hill with the throttle held: held back at the same speed.
+  const { game } = makeWorld({ size: 4096, slopeDeg: 10 });
+  const v = spawn(game, 't34_85', 0, -1500, Math.PI);
+  run(v, 2);
+  let fastest = 0;
+  run(v, 40, (t) => {
+    v.driverInput(1, 0);
+    if (t > 15) fastest = Math.max(fastest, kmh(v));
+  });
+  assert.ok(fastest < 31, `downhill ${fastest.toFixed(1)} km/h`);
+});
+
+test('tanks handle like heavy machines: no sliding sideways, a steady swing, and they stop when the throttle is let go', () => {
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  const side = (v) => Math.abs(v.body.velocity.dot(right.set(1, 0, 0).applyQuaternion(v.body.quaternion)));
+  const swing = (v) => Math.abs(v.body.angular.dot(up.set(0, 1, 0).applyQuaternion(v.body.quaternion))) / DEG;
+  // [tank, the swing at speed (degrees a second: between), the same turning from a stand]
+  for (const [id, lo, hi, plo, phi] of [
+    ['m4a1_sherman', 9, 17, 9, 17],
+    ['panzer4_h', 9, 17, 9, 17],
+    ['t34_76', 9, 17, 8, 17],
+    ['t34_85', 9, 17, 8, 17],
+    ['tiger1', 8, 14, 9, 14],
+    ['m5a1_stuart', 14, 21, 13, 21],
+  ]) {
+    for (const surface of [SURF.GRASS, SURF.ROAD]) {
+      const where = surface === SURF.GRASS ? 'on grass' : 'on the road';
+      const { game } = makeWorld({ size: 4096, surface });
+      const v = spawn(game, id, 0, 1800, 0);
+      run(v, 2);
+      run(v, 30, () => v.driverInput(1, 0));
+      // A full turn held at full speed: it swings steadily, keeps most of its
+      // speed, and its tracks hold it (it slid sideways at 5 to 10 m/s).
+      let slid = 0,
+        w = 0,
+        n = 0;
+      run(v, 6, (t) => {
+        v.driverInput(1, 1);
+        if (t < 2.5) return;
+        slid = Math.max(slid, side(v));
+        w += swing(v);
+        n++;
+      });
+      assert.ok(slid < 0.5, `${id} ${where}: slid sideways at ${slid.toFixed(2)} m/s in a full turn`);
+      assert.ok(w / n > lo && w / n < hi, `${id} ${where}: swings at ${(w / n).toFixed(1)} degrees a second at speed, want ${lo} to ${hi}`);
+      assert.ok(kmh(v) > 18, `${id} ${where}: still doing ${kmh(v).toFixed(0)} km/h after the turn`);
+      // The throttle let go: it stops in a few lengths (it rolled on 100 m).
+      run(v, 1.5, () => v.driverInput(1, 0));
+      const p0 = v.body.position.clone();
+      let stopped = null;
+      run(v, 15, (t) => {
+        v.driverInput(0, 0);
+        if (stopped === null && Math.abs(kmh(v)) < 1) stopped = t;
+      });
+      const rolled = v.body.position.distanceTo(p0);
+      assert.ok(stopped !== null && stopped < 8 && rolled > 10 && rolled < 32, `${id} ${where}: rolled on ${rolled.toFixed(0)} m and ${stopped?.toFixed(1)} s`);
+    }
+    // Swinging round from a stand.
+    const { game } = makeWorld({ surface: SURF.GRASS });
+    const v = spawn(game, id, 0, 0, 0);
+    run(v, 2);
+    let w = 0,
+      n = 0;
+    run(v, 8, (t) => {
+      v.driverInput(0, 1);
+      if (t > 4) {
+        w += swing(v);
+        n++;
+      }
+    });
+    assert.ok(w / n > plo && w / n < phi, `${id}: swings round from a stand at ${(w / n).toFixed(1)} degrees a second, want ${plo} to ${phi}`);
+  }
+  // Getting under way: heavy (a jeep does it in a second).
+  for (const [id, lo, hi] of [
+    ['m4a1_sherman', 5.5, 10],
+    ['panzer4_h', 8, 15],
+    ['tiger1', 8, 15],
+    ['m5a1_stuart', 2.5, 5],
+  ]) {
+    const { marks } = accelerate(id, 30);
+    assert.ok(marks[20] > lo && marks[20] < hi, `${id} 0-20 km/h in ${marks[20]?.toFixed(1)} s, want ${lo} to ${hi}`);
+  }
+});
+
+test("firing the main gun: the gunner's view stays with his telescope, and the hull only rocks", () => {
+  for (const id of ['m4a1_sherman', 'panzer4_h', 't34_76', 'tiger1']) {
+    const { game } = makeWorld({ surface: SURF.GRASS });
+    game.projectiles = { fire: () => ({}) };
+    const textures = { standard: () => new THREE.MeshStandardMaterial(), get: () => ({}) };
+    const v = new TrackedVehicle(game, { ...VEHICLES[id], id }, buildVehicle(id, textures), 0, 0, 0);
+    game.vehicles.push(v);
+    v.enter(rider(), 0);
+    run(v, 3, () => v.driverInput(0, 0));
+    v.syncModel(0);
+    const eye0 = v.anchorWorld('gunnerEye', new THREE.Vector3()).clone();
+    const p0 = v.body.position.clone();
+    assert.ok(v.fireMain(null), `${id} fired`);
+    let eyeMoved = 0,
+      barrel = 0,
+      fastest = 0;
+    const eye = new THREE.Vector3();
+    run(v, 2, () => {
+      v.driverInput(0, 0);
+      v.syncModel(1 / 120);
+      eyeMoved = Math.max(eyeMoved, v.anchorWorld('gunnerEye', eye).distanceTo(eye0));
+      barrel = Math.max(barrel, v.gunBack || 0);
+      fastest = Math.max(fastest, v.body.velocity.length());
+    });
+    // (The barrel runs back 30 cm in its cradle: his eye went with it.)
+    assert.ok(barrel > 0.2, `${id}: the barrel runs back (${barrel.toFixed(2)} m)`);
+    assert.ok(eyeMoved < 0.06, `${id}: the gunner's eye moved ${(eyeMoved * 100).toFixed(1)} cm`);
+    assert.ok(fastest < 0.25 && v.body.position.distanceTo(p0) < 0.05, `${id}: the hull moved ${(v.body.position.distanceTo(p0) * 100).toFixed(1)} cm, at ${fastest.toFixed(2)} m/s at the most`);
   }
 });
 
@@ -120,7 +233,7 @@ test('Tiger I turns on the spot in neutral (regenerative steering)', () => {
   const y0 = yawOf(v);
   run(v, 3, () => v.driverInput(0, 1));
   const turned = Math.abs(((yawOf(v) - y0 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
-  assert.ok(turned > 60, `turned ${turned}`);
+  assert.ok(turned > 25, `turned ${turned}`);
   assert.ok(v.body.position.distanceTo(p0) < 2, `stayed in place (${v.body.position.distanceTo(p0)} m)`);
 });
 
@@ -129,18 +242,32 @@ test('Opel Blitz: a slow, heavy truck (about 80-90 km/h flat out)', () => {
   assert.ok(kmh(v) > 70 && kmh(v) < 95, `top speed ${kmh(v)}`);
 });
 
-test('Sherman turns at speed on a fixed circle (the real 31 ft, tighter for gameplay: TURN_RATE)', () => {
-  const { game } = makeWorld();
-  const v = spawn(game, 'm4a1_sherman', 0, 300, 0);
-  run(v, 2);
-  // (Six seconds now get it to the speed twelve did with the real pick-up.)
-  run(v, 6, () => v.driverInput(1, 0));
-  run(v, 6, () => v.driverInput(1, 1));
-  const r = Math.abs(v.speed / v.body.angular.y);
-  assert.ok(r > 4.6 && r < 7, `radius ${r}`);
+test('Sherman: slow, it turns on a fixed circle (the real 31 ft, tighter for gameplay); fast, on a wider one', () => {
+  const circle = (kmhHeld) => {
+    const { game } = makeWorld();
+    const v = spawn(game, 'm4a1_sherman', 0, 300, 0);
+    run(v, 2);
+    const gas = () => (kmh(v) < kmhHeld ? 1 : 0.15);
+    run(v, 12, () => v.driverInput(gas(), 0));
+    let r = 0,
+      n = 0;
+    run(v, 8, (t) => {
+      v.driverInput(gas(), 1);
+      if (t > 4) {
+        r += Math.abs(v.speed / v.body.angular.y);
+        n++;
+      }
+    });
+    return r / n;
+  };
+  const slow = circle(4);
+  assert.ok(slow > 4.6 && slow < 8, `radius at a walk ${slow.toFixed(1)} m`);
+  // (No more than about 16 degrees a second, nor a third of a g sideways.)
+  const fast = circle(28);
+  assert.ok(fast > 20 && fast < 40, `radius flat out ${fast.toFixed(1)} m`);
 });
 
-test('gameplay: twice the pick-up and sharper turns than the real figures, the same top speeds', () => {
+test('gameplay: twice the pick-up and sharper turns than the real figures for cars and motorcycles (tanks have their own figures)', () => {
   // 0-20 km/h (the real machines: Willys 2.1 s, T-34/76 7.9 s, WLA 2.5 s).
   const t20 = (id) => {
     const { game } = makeWorld({ size: 2048 });
@@ -155,7 +282,7 @@ test('gameplay: twice the pick-up and sharper turns than the real figures, the s
   };
   for (const [id, lo, hi] of [
     ['willys_mb', 0.8, 1.5],
-    ['t34_76', 3, 4.8],
+    ['t34_76', 5, 8],
     ['wla', 1, 1.7],
   ]) {
     const t = t20(id);
@@ -190,8 +317,8 @@ test('gameplay: twice the pick-up and sharper turns than the real figures, the s
   }
   // Swinging round on the spot (real: T-34/76 7.6, Tiger 26 degrees a second).
   for (const [id, lo, hi] of [
-    ['t34_76', 18, 28],
-    ['tiger1', 42, 54],
+    ['t34_76', 8, 17],
+    ['tiger1', 9, 14],
   ]) {
     const { game } = makeWorld();
     const v = spawn(game, id, 0, 0, 0);
@@ -962,9 +1089,9 @@ function cruise(id, speed, { surface } = {}) {
 }
 
 test('steering answers the way it is pressed at once, and stops soon after the key is let go', () => {
-  for (const [id, speed, runOnMax] of [
+  for (const [id, speed, runOnMax, turnMin = 10] of [
     ['willys_mb', 29, 12],
-    ['m4a1_sherman', 22, 18],
+    ['m4a1_sherman', 22, 18, 6], // (heavy levers: about half a second to pull one over)
     ['wla', 45, 12],
     ['bicycle', 18, 28], // (it turns 90 degrees in those 1.2 s: the run-on is a quarter of that)
     ['r75_sidecar', 40, 4],
@@ -982,7 +1109,7 @@ test('steering answers the way it is pressed at once, and stops soon after the k
     run(v, 3, () => v.driverInput(hold(), 0));
     const runOn = Math.abs(wrap(yawOf(v) - y1));
     assert.ok(wrongWay < 1 * DEG, `${id} first swung ${(wrongWay / DEG).toFixed(1)} degrees the wrong way`);
-    assert.ok(turned > 10 * DEG, `${id} turned ${(turned / DEG).toFixed(1)} degrees in 1.2 s`);
+    assert.ok(turned > turnMin * DEG, `${id} turned ${(turned / DEG).toFixed(1)} degrees in 1.2 s`);
     assert.ok(runOn < runOnMax * DEG, `${id} turned on ${(runOn / DEG).toFixed(1)} degrees after the key was let go`);
     assert.ok(!v.fallen);
   }
@@ -1122,17 +1249,17 @@ test('getting on beside a machine (F) puts a lone player on the saddle; the side
 
 test('clutch-brake and epicyclic tanks turn at speed; a jeep holds its turn at speed', () => {
   for (const id of ['t34_76', 't34_85', 'panzer4_h']) {
-    const v = cruise(id, 32);
+    const v = cruise(id, 26);
     let s = 0,
       n = 0;
     run(v, 2, (t) => {
-      v.driverInput(kmh(v) < 32 ? 0.6 : 0, 1);
+      v.driverInput(kmh(v) < 26 ? 0.6 : 0, 1);
       if (t > 1) {
         s += Math.abs(v.body.angular.y);
         n++;
       }
     });
-    assert.ok(s / n > 10 * DEG, `${id} turns at ${((s / n) / DEG).toFixed(1)} degrees a second at 32 km/h`);
+    assert.ok(s / n > 8 * DEG, `${id} turns at ${((s / n) / DEG).toFixed(1)} degrees a second at 26 km/h`);
   }
   // Full lock at 50 km/h: the turn settles near its first rate instead of fading.
   const v = cruise('willys_mb', 50);

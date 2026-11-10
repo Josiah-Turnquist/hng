@@ -15,10 +15,31 @@
 //    lever brakes it to turn around it.
 import { badgeValue } from '../game/badges.js';
 import * as THREE from 'three';
-import { Vehicle, TURN_RATE } from './vehicle.js';
+import { Vehicle } from './vehicle.js';
 import { SHELLS } from './defs.js';
 import { clamp, approach, DEG, wrapAngle, gaussRandom } from '../core/math.js';
 import { solveZero } from '../ballistics/solver.js';
+
+// How the tanks handle, asked for by the players on top of the real figures:
+// heavy machines. Every tank tops out at TANK_TOP; they pick up speed nearer
+// to how the real ones did (PICKUP, less than the cars and motorcycles get,
+// and gear changes take their real time); the
+// hull swings round at no more than its turnRate (degrees a second: 20 for a
+// light tank, 16 for a medium, 13 for a heavy), and in a turn under way the
+// driver allows no more than SIDE_G of sideways pull; the tracks hold the hull
+// against sliding sideways (KEEL); and with the throttle let go it slows as a
+// driver eases it down, not rolling on for a hundred meters (EASE_OFF).
+export const TANK_TOP = 28 / 3.6; // m/s
+const PICKUP = 1.4; // the push left over after the ground and the hill, times this (cars: 2)
+const SIDE_G = 0.3;
+const KEEL = 0.5; // sideways grip of the tracks against sliding bodily, as a share of the weight on them
+const EASE_OFF = 0.11; // braking with the throttle let go, as a share of the weight
+// (The smallest circle of a tank that can't pivot, and the turning circle in
+// gear of the Tiger, stay this much tighter than the real ones.)
+const CIRCLE = 1.7;
+export function turnRateOf(def) {
+  return (def.turnRate ?? (def.mass > 45000 ? 13 : def.mass < 20000 ? 20 : 16)) * DEG;
+}
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -114,6 +135,15 @@ export class TrackedVehicle extends Vehicle {
     this.setSightRange(this.sightRange);
   }
 
+  // The gunner's eye is at his telescope, which is fixed in the turret's
+  // front: it does not run back with the barrel. (It did: every shot threw
+  // his whole view a foot backwards and forwards again.)
+  anchorWorld(name, out = new THREE.Vector3()) {
+    const p = super.anchorWorld(name, out);
+    if (p && name === 'gunnerEye' && this.gunBack > 0 && (this.model.meta?.anchorParts?.gunnerEye ?? 'gun') === 'gun') p.addScaledVector(this.boreDir(_fwd), this.gunBack);
+    return p;
+  }
+
   _hullYaw() {
     const f = _v.set(0, 0, -1).applyQuaternion(this.body.quaternion);
     return Math.atan2(-f.x, -f.z);
@@ -151,20 +181,27 @@ export class TrackedVehicle extends Vehicle {
     const rs = d.sprocketRadius;
     let throttle = inp.throttle;
     const steer = inp.steer;
+    const top = d.topSpeed ?? TANK_TOP;
+    const wTurn = turnRateOf(d);
+    const upNow = _v2.set(0, 1, 0).applyQuaternion(b.quaternion);
+    const swingNow = Math.abs(b.angular.dot(upNow));
+    // The governor: the throttle comes off as it nears its top speed.
+    if (this.speed > top - 0.2) throttle *= clamp((top + 0.3 - this.speed) / 0.5, 0, 1);
     // The Tiger's regenerative steering turns it on the spot in neutral.
     const neutralTurn = d.steering === 'regenerative' && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < 1;
     // Turning from a standstill with only A or D: the driver puts it in gear and
     // feeds in the gas to swing round at a brisk walk. (Quicker than a careful
-    // driver would, for gameplay: see TURN_RATE. A tank that can't pivot, like
+    // driver would, for gameplay: its turn rate above. A tank that can't pivot, like
     // the Sherman, swings round its smallest circle, kept at up to a fast walk.)
     let pivoting = false;
     if (!neutralTurn && Math.abs(steer) > 0.1 && throttle < 0.05 && inp.brake < 0.05 && this.alive && Math.abs(this.speed) < (this.pivotThrottle > 0 ? 4 : 1.5)) {
       this.wantDir = 1;
       pivoting = true;
+      // (Gas enough to swing the hull at its turn rate, and no faster; the
+      // track never past what that swing needs.)
       const vo = Math.max(Math.abs(this.trackSpeed[0]), Math.abs(this.trackSpeed[1]));
-      const quick = d.steering === 'controlledDiff' ? 2 : TURN_RATE;
-      const target = (d.steering === 'controlledDiff' ? 1.6 : 1.1) * quick;
-      throttle = clamp((target - vo) * 4, 0, 1) * Math.abs(steer);
+      const vMax = d.steering === 'controlledDiff' ? wTurn * (d.turnRadius / CIRCLE + d.trackCenters / 2) * 1.6 : wTurn * d.trackCenters * 3;
+      throttle = Math.min(clamp((wTurn - swingNow) * 6, 0, 1), clamp((vMax - vo) * 4, 0, 1)) * Math.abs(steer);
     }
     this.pivotThrottle = pivoting ? Math.max(throttle, 0.01) : 0;
     // Levers let go while under way: the driver checks the hull's swing with a
@@ -177,7 +214,8 @@ export class TrackedVehicle extends Vehicle {
     }
     // (The driver lets a lever go quicker than he pulls it.)
     const back = Math.abs(lever) < Math.abs(this.steer) || lever * this.steer < 0;
-    this.steer = approach(this.steer, lever, dt * (back ? 20 : d.steering === 'clutchBrake' ? 6 : 4));
+    // (Pulled over about half a second: heavy levers on a heavy machine.)
+    this.steer = approach(this.steer, lever, dt * (back ? 10 : d.steering === 'clutchBrake' ? 3 : 2.2));
     const st = this.steer;
     const a = Math.abs(st);
     const inner = st > 0 ? 1 : 0; // turning right: the right track is inside
@@ -188,7 +226,14 @@ export class TrackedVehicle extends Vehicle {
     // Engine and gearbox. Through a differential the engine turns with the
     // average of the tracks; with a steering clutch out, only the outer track.
     const vMean = (this.trackSpeed[0] + this.trackSpeed[1]) / 2;
-    const declutched = d.steering !== 'controlledDiff' && a >= 0.15;
+    // Under way, the lever tanks (clutch and brake, epicyclic) are steered
+    // like the others: the inner track slowed against the outer one, its push
+    // passed across, not burnt in a brake. (Braking a track at speed is how
+    // the real ones did it, and it cost them half their speed in every turn
+    // and a change down in the middle of it. Slow, they still brake a track
+    // and swing round it.)
+    const sweep = d.steering !== 'controlledDiff' && d.steering !== 'regenerative' && Math.abs(vMean) > 2 && !pivoting;
+    const declutched = d.steering !== 'controlledDiff' && a >= 0.15 && !sweep;
     const ratio = this._engineRpm(declutched ? this.trackSpeed[outer] : vMean, rs, throttle, dt);
     const broken = this.modules.transmission <= 0;
     const torque = broken ? 0 : this._engineTorque(throttle);
@@ -199,10 +244,10 @@ export class TrackedVehicle extends Vehicle {
       const over = clamp((this.rpm - d.engine.idle * 1.3) / 500, 0, 1);
       engineBrake = -0.18 * tmax * over * Math.sign(vMean || 1) * Math.sign(ratio);
     }
-    // (With the gameplay gain on the push when getting under way, ACCEL_GAIN in
-    // vehicle.js; not for swinging round on the spot.)
+    // (A little gain on the push when getting under way, PICKUP; not for
+    // swinging round on the spot.)
     const push = ((torque + engineBrake) * ratio * d.efficiency) / rs;
-    const total = pivoting ? push : this._gain(push);
+    const total = pivoting ? push : this._gain(push, PICKUP);
     // Effective mass of each track: the track itself plus (in gear) the engine's
     // spinning parts seen through the gearbox.
     const engM = ratio !== 0 ? (d.engine.inertia * ratio * ratio) / (rs * rs) / 2 : 0;
@@ -217,31 +262,39 @@ export class TrackedVehicle extends Vehicle {
       // A steering differential driven from the gearbox: the turning radius is
       // fixed by the gear (3.4 m in first, wider in each higher gear); in
       // neutral the tracks counter-rotate.
-      // (The turns, in or out of gear, quicker than the real ones:
-      // gameplay, see TURN_RATE.)
+      // (The circle tighter than the real one, CIRCLE; but never swinging
+      // faster than the turn rate, nor pulling more than SIDE_G sideways.)
       const g = Math.max(1, Math.abs(this.gear || this.nextGear || 1));
-      const R = (d.turnRadius * (d.gears[0] / d.gears[g - 1]) ** 0.75) / TURN_RATE;
+      const R = Math.max((d.turnRadius * (d.gears[0] / d.gears[g - 1]) ** 0.75) / CIRCLE, Math.abs(vMean) / wTurn, (vMean * vMean) / (SIDE_G * 9.81));
       const kmin = d.trackCenters / (2 * R);
-      // In neutral: outer track forward and inner back, about 0.9 m/s each.
-      diffTarget = neutralTurn ? a * 1.8 * TURN_RATE : a * 2 * kmin * vMean;
+      // In neutral: outer track forward and inner back, swinging at the turn rate.
+      // (The tracks slip a little as they scrub round: 1.4.)
+      diffTarget = neutralTurn ? a * wTurn * d.trackCenters * 1.4 : a * 2 * kmin * vMean * this._scrub(a, vMean, R, swingNow, dt);
       lock = a < 0.05;
     } else if (d.steering === 'controlledDiff') {
       // Braking one side of the differential speeds up the other: the track speeds
       // are forced apart, up to the fixed ratio of the mechanism (applied below).
-      // Fast, the driver eases the steering brake to keep the turn under about
-      // half a g sideways. (Both sharper for gameplay: TURN_RATE.)
-      const R = Math.max(d.turnRadius / TURN_RATE, (vMean * vMean) / (4.9 * TURN_RATE));
-      diffTarget = (a * d.trackCenters * vMean) / R;
+      // Fast, the driver eases the steering brake to keep the turn under SIDE_G
+      // sideways and the swing under the turn rate. (The smallest circle
+      // tighter than the real one: CIRCLE.)
+      // (Swinging round from a stand, the gas keeps the swing to the turn rate.)
+      const R = Math.max(d.turnRadius / CIRCLE, (vMean * vMean) / (SIDE_G * 9.81), pivoting ? 0 : Math.abs(vMean) / wTurn);
+      diffTarget = ((a * d.trackCenters * vMean) / R) * this._scrub(a, vMean, R, swingNow, dt);
+      lock = a < 0.05;
+    } else if (sweep) {
+      const R = Math.max(d.trackCenters / 2, (vMean * vMean) / (SIDE_G * 9.81), Math.abs(vMean) / wTurn);
+      diffTarget = ((a * d.trackCenters * vMean) / R) * this._scrub(a, vMean, R, swingNow, dt);
       lock = a < 0.05;
     } else {
       // Clutch-brake and epicyclic steering: the lever slows the inner track to a
       // fraction of the outer one (a fully pulled lever stops it: the tank turns
       // around it). Drivers feather the lever at speed, so the fraction is less
       // extreme when moving fast.
-      // Tightest radius the driver will use: a pivot when slow, and no more than
-      // about 0.4 g sideways when moving (more for gameplay: TURN_RATE).
+      // Tightest radius the driver will use: a pivot when slow; under way no
+      // more than SIDE_G sideways, and the hull swinging no faster than its
+      // turn rate.
       const half = d.trackCenters / 2;
-      const rMin = Math.max(half, (vMean * vMean) / (3.9 * TURN_RATE));
+      const rMin = Math.max(half, (vMean * vMean) / (SIDE_G * 9.81), pivoting ? 0 : Math.abs(vMean) / wTurn);
       const kMin = (rMin - half) / (rMin + half);
       const k = 1 - a * (1 - kMin);
       const vo = this.trackSpeed[outer],
@@ -268,6 +321,11 @@ export class TrackedVehicle extends Vehicle {
     for (let i = 0; i < 2; i++) {
       brake[i] = Math.max(brake[i], inp.brake * d.brakeForce * 0.5);
       if (throttle < 0.05 && inp.brake < 0.05 && a < 0.1 && Math.abs(this.speed) < 0.4) brake[i] = Math.max(brake[i], d.brakeForce * 0.3);
+      // The throttle let go under way: the driver eases it down (30 tonnes
+      // left to roll went on for a hundred meters).
+      else if (inp.throttle < 0.05 && inp.brake < 0.05 && a < 0.1 && !pivoting && this.alive) brake[i] = Math.max(brake[i], (EASE_OFF * d.mass * 9.81) / 2);
+      // Over its top speed (downhill): held back.
+      if (this.speed > top + 0.4) brake[i] = Math.max(brake[i], Math.min(d.brakeForce * 0.5, (this.speed - top) * d.mass));
       if (this.modules[i === 0 ? 'trackL' : 'trackR'] <= 0) {
         drive[i] = 0;
         brake[i] = Math.max(brake[i], d.brakeForce * 0.5);
@@ -287,6 +345,8 @@ export class TrackedVehicle extends Vehicle {
     const ground = this.trackGround;
     const loads = this.trackLoad;
     const stiff = [0, 0];
+    let muSum = 0,
+      muN = 0;
     ground[0] = ground[1] = 0;
     loads[0] = loads[1] = 0;
     for (const w of this.wheels) {
@@ -302,6 +362,8 @@ export class TrackedVehicle extends Vehicle {
       const vLong = _vel.dot(wf);
       const vLat = _vel.dot(wr);
       const surf = this.surfaceAt(w);
+      muSum += surf.mu;
+      muN++;
       // Grousers dig into soft ground, so tracks keep more grip there than tires.
       const grip = clamp(0.55 + surf.mu * 0.7, 0.6, 1.1);
       const Fz = Math.min(w.fz, w.load * 3);
@@ -332,6 +394,18 @@ export class TrackedVehicle extends Vehicle {
       ground[w.track] += fl;
       loads[w.track] += Fz;
       if (e <= 1 && Math.abs(fl) < limL) stiff[w.track] += cs + ks * dt;
+    }
+    // The tracks hold the hull against sliding bodily sideways. (The grip
+    // under each road wheel above is eased in a turn, so the tracks can
+    // scrub round at all; left at that, the whole tank drifted sideways
+    // through every fast turn like a car on ice.)
+    const loadAll = loads[0] + loads[1];
+    if (loadAll > 0) {
+      const right = _wr.crossVectors(_fwd, up).normalize();
+      const vSide = b.velocity.dot(right);
+      const surfGrip = clamp(0.4 + (muN ? muSum / muN : 0.7), 0.55, 1.1);
+      const F = clamp((-vSide * loadAll * 8) / 9.81, -KEEL * surfGrip * loadAll, KEEL * surfGrip * loadAll);
+      b.applyForce(_v.copy(right).multiplyScalar(F));
     }
     // The gun's recoil, spread over the stroke of the recoil system.
     const ri = this.recoilImpulse;
@@ -372,6 +446,17 @@ export class TrackedVehicle extends Vehicle {
     }
     this.slipping = clamp(Math.abs(vMean - this.speed) / 2, 0, 1);
     this._shift(dt);
+  }
+
+  // Tracks scrub as they turn the hull: it swings slower than the difference
+  // in their speeds says, by half on some ground. The driver pulls the lever
+  // that much further: how much more difference to ask for (1 to 2.4), found
+  // as he goes from how fast the hull really swings (the turn wanted: a of
+  // the way to a circle of radius R at the tracks' speed v).
+  _scrub(a, v, R, swing, dt) {
+    const want = (a * Math.abs(v)) / R;
+    if (a > 0.3 && Math.abs(v) > 0.8) this.scrub = clamp((this.scrub ?? 1.5) + (want - swing) * dt * 4, 1, 2.4);
+    return this.scrub ?? 1.5;
   }
 
   step(dt) {
@@ -547,7 +632,8 @@ export class TrackedVehicle extends Vehicle {
     owner?.tally?.shot(p.weapon, owner);
     // Recoil: shell and powder gas momentum pushes the whole tank (the recoil
     // system spreads it over a few tenths of a second).
-    const impulse = shell.mass * mv + shell.mass * 0.45 * 1400;
+    // (The charge of these guns weighs about a quarter of the shell.)
+    const impulse = shell.mass * mv + shell.mass * 0.25 * 1400;
     const at = this.anchorWorld('gunnerEye', _v2) || this.body.position;
     this.recoilImpulse = { j: impulse, dir: dir.clone(), at: at.clone(), t: 0.15 };
     this.recoil = 1;
@@ -575,6 +661,7 @@ export class TrackedVehicle extends Vehicle {
       parts.gun.rotation.x = this.gunElev;
       // The barrel runs back in its cradle when it fires.
       const back = this.recoil > 0.5 ? (this.recoil - 0.5) * 2 * 0.3 : 0;
+      this.gunBack = back;
       const piv = this.partPivots.gun.clone().sub(this.partPivots.turret);
       parts.gun.position.copy(piv).add(_v.set(0, Math.sin(this.gunElev), -Math.cos(this.gunElev)).multiplyScalar(-back));
     }
