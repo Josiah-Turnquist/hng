@@ -32,9 +32,53 @@ export const CELL = {
   burlap: 15, // hessian scrim
   wrinkle: 16, // folds and creases of worn cloth (a coarser layer over the cloth cells)
   hand: 17, // bare hands, painted in a fixed layout (soldierHead.buildHand sets the UVs)
+  pack: 18, // sewn canvas packs and their flaps, painted in a fixed layout (soldierGear.softBag, layFlat)
+  sack: 19, // a drawstring sack, painted in a fixed layout
 };
+// Where each painted piece lies in its cell: [u0, v0, u1, v1].
+export const PACK_UV = {
+  body: [0.01, 0.006, 0.99, 0.554], // a boxy pack unrolled: side, outer face, side; top to bottom
+  flapUS: [0.006, 0.576, 0.494, 0.994], // a flap from its hinge to its free edge, stencilled "U.S."
+  flap: [0.506, 0.576, 0.994, 0.994], // the same, plain
+  sack: [0.01, 0.01, 0.99, 0.99],
+};
+// The share of the unrolled body that is each side panel.
+export const PACK_SIDE = 0.14;
 // Mid-grey vertex color for cells with their own colors (x2 in the material = 1).
 export const CAMO_GREY = new THREE.Color(0.5, 0.5, 0.5);
+
+// What the two painted packs are drawn with.
+const PACK_LIB = /* glsl */ `
+    float pkBand(float d, float w) { return 1.0 - smoothstep(w * 0.55, w, abs(d)); }
+    // A row of machine stitches: d across it, s along it (m).
+    float pkSt(float d, float s) { return pkBand(d, 0.0014) * step(0.3, fract(s / 0.005)); }
+    float pkBox(vec2 p, vec2 b) { vec2 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0); }
+    // Used canvas: uneven threads and dye, water marks with a dark rim, dirt,
+    // runs, soft creases. Returns how light it is; adds to the height h.
+    float pkCanvas(vec2 uv, vec2 m, float seed, inout float h) {
+      float tx = vnoise(vec2(m.x * 700.0, m.y * 45.0), vec2(4096.0), seed);
+      float ty = vnoise(vec2(m.x * 45.0, m.y * 700.0), vec2(4096.0), seed + 1.0);
+      float mott = fbm01(uv, vec2(7.0), 4, seed + 2.0);
+      float t = (0.93 + 0.07 * (tx + ty)) * (0.84 + 0.32 * mott);
+      float w = fbm01(uv, vec2(4.0), 3, seed + 3.0);
+      t *= 1.0 - 0.09 * pkBand(w - 0.62, 0.02) - 0.035 * smoothstep(0.6, 0.66, w);
+      t *= 1.0 - 0.16 * smoothstep(0.55, 0.85, fbm01(uv, vec2(10.0), 4, seed + 4.0));
+      t *= 0.94 + 0.12 * fbm01(uv, vec2(48.0, 3.0), 2, seed + 5.0);
+      float r = ridged(uv, vec2(4.0), 2, seed + 6.0);
+      float cr = smoothstep(0.9, 0.99, r) * smoothstep(0.35, 0.6, fbm01(uv, vec2(3.0), 2, seed + 7.0));
+      t *= 1.0 - 0.16 * cr + 0.06 * smoothstep(0.6, 0.85, r) * (1.0 - cr);
+      h += (tx + ty) * 0.0001 - cr * 0.0011;
+      return t;
+    }
+    // A raised seam (d across it, s along it): the ridge rubbed pale, a dark
+    // groove and a row of stitches either side.
+    float pkSeam(float d, float s, inout float h) {
+      float welt = pkBand(d, 0.0032);
+      float dark = pkBand(abs(d) - 0.0048, 0.0018);
+      float st = pkSt(abs(d) - 0.008, s);
+      h += welt * 0.0024 - dark * 0.0005 - st * 0.0007;
+      return (1.0 + 0.22 * welt) * (1.0 - 0.3 * dark) * (1.0 - 0.38 * st);
+    }`;
 
 const GLSL = {
   soldierWool: /* glsl */ `
@@ -445,6 +489,144 @@ const GLSL = {
       metal = 0.0;
       alpha = 1.0;
     }`,
+  soldierPack: /* glsl */ `
+    // Sewn canvas packs, painted in a fixed layout (soldierGear.js lays the UVs):
+    //  - v 0 to 0.56: the body of a boxy pack unrolled, from the middle of one
+    //    side round the outside to the middle of the other (side panel to u
+    //    0.14, the outer face, side panel from 0.86), its top at v 0: 40 x 36 cm;
+    //  - v 0.57 to 1: a flap from its hinge (top) to its free edge, 25 x 22 cm:
+    //    in u 0 to 0.5 with "U.S." stencilled on it, in u 0.5 to 1 plain.
+    // Seams stand up and are rubbed pale, with a row of stitches either side;
+    // the flap's edge is bound in tape; the cloth is stained and creased. The
+    // threads themselves come from the canvas cell (the material lays them over).
+    ${PACK_LIB}
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float h = 0.0;
+      float t = 1.0;
+      if (uv.y < 0.565) {
+        vec2 m = vec2((uv.x - 0.5) * 0.4, uv.y / 0.56 * 0.36);
+        t = pkCanvas(uv, m, 701.0, h);
+        float ax = abs(m.x);
+        float face = 1.0 - smoothstep(0.136, 0.14, ax);
+        // The seams down the corners and round the bottom; the hem of the mouth.
+        t *= pkSeam(ax - 0.144, m.y, h);
+        t *= pkSeam(m.y - 0.338, m.x, h);
+        float hem = 1.0 - smoothstep(0.014, 0.016, m.y);
+        float st = pkSt(m.y - 0.0125, m.x);
+        // A flat seam across the face where two panels join: two rows of stitches.
+        float dp = m.y - 0.232;
+        float fell = pkBand(dp, 0.0062) * face;
+        st = max(st, max(pkSt(dp - 0.0046, m.x), pkSt(dp + 0.0046, m.x)) * face);
+        // The tabs the straps buckle to, each sewn down with a box and a cross.
+        float tab = 0.0;
+        for (int i = 0; i < 2; i++) {
+          vec2 q = vec2(m.x - (i == 0 ? -0.07 : 0.07), m.y - 0.3);
+          tab = max(tab, 1.0 - smoothstep(-0.0008, 0.0008, pkBox(q, vec2(0.0135, 0.03))));
+          float sq = max(abs(q.x), abs(q.y));
+          float dx = abs(sq - 0.0095);
+          if (sq < 0.0095) dx = min(dx, min(abs(q.x - q.y), abs(q.x + q.y)) * 0.7071);
+          st = max(st, pkBand(dx, 0.0013) * step(0.3, fract((q.x + q.y * 1.37) / 0.005)));
+        }
+        float ribs = 0.5 + 0.5 * sin(m.x * 3927.0);
+        t = mix(t, t * 0.86 * (0.92 + 0.16 * ribs), tab);
+        t *= (1.0 + 0.06 * hem + 0.06 * fell) * (1.0 - 0.38 * st);
+        // Dirt toward the bottom, where it is set down; the belly rubbed paler.
+        float n = fbm01(uv, vec2(9.0), 3, 720.0);
+        t *= 1.0 - 0.32 * smoothstep(0.2, 0.36, m.y) * (0.35 + 0.65 * n);
+        t *= 1.0 + 0.12 * (1.0 - smoothstep(0.04, 0.12, length(vec2(m.x, (m.y - 0.27) * 1.3)))) * n;
+        h += (hem + fell) * 0.0006 + tab * 0.0012 - st * 0.0007;
+      } else {
+        bool us = uv.x < 0.5;
+        vec2 m = vec2((fract(uv.x * 2.0) - 0.5) * 0.25, (uv.y - 0.57) / 0.43 * 0.22);
+        t = pkCanvas(uv, m, 731.0, h);
+        float ax = abs(m.x);
+        // The tape binding the two sides and the free edge, stitched through.
+        float de = min(0.125 - ax, 0.22 - m.y);
+        float bind = 1.0 - smoothstep(0.012, 0.0132, de);
+        float st = pkSt(de - 0.0092, (0.125 - ax) < (0.22 - m.y) ? m.y : m.x);
+        float lip = pkBand(de - 0.0138, 0.0016);
+        float worn = 1.0 - smoothstep(0.0, 0.0035, de);
+        t = mix(t, t * 0.8, bind);
+        t *= (1.0 - 0.3 * lip) * (1.0 + 0.28 * worn) * (1.0 - 0.4 * st);
+        // Grime gathered along the two straps that lie over it.
+        // (Only the stencilled flap has straps: the plain one closes bags and covers.)
+        float sd = min(abs(m.x + 0.07), abs(m.x - 0.07));
+        if (us) t *= 1.0 - 0.24 * pkBand(sd - 0.0145, 0.0045);
+        // Faded by the sun in the middle; dirtier toward the free edge.
+        t *= 1.0 + 0.1 * (1.0 - smoothstep(0.03, 0.12, length(vec2(m.x, m.y - 0.1))));
+        t *= 1.0 - 0.2 * smoothstep(0.15, 0.22, m.y) * fbm01(uv, vec2(9.0), 3, 740.0);
+        if (us) {
+          // "U.S." in black stencil ink, 45 mm high, part worn away.
+          // (Spread so the handle of a spade hung down the middle passes between the letters.)
+          vec2 q = vec2(m.x, 0.108 - m.y);
+          vec2 bar = vec2(0.0035, 0.0225);
+          vec2 arm = vec2(0.012, 0.0035);
+          vec2 dot = vec2(0.0035);
+          float d = min(pkBox(q - vec2(-0.0485, 0.0), bar), pkBox(q - vec2(-0.0315, 0.0), bar));
+          d = min(d, pkBox(q - vec2(-0.04, -0.019), arm));
+          d = min(d, pkBox(q - vec2(-0.0205, -0.019), dot));
+          d = min(d, min(pkBox(q - vec2(0.029, 0.019), arm), min(pkBox(q - vec2(0.029, 0.0), arm), pkBox(q - vec2(0.029, -0.019), arm))));
+          d = min(d, min(pkBox(q - vec2(0.0205, 0.0095), vec2(0.0035, 0.013)), pkBox(q - vec2(0.0375, -0.0095), vec2(0.0035, 0.013))));
+          d = min(d, pkBox(q - vec2(0.0485, -0.019), dot));
+          float ink = 1.0 - smoothstep(0.0002, 0.0013, d);
+          ink *= 0.74 + 0.26 * smoothstep(0.35, 0.6, fbm01(uv, vec2(90.0), 2, 745.0));
+          ink *= 0.75 + 0.25 * smoothstep(0.3, 0.55, fbm01(uv, vec2(14.0), 2, 746.0));
+          t *= 1.0 - 0.6 * ink;
+        }
+        h += bind * 0.0012 - st * 0.0007 - lip * 0.0005;
+      }
+      albedo = vec3(0.5 * t / 0.94);
+      rough = 0.93;
+      metal = 0.0;
+      height = h * 2.0;
+      alpha = 1.0;
+    }`,
+  soldierSack: /* glsl */ `
+    // A drawstring sack of tent cloth (the Soviet veshmeshok), unrolled from one
+    // side seam round the outside to the other, mouth at v 0: 47 x 40 cm. The
+    // cloth gathered into pleats below the tied mouth, flat seams down the
+    // sides and along the bottom, the lower corners doubled where the straps
+    // are sewn on, stains and creases.
+    ${PACK_LIB}
+    void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
+      float h = 0.0;
+      vec2 m = vec2((uv.x - 0.5) * 0.47, uv.y * 0.4);
+      float t = pkCanvas(uv, m, 761.0, h);
+      float coarse = vnoise(vec2(m.x * 320.0, m.y * 22.0), vec2(4096.0), 771.0);
+      t *= 0.94 + 0.12 * coarse;
+      // Pleats running down from the mouth, dying out a hand's width below it.
+      // (Some deep and long, some slight and short, none evenly spaced.)
+      float wob = fbm(uv, vec2(5.0, 2.0), 3, 772.0);
+      float ph = uv.x * 21.0 + wob * 2.2;
+      float each = hash12(vec2(floor(ph), 7.0));
+      float fade = 1.0 - smoothstep(0.02, 0.07 + 0.1 * each, m.y);
+      float pl = 0.5 + 0.5 * cos(fract(ph) * 6.2831853);
+      float deep = pl * pl * pl * pl * fade * (0.45 + 0.55 * each);
+      t *= 1.0 - 0.42 * deep + 0.08 * fade * (1.0 - pl);
+      h -= deep * 0.0016;
+      float ax = abs(m.x);
+      float st = 0.0;
+      // The side seams and the bottom seam: felled flat, two rows of stitches.
+      float ds = ax - 0.222;
+      float db = m.y - 0.386;
+      float fell = max(pkBand(ds, 0.0062), pkBand(db, 0.0062));
+      st = max(max(pkSt(ds - 0.0046, m.y), pkSt(ds + 0.0046, m.y)), max(pkSt(db - 0.0046, m.x), pkSt(db + 0.0046, m.x)));
+      // The lower corners, doubled.
+      float dd = ((0.222 - ax) + (0.386 - m.y) - 0.08) * 0.7071;
+      float dbl = (1.0 - smoothstep(-0.0008, 0.0008, dd)) * step(ax, 0.222) * step(m.y, 0.386);
+      st = max(st, pkSt(dd + 0.004, m.x * 1.414) * step(ax, 0.222) * step(m.y, 0.386));
+      t = mix(t, t * 0.9, dbl);
+      t *= (1.0 + 0.07 * fell) * (1.0 - 0.38 * st);
+      float n = fbm01(uv, vec2(9.0), 3, 780.0);
+      t *= 1.0 - 0.34 * smoothstep(0.22, 0.4, m.y) * (0.35 + 0.65 * n);
+      t *= 1.0 + 0.12 * (1.0 - smoothstep(0.05, 0.15, length(vec2(m.x, (m.y - 0.27) * 1.2)))) * n;
+      h += fell * 0.0007 + dbl * 0.0007 - st * 0.0007;
+      albedo = vec3(0.5 * t / 0.93);
+      rough = 0.94;
+      metal = 0.0;
+      height = h * 2.0;
+      alpha = 1.0;
+    }`,
   soldierWrinkle: /* glsl */ `
     // Folds and creases of worn cloth, at the scale of a hand so they still read
     // a few meters away: soft ridges running round the limb or body (along u),
@@ -488,6 +670,8 @@ const CELLS = [
   ['burlap', null, 1], // the library's own hessian
   ['soldierWrinkle', 0.32, 1],
   ['soldierHand', 1, 1], // one hand per cell
+  ['soldierPack', 1, 1], // one layout per cell
+  ['soldierSack', 1, 1],
 ];
 const presets = {};
 for (const [name, world, ns, photo] of CELLS) {
@@ -664,7 +848,8 @@ const WEATHER = /* glsl */ `
   float seamAA = fwidth( seamD );
   int sc = sCellI;
   float garment = ( sc <= 2 || sc == 5 || ( sc >= 12 && sc <= 14 ) ) ? 1.0 : 0.0;
-  float canvas = ( sc == 3 || sc == 4 || sc == 15 ) ? 1.0 : 0.0;
+  float bag = ( sc == ${CELL.pack} || sc == ${CELL.sack} ) ? 1.0 : 0.0;
+  float canvas = ( sc == 3 || sc == 4 || sc == 15 || bag > 0.5 ) ? 1.0 : 0.0;
   float leath = ( sc == 6 || sc == 7 ) ? 1.0 : 0.0;
   float paint = sc == 8 ? 1.0 : 0.0;
   float worn = garment + canvas + leath + paint;
@@ -708,11 +893,15 @@ const WEATHER = /* glsl */ `
     float cuff = 1.0 - smoothstep( 0.05, 0.13, length( P - vec3( side * 0.212, 0.9, 0.01 ) ) );
     float collar = smoothstep( 1.41, 1.46, P.y ) * ( 1.0 - smoothstep( 0.085, 0.115, length( P.xz - vec2( 0.0, 0.01 ) ) ) );
     float wipe = ( 1.0 - smoothstep( 0.03, 0.11, length( P - vec3( side * 0.16, 0.8, -0.07 ) ) ) ) * 0.6;
-    float grime = clamp( max( max( cuff, collar ), wipe ) * ( 0.55 + 0.6 * n1 ) + edge * 0.7, 0.0, 1.0 ) * ( 0.55 + 0.45 * dirt ) * cl;
+    // (A pack's corners and edges are rubbed pale instead: below.)
+    float grime = clamp( max( max( cuff, collar ), wipe ) * ( 0.55 + 0.6 * n1 ) + edge * 0.7 * ( 1.0 - bag ), 0.0, 1.0 ) * ( 0.55 + 0.45 * dirt ) * cl;
     c = mix( c, c * vec3( 0.42, 0.4, 0.37 ), grime * 0.85 );
     rT = mix( rT, 0.62, grime * 0.5 );
     // Webbing and canvas: blotchy stains.
     c *= 1.0 - 0.22 * smoothstep( 0.55, 0.8, n1 ) * canvas;
+    // Packs: corners and edges rubbed pale and fuzzy; dirt underneath, where they are set down.
+    c = mix( c, c * 1.4 + vec3( 0.012, 0.011, 0.009 ), edge * 0.55 * bag );
+    c *= 1.0 - 0.3 * smoothstep( 0.2, 0.9, -N.y ) * ( 0.5 + 0.5 * n1 ) * bag;
     // Seams: a dark groove, the doubled cloth either side, a row of stitches.
     float sOk = max( 1.0 - smoothstep( 0.55, 0.8, abs( N.y ) ), step( 1.36, P.y ) * step( 0.06, ax ) ) * step( 0.12, P.y ) * garment;
     float groove = sLine( seamD, 0.0008, seamAA ) * sOk;
@@ -797,8 +986,24 @@ const FRAG_MAP = /* glsl */ `
   sDx = gx;
   sDy = gy;
   sSkin = ( sc == 10 || sc == ${CELL.hand} ) ? 1.0 : 0.0;
-  sCloth = ( sc <= 5 || ( sc >= 12 && sc <= 15 ) ) ? 1.0 : 0.0;
+  bool sBag = sc == ${CELL.pack} || sc == ${CELL.sack};
+  sCloth = ( sc <= 5 || ( sc >= 12 && sc <= 15 ) || sBag ) ? 1.0 : 0.0;
   diffuseColor *= textureGrad( map, sAtlasUv, sDx, sDy );
+  if ( sBag ) {
+    // A painted pack: the threads of its canvas come from the canvas cell,
+    // laid flat on it from the side it faces (x2: the cloth averages 0.5), and
+    // fainter than on plain canvas, which is too coarse for a tight-woven pack.
+    vec3 bn = abs( vSBindN );
+    vec3 bx = dFdx( vSBind );
+    vec3 by = dFdy( vSBind );
+    vec4 dr = uSCells[ ${CELL.duck} ];
+    vec2 dt = bn.z > max( bn.x, bn.y ) ? vSBind.xy : bn.x > bn.y ? vSBind.zy : vSBind.xz;
+    vec2 ddx = ( bn.z > max( bn.x, bn.y ) ? bx.xy : bn.x > bn.y ? bx.zy : bx.xz ) * dr.w * span;
+    vec2 ddy = ( bn.z > max( bn.x, bn.y ) ? by.xy : bn.x > bn.y ? by.zy : by.xz ) * dr.w * span;
+    float dm = max( length( ddx ), length( ddy ) );
+    if ( dm > lim ) { ddx *= lim / dm; ddy *= lim / dm; }
+    diffuseColor.rgb *= mix( vec3( 1.0 ), 2.0 * textureGrad( map, dr.xy + csz * pad + fract( dt * dr.w ) * span, ddx, ddy ).rgb, 0.55 );
+  }
   if ( sCamo >= 0 ) {
     // (Its own atlas, tiled like the cloth's; x2: the cloth averages 0.5.)
     vec4 kr = uSCamoCells[ sCamo ];
@@ -832,7 +1037,7 @@ const FRAG_MAP = /* glsl */ `
   if ( wm > lim ) { wx *= lim / wm; wy *= lim / wm; }
   sWDx = wx;
   sWDy = wy;
-  float wk = sc <= 2 ? 1.0 : sc == 3 ? 0.6 : sc == 5 ? 0.3 : ( sc >= 12 && sc <= 14 ) ? 1.0 : 0.0;
+  float wk = sc <= 2 ? 1.0 : ( sc == 3 || sBag ) ? 0.6 : sc == 5 ? 0.3 : ( sc >= 12 && sc <= 14 ) ? 1.0 : 0.0;
   // (Faint on skin: the hands and faces have their shapes in the mesh; strong,
   // it read as scars across the wrists and knuckles.)
   sCrease = sc == 10 ? 0.16 * smoothstep( 0.4, 1.0, vSCrease ) : wk * vSCrease;

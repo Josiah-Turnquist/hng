@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { B, HEAD_CENTER } from './soldierRig.js';
 import { rigid, torsoWeights, weightsAt, smooth01 } from './soldierGeo.js';
-import { CELL } from './soldierMaterials.js';
+import { CELL, PACK_UV, PACK_SIDE } from './soldierMaterials.js';
 import { skullRadius, SKULL_TOP } from './headMesh.js';
 import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, garmentFolds, lerp, hash1, noise1, foldWave } from './soldierBody.js';
 
@@ -849,11 +849,15 @@ export function firstAidUS(b, f, st, lod) {
 // US M1943 folding shovel: carrier 25 x 19 x 6 cm, handle up.
 export function shovelUS(b, f, st, lod) {
   b.bones(rigidAt(f));
-  b.material(CELL.duck);
+  b.material(CELL.pack);
   b.paint(st.web);
   // The canvas carrier, shaped to the blade inside it: flat, square at the
   // top and rounded to the blade's point at the bottom (blade ~15 x 21 cm).
-  softBag(b, f.sub(0, -0.035, 0), { w: 0.165, h: 0.215, d: 0.034, boxy: 0.3, sag: 0.05, lod, creases: 0.3, seed: 5 });
+  // Its edges are bound in tape and stitched (the painted flap's cloth).
+  const from = b.count;
+  const fc = f.sub(0, -0.035, 0);
+  softBag(b, fc, { w: 0.165, h: 0.215, d: 0.034, boxy: 0.3, sag: 0.05, lod, creases: 0.3, seed: 5 });
+  layFlat(b, from, fc, 0.165, 0.06, -0.215, PACK_UV.flap);
   if (lod) return;
   // The T handle sticking up out of the carrier (wood, OD painted).
   b.material(CELL.paint);
@@ -994,8 +998,9 @@ export function messTin(b, f, st, lod) {
 //   share of w (a drawstring sack's gathered mouth; 1 for a pack with a flat
 //   top); boxy: 0 a pillow .. 1 square corners; sag: how much fuller the
 //   bottom is than the top; lean: how far the top stands off the back less
-//   than the bottom (m); seed: crease variation.
-export function softBag(b, f, { w, h, d, neck = 1, boxy = 0.4, sag = 0.35, seed = 1, lod = 0, creases = 1 } = {}) {
+//   than the bottom (m); seed: crease variation; skin: 'pack' or 'sack' to
+//   lay it in that painted cloth (set the material to CELL.pack or CELL.sack).
+export function softBag(b, f, { w, h, d, neck = 1, boxy = 0.4, sag = 0.35, seed = 1, lod = 0, creases = 1, skin = null } = {}) {
   const nu = lod ? 8 : 22,
     nv = lod ? 5 : 14;
   const us = [],
@@ -1033,39 +1038,90 @@ export function softBag(b, f, { w, h, d, neck = 1, boxy = 0.4, sag = 0.35, seed 
       }
       o.copy(f.point(x, -h * v, Math.max(0, z), p));
     },
-    { center: f.point(0, -h * 0.55, d * 0.5), wrapU: true },
+    {
+      center: f.point(0, -h * 0.55, d * 0.5),
+      wrapU: true,
+      // Unrolled into its painted cloth: from the middle of the wearer's left
+      // side round the outside to the middle of his right (the half against
+      // his back, never seen, gets the same cloth mirrored).
+      uv: skin
+        ? (i, j, ua, va) => {
+            const half = nu / 2;
+            let U = i <= half ? 1 - ua[i] / ua[half] : (ua[i] - ua[half]) / (ua[nu] - ua[half]);
+            if (skin === 'pack') {
+              // (The side panels to their painted width, whatever the pack's depth.)
+              const g = Math.min(0.3, (d * 0.5) / (w + d));
+              const e = Math.min(U, 1 - U);
+              const m = e < g ? (e / g) * PACK_SIDE : PACK_SIDE + ((e - g) / (0.5 - g)) * (0.5 - PACK_SIDE);
+              U = U < 0.5 ? m : 1 - m;
+            }
+            const r = skin === 'pack' ? PACK_UV.body : PACK_UV.sack;
+            return [lerp(r[0], r[2], U), lerp(r[1], r[3], va[j] / va[nv])];
+          }
+        : null,
+    },
   );
 }
 
+// Lays every point added since `from` into a painted rectangle [u0, v0, u1,
+// v1] by where it is on a frame: across its width w (centered), and from y0
+// (the rectangle's top) to y1 (its bottom).
+export function layFlat(b, from, f, w, y0, y1, r) {
+  const qi = f.q.clone().invert();
+  const p = new THREE.Vector3();
+  const c01 = (x) => Math.min(1, Math.max(0, x));
+  for (let k = from; k < b.count; k++) {
+    p.set(b.pos[k * 3], b.pos[k * 3 + 1], b.pos[k * 3 + 2]).sub(f.p).applyQuaternion(qi);
+    b.uv[k * 2] = lerp(r[0], r[2], c01(p.x / w + 0.5));
+    b.uv[k * 2 + 1] = lerp(r[1], r[3], c01((p.y - y0) / (y1 - y0)));
+  }
+}
+
 // Pack on the back (US M1928 haversack rolled, musette bag). The frame is on
-// the upper back facing backward.
-export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, round = 0.04, flap = true, straps = null, strapColor = null, seed = 1 } = {}) {
+// the upper back facing backward. In plain canvas (the default) it is laid in
+// the painted pack cloth: seams, stitching, a bound flap (stencil: with "U.S."
+// on it), stains and wear.
+export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, round = 0.04, flap = true, straps = null, strapColor = null, seed = 1, stencil = true } = {}) {
+  const painted = cell === CELL.duck;
   b.bones(rigidAt(f));
-  b.material(cell);
+  b.material(painted ? CELL.pack : cell);
   b.paint(color);
-  softBag(b, f, { w, h, d, boxy: 0.62, sag: 0.22, seed, lod });
+  softBag(b, f, { w, h, d, boxy: 0.62, sag: 0.22, seed, lod, skin: painted ? 'pack' : null });
   if (lod) return;
   const out = f.dir(0, 0, 1);
+  // How far the bag stands out at a height (0 top .. 1 bottom), as softBag fills it.
+  const depth = (t) => d * lerp(0.62, 1.0, smooth01(0, 0.35, t / 0.62)) * lerp(0.82, 1, smooth01(0.05, 0.7, t));
   if (flap) {
     // The flap over the top, down the outside to its edge two thirds of the way.
     b.part();
-    b.paint(new THREE.Color(color).multiplyScalar(0.94));
+    const from = b.count;
     const n = 7;
     const path = [];
     for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      const y = -h * (0.02 + 0.6 * t);
-      const z = d * lerp(0.62, 1.0, smooth01(0, 0.35, t)) * lerp(0.82, 1, smooth01(0.05, 0.7, 0.02 + 0.6 * t)) + 0.004;
-      path.push(f.point(0, y, z));
+      const t = 0.02 + 0.6 * (i / n);
+      path.push(f.point(0, -h * t, depth(t) + 0.004));
     }
-    b.strap(path, w * 0.9, 0.004, () => out);
-    b.paint(color);
+    b.strap(path, w * 0.93, 0.004, () => out);
+    if (painted) layFlat(b, from, f, w * 0.93, -h * 0.02, -h * 0.62, stencil ? PACK_UV.flapUS : PACK_UV.flap);
+    else b.recolor((x, y, z, nx, ny, nz, c) => c.multiplyScalar(0.94), from);
   }
   if (straps) {
-    b.material(CELL.webbing);
-    b.paint(strapColor ?? color);
-    // Straps over the flap down to their buckles (flat ribbons on the outside).
-    for (const x of straps) b.strap([f.point(x, -0.03, d * 0.86 + 0.009), f.point(x, -h * 0.4, d + 0.01), f.point(x, -h * 0.72, d + 0.006), f.point(x, -h + 0.04, d * 0.86 + 0.004)], 0.022, 0.003, () => out);
+    // Two straps over the flap, down to their buckles on the tabs below it,
+    // the free ends hanging past the buckles.
+    for (const x of straps) {
+      b.bones(rigidAt(f));
+      b.material(CELL.webbing);
+      b.paint(strapColor ?? color);
+      b.part();
+      b.strap([f.point(x, -0.03, d * 0.86 + 0.009), f.point(x, -h * 0.4, d + 0.01), f.point(x, -h * 0.66, d + 0.0095), f.point(x, -h * 0.76, d + 0.007), f.point(x, -h * 0.84, d + 0.0045)], 0.022, 0.003, () => out);
+      // (The end, turned back through the buckle and tipped with brass.)
+      b.strap([f.point(x + 0.002, -h * 0.74, d + 0.0105), f.point(x + 0.004, -h * 0.8, d + 0.0115), f.point(x + 0.005, -h * 0.855, d + 0.009)], 0.02, 0.0025, () => out);
+      b.material(CELL.metal);
+      b.paint(0x6f6240);
+      f.box(b, x + 0.005, -h * 0.855 - 0.004, d + 0.0105, 0.021, 0.011, 0.0032, { r: 0.001 });
+      buckle(b, f.sub(x, -h * 0.72, d + 0.0105), { w: 0.03, h: 0.02, frame: true, color: 0x33312b });
+    }
+    b.bones(rigidAt(f));
   }
 }
 
@@ -1074,11 +1130,12 @@ export function backpack(b, f, { w, h, d, color, cell = CELL.duck, lod = 0, roun
 // g: the garment (for the straps to lie on).
 export function veshmeshok(b, f, st, lod, g = null) {
   b.bones(rigidAt(f));
-  b.material(CELL.duck);
+  b.material(CELL.sack);
   b.paint(st.bag);
-  softBag(b, f.sub(0, -0.035, 0), { w: 0.31, h: 0.36, d: 0.14, neck: 0.3, boxy: 0.25, sag: 0.4, seed: 3, lod });
+  softBag(b, f.sub(0, -0.035, 0), { w: 0.31, h: 0.36, d: 0.14, neck: 0.3, boxy: 0.25, sag: 0.4, seed: 3, lod, skin: 'sack' });
   if (lod) return;
   // The tuft of the mouth above the tie, and the tie.
+  b.material(CELL.duck);
   b.part();
   f.cyl(b, [0, -0.04, 0.045], [0, 0.0, 0.05], 0.03, 0.042, { seg: 10 });
   b.paint(new THREE.Color(st.bag).multiplyScalar(0.7));
@@ -1216,13 +1273,16 @@ export function slungBag(b, g, { theta, y, w, h, d, color, strap = color, cell =
   const f = torsoFrame(g, theta, y, out);
   // A soft cloth bag, fuller at the bottom, with a flap buttoned over its top.
   b.bones(rigidAt(f));
-  b.material(cell);
+  const painted = cell === CELL.duck;
+  b.material(painted ? CELL.pack : cell);
   b.paint(color);
-  softBag(b, f, { w, h, d, neck: 0.92, boxy: 0.5, sag: 0.3, seed: 5, lod });
+  softBag(b, f, { w, h, d, neck: 0.92, boxy: 0.5, sag: 0.3, seed: 5, lod, skin: painted ? 'pack' : null });
   if (!lod && flap) {
     b.part();
-    b.paint(new THREE.Color(color).multiplyScalar(0.93));
+    if (!painted) b.paint(new THREE.Color(color).multiplyScalar(0.93));
+    const from = b.count;
     f.box(b, 0, -h * flap * 0.5, d * 0.5 + 0.004, w * 0.97, h * flap, d + 0.006, { r: Math.min(r, d * 0.45), seg: [8, 3] });
+    if (painted) layFlat(b, from, f, w * 0.97, 0, -h * flap, PACK_UV.flap);
     b.material(CELL.metal);
     b.paint(0x4c4a40);
     if (fastener === 'snap') f.cyl(b, [0, -h * flap + 0.012, d + 0.007], [0, -h * flap + 0.012, d + 0.0095], 0.005, 0.0045, { seg: 6 });

@@ -11,7 +11,7 @@ import { WEAPONS } from '../src/weapons/defs.js';
 import '../src/actors/soldierKitUS.js';
 import '../src/actors/soldierKitGE.js';
 import '../src/actors/soldierKitSU.js';
-import { CELL } from '../src/actors/soldierMaterials.js';
+import { CELL, PACK_UV } from '../src/actors/soldierMaterials.js';
 
 // How many of a builder's vertices are of `cell` and where `where(x, y, z)` says.
 const count = (b, cell, where) => {
@@ -60,10 +60,10 @@ test("German infantry: some carry the assault frame with the shelter quarter rol
 
 test('Soviet infantry: some carry the gas mask bag at the left hip', () => {
   const leftHip = (x, y, z) => x < -0.1 && z > 0.06 && y < 1.02 && y > 0.75;
-  const bags = variants('SU', 'infantry').filter((v) => count(buildOutfit('SU', 'infantry', v, 0, 'rifle').b, CELL.duck, leftHip) > 40);
+  const bags = variants('SU', 'infantry').filter((v) => count(buildOutfit('SU', 'infantry', v, 0, 'rifle').b, CELL.pack, leftHip) > 40);
   assert.ok(bags.length >= 2 && bags.length <= 7, `${bags.length} of 8 with the bag`);
   // Not from far off.
-  assert.equal(count(buildOutfit('SU', 'infantry', bags[0], 2, 'rifle').b, CELL.duck, leftHip), 0);
+  assert.equal(count(buildOutfit('SU', 'infantry', bags[0], 2, 'rifle').b, CELL.pack, leftHip), 0);
 });
 
 test('US infantry: some packs have the blanket rolled over them', () => {
@@ -175,3 +175,41 @@ test('a soldier model changes its gear when what he carries changes, and keeps t
   assert.equal(m.stats(0).triangles, before[0]);
   m.dispose();
 });
+
+test('packs are laid in their painted cloth: the body, the stencilled flap and the Soviet sack each in its own place, near and far', () => {
+  // The share of a builder's points of `cell` whose texture place is inside the rectangle r (a little slack for rounding).
+  const inside = (b, cell, r) => {
+    let n = 0,
+      ok = 0;
+    for (let i = 0; i < b.count; i++) {
+      if (b.mat[i * 2] !== cell) continue;
+      n++;
+      const u = b.uv[i * 2],
+        v = b.uv[i * 2 + 1];
+      if (u >= r[0] - 1e-6 && u <= r[2] + 1e-6 && v >= r[1] - 1e-6 && v <= r[3] + 1e-6) ok++;
+    }
+    return { n, ok };
+  };
+  const whole = [0, 0, 1, 1];
+  for (const lod of [0, 1, 2]) {
+    // The US riflemen with a pack, the Soviet ones with a sack: nothing spills out of the cell.
+    let packs = 0;
+    for (const v of variants('US', 'infantry')) {
+      const all = inside(buildOutfit('US', 'infantry', v, lod, 'rifle').b, CELL.pack, whole);
+      if (all.n > 20) packs++;
+      assert.equal(all.ok, all.n, `US variant ${v} at detail ${lod}: all inside the cell`);
+    }
+    assert.ok(packs >= 2, `detail ${lod}: ${packs} US riflemen with a painted pack`);
+    const sacks = variants('SU', 'infantry').filter((v) => inside(buildOutfit('SU', 'infantry', v, lod, 'rifle').b, CELL.sack, PACK_UV.sack).n > 20);
+    assert.ok(sacks.length >= 2, `detail ${lod}: ${sacks.length} Soviet riflemen with a sack`);
+    for (const v of sacks) {
+      const r = inside(buildOutfit('SU', 'infantry', v, lod, 'rifle').b, CELL.sack, PACK_UV.sack);
+      assert.equal(r.ok, r.n, `Soviet variant ${v} at detail ${lod}`);
+    }
+  }
+  // Close up, the pack has its flap with "U.S." on it: some points in that part of the cloth, some in the body's.
+  const b = buildOutfit('US', 'infantry', 0, 0, 'rifle').b;
+  assert.ok(inside(b, CELL.pack, PACK_UV.flapUS).ok >= 30, 'the stencilled flap');
+  assert.ok(inside(b, CELL.pack, PACK_UV.body).ok >= 200, 'the body');
+});
+

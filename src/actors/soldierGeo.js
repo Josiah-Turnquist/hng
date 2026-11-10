@@ -423,7 +423,7 @@ export class SkinBuilder {
   // put the vertices where the detail is). With wrapU the last u should equal
   // the first one plus a period (the seam is shared). Normals point away from
   // `center` (or follow the surface orientation if null), flip reverses them.
-  grid(us, vs, fn, { center = null, wrapU = false, flip = false, uvScale = 1, normal = null } = {}) {
+  grid(us, vs, fn, { center = null, wrapU = false, flip = false, uvScale = 1, normal = null, uv = null } = {}) {
     const base = this.count;
     const nu = us.length - 1,
       nv = vs.length - 1;
@@ -498,7 +498,9 @@ export class SkinBuilder {
         const p = P[j * cols + i];
         const q = (j * cols + i) * 4;
         const k = NS[q + 3] ? (flip ? -1 : 1) : sign;
-        this.vertex(p.x, p.y, p.z, NS[q] * k, NS[q + 1] * k, NS[q + 2] * k, uacc[i] * s, vacc[j] * s);
+        // (uv: a painted layout instead: (i, j, lengths along the row, lengths down the column) => [u, v].)
+        const t = uv ? uv(i, j, uacc, vacc) : null;
+        this.vertex(p.x, p.y, p.z, NS[q] * k, NS[q + 1] * k, NS[q + 2] * k, t ? t[0] : uacc[i] * s, t ? t[1] : vacc[j] * s);
       }
     }
     for (let j = 0; j < nv; j++) {
