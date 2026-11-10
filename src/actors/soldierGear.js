@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { B, HEAD_CENTER } from './soldierRig.js';
 import { rigid, torsoWeights, weightsAt, smooth01 } from './soldierGeo.js';
 import { CELL } from './soldierMaterials.js';
+import { skullRadius, SKULL_TOP } from './headMesh.js';
 import { torsoPoint, torsoNormal, torsoTheta, garmentOffset, garmentFolds, lerp, hash1, noise1, foldWave } from './soldierBody.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -463,19 +464,54 @@ function netPoint(spec, u, v, hc, lift) {
 
 // ---------------------------------------------------------------------------
 // Soft headgear.
-// Head surface approximated for caps: an ellipsoid around the skull.
+// The head's surface, for caps and soft helmets: the sculpted head's own skull
+// (headMesh.js skullRadius), `pad` off it, closing over the crown.
+function skullR(th, y, pad) {
+  skullRadius(0, 0);
+  const top = SKULL_TOP + pad;
+  // (Over the crown the cloth rounds over, a pad's thickness above the skull.)
+  const yRef = SKULL_TOP - 0.035;
+  let r = skullRadius(th, Math.min(y, SKULL_TOP)) + pad;
+  if (y > yRef) {
+    const dome = (skullRadius(th, yRef) + pad) * Math.sqrt(Math.max(0, 1 - ((y - yRef) / (top - yRef)) ** 2));
+    r = y >= SKULL_TOP ? dome : Math.max(dome, r - pad * smooth01(SKULL_TOP - 0.012, SKULL_TOP, y));
+  }
+  return r;
+}
 function skull(th, y, out, pad = 0) {
   // th: azimuth (0 front), y relative to the head center.
-  const rx = 0.0775 + pad,
-    rzF = 0.093 + pad,
-    rzB = 0.107 + pad,
-    top = 0.1225 + pad;
-  const t = Math.min(1, Math.max(-1, (y - 0.01) / (top - 0.01)));
-  const k = Math.sqrt(Math.max(0, 1 - Math.max(0, t) ** 2));
-  const c = Math.cos(th);
-  const rz = c > 0 ? rzF : rzB;
-  out.set(Math.sin(th) * rx * k, y, -c * rz * k - 0.002);
+  const r = skullR(th, y, pad);
+  out.set(Math.sin(th) * r, y, -Math.cos(th) * r - 0.002);
   return out.add(HC);
+}
+// A point of a cap's side pushed out, if need be, to clear the head by `pad`.
+function outsideSkull(o, pad) {
+  const dx = o.x - HC.x,
+    dz = o.z - HC.z + 0.002;
+  const r = Math.hypot(dx, dz),
+    need = skullR(Math.atan2(dx, -dz), o.y - HC.y, pad);
+  if (r < need && r > 1e-6) {
+    o.x = HC.x + (dx * need) / r;
+    o.z = HC.z - 0.002 + (dz * need) / r;
+  }
+  return o;
+}
+// A point of a cap's top lifted, if need be, to clear the head by `pad`.
+function overSkull(o, pad) {
+  const dx = o.x - HC.x,
+    dz = o.z - HC.z + 0.002;
+  const th = Math.atan2(dx, -dz),
+    r = Math.hypot(dx, dz);
+  let lo = 0.03,
+    hi = SKULL_TOP + pad;
+  if (skullR(th, lo, pad) <= r) return o;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (skullR(th, mid, pad) > r) lo = mid;
+    else hi = mid;
+  }
+  o.y = Math.max(o.y, HC.y + hi);
+  return o;
 }
 
 // Side cap: Soviet pilotka or German M40 Feldmütze (Schiffchen). A boat-shaped
@@ -488,7 +524,8 @@ export function buildSideCap(b, st, { lod = 0, color, badge = 'star', tilt = 0.1
   const nu = [24, 12, 6][lod];
   const us = [];
   for (let i = 0; i <= nu; i++) us.push(i / nu);
-  const rows = [0, 0.3, 0.6, 0.85, 1.0];
+  // (Rows enough over the crown that the flat cloth between them clears the round head.)
+  const rows = lod ? [0, 0.3, 0.6, 0.85, 1.0] : [0, 0.25, 0.5, 0.58, 0.66, 0.74, 0.82, 0.91, 1.0];
   const rot = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -tilt);
   const lean = (p) => p.sub(HC).applyQuaternion(rot).add(HC);
   // Band (curtain) around the head from y = +0.05 (front) .. +0.035 (sides)
@@ -503,18 +540,23 @@ export function buildSideCap(b, st, { lod = 0, color, badge = 'star', tilt = 0.1
       if (v < 0.5) {
         // Curtain: hugs the head.
         skull(th, yb + v * 0.06, o, 0.004 + 0.002 * v);
+        outsideSkull(lean(o), 0.006);
       } else {
         // Crown: folded up to a narrow top running front to back (a side cap
         // stands ~8 cm high at its front and back points, est.).
         const w = (v - 0.5) / 0.5;
         const y = yb + 0.03 + w * (0.022 + 0.012 * Math.abs(c));
         skull(th, yb + 0.03, o, 0.006);
-        const ridge = 1 - w * 0.62;
+        // (Pinched shut along the top, and nowhere lower than the head under it.)
+        const ridge = 1 - w * 0.62 - 0.3 * smooth01(0.7, 1, w);
         o.x = HC.x + (o.x - HC.x) * ridge;
         o.y = HC.y + y;
         o.z = HC.z + (o.z - HC.z) * (1 - w * 0.05);
+        // (Low on the crown the cloth is pushed out to clear the head, higher up lifted.)
+        if (w < 0.3) outsideSkull(lean(o), 0.007);
+        else overSkull(lean(o), lod ? 0.013 : 0.011);
+        if (w >= 1) o.y += 0.004;
       }
-      lean(o);
     },
     { center: HC.clone().add(V(0, 0.09, 0)), wrapU: true },
   );
@@ -564,6 +606,7 @@ export function buildFieldCap(b, st, { lod = 0, color }) {
         o.x = HC.x + (o.x - HC.x) * (1 - w);
         o.z = HC.z + (o.z - HC.z) * (1 - w);
         o.y = HC.y + yb + 0.05 + 0.03 * (1 - w * 0.2) + 0.012 * Math.max(0, c) * (1 - w);
+        overSkull(o, 0.006);
       }
     },
     { center: HC.clone().add(V(0, 0.08, 0)), wrapU: true },
@@ -614,7 +657,9 @@ export function buildTankHelmet(b, kind, st, { lod = 0, goggles = false, color }
       const c = Math.cos(th);
       // Edge: forehead in front, down over the ears at the sides, nape at the back.
       const side = Math.abs(Math.sin(th));
-      const edge = c > 0 ? lerp(0.055, lowSide, Math.pow(side, 2.5)) : lerp(-0.035, lowSide, Math.pow(side, 1.5));
+      // (In front it stays up on the brow as far round as the temple, then
+      // drops in front of the ear.)
+      const edge = c > 0 ? lerp(0.055, lowSide, Math.pow(side, 9)) : lerp(-0.035, lowSide, Math.pow(side, 1.5));
       const y = lerp(0.1225, edge, Math.pow(v, 1.2));
       let pad = 0.012;
       // Padded rolls (US: ventilation ribs) running front to back over the top.

@@ -12,6 +12,7 @@ import { smooth01, setN, rigid } from './soldierGeo.js';
 import { CELL } from './soldierMaterials.js';
 import { interpRows, lerp, noise3, chainPoint, armChain } from './soldierBody.js';
 import { handMesh } from './handMesh.js';
+import { headMesh, headShape, skinOf } from './headMesh.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -336,6 +337,8 @@ function hairMask(x, ly, lz, p) {
 // The head: surface, eyes and lids, ears, hair. opts: helmet (headgear covers
 // the top: the hair cap stays flat), lod.
 export function buildHead(b, p, { lod = 0, helmet = false, cap = false } = {}) {
+  // Near and at the middle distance: the sculpted head (with its neck).
+  if (lod < 2) return buildSculptedHead(b, p, { lod, helmet, cap });
   const f = faceShape(p);
   b.bones(B.head);
   b.material(CELL.skin);
@@ -365,9 +368,11 @@ export function buildHead(b, p, { lod = 0, helmet = false, cap = false } = {}) {
   for (const s of [-1, 1]) buildEye(b, s, f, p);
 }
 
-function buildEye(b, s, f, p) {
-  const ec = V(HC.x + s * EYE_X * f.eyeSpace, HC.y + EYE_Y, HC.z + EYE_Z);
-  const r = EYE_R * Math.sqrt(f.eyeSize);
+// (center, radius: where the sculpted head has its eye; lids: false when the
+// head has lids of its own.)
+function buildEye(b, s, f, p, { center = null, radius = null, lids = true } = {}) {
+  const ec = center || V(HC.x + s * EYE_X * f.eyeSpace, HC.y + EYE_Y, HC.z + EYE_Z);
+  const r = radius || EYE_R * Math.sqrt(f.eyeSize);
   // Eyeball: sclera, iris, pupil; glossy.
   const iris = p.eyeColor;
   // (Well under white: in daylight the lids and lashes shade it, and a bright
@@ -399,6 +404,7 @@ function buildEye(b, s, f, p) {
   const pols = [0, 0.08, 0.15, 0.175, 0.26, 0.35, 0.395, 0.425, 0.49, 0.52, 0.65, 0.85, 1.1, 1.4, 1.8, 2.4, PI];
   b.grid(azs, pols, (az, pol, out) => out.set(ec.x + Math.sin(pol) * Math.cos(az) * r, ec.y + Math.sin(pol) * Math.sin(az) * r, ec.z - Math.cos(pol) * r), { center: ec, wrapU: true });
   b.colorFn = null;
+  if (!lids) return b.material(CELL.skin, 0);
   // Lids: shells just over the eyeball, from the lid margin back into the socket.
   b.material(CELL.skin, 0);
   const lr = r + 0.0011;
@@ -575,8 +581,147 @@ function buildHairCap(b, p, f, lod, flat) {
   b.colorFn = null;
 }
 
+// The sculpted head and neck (headMesh.js: MakeHuman's, shaped for this man),
+// painted: his skin tone under the variation of a real skin (lips, lids, ears,
+// the shade of the sockets), his brows, his hair cropped on the scalp and as a
+// thin cap over it, stubble on the jaw, grime. Its eyes are the game's own.
+function buildSculptedHead(b, p, { lod = 0, helmet = false, cap = false } = {}) {
+  const M = headMesh(headShape(p), { coarse: lod > 0 });
+  const rel = M.colors[skinOf(p)];
+  const skin = p.skin.clone();
+  // (Tanned and weathered like the backs of his hands: a summer outdoors.)
+  const tan = skin
+    .clone()
+    .multiplyScalar(0.86)
+    .lerp(new THREE.Color(0.3, 0.15, 0.085), 0.12);
+  const hairC = p.hair,
+    browC = p.brows;
+  const stub = p.stubble || 0;
+  const stubC = skin
+    .clone()
+    .multiplyScalar(0.62)
+    .lerp(new THREE.Color(0.18, 0.19, 0.22), 0.35)
+    .lerp(hairC, 0.25);
+  const dirt = p.dirt || 0;
+  const grime = new THREE.Color(0.12, 0.1, 0.075);
+  const col = new THREE.Color();
+  const cur = [];
+  b.bones((x, y, z, o) => setN(o, cur));
+  b.material(CELL.skin);
+  b.part();
+  const base = b.count;
+  const s = 1 / b.texWorld;
+  const P = M.positions,
+    N = M.normals;
+  const under = new Float32Array(M.count * 3); // each vertex's painted color (the hair cap's edge fades into it)
+  // How much hair a vertex has: the scalp MakeHuman's short hair covers, above
+  // this man's hairline and thinner at the sides.
+  const hairAt = (i) => {
+    const ly = P[i * 3 + 1] - HC.y,
+      lz = P[i * 3 + 2] - HC.z,
+      ax = Math.abs(P[i * 3]);
+    if (!M.hair[i]) return 0;
+    // (The forehead's hairline, further back at the temples and with age.)
+    const front = lz < -0.02 ? smooth01(0.058 + (p.recede || 0) * 0.016 + 0.014 * smooth01(0.035, 0.065, ax) * (lz < -0.05 ? 1 : 0), 0.07 + (p.recede || 0) * 0.016 + 0.014 * smooth01(0.035, 0.065, ax), ly) : 1;
+    // Cropped at the sides and the nape: fading out toward the ears and neck.
+    const side = lz >= -0.02 || ax > 0.05 ? lerp(0.25, 1, smooth01(-0.01, 0.055, ly)) * (ly < 0.04 ? (p.sides ?? 0.8) : 1) : 1;
+    return M.hair[i] * front * side;
+  };
+  for (let i = 0; i < M.count; i++) {
+    const x = P[i * 3],
+      y = P[i * 3 + 1],
+      z = P[i * 3 + 2];
+    const nx = N[i * 3],
+      ny = N[i * 3 + 1],
+      nz = N[i * 3 + 2];
+    const h = M.head[i];
+    const chest = (1 - h) * smooth01(1.5, 1.44, y);
+    cur.length = 0;
+    cur.push(B.head, h, B.neck, 1 - h - chest, B.chest, chest);
+    // His tone under the skin's own variation (kept within bounds: the
+    // inside of the mouth and the rims of the eyes are far off the middle).
+    const r = Math.min(1.6, Math.max(0.4, rel[i * 3])),
+      g = Math.min(1.6, Math.max(0.35, rel[i * 3 + 1])),
+      bl = Math.min(1.6, Math.max(0.35, rel[i * 3 + 2]));
+    col.setRGB(tan.r * r, tan.g * g, tan.b * bl);
+    const ly = y - HC.y,
+      lz = z - HC.z;
+    const front = lz < -0.03;
+    // Stubble: the jaw and chin and under them, not the lips (redder than the skin round them).
+    const lip = smooth01(1.12, 1.3, r / Math.max(0.01, g));
+    if (stub > 0) col.lerp(stubC, stub * 0.5 * smooth01(0.15, 0.7, M.jaw[i]) * (1 - lip) * (front || ly < -0.07 ? 1 : 0.5));
+    // Brows.
+    if (M.brow[i] > 0) col.lerp(browC, 0.8 * M.brow[i] ** 1.25);
+    // Hair on the scalp.
+    const ha = hairAt(i);
+    if (ha > 0) col.lerp(hairC, 0.92 * ha);
+    // Under a helmet's brim the face is shaded (lightly: its cast shadow does the rest).
+    if (helmet && front) col.multiplyScalar(1 - 0.1 * smooth01(-0.01, 0.04, ly));
+    // Field grime: smudges of dust and sweat a few centimetres across.
+    if (dirt > 0) col.lerp(grime, dirt * 0.3 * smooth01(0.45, 0.9, noise3(x * 28 + p.tone, y * 28, z * 28)) * (front ? 1 : 0.6));
+    b.paint(col);
+    under[i * 3] = col.r;
+    under[i * 3 + 1] = col.g;
+    under[i * 3 + 2] = col.b;
+    const ax = Math.abs(nx),
+      ay = Math.abs(ny),
+      az = Math.abs(nz);
+    const u = ax >= ay && ax >= az ? z : x,
+      v = ay > ax && ay >= az ? z : y;
+    b.vertex(x, y, z, nx, ny, nz, u * s, v * s);
+  }
+  for (let t = 0; t < M.index.length; t++) b.idx.push(base + M.index[t]);
+  // The hair itself: a thin cap over the scalp, flat under headgear, fuller
+  // on top without, clipped short at the sides.
+  {
+    const covered = helmet || cap;
+    const top = covered ? 0.0015 : (p.hairTop ?? 0.012);
+    const _hc = new THREE.Color();
+    b.material(CELL.hair);
+    b.bones(B.head);
+    b.part();
+    const slot = new Map();
+    const at = (i) => {
+      let k = slot.get(i);
+      if (k !== undefined) return k;
+      const ly = P[i * 3 + 1] - HC.y;
+      const ha = hairAt(i);
+      const thick = (lerp(0.0008, top, smooth01(0.035, 0.09, ly)) * smooth01(0.45, 1, ha) + 0.0003) * (ha > 0.45 ? 1 : 0);
+      // (Its edge lies on the skin in the skin's color: no saw-toothed hairline.)
+      col.setRGB(under[i * 3], under[i * 3 + 1], under[i * 3 + 2]).lerp(_hc.copy(hairC).multiplyScalar(0.85 + 0.25 * smooth01(0, 0.1, ly)), smooth01(0.2, 0.6, ha));
+      b.paint(col);
+      k = b.vertex(P[i * 3] + N[i * 3] * thick, P[i * 3 + 1] + N[i * 3 + 1] * thick, P[i * 3 + 2] + N[i * 3 + 2] * thick, N[i * 3], N[i * 3 + 1], N[i * 3 + 2], P[i * 3] * s, P[i * 3 + 2] * s);
+      slot.set(i, k);
+      return k;
+    };
+    for (let t = 0; t < M.index.length; t += 3) {
+      const i0 = M.index[t],
+        i1 = M.index[t + 1],
+        i2 = M.index[t + 2];
+      // (Where there is hair at any corner: the cap's edge lies on the skin.)
+      if (Math.max(hairAt(i0), hairAt(i1), hairAt(i2)) < 0.45) continue;
+      // (None under headgear: the scalp there is hair-colored and out of sight.)
+      if (covered && Math.min(P[i0 * 3 + 1], P[i1 * 3 + 1], P[i2 * 3 + 1]) - HC.y > 0.07) continue;
+      b.idx.push(at(i0), at(i1), at(i2));
+    }
+  }
+  b.material(CELL.skin);
+  b.bones(B.head);
+  const f = faceShape(p);
+  for (const sd of [-1, 1]) {
+    const c = sd < 0 ? M.eyes.L : M.eyes.R;
+    if (lod > 0) {
+      // Eyes as dark spots for the middle distance.
+      b.paint(new THREE.Color(0.05, 0.04, 0.035));
+      b.part();
+      b.ellipsoid([c.x, c.y, c.z - M.eyes.r * 0.45], [0.0115, 0.0055, 0.006], { nu: 5, nv: 3 });
+    } else buildEye(b, sd, f, p, { center: c.clone(), radius: M.eyes.r, lids: false });
+  }
+}
+
 // Neck: from inside the collar up into the head, with the larynx.
 export function buildNeck(b, { lod = 0, skin, low = 1.43 } = {}) {
+  if (lod < 2) return; // (the sculpted head has its own)
   b.bones((x, y, z, o) => {
     if (y < 1.5) setN(o, [B.chest, 1 - smooth01(1.44, 1.5, y), B.neck, smooth01(1.44, 1.5, y)]);
     else setN(o, [B.neck, 1 - smooth01(1.55, 1.6, y), B.head, smooth01(1.55, 1.6, y)]);
@@ -684,8 +829,15 @@ export function buildHand(b, side, { lod = 0, skin, nails, glove = null, dirt = 
   const palmC = sk ? sk.clone().multiplyScalar(0.95).lerp(new THREE.Color(0.7, 0.42, 0.34), 0.16) : null;
   const ruddy = new THREE.Color(0.5, 0.24, 0.17);
   const grime = new THREE.Color(0.12, 0.09, 0.07);
-  const NAIL_EDGE = new THREE.Color(0.78, 0.72, 0.66);
-  const nailC = nails || (sk ? sk.clone().lerp(new THREE.Color(0.78, 0.62, 0.56), 0.5) : null);
+  const NAIL_EDGE = new THREE.Color(0.6, 0.52, 0.46);
+  const nailC =
+    nails ||
+    (sk
+      ? sk
+          .clone()
+          .multiplyScalar(0.9)
+          .lerp(new THREE.Color(0.7, 0.5, 0.45), 0.35)
+      : null);
   const J = Object.fromEntries(FINGER_NAMES.map((f) => [f, HAND_JOINTS[f].map((q) => new THREE.Vector3(...q))]));
   const q = new THREE.Vector3(),
     d = new THREE.Vector3(),
@@ -732,7 +884,7 @@ export function buildHand(b, side, { lod = 0, skin, nails, glove = null, dirt = 
         if (nail > 0 && nailC) {
           col.lerp(nailC, nail);
           // The pale edge of the nail, and dirt under it.
-          col.lerp(NAIL_EDGE, 0.35 * nail * smooth01(0.86, 0.96, t));
+          col.lerp(NAIL_EDGE, 0.18 * nail * smooth01(0.88, 0.97, t));
           if (dirt) col.lerp(grime, dirt * 0.5 * nail * smooth01(0.84, 0.94, t));
           gloss = 0.55 * nail;
         }
