@@ -14,6 +14,7 @@ const _v = new THREE.Vector3(),
   _t = new THREE.Vector3(),
   _s = new THREE.Vector3(),
   _f = new THREE.Vector3(),
+  _keep = new THREE.Color(),
   _m = new THREE.Matrix4(),
   _nm = new THREE.Matrix3(),
   _col = new THREE.Color();
@@ -542,7 +543,7 @@ export class SkinBuilder {
   // section is a superellipse (exp 2 = ellipse) whose rx axis follows `side`.
   // capStart/capEnd: length of rounded end caps (fraction of the radius).
   // disp(k, a, ring) -> radial offset for ring k at angle a (folds).
-  tube(rings, { seg = 12, side = [1, 0, 0], capStart = 0, capEnd = 0, exp = 2, twist = 0, disp = null } = {}) {
+  tube(rings, { seg = 12, side = [1, 0, 0], capStart = 0, capEnd = 0, exp = 2, twist = 0, disp = null, shade = null } = {}) {
     const R = rings.map((r) => ({ ...r, c: r.c.isVector3 ? r.c.clone() : new THREE.Vector3(...r.c), rx: r.rx, rz: r.rz ?? r.rx }));
     const sideV = new THREE.Vector3(...side);
     const tangent = (k) => {
@@ -617,7 +618,14 @@ export class SkinBuilder {
           _n.copy(frames[k].T).multiplyScalar(k < R.length / 2 ? -1 : 1);
         } else if (_n.dot(_f) < 0) _n.negate();
         _n.normalize();
+        // shade(k, a, ring): this vertex's color darkened (the hollow of a fold).
+        const sh = shade && !R[k].cap ? shade(k, (i / seg) * Math.PI * 2 + twist, R[k]) : 1;
+        if (sh !== 1) {
+          _keep.copy(this.color);
+          this.color.multiplyScalar(sh);
+        }
         this.vertex(p.x, p.y, p.z, _n.x, _n.y, _n.z, (i / seg) * circ * s, acc * s);
+        if (sh !== 1) this.color.copy(_keep);
       }
     }
     for (let k = 0; k < R.length - 1; k++) {
@@ -709,9 +717,16 @@ export class SkinBuilder {
     for (let i = 0; i < n; i++) {
       if (this.noShadow.has(prim[i])) continue;
       const k = key(Math.floor(P[i * 3] / cell), Math.floor(P[i * 3 + 1] / cell), Math.floor(P[i * 3 + 2] / cell));
-      let l = grid.get(k);
-      if (!l) grid.set(k, (l = []));
-      l.push(i);
+      // (Each cell's vertices kept by part: a vertex is only shaded by other
+      // parts, and most of its neighbours are of its own.)
+      let c = grid.get(k);
+      if (!c) grid.set(k, (c = { parts: [], lists: [] }));
+      let at = c.parts.indexOf(prim[i]);
+      if (at < 0) {
+        at = c.parts.push(prim[i]) - 1;
+        c.lists.push([]);
+      }
+      c.lists[at].push(i);
     }
     const occ = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -729,22 +744,25 @@ export class SkinBuilder {
       for (let dx = -1; dx <= 1; dx++)
         for (let dy = -1; dy <= 1; dy++)
           for (let dz = -1; dz <= 1; dz++) {
-            const l = grid.get(key(gx + dx, gy + dy, gz + dz));
-            if (!l) continue;
-            for (let q = 0; q < l.length; q++) {
-              const j = l[q];
-              if (prim[j] === pi) continue;
-              const ex = P[j * 3] - px,
-                ey = P[j * 3 + 1] - py,
-                ez = P[j * 3 + 2] - pz;
-              const d2 = ex * ex + ey * ey + ez * ez;
-              if (d2 > radius * radius || d2 < 1e-10) continue;
-              const d = Math.sqrt(d2);
-              const front = (ex * nx + ey * ny + ez * nz) / d; // occluder in front of the surface
-              if (front < 0.05) continue;
-              // The occluding surface faces back toward us (its underside).
-              const facing = -(ex * N[j * 3] + ey * N[j * 3 + 1] + ez * N[j * 3 + 2]) / d;
-              o += front * (0.35 + 0.65 * Math.max(0, facing)) * (1 - d / radius);
+            const c = grid.get(key(gx + dx, gy + dy, gz + dz));
+            if (!c) continue;
+            for (let g = 0; g < c.parts.length; g++) {
+              if (c.parts[g] === pi) continue;
+              const l = c.lists[g];
+              for (let q = 0; q < l.length; q++) {
+                const j = l[q];
+                const ex = P[j * 3] - px,
+                  ey = P[j * 3 + 1] - py,
+                  ez = P[j * 3 + 2] - pz;
+                const d2 = ex * ex + ey * ey + ez * ez;
+                if (d2 > radius * radius || d2 < 1e-10) continue;
+                const d = Math.sqrt(d2);
+                const front = (ex * nx + ey * ny + ez * nz) / d; // occluder in front of the surface
+                if (front < 0.05) continue;
+                // The occluding surface faces back toward us (its underside).
+                const facing = -(ex * N[j * 3] + ey * N[j * 3 + 1] + ez * N[j * 3 + 2]) / d;
+                o += front * (0.35 + 0.65 * Math.max(0, facing)) * (1 - d / radius);
+              }
             }
           }
       occ[i] = o;
