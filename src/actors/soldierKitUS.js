@@ -16,7 +16,7 @@
 // Colors: OD shade 3 (cotton), OD 33 (wool), OD 7 (1943 items), khaki webbing.
 import * as THREE from 'three';
 import { registerOutfits, CELL, PI, V, torsoWeights, B, legChain, chainPoint, pouch, buckle, rigidAt } from './soldierKit.js';
-import { buildHelmet, buildTankHelmet, canteenUS, firstAidUS, shovelUS, bayonet, backpack, backFrame, bandolier, holster, binocularCase, knife, magPouch } from './soldierGear.js';
+import { buildHelmet, buildTankHelmet, canteenUS, firstAidUS, shovelUS, bayonet, backpack, backFrame, bandolier, holster, binocularCase, knife, magPouch, slungBag, packRoll } from './soldierGear.js';
 
 export const US = {
   jacketM41: 0x8c805c, // OD shade 3 cotton poplin
@@ -176,15 +176,16 @@ function infantry(o, { recon = false } = {}) {
   const haversack = !recon && o.chance(0.55);
   if (!haversack && lod < 2) shovelUS(b, o.beltFrame(2.35, belt.y - 0.065, 0.008), US, lod);
   if (o.chance(0.7) && lod < 2) bayonet(b, o.beltFrame(2.85, belt.y - 0.06, 0.006), { len: 0.27, color: 0x3a3a2c, grip: 0x2a2a26, lod });
+  let packFrame = null;
   if (haversack) {
-    const f = backFrame(o.g, 1.44, 0.26, 0.36, 0.004);
+    const f = (packFrame = backFrame(o.g, 1.44, 0.26, 0.36, 0.004));
     // The rolled M1928 pack with the entrenching tool carrier on its flap.
     backpack(b, f, { w: 0.27, h: 0.36, d: 0.12, color: o.shade(US.web, 0.05), lod, round: 0.035, straps: [-0.07, 0.07], strapColor: US.web, seed: o.variant });
     if (lod < 2) shovelUS(b, f.sub(0, -0.17, 0.125), US, lod);
   }
   // A cloth bandolier for Garand men; a fragmentation grenade on a suspender.
   if (role === 'rifle' && o.chance(0.3)) bandolier(b, o.g, US, { lod, kind: 'US', color: o.shade(0x8a8060, 0.05) });
-  if (lod === 0 && o.chance(0.4)) {
+  if (o.chance(0.4) && lod === 0) {
     const f = o.beltFrame(-PI / 2 - 0.62, 1.26, 0.012);
     b.bones(rigidAt(f));
     b.material(CELL.paint);
@@ -197,6 +198,35 @@ function infantry(o, { recon = false } = {}) {
   if (recon) binocularCase(b, o.beltFrame(-2.5, belt.y - 0.06, 0.008), { color: 0x4a3a28, lod });
   // Helmet.
   const net = recon || o.chance(0.6);
+  // (What follows was added later: after the helmet's draws, so every man
+  // keeps the kit he had.)
+  const more = () => {
+    // (Shared out by the variant's number, not drawn: the kit's own draws are
+    // spent in a fixed order, and of the eight variants five carry the pack.)
+    const v = o.variant;
+    // The blanket (or raincoat) rolled in a horseshoe over the pack: three packs in five.
+    const rolled = packFrame && (v + 1) % 3 !== 0;
+    const rollC = rolled ? o.shade(0x5c563a, 0.06) : null;
+    if (rolled && lod < 2) packRoll(b, packFrame, { w: 0.27, h: 0.36, d: 0.12, r: 0.045, color: rollC, cell: CELL.wool, tie: US.web, lod });
+    // The gas mask in its bag at the left hip (carried ashore in Normandy,
+    // and dropped by many soon after). With the pack only: without it the
+    // shovel hangs there.
+    if (packFrame && (v % 3 === 2 || v === 3)) slungBag(b, o.g, { theta: 2.12, y: belt.y - 0.02, w: 0.19, h: 0.24, d: 0.06, color: o.shade(0x55503a, 0.06), strap: US.web, lod, fastener: 'snap', r: 0.02 });
+    // A second bandolier, and a second grenade.
+    const second = role === 'rifle' && v % 4 === 1;
+    const secondC = second ? o.shade(0x8a8060, 0.05) : null;
+    if (second && lod < 2) bandolier(b, o.g, US, { lod, kind: 'US', color: secondC });
+    if (lod === 0 && v % 2 === 0) {
+      const f = o.beltFrame(-PI / 2 + 0.62, 1.27, 0.012);
+      b.bones(rigidAt(f));
+      b.material(CELL.paint);
+      b.paint(0x4a4c36);
+      f.ell(b, 0, -0.03, 0.026, 0.026, 0.04, 0.026, { nu: 10, nv: 6 });
+      b.material(CELL.metal);
+      b.paint(0x55524a);
+      f.box(b, -0.01, 0.012, 0.03, 0.012, 0.03, 0.012, { r: 0.002 });
+    }
+  };
   buildHelmet(b, 'US', US, {
     lod,
     cover: o.camo,
@@ -208,6 +238,7 @@ function infantry(o, { recon = false } = {}) {
     seed: o.variant,
     paint: o.shade(US.helmet, 0.05),
   });
+  more();
   o.weather(o.dirt);
 }
 

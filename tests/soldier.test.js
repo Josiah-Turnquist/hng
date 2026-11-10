@@ -198,10 +198,12 @@ test('levels of detail: 2 skinned meshes up close, 1 in the middle distance and 
 test('every army and class builds at every level of detail within its triangle budget', () => {
   // (Full detail, within about 16 m and on the Heroes screen, has finer cloth
   // for its folds, closest at the elbows and knees where they are deep: up to
-  // 46k triangles; the middle distance, enough points across the face for its
-  // features: up to 5.6k.)
-  // (Of the 46k, 6.7k are the two sculpted hands: handMesh.js.)
-  const budget = [46000, 5600, 1400];
+  // 50k triangles; the middle distance, enough points across the face for its
+  // features: up to 5.7k.)
+  // (Of the 50k, 6.7k are the two sculpted hands: handMesh.js; up to 4k are
+  // the field kit of the most loaded men: pack frame, rolls, bags, a belt of
+  // machine gun rounds.)
+  const budget = [50000, 5700, 1450];
   for (const f of ['US', 'GE', 'SU']) {
     for (const cls of ['infantry', 'recon', 'paratrooper', 'tanker']) {
       for (const role of ['rifle', 'smg']) {

@@ -799,9 +799,6 @@ export function canteenUS(b, f, st, lod) {
     b.material(CELL.duck);
     b.paint(st.canteen ?? 0x857a58);
   }
-  // Binding seam down the edges.
-  b.paint(new THREE.Color(st.canteen ?? 0x857a58).multiplyScalar(0.8));
-  f.box(b, 0, -0.195, 0.04, 0.12, 0.008, 0.074, { r: 0.004 });
   // Hanger.
   b.material(CELL.metal);
   b.paint(0x3e3d38);
@@ -1206,6 +1203,148 @@ export function bandolier(b, g, st, { lod = 0, kind = 'US', color }) {
     const f = torsoFrame(g, q.t, q.y, 0.008, { plumb: false });
     pouch(b, f.sub(0, 0.03, 0), { w: kind === 'FJ' ? 0.045 : 0.06, h: 0.06, d: 0.022, flap: 0.4, color, cell: CELL.cotton, fastener: 'snap', lod, r: 0.005 });
     if (kind === 'FJ') pouch(b, f.sub(0, 0.03, 0), { w: 0.045, h: 0.06, d: 0.022, flap: 0.4, color, cell: CELL.cotton, fastener: 'snap', lod, r: 0.005 });
+  }
+}
+
+// A bag slung at the hip from a strap over the other shoulder (the Soviet and
+// US gas mask bags, which men kept for everything but the mask). theta: where
+// round the hips it hangs (on the back half); y: its top; over: the shoulder
+// the strap crosses, 1 right, -1 left (the bag hangs on the other side).
+export function slungBag(b, g, { theta, y, w, h, d, color, strap = color, cell = CELL.duck, over = 1, lod = 0, flap = 0.45, fastener = 'button', r = 0.02, out = 0.012 }) {
+  // (Not from far off: it is lost against the hip.)
+  if (lod === 2) return null;
+  const f = torsoFrame(g, theta, y, out);
+  // A soft cloth bag, fuller at the bottom, with a flap buttoned over its top.
+  b.bones(rigidAt(f));
+  b.material(cell);
+  b.paint(color);
+  softBag(b, f, { w, h, d, neck: 0.92, boxy: 0.5, sag: 0.3, seed: 5, lod });
+  if (!lod && flap) {
+    b.part();
+    b.paint(new THREE.Color(color).multiplyScalar(0.93));
+    f.box(b, 0, -h * flap * 0.5, d * 0.5 + 0.004, w * 0.97, h * flap, d + 0.006, { r: Math.min(r, d * 0.45), seg: [8, 3] });
+    b.material(CELL.metal);
+    b.paint(0x4c4a40);
+    if (fastener === 'snap') f.cyl(b, [0, -h * flap + 0.012, d + 0.007], [0, -h * flap + 0.012, d + 0.0095], 0.005, 0.0045, { seg: 6 });
+    else f.ell(b, 0, -h * flap + 0.012, d + 0.008, 0.007, 0.007, 0.003, { nu: 8, nv: 3 });
+  }
+  // The strap: up across the back, over the shoulder, down across the chest
+  // and round the hip to the bag again.
+  const xh = Math.cos(theta) * 0.13;
+  b.material(CELL.webbing);
+  b.paint(strap);
+  torsoStrap(
+    b,
+    g,
+    [
+      { t: theta, y: y - 0.005 },
+      { x: xh * 0.35 + over * 0.02, y: lerp(y, 1.44, 0.5), side: 1 },
+      { x: over * 0.085, y: 1.44, side: 1 },
+      { t: over > 0 ? 0 : PI, y: 1.476 },
+      { x: over * 0.095, y: 1.43, side: -1 },
+      { x: xh * 0.4, y: lerp(y, 1.43, 0.45), side: -1 },
+      { x: xh * 0.95, y: y + 0.07, side: -1 },
+      { t: over > 0 ? PI : 0, y: y + 0.025 },
+      { t: theta + (over > 0 ? 0.3 : -0.3), y: y - 0.005 },
+    ],
+    0.032,
+    0.003,
+    { out: 0.007, lod },
+  );
+  return f;
+}
+
+// A blanket, raincoat or shelter half rolled and strapped in a horseshoe over
+// a pack: up one side, over the top and down the other. f: the pack's frame
+// (its top center on the back, Z out); w, h, d: the pack's size; r: the roll's
+// radius.
+export function packRoll(b, f, { w, h, d, r = 0.045, color, cell = CELL.wool, tie = 0x3a3226, lod = 0, drop = 0.78 }) {
+  const X = w / 2 + r * 0.55,
+    top = r * 0.75,
+    bot = -h * drop,
+    c = Math.min(0.075, X * 0.6);
+  const pts = [];
+  const legs = lod ? 2 : 5,
+    arc = lod ? 2 : 6;
+  for (let i = 0; i < legs; i++) pts.push([-X, lerp(bot, top - c, i / legs)]);
+  for (let i = 0; i <= arc; i++) {
+    const a = PI - (i / arc) * (PI / 2);
+    pts.push([-X + c + Math.cos(a) * c, top - c + Math.sin(a) * c]);
+  }
+  for (let i = 0; i <= arc; i++) {
+    const a = PI / 2 - (i / arc) * (PI / 2);
+    pts.push([X - c + Math.cos(a) * c, top - c + Math.sin(a) * c]);
+  }
+  for (let i = 1; i <= legs; i++) pts.push([X, lerp(top - c, bot, i / legs)]);
+  const side = f.dir(0, 0, 1);
+  b.bones(rigidAt(f));
+  b.material(cell);
+  b.paint(color);
+  b.part();
+  const rings = pts.map(([x, y]) => ({ c: f.point(x, y, d * 0.5), rx: r, rz: r * 0.92, side: [side.x, side.y, side.z] }));
+  b.tube(rings, {
+    seg: lod ? 6 : 10,
+    capStart: 0.5,
+    capEnd: 0.5,
+    // (The rolled layers show as a slight spiral.)
+    disp: lod ? null : (k, a) => 0.002 * ((k * 0.9 + a / (2 * PI)) % 1),
+  });
+  if (lod) return;
+  // Three straps round it.
+  b.material(CELL.leather);
+  b.paint(tie);
+  for (const k of [0.14, 0.5, 0.86]) {
+    const i = Math.round(k * (rings.length - 1));
+    const q = rings[i].c;
+    const along = rings[Math.min(rings.length - 1, i + 1)].c.clone().sub(rings[Math.max(0, i - 1)].c).normalize();
+    b.part();
+    b.tube(
+      [
+        { c: q.clone().addScaledVector(along, -0.007), rx: r + 0.003, rz: r * 0.92 + 0.003, side: [side.x, side.y, side.z] },
+        { c: q.clone().addScaledVector(along, 0.007), rx: r + 0.003, rz: r * 0.92 + 0.003, side: [side.x, side.y, side.z] },
+      ],
+      { seg: 10 },
+    );
+  }
+}
+
+// A belt of machine gun cartridges hung round the neck, both ends down the
+// chest (how a gunner's mate carried the next fifty rounds): the rounds side
+// by side on their links, brass cases and dark bullets.
+export function ammoBelt(b, g, { lod = 0, brass = 0x7c6634, bullet = 0x4a3a2c, link = 0x26261f } = {}) {
+  const cps = [
+    { x: -0.1, y: 1.13, side: -1 },
+    { x: -0.088, y: 1.3, side: -1 },
+    { x: -0.062, y: 1.43, side: -1 },
+    { t: PI * 0.62, y: 1.49 },
+    { t: PI * 0.38, y: 1.49 },
+    { x: 0.062, y: 1.43, side: -1 },
+    { x: 0.088, y: 1.3, side: -1 },
+    { x: 0.1, y: 1.17, side: -1 },
+  ];
+  // The links: a dark band the rounds lie on (all there is of it from a distance).
+  b.material(CELL.metal, lod ? 0.25 : 0);
+  b.paint(lod ? brass : link);
+  torsoStrap(b, g, cps, lod ? 0.055 : 0.03, 0.004, { out: 0.006, lod });
+  if (lod) return;
+  // The rounds, 14 mm apart (7.92 mm cartridges are 12 mm across the rim).
+  const path = torsoPath(g, cps, 0.012, 0.014);
+  const n = new THREE.Vector3(),
+    t = new THREE.Vector3(),
+    x = new THREE.Vector3();
+  b.bones(torsoWeights);
+  b.part();
+  for (let i = 1; i < path.length - 1; i++) {
+    torsoNormal(path[i].t, path[i].y, n);
+    t.copy(path[i + 1].p).sub(path[i - 1].p).normalize();
+    // (Across the belt, bullets pointing the same way all along it.)
+    x.crossVectors(n, t).normalize();
+    const p = path[i].p;
+    b.material(CELL.metal, 0.3);
+    b.paint(brass);
+    b.cylinder(p.clone().addScaledVector(x, -0.03), p.clone().addScaledVector(x, 0.02), 0.0056, 0.0052, { seg: 5 });
+    b.paint(bullet);
+    b.cylinder(p.clone().addScaledVector(x, 0.02), p.clone().addScaledVector(x, 0.04), 0.004, 0.0012, { seg: 5 });
   }
 }
 

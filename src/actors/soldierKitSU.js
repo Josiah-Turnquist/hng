@@ -11,7 +11,7 @@
 //   Tank crew: padded shlemofon, dark coveralls, TT holster.
 import * as THREE from 'three';
 import { registerOutfits, CELL, CAMO_GREY, PI, torsoWeights, B, legChain, chainPoint, pouch, buckle, rigidAt, torsoTheta } from './soldierKit.js';
-import { buildHelmet, buildSideCap, buildTankHelmet, canteenSU, shovelSU, mosinPouch, magPouch, holster, veshmeshok, skatka, knife, binocularCase, torsoFrame, backFrame } from './soldierGear.js';
+import { buildHelmet, buildSideCap, buildTankHelmet, canteenSU, shovelSU, mosinPouch, magPouch, holster, veshmeshok, skatka, knife, binocularCase, torsoFrame, backFrame, slungBag, messTin } from './soldierGear.js';
 
 export const SU = {
   tunic: 0x857b56, // khaki cotton
@@ -59,7 +59,8 @@ function belt(o, { y = 1.08, role = o.role, canvas = false } = {}) {
     for (const s of [-1, 1]) mosinPouch(b, o.beltFrame(-PI / 2 + s * 0.72, y - 0.002, 0.006), SU, lod);
   }
   // Grenade pouch on the left hip.
-  if (lod < 2) pouch(b, o.beltFrame(-PI + 0.35, y - 0.004, 0.006), { w: 0.1, h: 0.13, d: 0.06, flap: 0.4, color: o.shade(SU.pouchCloth, 0.06), cell: CELL.duck, fastener: 'button', lod, r: 0.012 });
+  const grenC = o.shade(SU.pouchCloth, 0.06);
+  if (lod < 2) pouch(b, o.beltFrame(-PI + 0.35, y - 0.004, 0.006), { w: 0.1, h: 0.13, d: 0.06, flap: 0.4, color: grenC, cell: CELL.duck, fastener: 'button', lod, r: 0.012 });
   canteenSU(b, o.beltFrame(1.1, y - 0.05, 0.008), SU, lod);
   if (lod < 2) shovelSU(b, o.beltFrame(0.45, y - 0.045, 0.008), SU, lod);
 }
@@ -94,10 +95,14 @@ function headgear(o, { capChance = 0.4 } = {}) {
 }
 
 function medals(o) {
+  // (Drawn at every level of detail, shown at the nearest: a man's kit takes
+  // the same draws however far off he is, or it would change as he came up.)
+  const courage = o.chance(0.3),
+    guards = o.chance(0.3);
   if (o.lod > 0) return;
   const b = o.b;
   // "For Courage" medal on the left breast; the Guards badge on the right.
-  if (o.chance(0.3)) {
+  if (courage) {
     const f = torsoFrame(o.g, torsoTheta(-0.085, 1.37, -1), 1.37, 0.006, { plumb: false });
     b.bones(torsoWeights);
     b.material(CELL.cotton);
@@ -108,7 +113,7 @@ function medals(o) {
     b.paint(0xb8b8b0);
     f.ell(b, 0, -0.006, 0.003, 0.0125, 0.0125, 0.0018, { nu: 12, nv: 3 });
   }
-  if (o.chance(0.3)) {
+  if (guards) {
     const f = torsoFrame(o.g, torsoTheta(0.085, 1.37, -1), 1.37, 0.006, { plumb: false });
     b.bones(torsoWeights);
     b.material(CELL.metal);
@@ -129,7 +134,7 @@ function infantry(o) {
   const kirza = o.chance(0.6);
   const trc = o.shade(SU.trousers, 0.05).lerp(new THREE.Color(SU.trousersFaded), faded * 0.6);
   o.trousers({ color: trc, cell: CELL.cotton, style: 'breeches', end: kirza ? 0.5 : 0.56, blouse: kirza ? 0.004 : 0.002, bulk: 0.004 });
-  if (lod === 0 && o.chance(0.6)) {
+  if (o.chance(0.6) && lod === 0) {
     // Oval knee reinforcement patches.
     for (const s of [-1, 1]) {
       const P = legChain(s);
@@ -151,9 +156,15 @@ function infantry(o) {
   medals(o);
   // Veshmeshok on the back; the rolled greatcoat over the left shoulder.
   const roll = o.chance(0.5);
-  if (o.chance(0.6) || !roll) veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
+  const sack = o.chance(0.6) || !roll;
+  if (sack) veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
   if (roll) skatka(b, o.g, SU, lod);
   headgear(o);
+  // The gas mask bag at the left hip, on its strap over the right shoulder
+  // (by 1944 it held bread, tobacco and grenades as often as a mask), and the
+  // mess pot tied to the sack.
+  if (o.chance(0.6)) slungBag(b, o.g, { theta: 2.12, y: 1.05, w: 0.19, h: 0.24, d: 0.06, color: o.shade(0x7c7556, 0.06), strap: 0x6c6448, lod, r: 0.025 });
+  if (sack && o.chance(0.6) && lod < 2) messTin(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004).sub(0.02, -0.2, 0.125), { messTin: 0x4a5238, leather: SU.leather }, lod);
   o.weather(o.dirt);
 }
 
@@ -205,6 +216,8 @@ function paratrooper(o) {
     knife(b, rigidAt(f), f.point(0, 0, 0.01).toArray(), f.point(0.02, -0.2, 0.012).toArray(), { color: 0x2a2018, lod });
   }
   veshmeshok(b, backFrame(o.g, 1.39, 0.28, 0.38, 0.004), SU, lod, o.g);
+  const bag = o.chance(0.45);
+  if (bag) slungBag(b, o.g, { theta: 2.12, y: 1.05, w: 0.19, h: 0.24, d: 0.06, color: o.shade(0x7c7556, 0.06), strap: 0x6c6448, lod, r: 0.025 });
   if (o.chance(0.5)) {
     o.info.headgear = 'tank';
     buildTankHelmet(b, 'SU', SU, { lod, color: o.shade(0x4a3424, 0.08) });

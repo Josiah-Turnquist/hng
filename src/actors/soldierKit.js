@@ -69,13 +69,14 @@ export class Outfit {
     return garment ? { color: CAMO_GREY, cell: this.camo } : { color, cell };
   }
   r() {
+    this.draws = (this.draws || 0) + 1;
     return this.rng();
   }
   chance(p) {
-    return this.rng() < p;
+    return this.r() < p;
   }
   pick(list) {
-    return list[Math.floor(this.rng() * list.length) % list.length];
+    return list[Math.floor(this.r() * list.length) % list.length];
   }
   // Uniform colors vary from issue to issue and fade in the sun: a small
   // random shift of a color (sRGB hex) -> THREE.Color.
@@ -635,7 +636,11 @@ export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, rol
   // camo: the id of a print (soldierCamo.js CAMOS) the uniform is made in.
   o.camo = camo ? camoCell(camo) : null;
   def.build(o);
-  return o.finish(bakes);
+  const out = o.finish(bakes);
+  // (How many random draws the kit took: the same at every level of detail,
+  // or a man's kit would change as he comes nearer. tests/kits.test.js)
+  out.info.draws = o.draws;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

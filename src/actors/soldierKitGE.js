@@ -14,7 +14,7 @@
 //   Tank crew: black wrap jacket with pink piping and skull collar patches,
 //     black trousers, black field cap, P38 holster.
 import { registerOutfits, CELL, CAMO_GREY, PI, torsoWeights, pouch, buckle, rigidAt, torsoTheta } from './soldierKit.js';
-import { buildHelmet, buildSideCap, buildFieldCap, canteenGE, breadBag, gasMaskCan, messTin, spadeGE, bayonet, k98Pouches, magPouch, holster, binocularCase, bandolier, stickGrenade, torsoFrame } from './soldierGear.js';
+import { buildHelmet, buildSideCap, buildFieldCap, canteenGE, breadBag, gasMaskCan, messTin, spadeGE, bayonet, k98Pouches, magPouch, holster, binocularCase, bandolier, stickGrenade, torsoFrame, backFrame, packRoll, ammoBelt } from './soldierGear.js';
 
 export const GE = {
   tunicM40: 0x5e6450, // feldgrau, greenish
@@ -49,7 +49,7 @@ export const GE = {
 };
 
 // Belt, harness and the kit hanging on it.
-function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade = true, harness = true, bandolierFJ = false } = {}) {
+function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade = true, harness = true, bandolierFJ = false, tin = true } = {}) {
   const b = o.b;
   const lod = o.lod;
   o.belt(y, 0.045, { color: GE.leather, cell: CELL.leather, thick: 0.005 });
@@ -102,7 +102,8 @@ function beltKit(o, { y = 1.07, role = o.role, bread = true, can = true, spade =
     const f = o.beltFrame(0.95, y - 0.045, 0.008);
     breadBag(b, f, { ...GE, bag: o.shade(o.chance(0.5) ? GE.bag : GE.bagTan, 0.05) }, lod);
     if (lod < 2) canteenGE(b, f.sub(0.06, -0.03, 0.082), GE, lod);
-    if (lod === 0 && o.chance(0.5)) messTin(b, f.sub(-0.08, -0.02, 0.082), GE, lod);
+    // (The mess tin: strapped to the bread bag, unless it rides on an assault frame.)
+    if (o.chance(0.8) && tin && lod < 2) messTin(b, f.sub(-0.08, -0.02, 0.082), GE, lod);
   }
   if (can) gasMaskCan(b, o.beltFrame(2.05, y + 0.08, 0.02), GE, lod, { cape: o.chance(0.7) });
   if (spade && lod < 2) {
@@ -152,6 +153,26 @@ function feldbluse(o, model, { color, piping = GE.piping } = {}) {
   }
 }
 
+// The assault frame on the upper back, with what it carries.
+function assaultFrame(o) {
+  const b = o.b;
+  const lod = o.lod;
+  const webC = o.shade(GE.canvas, 0.05),
+    bagC = o.shade(GE.canvas, 0.05);
+  if (lod === 2) return;
+  const f = backFrame(o.g, 1.435, 0.24, 0.27, 0.006);
+  b.bones(rigidAt(f));
+  b.material(CELL.webbing);
+  b.paint(webC);
+  b.part();
+  f.box(b, 0, -0.135, 0.006, 0.2, 0.25, 0.012, { r: 0.004 });
+  // The mess tin at the top, the bag for the iron ration and tent pegs below.
+  messTin(b, f.sub(0, -0.005, 0.012), GE, lod);
+  pouch(b, f.sub(0, -0.165, 0.012), { w: 0.19, h: 0.095, d: 0.05, flap: 0.5, color: bagC, cell: CELL.duck, fastener: 'strap', lod, r: 0.012 });
+  // The shelter quarter (in its splinter print) rolled round them.
+  packRoll(b, f.sub(0, -0.01, 0.012), { w: 0.19, h: 0.27, d: 0.085, r: 0.036, color: CAMO_GREY, cell: CELL.splinter, tie: GE.leather, lod, drop: 0.9 });
+}
+
 function headgear(o, st, { allowCap = true, cover = 0.15, net = 0.2 } = {}) {
   const b = o.b;
   const lod = o.lod;
@@ -189,10 +210,16 @@ function infantry(o) {
     o.gaiters({ color: o.shade(GE.gaiters, 0.06), strap: GE.leather });
     o.shoes({ color: GE.boots, sole: GE.sole, high: 0.14, gloss: 0.2 });
   }
-  beltKit(o, {});
-  if (lod === 0 && o.chance(0.35)) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.06, 0.012), lod);
-  // A Zeltbahn rolled on the back of the belt.
-  if (lod < 2 && o.chance(0.3)) {
+  // The assault frame (Gefechtsgepäck, issued from 1939): a webbing A-frame
+  // on the Y-straps carrying the mess tin, a small bag and the shelter
+  // quarter rolled round them. About two men in five; one in four of the
+  // rest has the shelter quarter rolled on the back of his belt instead.
+  const frame = o.chance(0.4);
+  const roll = o.chance(0.3);
+  beltKit(o, { tin: !frame });
+  if (o.chance(0.35) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 - 0.35, 1.06, 0.012), lod);
+  if (frame) assaultFrame(o);
+  else if (roll && lod < 2) {
     const f = o.beltFrame(PI / 2, 1.0, 0.03);
     b.bones(rigidAt(f));
     b.material(CELL.splinter);
@@ -201,6 +228,10 @@ function infantry(o) {
     f.cyl(b, [-0.15, 0, 0.0], [0.15, 0, 0.0], 0.04, 0.04, { seg: lod ? 6 : 12 });
   }
   headgear(o, GE);
+  // More to throw and to feed the gun: a second stick grenade in the belt,
+  // and on a machine gunner's mate a belt of fifty rounds round the neck.
+  if (o.chance(0.4) && lod === 0) stickGrenade(b, o.beltFrame(-PI / 2 + 0.35, 1.06, 0.012), lod);
+  if (o.chance(o.role === 'mg' ? 0.8 : 0.12) && lod < 2) ammoBelt(b, o.g, { lod });
   o.weather(o.dirt);
 }
 
@@ -251,7 +282,8 @@ function paratrooper(o) {
   beltKit(o, { bread: true, can: false, spade: o.chance(0.6), harness: true, bandolierFJ: !smg });
   if (!smg) bandolier(b, o.g, GE, { lod, kind: 'FJ', color: water ? 0x7c7860 : 0x6a6c5a });
   // FJ gas mask in its cloth bag on the left.
-  if (lod < 2) pouch(b, o.beltFrame(2.2, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: o.shade(GE.fjTrousers, 0.04), cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
+  const maskBagC = o.shade(GE.fjTrousers, 0.04);
+  if (lod < 2) pouch(b, o.beltFrame(2.2, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: maskBagC, cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
   buildHelmet(b, 'FJ', GE, {
     lod,
     cover: ((own) => o.camo ?? own)(o.chance(0.45) ? 'splinter' : null),
