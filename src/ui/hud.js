@@ -487,18 +487,10 @@ export class Hud {
       const fade = Math.min(1, m.t / 0.7);
       const hit = m.kind === 'hit';
       const heard = m.kind === 'heard';
-      const a = fade * (hit ? 0.8 + 0.2 * Math.min(1, m.s) : heard ? 0.22 + 0.33 * m.s : 0.45 + 0.3 * m.s);
-      const half = hit ? 0.24 + 0.1 * Math.min(1, m.s) : heard ? 0.08 : 0.12;
-      const wdt = hit ? 9 + 5 * Math.min(1, m.s) : heard ? 2 : 3;
-      // (A hit: a dark edge under it, so it shows on any ground or sky.)
-      if (hit) {
-        ctx.strokeStyle = `rgba(20, 0, 0, ${a * 0.7})`;
-        ctx.lineWidth = wdt + 4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, R, th - half - 0.01, th + half + 0.01);
-        ctx.stroke();
-      }
-      ctx.strokeStyle = hit ? `rgba(232, 38, 22, ${a})` : heard ? `rgba(226, 206, 150, ${a})` : `rgba(255, 240, 205, ${a})`;
+      const a = fade * (hit ? 0.6 + 0.35 * m.s : heard ? 0.22 + 0.33 * m.s : 0.45 + 0.3 * m.s);
+      const half = hit ? 0.17 + 0.07 * m.s : heard ? 0.08 : 0.12;
+      const wdt = hit ? 5 + 3 * m.s : heard ? 2 : 3;
+      ctx.strokeStyle = hit ? `rgba(214, 40, 26, ${a})` : heard ? `rgba(226, 206, 150, ${a})` : `rgba(255, 240, 205, ${a})`;
       ctx.lineWidth = wdt;
       ctx.beginPath();
       ctx.arc(cx, cy, R, th - half, th + half);
@@ -507,8 +499,8 @@ export class Hud {
       const ux = Math.cos(th),
         uy = Math.sin(th);
       const r0 = R + wdt / 2,
-        r1 = R + wdt / 2 + (hit ? 18 : heard ? 6 : 8),
-        side = hit ? 10 : heard ? 3 : 4;
+        r1 = R + wdt / 2 + (hit ? 12 : heard ? 6 : 8),
+        side = hit ? 6 : heard ? 3 : 4;
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
       ctx.moveTo(cx + ux * r1, cy + uy * r1);
