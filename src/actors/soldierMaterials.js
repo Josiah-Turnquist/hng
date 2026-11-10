@@ -769,7 +769,9 @@ const FRAG_MAP = /* glsl */ `
   sWDx = wx;
   sWDy = wy;
   float wk = sc <= 2 ? 1.0 : sc == 3 ? 0.6 : sc == 5 ? 0.3 : ( sc >= 12 && sc <= 14 ) ? 1.0 : 0.0;
-  sCrease = sc == 10 ? 0.5 * smoothstep( 0.4, 1.0, vSCrease ) : wk * vSCrease; // (the hand cell has its own)
+  // (Faint on skin: the hands and faces have their shapes in the mesh; strong,
+  // it read as scars across the wrists and knuckles.)
+  sCrease = sc == 10 ? 0.16 * smoothstep( 0.4, 1.0, vSCrease ) : wk * vSCrease;
   if ( sCrease > 0.001 ) {
     sCav = mix( 1.0, textureGrad( map, sWrUv, sWDx, sWDy ).r * 2.0, min( 1.0, sCrease ) );
     diffuseColor.rgb *= sCav;

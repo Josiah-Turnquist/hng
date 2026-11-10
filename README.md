@@ -1,6 +1,6 @@
 # HNG: a WWII combined-arms shooter in the browser
 
-An unofficial fan recreation of **Heroes & Generals** (Reto-Moto, 2016 to 2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. The one exception is the M1 Garand in your hands, a downloaded model (see Credits); the made-in-code one is a setting away.
+An unofficial fan recreation of **Heroes & Generals** (Reto-Moto, 2016 to 2023): infantry, jeeps and tanks fighting over a French village, with an emphasis on realism. Bullets, shells, guns, soldiers and vehicles are all simulated from real-world data, and every model, texture and sound is generated in code when the game loads. The exceptions are the M1 Garand in your hands, a downloaded model (the made-in-code one is a setting away), and the soldiers' hands, sculpted ones from the MakeHuman project (see Credits).
 
 ## Play
 
@@ -138,5 +138,6 @@ docs/                 design notes and research
 ## Credits
 
 - **"Realistic M1 Garand"** by Raymond ([rookieray](https://sketchfab.com/rookieray)), from [Sketchfab](https://sketchfab.com/3d-models/realistic-m1-garand-8d639aed01a94c8bb6e8cb58070a71f3), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It is the M1 Garand in your hands (Settings, Screen: "M1 Garand model" switches to the made-in-code one). The file in `assets/models/` is as downloaded; as it loads, `src/weapons/models/downloaded.js` resizes it to a real Garand's sight spacing, draws its butt out to a real Garand's length from the trigger, leaves out the loose rounds, cases and spent clip shown round it, seats its clip, makes its rear sight a separate sliding part with a wider peep hole, and puts its textures on directly.
+- **The soldiers' hands** are the hand of the [MakeHuman](https://github.com/makehumancommunity/makehuman) base mesh (a young man of average build, from its own shape files), released by the MakeHuman project under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). `tools/extract_hand.py` cuts the hand out with its bones and skin weights (`src/actors/handMeshData.js`); as the game loads, `src/actors/handMesh.js` fits it to the game's own hand joints and finger bones. Its skin is painted in code.
 
 Heroes & Generals was made by Reto-Moto. This project is an unofficial tribute and uses none of its assets.
