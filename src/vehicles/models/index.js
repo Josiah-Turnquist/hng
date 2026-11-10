@@ -39,6 +39,8 @@ import * as us from './us.js';
 import * as german from './german.js';
 import * as soviet from './soviet.js';
 import * as bikes from './bikes.js';
+import { weatherVehicleMaterial, bakeModelPlaces } from '../weather.js';
+import { addMarkings } from './markings.js';
 
 export { trackPath, pathLength };
 
@@ -125,10 +127,19 @@ export function makeVehicleMaterials(textures) {
     chrome: plain({ color: 0xc8c8c8, roughness: 0.18, metalness: 1 }),
     enamel: plain({ color: 0x0e0e0f, roughness: 0.3, metalness: 0.2 }),
   };
+  // Field wear (weather.js): paint gets all of it, the rest only its dust and mud.
+  const PAINT = new Set(['od', 'odCast', 'dunkelgelb', 'germanGrey', 'castGerman', 'sovietGreen', 'sovietCast', 'black']);
+  const DUSTY = new Set(['steel', 'parkerized', 'blued', 'rubber', 'canvasOD', 'canvasGerman', 'canvasSoviet', 'wood', 'leather', 'leatherBlack', 'dark']);
   mats = {};
   for (const [k, make] of Object.entries(makers)) {
     let m = null;
-    Object.defineProperty(mats, k, { enumerable: true, get: () => (m ??= make()) });
+    const made = () => {
+      const x = make();
+      if (PAINT.has(k)) weatherVehicleMaterial(THREE, x, { paint: true });
+      else if (DUSTY.has(k)) weatherVehicleMaterial(THREE, x, { paint: false });
+      return x;
+    };
+    Object.defineProperty(mats, k, { enumerable: true, get: () => (m ??= made()) });
   }
   cache.set(textures, mats);
   return mats;
@@ -158,6 +169,11 @@ function finish(v, b) {
   meta.pivots = {};
   for (const [name, g] of Object.entries(parts)) meta.pivots[name] = g.position.toArray().map(r3);
   root.updateMatrixWorld(true);
+  // National markings, painted on the hull and turret (markings.js).
+  addMarkings(meta.id, parts);
+  root.updateMatrixWorld(true);
+  // (Where each point is on the vehicle, for its field wear: weather.js.)
+  bakeModelPlaces(THREE, root);
   const all = new THREE.Box3().setFromObject(root);
   const body = new THREE.Box3();
   const turretParts = new Set(['turret', 'gun', ...Object.keys(meta.partParents || {})]);
@@ -216,6 +232,10 @@ export function instanceVehicle(id, textures) {
       const mesh = new THREE.Mesh(c.geometry, c.material);
       mesh.castShadow = c.castShadow;
       mesh.receiveShadow = c.receiveShadow;
+      // (A painted marking stays one: its name, its place in the drawing order, what it is.)
+      mesh.name = c.name;
+      mesh.renderOrder = c.renderOrder;
+      if (c.userData.marking) mesh.userData = { ...c.userData };
       ng.add(mesh);
     }
     root.add(ng);

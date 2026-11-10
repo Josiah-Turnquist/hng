@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { G, clamp, RNG, Noise } from '../core/math.js';
 import { CollisionWorld, RayHit, Box } from '../physics/collision.js';
+import { weatherVehicleMaterial } from './weather.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -302,13 +303,16 @@ function ownMaterials(v) {
   const done = new Map();
   const standIn = !!v.model.meta?.placeholder;
   v.model.root.traverse((o) => {
-    if (!o.isMesh || o.userData.damageMarks) return;
+    // (Hit marks keep their own look; painted markings burn with the rest.)
+    if (!o.isMesh || (o.userData.damageMarks && !o.userData.marking)) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     const out = mats.map((m) => {
       let c = done.get(m);
       if (!c) {
         c = m.clone();
         c.userData = { texWorld: m.userData?.texWorld };
+        // (Its field wear goes with it: a copy does not keep what was added to the shader.)
+        if (m.userData?.vehWeather) weatherVehicleMaterial(THREE, c, { paint: m.userData.vehWeather === 'paint' });
         v.game?.world?.shadows?.setup(c);
         done.set(m, c);
         list.push({ mat: c, color: c.color ? c.color.clone() : null, roughness: c.roughness ?? 1, metalness: c.metalness ?? 0, weight: standIn || SOOTY.test(m.name || '') ? 1 : 0.6 });
@@ -327,7 +331,8 @@ export function charModel(v) {
   const d = dmg(v);
   for (const e of ownMaterials(v)) {
     const c = e.mat;
-    if (c.color && e.color) c.color.copy(e.color).multiplyScalar(0.16);
+    // (A painted marking burns off nearly to the color of the plate under it.)
+    if (c.color && e.color) c.color.copy(e.color).multiplyScalar(/^marking/.test(c.name || '') ? 0.045 : 0.16);
     if ('roughness' in c) c.roughness = 1;
     if ('metalness' in c) c.metalness = e.metalness * 0.4;
     if (c.emissive) c.emissive.setRGB(0, 0, 0);
@@ -629,6 +634,24 @@ function projectMark(n, p, nrm, w, h, along, depth) {
     }
   }
   return pos.length ? { pos: new Float32Array(pos), nor: new Float32Array(nor), uv: new Float32Array(uv) } : null;
+}
+
+// A painted marking laid onto a part's own skin (models/markings.js): from a
+// point outside the part, looking along dir (both in the part's frame), a
+// w x h picture where that line first meets the skin, upright (its top
+// toward `up`), following the surface round it. { pos, nor, uv } or null.
+const _mp = new THREE.Vector3();
+const _mn = new THREE.Vector3();
+const _mc = new THREE.Vector3();
+const _ma = new THREE.Vector3();
+export function surfaceMark(parent, from, dir, len, w, h, up) {
+  const n = nearTriangles(parent, _mc.copy(from).addScaledVector(dir, len / 2), len / 2 + Math.hypot(w, h));
+  if (!rayTriangles(n, from, dir, len, _mp, _mn)) return null;
+  if (_mn.dot(dir) > 0) _mn.negate();
+  // (Its width runs along up x normal, so its height runs up the surface.)
+  _ma.crossVectors(up, _mn);
+  if (_ma.lengthSq() < 1e-6) return null;
+  return projectMark(n, _mp, _mn, w, h, _ma.normalize(), Math.max(0.05, 0.3 * Math.max(w, h)));
 }
 
 // Lay a mark in the frame of the object carrying it (see projectMark). `tris`:
