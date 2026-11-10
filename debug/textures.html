@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { TextureLibrary, PRESETS } from '../src/render/textures.js';
 import '../src/actors/soldierMaterials.js'; // (adds the soldiers' cloth, leather and skin)
+import '../src/actors/soldierCamo.js'; // (and the camouflage prints)
 const params = new URLSearchParams(location.search);
 const names = (params.get('names') || Object.keys(PRESETS).join(',')).split(',');
 const kind = params.get('kind') || 'map';

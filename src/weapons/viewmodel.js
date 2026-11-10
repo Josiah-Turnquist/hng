@@ -267,8 +267,8 @@ export class ViewModel {
     this.fpArmsGun = null;
   }
 
-  setOutfit({ faction = this.faction, cls = 'infantry', seed = 1, role = 'rifle', variant } = {}) {
-    this.fpArms.setOutfit({ faction, cls, seed, role, variant });
+  setOutfit({ faction = this.faction, cls = 'infantry', seed = 1, role = 'rifle', variant, camo = null } = {}) {
+    this.fpArms.setOutfit({ faction, cls, seed, role, variant, camo });
   }
 
   _makeFlash() {

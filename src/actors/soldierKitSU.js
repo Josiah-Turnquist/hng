@@ -84,6 +84,7 @@ function headgear(o, { capChance = 0.4 } = {}) {
   }
   buildHelmet(b, 'SU', SU, {
     lod: o.lod,
+    cover: o.camo,
     chin: o.pick(['chin', 'chin', 'loose', 'back']),
     net: o.chance(0.08),
     seed: o.variant + 40,

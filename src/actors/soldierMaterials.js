@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { addMaterials, addPhotos, PRESETS } from '../render/textures.js';
 import { CLOTH_PHOTOS } from './clothPhotoData.js';
+import { CAMO_BASE, CAMOS, CAMO_PRESETS, CAMO_COLS, CAMO_ROWS } from './soldierCamo.js';
 import { addPatch, after, replace } from '../render/materialPatch.js';
 import { BONE_COUNT } from './soldierRig.js';
 
@@ -568,6 +569,8 @@ float sLine( float d, float w, float aa ) {
 
 const FRAG_DECL = /* glsl */ `
 uniform vec4 uSCells[${CELLS.length}];
+uniform sampler2D uSCamo;
+uniform vec4 uSCamoCells[${CAMOS.length}];
 flat varying vec2 vSCell;
 varying float vSGloss;
 varying vec2 vSUv;
@@ -772,6 +775,13 @@ const WEATHER = /* glsl */ `
 const FRAG_MAP = /* glsl */ `
 {
   int sc = int( vSCell.x + 0.5 );
+  // A camouflage print (soldierCamo.js): the cloth is cotton, the print is
+  // laid over it below.
+  int sCamo = -1;
+  if ( sc >= ${CAMO_BASE} ) {
+    sCamo = sc - ${CAMO_BASE};
+    sc = ${CELL.cotton};
+  }
   sCellI = sc;
   vec4 cr = uSCells[ sc ];
   vec2 t = vSUv * cr.w;
@@ -789,6 +799,19 @@ const FRAG_MAP = /* glsl */ `
   sSkin = ( sc == 10 || sc == ${CELL.hand} ) ? 1.0 : 0.0;
   sCloth = ( sc <= 5 || ( sc >= 12 && sc <= 15 ) ) ? 1.0 : 0.0;
   diffuseColor *= textureGrad( map, sAtlasUv, sDx, sDy );
+  if ( sCamo >= 0 ) {
+    // (Its own atlas, tiled like the cloth's; x2: the cloth averages 0.5.)
+    vec4 kr = uSCamoCells[ sCamo ];
+    vec2 kt = vSUv * kr.w;
+    vec2 ksz = vec2( kr.z, kr.z * ${(CAMO_COLS / CAMO_ROWS).toFixed(6)} );
+    vec2 kspan = ksz * ( 1.0 - 2.0 * pad );
+    vec2 kx = dFdx( kt ) * kspan;
+    vec2 ky = dFdy( kt ) * kspan;
+    float km = max( length( kx ), length( ky ) );
+    float klim = min( ksz.x, ksz.y ) / 20.0;
+    if ( km > klim ) { kx *= klim / km; ky *= klim / km; }
+    diffuseColor.rgb *= 2.0 * textureGrad( uSCamo, kr.xy + ksz * pad + fract( kt ) * kspan, kx, ky ).rgb;
+  }
   // Dyed wool and cotton reflect little light (uniform cloth ~5-15%, est.):
   // the swatch colors are taken down so a soldier reads darker than sunlit grass.
   diffuseColor.rgb *= 1.0 - 0.28 * sCloth;
@@ -880,11 +903,22 @@ export function soldierMaterial(textures, { viewmodel = false, cellSize } = {}) 
     // The neutral textures average ~0.5, so vertex colors carry the real colors.
     mat.color.setScalar(2);
     const cells = { value: cellUniforms(atlas) };
+    // The camouflage prints, in an atlas of their own (color only).
+    const camoAtlas = textures.atlas('soldierCamo', CAMO_PRESETS, { cols: CAMO_COLS, cellSize: size, normals: false, orm: false });
+    const camo = { value: camoAtlas.map };
+    const camoCells = {
+      value: CAMOS.map((c, i) => {
+        const r = camoAtlas.rect(i);
+        return new THREE.Vector4(r[0], r[1], r[2] - r[0], 1 / c.world);
+      }),
+    };
     // First person: the gun's occluding capsules, set each frame (FirstPersonArms.place).
     const occ = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
     if (viewmodel) mat.userData.gunOcc = occ;
     addPatch(mat, viewmodel ? 'soldier-atlas-vm' : 'soldier-atlas', (shader) => {
       shader.uniforms.uSCells = cells;
+      shader.uniforms.uSCamo = camo;
+      shader.uniforms.uSCamoCells = camoCells;
       let vs = shader.vertexShader;
       vs = after(vs, '#include <common>', VERT_DECL);
       vs = after(vs, '#include <uv_vertex>', vertMain(viewmodel ? 0.6 : 0.22));

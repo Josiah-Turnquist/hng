@@ -26,6 +26,7 @@
 //   t: action progress 0..1, seconds after death, or extra seconds of a cycle
 //   hitboxes=1  muzzle=1  cam=three|front|side|left|back|top|low  zoom=1.5
 //   focus=i&dist=2  face=i&dist=0.8  pitch=deg yawoff=deg  live=1  flat=1  atlas=1
+//   camo=oakSpring,peaDot (camouflage prints, one per soldier in turn: src/actors/soldierCamo.js)
 //   bg=ff0000 (background color)  shadow=0 (no sun shadows)  sunyaw=deg (sun around the soldiers)
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -36,6 +37,8 @@ import { SoldierModel } from '../src/actors/soldierModel.js';
 import { soldierMaterial } from '../src/actors/soldierMaterials.js';
 
 const params = new URLSearchParams(location.search);
+const camos = (params.get('camo') || '').split(',').filter(Boolean);
+const camoOf = (i) => (camos.length ? camos[i % camos.length] : null);
 const W = innerWidth, H = innerHeight;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W, H);
@@ -81,7 +84,7 @@ if (params.has('fp')) {
   const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
   const f = (params.get('f') || 'US').split(',')[0];
   const vm = new ViewModel(lib, f, scene.environment);
-  vm.setOutfit({ faction: f, cls: params.get('cls') || 'infantry', seed: Number(params.get('seed') || 1) });
+  vm.setOutfit({ faction: f, cls: params.get('cls') || 'infantry', seed: Number(params.get('seed') || 1), camo: camoOf(0) });
   const def = WEAPONS[params.get('fp')] || WEAPONS.kar98k;
   vm.setWeapon(def, new Atmosphere(0, 15));
   vm.scene.background = new THREE.Color(0x8a9aa8);
@@ -145,7 +148,7 @@ if (params.has('heads')) {
   const row = new THREE.Group();
   const models = [];
   for (let i = 0; i < n; i++) {
-    const m = new SoldierModel(f[i % f.length], lib, { seed: Number(params.get('seed') || 1) + i * 13, cls: params.get('cls') || 'infantry' });
+    const m = new SoldierModel(f[i % f.length], lib, { seed: Number(params.get('seed') || 1) + i * 13, cls: params.get('cls') || 'infantry', camo: camoOf(i) });
     m.root.position.set((i - (n - 1) / 2) * 0.32, 0, 0);
     m.update(0, { stance: 0, yaw: (Number(params.get('yaw') || 0) * Math.PI) / 180, aimPitch: 0, alive: true });
     row.add(m.root);
@@ -311,7 +314,7 @@ if (strip) {
   strip.forEach((tt, i) => {
     const f = factions[0];
     const id = gunFor(f, classes[0]);
-    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: roleFor(kindFor(id)) });
+    const m = new SoldierModel(f, lib, { seed, lod, cls: classes[0], role: roleFor(kindFor(id)), camo: camoOf(0) });
     if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kindFor(id));
     m.setGround(ground);
     const z0 = i * 1.4;
@@ -324,7 +327,7 @@ if (strip) {
     factions.forEach((f, i) => {
       const id = gunFor(f, cls);
       const kind = kindFor(id);
-      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: roleFor(kind), variant: params.has('variant') ? Number(params.get('variant')) : undefined });
+      const m = new SoldierModel(f, lib, { seed: seed + i * 7 + row * 31, lod, cls, role: roleFor(kind), variant: params.has('variant') ? Number(params.get('variant')) : undefined, camo: camoOf(i) });
       if (params.get('gun') !== 'none') m.setWeapon(buildGun(id, gunMats, { lod: gunLod }), kind);
       m.setGround(ground);
       const wide = /prone|crawl|dead/.test(pose);

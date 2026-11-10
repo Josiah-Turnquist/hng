@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { B, BIND, HEAD_CENTER } from './soldierRig.js';
 import { SkinBuilder, torsoWeights, armWeights, legWeights, rigid, smooth01, weightsAt } from './soldierGeo.js';
 import { CELL, CAMO_GREY } from './soldierMaterials.js';
+import { camoCell, CAMO_BASE } from './soldierCamo.js';
 import { buildTorsoGarment, buildSeat, buildSleeve, buildElbowPatch, buildTrouserLeg, trouserRows, bodySpheres, buildLegWrap, buildPuttee, buildBoot, garmentPoint, garmentOffset, garmentFolds, torsoPoint, torsoNormal, torsoTheta, chainPoint, armChain, legChain, interpRows, frontness, backness, hash1, noise3, lerp, TORSO_ROWS } from './soldierBody.js';
 import { buildHead, buildNeck, buildHand, buildForearm } from './soldierHead.js';
 import { Frame, torsoFrame, torsoBand, torsoStrap, rigidAt, pouch, buckle, starDecal } from './soldierGear.js';
@@ -54,6 +55,18 @@ export class Outfit {
     this.g = null;
     this.info = { headgear: 'helmet', rolled: 0, gloves: null, faction, cls, variant };
     this.dirt = 0.4;
+    // A camouflage print the whole uniform is made in (its material cell:
+    // soldierCamo.js), or null for the army's own issue.
+    this.camo = null;
+  }
+  // The color and cloth of a garment as this man wears it: the kit's own, or
+  // his camouflage print when he has one and the piece is of cloth (not
+  // knit, leather or webbing).
+  cloth(color, cell) {
+    if (this.camo === null) return { color, cell };
+    const c = cell ?? this.b.cell;
+    const garment = c === CELL.wool || c === CELL.cotton || c === CELL.hbt || c === CELL.duck || c === CELL.splinter || c === CELL.waterCamo || c === CELL.amoeba || c >= CAMO_BASE;
+    return garment ? { color: CAMO_GREY, cell: this.camo } : { color, cell };
   }
   r() {
     return this.rng();
@@ -80,9 +93,10 @@ export class Outfit {
   // folds, seed, top / neckline. color, cell. colorFn(x, y, z, c) optional.
   torso(g, { color, cell = CELL.wool, colorFn = null }) {
     const b = this.b;
+    ({ color, cell } = this.cloth(color, cell));
     // (folded: the cloth's folds are in the mesh at full detail; what is sewn
     // or strapped onto it follows them, or they come through it.)
-    this.g = { seed: this.variant * 7 + 1, legs: this.legCut, folded: this.lod === 0, ...g };
+    this.g = { seed: this.variant * 7 + 1, legs: this.legCut, folded: this.lod === 0, ...g, cell };
     b.material(cell);
     b.paint(color);
     if (colorFn) this.g.colorFn = colorFn;
@@ -94,6 +108,7 @@ export class Outfit {
   // from the hip joint: ~0.84 at the ankle, ~0.5 inside tall boots).
   trousers({ color, cell = CELL.wool, style = 'straight', end = 0.84, blouse = 0, tuck, seatTop = 1.06, waistband = false, bulk = 0.004, folds = 1 }) {
     const b = this.b;
+    ({ color, cell } = this.cloth(color, cell));
     b.material(cell);
     b.paint(color);
     buildSeat(b, { top: seatTop, lod: this.lod, waistband });
@@ -105,6 +120,7 @@ export class Outfit {
   // Sleeves, both sides.
   sleeves({ color, cell = CELL.wool, cuff = 'band', bulk = 0, rolled = 0, cuffColor = null, wide = 0 }) {
     const b = this.b;
+    ({ color, cell } = this.cloth(color, cell));
     b.material(cell);
     b.paint(color);
     const end = rolled ? 0.235 + 0.02 * this.r() : 0.555;
@@ -146,6 +162,7 @@ export class Outfit {
     const b = this.b;
     const lod = this.lod;
     const g = this.g || {};
+    ({ color, cell } = this.cloth(color, cell));
     if (cell !== null) b.material(cell);
     b.paint(color);
     b.bones(torsoWeights);
@@ -251,6 +268,8 @@ export class Outfit {
   patch(x, y, w, h, { side = -1, thick = 0.003, bulge = 0.004, color = null, cell = null, edge = 0.006, shape = null, tilt = 0, lod = this.lod, castShadow = true } = {}) {
     const b = this.b;
     if (lod === 2) return null;
+    // (A pocket or panel of the garment is of its cloth.)
+    if (color !== null || cell !== null) ({ color, cell } = this.cloth(color, cell));
     if (color !== null) b.paint(color);
     if (cell !== null) b.material(cell);
     b.bones(torsoWeights);
@@ -311,8 +330,11 @@ export class Outfit {
   // jacket, Soviet officer pockets). flapShape: 'straight' | 'scallop' | 'point'.
   pocket(x, y, w, h, { side = -1, color, flapH = 0.045, flapShape = 'straight', button = null, buttonColor = 0x4a4a42, pleat = false, tilt = 0 } = {}) {
     if (this.lod === 2) return;
-    this.patch(x, y - h / 2, w, h, { side, thick: 0.003, bulge: 0.005, color, tilt });
-    if (pleat && this.lod === 0) this.patch(x, y - h / 2, 0.018, h * 0.96, { side, thick: 0.0055, bulge: 0.002, color, tilt });
+    // (Of the garment's cloth, whatever was built last: a pocket's own button
+    // is metal, and the next pocket was made of it.)
+    const cell = this.g?.cell ?? this.b.cell;
+    this.patch(x, y - h / 2, w, h, { side, thick: 0.003, bulge: 0.005, color, cell, tilt });
+    if (pleat && this.lod === 0) this.patch(x, y - h / 2, 0.018, h * 0.96, { side, thick: 0.0055, bulge: 0.002, color, cell, tilt });
     const shape =
       flapShape === 'point'
         ? (s, t) => (t < 0 ? 1 - 0.5 * Math.abs(t * 2) * Math.abs(s * 2) : 1)
@@ -320,7 +342,7 @@ export class Outfit {
           ? (s, t) => (t < -0.25 ? 1 - 0.25 * Math.abs(s * 2) ** 3 : 1)
           : null;
     const fy = y - flapH / 2 + 0.004;
-    const f = this.patch(x, fy, w + 0.006, flapH, { side, thick: 0.0075, bulge: 0.003, color, shape, tilt });
+    const f = this.patch(x, fy, w + 0.006, flapH, { side, thick: 0.0075, bulge: 0.003, color, cell, shape, tilt });
     if (button && f) {
       const b = this.b;
       b.material(CELL.metal);
@@ -604,12 +626,14 @@ export function variantCount(faction, cls) {
 
 // Build an outfit. role: the primary weapon's kind ('rifle' | 'smg' | 'mg' |
 // 'at'), for the ammunition pouches.
-export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true } = {}) {
+export function buildOutfit(faction, cls = 'infantry', variant = 0, lod = 0, role = 'rifle', { bakes = true, camo = null } = {}) {
   const t = OUTFITS[faction] || OUTFITS.US;
   const def = t[cls] || t.infantry;
   const v = variant % def.variants;
   const rng = mulberry(hashStr(`${faction}|${cls}|${v}`));
   const o = new Outfit(faction, cls, v, lod, role, rng);
+  // camo: the id of a print (soldierCamo.js CAMOS) the uniform is made in.
+  o.camo = camo ? camoCell(camo) : null;
   def.build(o);
   return o.finish(bakes);
 }

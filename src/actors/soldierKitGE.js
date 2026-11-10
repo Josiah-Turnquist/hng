@@ -164,7 +164,8 @@ function headgear(o, st, { allowCap = true, cover = 0.15, net = 0.2 } = {}) {
   const kind = o.chance(0.45) ? 'M42' : 'GE';
   buildHelmet(b, kind, GE, {
     lod,
-    cover: r < cover ? 'splinter' : null,
+    // (His camouflage print, if he wears one, covers the helmet too.)
+    cover: o.camo ?? (r < cover ? 'splinter' : null),
     net: r >= cover && r < cover + net,
     band: o.chance(0.3),
     chin: o.pick(['chin', 'chin', 'back', 'loose']),
@@ -253,7 +254,7 @@ function paratrooper(o) {
   if (lod < 2) pouch(b, o.beltFrame(2.2, 1.0, 0.012), { w: 0.13, h: 0.24, d: 0.07, color: o.shade(GE.fjTrousers, 0.04), cell: CELL.duck, lod, fastener: 'button', r: 0.03 });
   buildHelmet(b, 'FJ', GE, {
     lod,
-    cover: o.chance(0.45) ? 'splinter' : null,
+    cover: ((own) => o.camo ?? own)(o.chance(0.45) ? 'splinter' : null),
     net: o.chance(0.3),
     band: o.chance(0.3),
     chin: 'chin',

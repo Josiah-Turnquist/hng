@@ -322,7 +322,7 @@ function cutArms(src, dst) {
 }
 
 export class FirstPersonArms {
-  constructor(textures, { faction = 'US', cls = 'infantry', seed = 1, role = 'rifle', variant } = {}) {
+  constructor(textures, { faction = 'US', cls = 'infantry', seed = 1, role = 'rifle', variant, camo = null } = {}) {
     this.root = new THREE.Group();
     this.root.name = 'fp-arms';
     this.bones = BONE_NAMES.map((n) => {
@@ -339,17 +339,18 @@ export class FirstPersonArms {
     this.pose = new Pose();
     this.info = null;
     this.mesh = null;
-    this.setOutfit({ faction, cls, seed, role, variant });
+    this.setOutfit({ faction, cls, seed, role, variant, camo });
   }
 
   // Rebuild the arms for a soldier (the same seed rules as SoldierModel).
-  setOutfit({ faction = 'US', cls = 'infantry', seed = 1, role = 'rifle', variant } = {}) {
+  // (camo: a camouflage print the uniform is made in, as SoldierModel's.)
+  setOutfit({ faction = 'US', cls = 'infantry', seed = 1, role = 'rifle', variant, camo = null } = {}) {
     const rng = mulberry(seed * 9973 + 17);
     const v0 = Math.floor(rng() * 1000);
     const person = personParams(faction, rng);
     const nv = variantCount(faction, cls);
     // (Without the baked shading of the body round them: these arms are held up.)
-    const { b, info } = buildOutfit(faction, cls, (variant ?? v0) % nv, 0, role, { bakes: false });
+    const { b, info } = buildOutfit(faction, cls, (variant ?? v0) % nv, 0, role, { bakes: false, camo });
     const arms = cutArms(b, new SkinBuilder(1));
     cutArms(buildPerson(person, 0, info), arms);
     if (this.mesh) {
@@ -365,7 +366,7 @@ export class FirstPersonArms {
     m.receiveShadow = false;
     this.mesh = m;
     this.root.add(m);
-    this.key = `${faction}|${cls}|${seed}|${role}|${variant}`;
+    this.key = `${faction}|${cls}|${seed}|${role}|${variant}|${camo || ''}`;
   }
 
   setWeapon(gun, kind) {

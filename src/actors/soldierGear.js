@@ -227,8 +227,10 @@ export function buildHelmet(b, kind, st, { lod = 0, net = false, scrim = false, 
   const shellColor = paint ?? st.helmet;
   // Shell (or its cloth cover).
   if (cover) {
-    b.material(cover === 'splinter' ? CELL.splinter : CELL.cotton);
-    b.paint(cover === 'splinter' ? 0xbcbcbc : st.cover ?? 0x7a7458);
+    // (cover: 'splinter', a camouflage print's cell number, or true for plain cloth.)
+    const printed = cover === 'splinter' || typeof cover === 'number';
+    b.material(cover === 'splinter' ? CELL.splinter : typeof cover === 'number' ? cover : CELL.cotton);
+    b.paint(printed ? 0xbcbcbc : st.cover ?? 0x7a7458);
   } else {
     b.material(CELL.paint);
     b.paint(shellColor);

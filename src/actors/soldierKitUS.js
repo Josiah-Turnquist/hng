@@ -199,6 +199,7 @@ function infantry(o, { recon = false } = {}) {
   const net = recon || o.chance(0.6);
   buildHelmet(b, 'US', US, {
     lod,
+    cover: o.camo,
     net,
     band: net && o.chance(0.35),
     scrim: recon || (net && o.chance(0.15)),
@@ -309,7 +310,7 @@ function paratrooper(o) {
     knife(b, B.shinR, [a.x + 0.06, a.y, a.z - 0.01], [c.x + 0.055, c.y, c.z - 0.006], { color: 0x5a3a24, lod });
   }
   // M2 helmet: net and scrim, chin cup.
-  buildHelmet(b, 'M2', US, { lod, net: o.chance(0.85), scrim: o.chance(0.6), band: o.chance(0.3), chin: o.pick(['chin', 'chin', 'loose']), seed: o.variant + 50, paint: o.shade(US.helmet, 0.05) });
+  buildHelmet(b, 'M2', US, { lod, cover: o.camo, net: o.chance(0.85), scrim: o.chance(0.6), band: o.chance(0.3), chin: o.pick(['chin', 'chin', 'loose']), seed: o.variant + 50, paint: o.shade(US.helmet, 0.05) });
   o.weather(o.dirt);
 }
 
