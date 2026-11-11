@@ -76,3 +76,34 @@ test('no foot is left behind: from a walk into a run at any point of the stride,
   assert.ok(lifts >= 10 && lifts <= 16, `${lifts} steps in 4 s of running`);
   m.dispose();
 });
+
+test("a walking or running man's head stays level: it rides a few centimetres up and down, never drops and pops back", () => {
+  // (The hips used to come down at once by all that the furthest foot asked,
+  // up to half a metre, and spring back as it lifted: 0.3 m at a walk and
+  // 0.5 m at a run, in single frames.)
+  for (const v of [1.6, 3, 5, 6.5]) {
+    for (const fps of [24, 30, 60, 120]) {
+      const m = new SoldierModel('US', null, { seed: 5, lod: 2 });
+      m.setGround(() => 0);
+      const dt = 1 / fps;
+      for (let i = 0; i < fps; i++) m.update(dt, state(0));
+      let lo = Infinity;
+      let hi = -Infinity;
+      let fastest = 0;
+      let prev = null;
+      for (let i = 0; i < fps * 4; i++) {
+        m.update(dt, state(-v));
+        const y = m.eyeWorld.y;
+        // (After the first second: getting going is its own motion.)
+        if (i > fps) {
+          lo = Math.min(lo, y);
+          hi = Math.max(hi, y);
+          if (prev !== null) fastest = Math.max(fastest, Math.abs(y - prev) / dt);
+        }
+        prev = y;
+      }
+      assert.ok(hi - lo < 0.12, `${v} m/s at ${fps} frames a second: his head moves ${(hi - lo).toFixed(2)} m up and down`);
+      assert.ok(fastest < 1.6, `${v} m/s at ${fps} frames a second: his head moves at up to ${fastest.toFixed(1)} m/s`);
+    }
+  }
+});

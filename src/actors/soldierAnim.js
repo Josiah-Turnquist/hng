@@ -40,6 +40,8 @@ const _q = new THREE.Quaternion(),
 // A planted foot further than this from where it would rest (m) has been left
 // behind (a running stride puts it 0.85 m back at most): it is picked up.
 const FAR_BEHIND = 0.92;
+// How far the hips come down for a leg at full stretch while he is on his feet (m).
+const HIP_GIVE = 0.06;
 
 class Foot {
   constructor(side) {
@@ -97,6 +99,7 @@ export class SoldierAnimator {
   body(dt, s) {
     dt = Math.min(Math.max(dt, 0), 0.1);
     this.time += dt;
+    this.dtNow = dt;
     const sm = this.sm;
     // (No man runs at more than TOP m/s: a speed above it is a mistake of
     // whoever worked it out, a jump taken for a move, and would fling his feet.)
@@ -443,6 +446,17 @@ export class SoldierAnimator {
       const need = dy - Math.sqrt(Math.max(0, maxL * maxL - dxz * dxz));
       if (need > drop) drop = need;
     }
+    if (gait) {
+      // On his feet: the hips give only a little for a leg at full stretch,
+      // and ease down and up. (They used to come down at once by all that
+      // the furthest foot asked, up to half a metre, and spring back as it
+      // lifted: at a run his whole body dropped and popped up every stride.)
+      // A leg that still cannot reach is simply straight: the trailing foot
+      // leaves the ground as he pushes off, the leading one comes down as he
+      // arrives over it.
+      this.hipDrop = damp(this.hipDrop || 0, Math.min(drop, HIP_GIVE), 12, this.dtNow || 1 / 60);
+      drop = this.hipDrop;
+    } else this.hipDrop = 0;
     if (drop > 0) {
       pose.hips.y -= Math.min(drop, 0.5);
       mp.fk(pose);
