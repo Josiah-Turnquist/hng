@@ -11,7 +11,9 @@ import { makeBattle, addPlayer } from '../src/server/battle.js';
 import { encodeInput, decodeInput, watchEvents } from '../src/net/protocol.js';
 import { makeWorld, run, rider } from './helpers/vehicleWorld.js';
 import { SURF } from '../src/world/heightfield.js';
-import { VEHICLES } from '../src/vehicles/defs.js';
+import { VEHICLES, SHELLS } from '../src/vehicles/defs.js';
+import { AMMO } from '../src/weapons/ammo.js';
+import { Game } from '../src/game/game.js';
 import { TrackedVehicle } from '../src/vehicles/tracked.js';
 import { buildVehicle } from '../src/vehicles/models/index.js';
 import { ProjectileSystem } from '../src/ballistics/projectiles.js';
@@ -155,4 +157,36 @@ test('from the outside view the gun is laid for the distance to the point aimed 
   } finally {
     console.warn = warn;
   }
+});
+
+// A shell bursting on open ground, men standing at set distances from it: the harm each takes from the blast.
+function blastHarm(shell, distances) {
+  const harm = distances.map(() => 0);
+  const men = distances.map((d, i) => ({ alive: true, body: { x: d, y: 0, z: 0 }, damage: (a) => (harm[i] += a) }));
+  const g = Object.create(Game.prototype);
+  Object.assign(g, {
+    effects: { explosion() {} },
+    audio: null,
+    soldiers: men,
+    vehicles: [],
+    world: { collision: { lineOfSight: () => true } },
+    // (Splinters fly as real projectiles: left out here, only the blast is measured.)
+    projectiles: { fire: () => ({}) },
+  });
+  g.explode(0, 0, 0, { ammo: shell, owner: null, weapon: { name: 'gun' }, distance: 100 });
+  return harm;
+}
+
+test("a tank's explosive shell kills men in the open within about 5 m and wounds well beyond; its blast on vehicles and a hand grenade's are as they were", () => {
+  const [at3, at4, at7, at12, at20] = blastHarm(SHELLS['M48 HE'], [3, 4, 7, 12, 20]);
+  assert.ok(at3 >= 100 && at4 >= 100, `3 m and 4 m off: killed (${at3.toFixed(0)}, ${at4.toFixed(0)})`);
+  assert.ok(at7 > 35 && at7 < 100, `7 m off: badly hurt, not killed (${at7.toFixed(0)})`);
+  assert.ok(at12 > 8 && at12 < 35, `12 m off: hurt (${at12.toFixed(0)})`);
+  assert.equal(at20, 0, 'beyond its reach: nothing');
+  // (The small 37 mm shell stays small.)
+  const [near, off] = blastHarm(SHELLS['M63 HE'], [0.5, 3]);
+  assert.ok(near >= 100 && off < 30, `the 37 mm shell: deadly only close by (${near.toFixed(0)}, ${off.toFixed(0)})`);
+  // Every explosive tank shell is set the same way, and nothing thrown or fired from the shoulder is.
+  for (const s of Object.values(SHELLS)) if (s.explosive) assert.equal(s.explosive.men, 4, s.name);
+  for (const a of Object.values(AMMO)) if (a.explosive) assert.equal(a.explosive.men, undefined, a.name);
 });

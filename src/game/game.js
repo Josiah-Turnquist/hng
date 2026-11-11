@@ -805,7 +805,7 @@ export class Game {
       const d = Math.hypot(dx, dy, dz);
       if (d > ex.radius * 2) continue;
       if (!this.world.collision.lineOfSight(x, y + 0.2, z, s.body.x, s.body.y + 1, s.body.z)) continue;
-      const blast = (ex.blast * 900) / Math.max(1, d * d);
+      const blast = (ex.blast * (ex.men ?? 1) * 900) / Math.max(1, d * d);
       if (blast > 1) s.damage(blast, { kind: 'explosion', attacker: p.owner, weapon: p.weapon, ox: x, oz: z });
       if (blast > 1 && s === this.player?.soldier) this.hud?.shotFrom?.(x, z, 'hit', blast / 40);
     }

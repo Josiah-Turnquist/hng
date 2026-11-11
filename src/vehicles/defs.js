@@ -573,18 +573,22 @@ export const VEHICLES = {
 // (from 100 m figures); HE shells carry their explosive mass. Checks: M61 gives
 // about 81 mm at 500 yd (US data: 3.2 in), BR-350A 73 mm at 500 m (Soviet
 // tables), PzGr 39 from the KwK 40 L/48 about 106 mm at 100 m against 30 degrees.
+// (men: how much harder a bursting shell is on men in the open than its
+// charge alone would be. A 75 mm shell's charge by itself killed only within
+// about 2.5 m; with its splinters it should within about 5 m, wound badly to
+// 7 m and scratch out to 15 m. Blast on vehicles goes by the charge alone.)
 export const SHELLS = {
   'M61 APC': { name: 'M61 APC', diameter: 0.075, mass: 6.79, mv: 619, bc: 2.0, drag: 'G2', penRefMM: 88, penRefVel: 610, capped: true, filler: 0.064, maxAge: 12 },
-  'M48 HE': { name: 'M48 HE', diameter: 0.075, mass: 6.66, mv: 463, bc: 1.8, drag: 'G2', explosive: { blast: 0.67, radius: 8, frag: 10, fragments: 60 }, maxAge: 14 },
+  'M48 HE': { name: 'M48 HE', diameter: 0.075, mass: 6.66, mv: 463, bc: 1.8, drag: 'G2', explosive: { blast: 0.67, radius: 8, frag: 10, fragments: 60, men: 4 }, maxAge: 14 },
   'PzGr 39': { name: 'PzGr. 39 APCBC-HE', diameter: 0.075, mass: 6.8, mv: 790, bc: 2.3, drag: 'G2', penRefMM: 128, penRefVel: 780, capped: true, filler: 0.018, maxAge: 12 },
-  'SprGr 34': { name: 'SprGr. 34 HE', diameter: 0.075, mass: 5.74, mv: 550, bc: 1.7, drag: 'G2', explosive: { blast: 0.68, radius: 8, frag: 10, fragments: 60 }, maxAge: 14 },
+  'SprGr 34': { name: 'SprGr. 34 HE', diameter: 0.075, mass: 5.74, mv: 550, bc: 1.7, drag: 'G2', explosive: { blast: 0.68, radius: 8, frag: 10, fragments: 60, men: 4 }, maxAge: 14 },
   'BR-350A': { name: 'BR-350A APHE', diameter: 0.0762, mass: 6.3, mv: 662, bc: 1.9, drag: 'G2', penRefMM: 82, penRefVel: 655, capped: false, filler: 0.155, maxAge: 12 },
-  'OF-350': { name: 'OF-350 HE-Frag', diameter: 0.0762, mass: 6.2, mv: 680, bc: 1.8, drag: 'G2', explosive: { blast: 0.62, radius: 8, frag: 12, fragments: 60 }, maxAge: 14 },
+  'OF-350': { name: 'OF-350 HE-Frag', diameter: 0.0762, mass: 6.2, mv: 680, bc: 1.8, drag: 'G2', explosive: { blast: 0.62, radius: 8, frag: 12, fragments: 60, men: 4 }, maxAge: 14 },
   'M51 APC': { name: 'M51 APC', diameter: 0.037, mass: 0.87, mv: 884, bc: 0.9, drag: 'G2', penRefMM: 64, penRefVel: 870, capped: true, filler: 0, maxAge: 10 },
-  'M63 HE': { name: 'M63 HE', diameter: 0.037, mass: 0.73, mv: 790, bc: 0.8, drag: 'G2', explosive: { blast: 0.04, radius: 4, frag: 6, fragments: 30 }, maxAge: 10 },
+  'M63 HE': { name: 'M63 HE', diameter: 0.037, mass: 0.73, mv: 790, bc: 0.8, drag: 'G2', explosive: { blast: 0.04, radius: 4, frag: 6, fragments: 30, men: 4 }, maxAge: 10 },
   'PzGr 39 (8.8)': { name: 'PzGr. 39 (8.8 cm) APCBC-HE', diameter: 0.088, mass: 10.2, mv: 773, bc: 2.7, drag: 'G2', penRefMM: 158, penRefVel: 770, capped: true, filler: 0.059, maxAge: 12 },
-  'SprGr (8.8)': { name: 'Sprgr. Patr. (8.8 cm) HE', diameter: 0.088, mass: 9.0, mv: 820, bc: 2.3, drag: 'G2', explosive: { blast: 0.9, radius: 9, frag: 12, fragments: 70 }, maxAge: 14 },
+  'SprGr (8.8)': { name: 'Sprgr. Patr. (8.8 cm) HE', diameter: 0.088, mass: 9.0, mv: 820, bc: 2.3, drag: 'G2', explosive: { blast: 0.9, radius: 9, frag: 12, fragments: 70, men: 4 }, maxAge: 14 },
   'BR-365': { name: 'BR-365 APBC-HE', diameter: 0.085, mass: 9.2, mv: 792, bc: 2.3, drag: 'G2', penRefMM: 116, penRefVel: 780, capped: true, filler: 0.048, maxAge: 12 },
-  'O-365': { name: 'O-365K HE-Frag', diameter: 0.085, mass: 9.5, mv: 793, bc: 2.2, drag: 'G2', explosive: { blast: 0.74, radius: 9, frag: 12, fragments: 70 }, maxAge: 14 },
+  'O-365': { name: 'O-365K HE-Frag', diameter: 0.085, mass: 9.5, mv: 793, bc: 2.2, drag: 'G2', explosive: { blast: 0.74, radius: 9, frag: 12, fragments: 70, men: 4 }, maxAge: 14 },
 };
 for (const [k, v] of Object.entries(SHELLS)) v.id = k;
