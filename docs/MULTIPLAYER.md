@@ -432,7 +432,13 @@ armour are all found from those parts; before, a tank that had driven off
 still fired from, and was hit at, where it came in, and its gun's kick,
 taken at a gun thought to be far away, spun the hull.) A tank gun laid from
 the outside view sends the distance to the point aimed at with the inputs, so
-the server raises the gun as the page does. Down, he picks where
+the server raises the gun as the page does. A player in a vehicle that is
+struck is told by an event (`vh`: where from, by a shell or small arms, and
+whether it came through), and of a broken track or a fire (`ve`), so his
+screen shows the direction, a jolt and a line of words: offline the game
+does this itself. In the vehicle he drives, his machine gun fires on the page
+as his rifle does, and the server's record of those rounds is not drawn too.
+Down, he picks where
 to come back in on the same deploy map as offline; the choice goes with his
 inputs, and the server puts him there once that point's wait is over (at the
 front instead if the point is no longer his side's to spawn at, and after a

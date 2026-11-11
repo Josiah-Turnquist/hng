@@ -13,6 +13,7 @@ import { clamp } from '../core/math.js';
 const MAX_PARTICLES = 3000;
 const MAX_TRACERS = 256;
 const TRAIL_RANGE = 45; // m from the camera: faint trails behind ordinary bullets
+const TRACER_LIGHTS = 5; // m out of the muzzle before a tracer shows (full by 21 m)
 const MAX_DECALS = 600;
 
 // Per effects quality: particle count factor, soft edges, number of flash lights
@@ -639,16 +640,21 @@ export class Effects {
       }
       if (p.ammo.tracerBurn && p.distance > p.ammo.tracerBurn) continue; // burned out
       const c = colorFor(p);
-      const fadeIn = Math.min(1, p.age * 30);
+      // The tracer lights a little way out of the muzzle (as real ones do), and
+      // through a magnifying sight it is drawn that much narrower: a machine
+      // gun's rounds were glowing bars across the gunner's telescope.
+      const fadeIn = Math.min(1, p.age * 30) * clamp((p.distance - TRACER_LIGHTS) / 16, 0, 1);
+      if (fadeIn <= 0) continue;
+      const zoom = clamp(this.tracerZoom ?? 1, 0.2, 1);
       if (p.weapon?.vehicle && p.ammo.diameter >= 0.02) {
         // A shell: the tracer burns in its base, half a shell length behind the middle.
         const back = p.ammo.diameter * 2.2;
         const len = Math.min(clamp(sp * 0.006, 1, 7), p.distance);
-        this._strip(T, p.x - ix * back, p.y - iy * back, p.z - iz * back, ix, iy, iz, len, c[0] * 14, c[1] * 14, c[2] * 14, fadeIn, p.ammo.diameter * 0.5);
+        this._strip(T, p.x - ix * back, p.y - iy * back, p.z - iz * back, ix, iy, iz, len, c[0] * 14, c[1] * 14, c[2] * 14, Math.min(1, p.age * 30), p.ammo.diameter * 0.5 * zoom);
         continue;
       }
       const len = Math.min(clamp(sp * 0.005, 0.5, 6), p.distance);
-      this._strip(T, p.x, p.y, p.z, ix, iy, iz, len, c[0] * 12, c[1] * 12, c[2] * 12, fadeIn, 0.034);
+      this._strip(T, p.x, p.y, p.z, ix, iy, iz, len, c[0] * 12, c[1] * 12, c[2] * 12, fadeIn, 0.034 * zoom);
     }
     for (const st of [T, Bu]) {
       st.mesh.geometry.instanceCount = st.n;

@@ -16,7 +16,7 @@
 import { badgeValue } from '../game/badges.js';
 import * as THREE from 'three';
 import { Vehicle } from './vehicle.js';
-import { SHELLS } from './defs.js';
+import { SHELLS, isHE } from './defs.js';
 import { clamp, approach, DEG, wrapAngle, gaussRandom } from '../core/math.js';
 import { solveZero } from '../ballistics/solver.js';
 
@@ -117,12 +117,17 @@ export class TrackedVehicle extends Vehicle {
     this.stabPitch = 0;
     const gd = def.gun;
     this.ammoTypes = gd.ammo.slice();
-    this.ammoIndex = 0;
     this.stowed = { ...gd.stowed };
-    this.loaded = this.ammoTypes[0];
+    // In the breech as it comes into battle: the explosive shell, for men in
+    // the open (most of what a tank meets). The armour-piercing one is a key
+    // away. (It was the armour-piercing one: a solid shot that hurts a man
+    // only by hitting him, so the gun seemed to do nothing.)
+    const first = this.ammoTypes.find((id) => isHE(SHELLS[id])) || this.ammoTypes[0];
+    this.ammoIndex = this.ammoTypes.indexOf(first);
+    this.loaded = first;
     this.stowed[this.loaded]--;
     this.reloadT = 0;
-    this.nextAmmo = this.ammoTypes[0];
+    this.nextAmmo = first;
     this.sightRange = 400;
     this.superElev = 0;
     // Laid from the outside view: how far off the point aimed at is (m). null: the sight's range setting.

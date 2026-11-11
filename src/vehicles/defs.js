@@ -592,3 +592,9 @@ export const SHELLS = {
   'O-365': { name: 'O-365K HE-Frag', diameter: 0.085, mass: 9.5, mv: 793, bc: 2.2, drag: 'G2', explosive: { blast: 0.74, radius: 9, frag: 12, fragments: 70, men: 4 }, maxAge: 14 },
 };
 for (const [k, v] of Object.entries(SHELLS)) v.id = k;
+// The explosive shell (for men in the open), as against the armour-piercing one.
+export const isHE = (shell) => !!shell?.explosive && !shell.penRefMM;
+// Armour-piercing shells with a bursting charge go off where they strike: a
+// small burst (their charge is a tenth of an explosive shell's or less), so a
+// near miss on a man counts for something and the strike can be seen.
+for (const v of Object.values(SHELLS)) if (v.penRefMM && v.filler > 0 && !v.explosive) v.explosive = { blast: v.filler, radius: 4, frag: 4, fragments: 12, men: 4 };

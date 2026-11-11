@@ -9,6 +9,7 @@ import { damp, clamp, clamp01, DEG, wrapAngle } from '../core/math.js';
 import { HIP_CONVERGE } from '../weapons/viewmodel.js';
 import { BattleMap } from './battleMap.js';
 import { healthStage } from '../vehicles/effects.js';
+import { SHELLS, isHE } from '../vehicles/defs.js';
 import { healTarget, repairTarget, isHealKit } from '../game/kits.js';
 
 const _cv = new THREE.Vector3();
@@ -1042,7 +1043,7 @@ export class Hud {
     E.mods.textContent = bad.join(' · ');
     E.mods.style.display = bad.length ? 'block' : 'none';
     if (role === 'gunner') {
-      const types = v.ammoTypes.map((id, i) => `${i + 1} ${id} ${v.stowed[id] + (v.loaded === id ? 1 : 0)}${v.nextAmmo === id ? '*' : ''}`).join('   ');
+      const types = v.ammoTypes.map((id, i) => `[${i + 1}] ${id} ${isHE(SHELLS[id]) ? '(men)' : '(armor)'} ${v.stowed[id] + (v.loaded === id ? 1 : 0)}${v.nextAmmo === id ? ' <' : ''}`).join('   ');
       const state = v.loaded ? `${v.loaded} loaded` : v.nextAmmo ? 'loading...' : 'no ammunition';
       E.gun.textContent = `${state} · sight ${v.sightRange} m\n${types}\ncoax ${v.coax.loaded}/${v.coax.belts} belts`;
       E.reloadBar.style.display = 'block';

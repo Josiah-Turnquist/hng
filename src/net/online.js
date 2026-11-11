@@ -26,6 +26,7 @@ import { Soldier } from '../game/soldier.js';
 import { attachSoldierModel } from '../game/soldierView.js';
 import { WEAPONS } from '../weapons/defs.js';
 import { AMMO } from '../weapons/ammo.js';
+import { charModel } from '../vehicles/effects.js';
 import * as THREE from 'three';
 
 // The vehicle he drives, put right: a little over CORRECT_TIME when the
@@ -551,7 +552,7 @@ export class OnlineBattle {
       // guns are the server's (where it is: _driven).
       if (v === this.driving) {
         v.hp = nb.hp;
-        v.alive = nb.alive;
+        this._wrecked(v, nb.alive);
         if (nb.state) applyVehicleState(v, nb.state, { motion: false });
         continue;
       }
@@ -569,7 +570,7 @@ export class OnlineBattle {
       v.turretYaw = lerpAngle(na.turretYaw, nb.turretYaw, t);
       v.gunElev = lerp(na.gunElev, nb.gunElev, t);
       v.hp = nb.hp;
-      v.alive = nb.alive;
+      this._wrecked(v, nb.alive);
       // Its speed, engine, damage and guns, as the server has them (puppets
       // aren't run here): for the HUD of whoever rides in it, and its sound.
       if (nb.state && v._state !== nb.state) {
@@ -588,6 +589,13 @@ export class OnlineBattle {
       v.turretYaw = na.turretYaw;
       v.gunElev = na.gunElev;
     }
+  }
+
+  // Knocked out (the server says so): burnt black, as offline. (Its blast is
+  // one of the server's events.)
+  _wrecked(v, alive) {
+    if (v.alive && !alive && !v.isBike) charModel(v);
+    v.alive = alive;
   }
 
   // --- Points and the clock -------------------------------------------------------------
@@ -618,11 +626,14 @@ export class OnlineBattle {
     for (const e of list) {
       if (e[0] === 'f') {
         // A round fired: drawn. The player's own already were, as he fired,
-        // except a vehicle machine gun's (no weapon id): those fire only on the
-        // server, where the vehicle runs.
+        // except a vehicle machine gun's (no weapon id) in a vehicle that is
+        // not run here (a seat in one someone else drives): those fire only on
+        // the server. (In the vehicle he drives the machine gun fires here too:
+        // drawing the server's as well gave every round twice, with its flash,
+        // its report and its strike, and the game stuttered.)
         const [, who, wid, x, y, z, vx, vy, vz, tracer, sound, aref] = e;
         const mine = who === this.me.id;
-        if (mine && wid !== '') continue;
+        if (mine && (wid !== '' || (this.driving && this.driving === this.me.vehicle))) continue;
         const s = mine ? this.me : this.puppets.get(who);
         const def = WEAPONS[wid];
         // (A tank's shell or a vehicle's machine gun: named by the server.)
@@ -657,7 +668,27 @@ export class OnlineBattle {
       } else if (e[0] === 'x') {
         const [, x, y, z, size] = e;
         g.effects.explosion(x / 100, y / 100, z / 100, size / 10);
-        g.audio?.explosion?.(size > 25 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
+        // (A shell's burst from 12.5 up, as offline: game.js explode. It was 25, so a
+        // tank's explosive shell sounded like a hand grenade online.)
+        g.audio?.explosion?.(size >= 12.5 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
+      } else if (e[0] === 'vh') {
+        // The vehicle he is in was struck: where from, a jolt, and what it did.
+        const [, vid, how, big, x, z, by] = e;
+        if (this.me.vehicle?.id !== vid || by === this.me.id) continue;
+        g.hud?.shotFrom?.(x / 100, z / 100, big || how === 2 ? 'hit' : 'near', big ? 1 : 0.6);
+        if (!big && how !== 2) continue;
+        const vc = g.player?.vehicleCtl;
+        if (vc) {
+          vc.shake = Math.max(vc.shake || 0, how === 2 ? 1 : 0.6);
+          vc.shakeT = 0;
+        }
+        const p = this.me.vehicle.body.position;
+        g.audio?.impact?.('armor', p.x, p.y, p.z, 20000);
+        g.hud?.flash?.(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5);
+      } else if (e[0] === 've') {
+        const [, vid, kind, by] = e;
+        if (by === this.me.id) g.hud?.flash?.(kind === 'track' ? 'Track destroyed' : kind === 'fire' ? 'Target on fire' : kind, 2);
+        if (this.me.vehicle?.id === vid) g.hud?.flash?.(kind === 'track' ? 'Our track is broken!' : kind === 'fire' ? 'We are on fire!' : kind, 2.5);
       }
     }
   }

@@ -33,3 +33,22 @@ test("online: your own vehicle machine gun's rounds are drawn and heard; your ri
     ],
   );
 });
+
+test("online: in the vehicle he drives, his machine gun fires here, so the server's record of those rounds is not drawn as well", () => {
+  const fired = [];
+  const tank = { id: 61 };
+  const ctx = {
+    game: { projectiles: { fire: (o) => fired.push(o) }, effects: { muzzle() {} }, audio: { gunshot() {} } },
+    me: { id: 5, vehicle: tank },
+    driving: tank,
+    puppets: new Map([[9, { id: 9, team: 0 }]]),
+  };
+  const mg = ammoRef(Object.values(AMMO)[0]);
+  const shot = (who, wid) => ['f', who, wid, 0, 100, 0, 8000, 0, 0, 1, 'mg', mg];
+  OnlineBattle.prototype._events.call(ctx, [shot(5, ''), shot(5, ''), shot(9, '')]);
+  assert.equal(fired.length, 1, "only the other man's round");
+  // A seat in a vehicle someone else drives: nothing fires here, so the server's rounds are drawn.
+  ctx.driving = null;
+  OnlineBattle.prototype._events.call(ctx, [shot(5, '')]);
+  assert.equal(fired.length, 2);
+});

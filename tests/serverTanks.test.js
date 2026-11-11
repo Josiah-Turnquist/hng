@@ -11,7 +11,7 @@ import { makeBattle, addPlayer } from '../src/server/battle.js';
 import { encodeInput, decodeInput, watchEvents } from '../src/net/protocol.js';
 import { makeWorld, run, rider } from './helpers/vehicleWorld.js';
 import { SURF } from '../src/world/heightfield.js';
-import { VEHICLES, SHELLS } from '../src/vehicles/defs.js';
+import { VEHICLES, SHELLS, isHE } from '../src/vehicles/defs.js';
 import { AMMO } from '../src/weapons/ammo.js';
 import { Game } from '../src/game/game.js';
 import { TrackedVehicle } from '../src/vehicles/tracked.js';
@@ -188,5 +188,56 @@ test("a tank's explosive shell kills men in the open within about 5 m and wounds
   assert.ok(near >= 100 && off < 30, `the 37 mm shell: deadly only close by (${near.toFixed(0)}, ${off.toFixed(0)})`);
   // Every explosive tank shell is set the same way, and nothing thrown or fired from the shoulder is.
   for (const s of Object.values(SHELLS)) if (s.explosive) assert.equal(s.explosive.men, 4, s.name);
+  // An armour-piercing shell with a bursting charge: a small burst where it strikes (a near miss counts, a few metres off does not).
+  assert.ok(!isHE(SHELLS['M61 APC']) && isHE(SHELLS['M48 HE']));
+  const [apNear, apOff] = blastHarm(SHELLS['M61 APC'], [0.8, 4]);
+  assert.ok(apNear >= 100 && apOff < 20, `the armour-piercing shell: ${apNear.toFixed(0)} beside him, ${apOff.toFixed(0)} at 4 m`);
+  assert.equal(SHELLS['M51 APC'].explosive, undefined, 'a solid shot has no burst');
   for (const a of Object.values(AMMO)) if (a.explosive) assert.equal(a.explosive.men, undefined, a.name);
+});
+
+test("on the game server, a player's tank comes in with the explosive shell loaded, and he is told when it is struck", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const g = await makeBattle({ perSide: 4, seed: 3, vehicles: true });
+    const ev = watchEvents(g);
+    const pc = addPlayer(g, { name: 'Able', faction: 'US', cls: 'tanker', tank: 'm4a1_sherman' });
+    for (const s of g.soldiers) if (s.brain) s.brain.update = () => {};
+    const v = pc.soldier.vehicle;
+    assert.equal(v.loaded, 'M48 HE', 'the shell for men in the open is in the breech');
+    for (let i = 0; i < 120; i++) g.update(1 / 60);
+    ev.take();
+    // An enemy's armour-piercing shell into its side, from 40 m.
+    const foe = g.soldiers.find((s) => s.team !== pc.soldier.team);
+    const p = v.body.position;
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(v.body.quaternion);
+    const from = p
+      .clone()
+      .addScaledVector(side, 40)
+      .add(new THREE.Vector3(0, 1.0, 0));
+    const shell = SHELLS['PzGr 39'];
+    g.projectiles.fire({ x: from.x, y: from.y, z: from.z, vx: -side.x * shell.mv, vy: 0, vz: -side.z * shell.mv, ammo: shell, owner: foe, weapon: { name: '7.5 cm KwK 40', vehicle: true }, tracer: true });
+    for (let i = 0; i < 30; i++) g.update(1 / 60);
+    const all = ev.take();
+    const hit = all.find((e) => e[0] === 'vh' && e[3] === 1);
+    assert.ok(hit, 'he is told his tank was struck');
+    assert.equal(hit[1], v.id);
+    assert.equal(hit[3], 1, 'by a shell');
+    assert.equal(hit[6], foe.id);
+    assert.ok(Math.hypot(hit[4] / 100 - from.x, hit[5] / 100 - from.z) < 3, 'and where it came from');
+    // A machine gun rattling off it: told too, but not every round.
+    const mg = AMMO['792 sS'] || Object.values(AMMO).find((a) => a.diameter < 0.009 && !a.explosive && !a.thrown);
+    if (v.alive) {
+      for (let k = 0; k < 20; k++) {
+        g.projectiles.fire({ x: from.x, y: from.y + 0.2, z: from.z, vx: -side.x * 750, vy: 0, vz: -side.z * 750, ammo: mg, owner: foe, weapon: { name: 'MG 34' }, tracer: false });
+        g.update(1 / 60);
+      }
+      for (let i = 0; i < 20; i++) g.update(1 / 60);
+      const small = ev.take().filter((e) => e[0] === 'vh' && e[3] === 0);
+      assert.ok(small.length >= 1 && small.length <= 4, `small arms on the armour: said now and then (${small.length} times for 20 rounds)`);
+    }
+  } finally {
+    console.warn = warn;
+  }
 });

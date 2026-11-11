@@ -379,10 +379,14 @@ test('main gun fires the right shell at the right speed and reloads', () => {
   game.projectiles = { fire: (o) => (fired.push(o), { ...o }) };
   const v = spawn(game, 'm4a1_sherman', 0, 0, 0);
   run(v, 1);
+  // (It comes into battle with the explosive shell in the breech, for men in the open.)
+  assert.equal(v.loaded, 'M48 HE');
+  const shell = SHELLS[v.loaded];
   const p = v.fireMain(null);
   assert.ok(p, 'fired');
+  assert.equal(fired[0].ammo, shell);
   const speed = Math.hypot(fired[0].vx, fired[0].vy, fired[0].vz);
-  assert.ok(Math.abs(speed - SHELLS['M61 APC'].mv) < 15, `muzzle velocity ${speed}`);
+  assert.ok(Math.abs(speed - shell.mv) < 15, `muzzle velocity ${speed}`);
   assert.equal(v.fireMain(null), null, 'must reload first');
   run(v, v.def.gun.reload + 0.1);
   assert.ok(v.fireMain(null), 'reloaded');

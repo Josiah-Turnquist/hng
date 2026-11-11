@@ -318,6 +318,10 @@ export function ammoOf(ref) {
 //   ['x', x, y, z, size]                                   a blast
 //   ['h', soldier, amount, fromX, fromZ]                   a player hurt (players only: the
 //       others don't need it); from: where it came from (null for a fall or a crash)
+//   ['vh', vehicle, how, big, fromX, fromZ, shooter]       a vehicle with a player aboard struck:
+//       how 2 through its armour, 1 glanced off, 0 stopped; big: a shell or rocket, not small arms
+//   ['ve', vehicle, what, by]                              a vehicle with a player aboard, or hit by
+//       a player: 'track' (broken) or 'fire' (set alight)
 export function watchEvents(game) {
   const list = [];
   const fire = game.projectiles.fire.bind(game.projectiles);
@@ -340,6 +344,23 @@ export function watchEvents(game) {
       list.push(['h', s.id, Math.round(amount), x == null ? null : cm(x), z == null ? null : cm(z)]);
     }
     return hurt?.(s, amount, cause);
+  };
+  // A vehicle struck with a player aboard: his screen shows where from and how
+  // badly (small arms rattling off it only now and then).
+  game.onVehicleHit = (v, p, info) => {
+    if (!v.occupants?.some((o) => o?.remote)) return;
+    const big = p.ammo.diameter >= 0.019 || !!p.ammo.heat;
+    const through = info.kind === 'penetrate';
+    if (!big && !through) {
+      if (game.time - (v._hitSaid ?? -9) < 0.3) return;
+      v._hitSaid = game.time;
+    }
+    list.push(['vh', v.id, through ? 2 : info.kind === 'ricochet' ? 1 : 0, big ? 1 : 0, cm(p.ox ?? p.x), cm(p.oz ?? p.z), p.owner?.id ?? 0]);
+  };
+  const vev = game.onVehicleEvent?.bind(game);
+  game.onVehicleEvent = (v, kind, attacker) => {
+    if (v.occupants?.some((o) => o?.remote) || attacker?.remote) list.push(['ve', v.id, String(kind), attacker?.id ?? 0]);
+    return vev?.(v, kind, attacker);
   };
   const blast = game.effects.explosion;
   game.effects.explosion = (x, y, z, size) => {

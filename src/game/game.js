@@ -665,6 +665,7 @@ export class Game {
     const fx = this.effects;
     const wasAlive = v.alive;
     const res = v.onHit(info, p);
+    this.onVehicleHit?.(v, p, info, wasAlive);
     // Where it struck stays marked: a hole, a gouge or a scorch.
     addHitMark(v, info, p.ammo);
     const big = p.ammo.diameter >= 0.019 || p.ammo.heat;
@@ -954,6 +955,7 @@ export class Game {
     const colors = FACTION_TRACERS;
     const cp = this.camera.position;
     const trails = this.settings.get('bulletTrails') ? { x: cp.x, y: cp.y, z: cp.z, skip: this.player?.soldier } : null;
+    this.effects.tracerZoom = this.camera.fov / (this.player?.baseFov || 70);
     this.effects.updateTracers(this.projectiles.active, (p) => colors[p.owner?.faction] || colors.GE, trails);
     this.hud.update(frameDt);
     const vm = this.cameraMode === 'first' && !this.player.soldier.vehicle ? this.player.viewmodel : null;

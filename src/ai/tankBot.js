@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { clamp, wrapAngle, DEG, rand } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
-import { SHELLS } from '../vehicles/defs.js';
+import { SHELLS, isHE } from '../vehicles/defs.js';
 import { leavesBetween } from './tactics.js';
 
 // How far a tank crew makes out men at all (m).
@@ -244,7 +244,7 @@ export class TankBrain {
     const d = Math.hypot(tp.x - m.x, tp.z - m.z);
     // Pick the shell: armor-piercing for vehicles, HE for men.
     const ap = v.ammoTypes.find((id) => SHELLS[id].penRefMM);
-    const he = v.ammoTypes.find((id) => SHELLS[id].explosive);
+    const he = v.ammoTypes.find((id) => isHE(SHELLS[id]));
     const want = t.kind === 'vehicle' ? ap : he || ap;
     if (want && v.nextAmmo !== want && v.stowed[want] > 0) v.selectAmmo(v.ammoTypes.indexOf(want));
     const shell = SHELLS[v.loaded || v.nextAmmo || ap];
