@@ -661,6 +661,7 @@ export function showFrontEnd(app) {
       dim.innerHTML = `<div class="hx-win ${cls}"><header><h2></h2><span class="hx-sub"></span><button class="x" title="Close">${ICONS.close}</button></header><div class="hx-wb"></div><footer><button class="ok">OK</button></footer></div>`;
       dim.querySelector('h2').textContent = title;
       dim.querySelector('.hx-sub').textContent = sub;
+      dim.style.setProperty('--at', `${main.scrollTop}px`);
       main.appendChild(dim);
       const onKey = (e) => {
         if (e.key === 'Escape') {
@@ -1068,28 +1069,18 @@ export function showFrontEnd(app) {
       });
     }
 
-    // The customization screen, as in the original game: the gun's five upgrade
-    // slots down the side, the parts for the chosen slot as pictures, and the
-    // one picked out in detail: what it does to the gun, as bars against what
-    // is fitted now, and its price or the level that opens it.
+    // The shop for a gun's upgrades, as in the original game, in a window over
+    // the screen: the gun's five upgrade slots down the side, the parts for
+    // the chosen slot as pictures, and the one picked out in detail: what it
+    // does to the gun, as bars against what is fitted now, and its price or
+    // the level that opens it.
     function customize(s, gun) {
       const def = WEAPONS[gun];
       const entry = GUN_UPGRADES[gun] || GUN_UPGRADES[def.base];
-      main.querySelector('.cust')?.remove();
-      const ov = el('div', 'cust');
-      main.appendChild(ov);
-      const close = () => {
-        ov.remove();
-        window.removeEventListener('keydown', onEsc, true);
-        show('heroes');
-      };
-      const onEsc = (e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation();
-          close();
-        }
-      };
-      window.addEventListener('keydown', onEsc, true);
+      const w = openWindow(def.name, { cls: 'hx-shop' });
+      w.foot.querySelector('.ok').textContent = 'Done';
+      const ov = w.body;
+      ov.classList.add('cust');
       let slot = UPGRADE_SLOTS.find((k) => upgradesOf(gun).some((u) => u.slot === k)) || 'ammo';
       let chosen; // the part picked out: an upgrade id, or null for the gun's own
       let asking = false; // waiting for the second click to buy
@@ -1110,11 +1101,9 @@ export function showFrontEnd(app) {
         if (chosen === undefined || (chosen && !list.some((u) => u.id === chosen))) chosen = picks[slot] || null;
         const key = specialistKey(gun);
         const lv = key ? ribbonLevel(s.ribbons?.[key]).level : null;
-        ov.innerHTML = `<div class="cust-head"><span class="cust-gun">${fittedPic ? `<img alt="" src="${fittedPic}">` : ''}</span><div class="cust-title"><h2></h2><small></small></div><button class="cust-close">Done</button></div>
+        ov.innerHTML = `<div class="cust-head"><span class="cust-gun">${fittedPic ? `<img alt="" src="${fittedPic}">` : ''}</span></div>
           <div class="cust-body"><nav class="cust-slots"></nav><div class="cust-grid"></div><aside class="cust-detail"></aside></div>`;
-        ov.querySelector('h2').textContent = def.name;
-        ov.querySelector('.cust-title small').textContent = key ? `${ribbonInfo(key).name} · level ${lv} of 12` : 'All upgrades open';
-        ov.querySelector('.cust-close').addEventListener('click', close);
+        w.box.querySelector('.hx-sub').textContent = key ? `${ribbonInfo(key).name} · level ${lv} of 12` : 'All upgrades open';
         // The five slots, each with what is fitted.
         const nav = ov.querySelector('.cust-slots');
         for (const k of UPGRADE_SLOTS) {

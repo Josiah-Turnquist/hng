@@ -851,7 +851,6 @@ canvas.game {
 .cta,
 .pause-home .resume,
 .fe .modal-actions .ok,
-.fe .cust-close,
 .fe .cd-act.buy:not(:disabled),
 .fe .hx-icons button.on,
 .fe .fe-account.sure,
@@ -876,7 +875,6 @@ canvas.game {
 .cta:hover,
 .pause-home .resume:hover,
 .fe .modal-actions .ok:hover,
-.fe .cust-close:hover,
 .fe .fe-account.sure:hover,
 .fe .fr button.gold:hover,
 .fe .fr-add button:hover,
@@ -1020,12 +1018,10 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .upg-open .ico { font-size: 16px; color: var(--amber); }
 .upg-open span { font-family: var(--cond); font-size: 15px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .upg-open small { margin-left: auto; font-size: 11px; color: var(--ink-dim); }
-.cust { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 12px; overflow: auto; padding-block: 14px 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: #0b0c0a; }
-.cust-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.cust-title { flex: 1; min-width: 200px; }
-.cust-title h2 { margin: 0; font-family: var(--cond); font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase; text-wrap: balance; }
-.cust-title small { font-size: 12px; color: var(--ink-dim); }
-.cust-close { padding: 8px 22px; font-size: 16px; }
+.hx-win.hx-shop { width: min(1180px, 100%); }
+.hx-wb.cust { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
+.hx-wb.cust > * { flex: none; }
+.cust-head { display: flex; align-items: center; justify-content: center; }
 .br-credits b { color: var(--amber); }
 .cust-gun { width: 240px; max-width: 45%; }
 .cust-gun img { width: 100%; display: block; }
@@ -1076,7 +1072,7 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 @media (max-width: 1000px) {
   .cust-body { grid-template-columns: minmax(0, 1fr); }
   .cust-slots { flex-direction: row; overflow-x: auto; }
-  .cs-slot { min-width: 150px; }
+  .cs-slot { min-width: 168px; grid-template-columns: 40px minmax(0, 1fr); }
   .cust-detail { position: static; }
 }
 /* The top bar's numbers and their labels centered on the letters themselves,
@@ -1146,8 +1142,10 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .ribbon { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 
 /* Windows over the Heroes screen */
-.hx-dim { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: rgba(6, 7, 5, 0.74); }
-.hx-win { width: min(820px, 100%); max-height: calc(100vh - 110px); display: flex; flex-direction: column; background: rgba(28, 29, 26, 0.98); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+/* A window covers the part of the page in view, even when the page behind it has been scrolled. */
+.fe-main:has(> .hx-dim) { overflow: hidden; }
+.hx-dim { position: absolute; inset: var(--at, 0px) 0 auto 0; height: 100%; z-index: 10; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: 16px; background: rgba(6, 7, 5, 0.74); }
+.hx-win { width: min(820px, 100%); max-height: 100%; display: flex; flex-direction: column; background: rgba(28, 29, 26, 0.98); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
 .hx-win.hx-wide { width: min(1080px, 100%); }
 .hx-win header { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .hx-win header h2 { margin: 0; font-family: var(--cond); font-size: 28px; letter-spacing: 0.04em; text-transform: uppercase; text-wrap: balance; }
