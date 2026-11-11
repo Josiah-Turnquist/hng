@@ -24,7 +24,8 @@
   nav a:hover { color: var(--ink); background: var(--soft); }
   /* (The page you are on: tinted and outlined all round.) */
   nav a.on { color: var(--amber); background: rgba(226, 172, 70, 0.1); border-color: rgba(226, 172, 70, 0.45); }
-  header .back { margin-left: auto; color: var(--dim); font-size: 14px; }
+  header .ver { margin-left: auto; color: var(--dim); font-size: 13px; }
+  header .back { color: var(--dim); font-size: 14px; }
   @media (max-width: 640px) { header .back { margin-left: 0; } }
 
   h2 { margin: 0; font: 700 19px var(--cond); letter-spacing: 0.14em; text-transform: uppercase; }
@@ -107,6 +108,7 @@
   <header>
     <div class="brand"><h1>Rank &amp; File</h1><span>Admin</span></div>
     <nav id="tabs" hidden><a href="#players">Players</a><a href="#stats">Stats</a><a href="#war">The war</a></nav>
+    <span id="ver" class="ver"></span>
     <a class="back" href="/">Back to the game</a>
   </header>
   <div id="gate" class="msg">Checking who you are...</div>
@@ -498,6 +500,13 @@ if (!s) {
     gate.textContent = e.status === 403 ? `Signed in as ${s.user?.email || s.user?.name}, which is not an admin account. Make it one in the Neon Console: Auth, then Users, then "Make admin". (It can take half a minute to count.)` : e.message;
   }
 }
+
+// Which copy of the game is live (the last change's short code, as in the list of changes), and since when.
+fetch('/api/config', { cache: 'no-store' }).then((r) => r.json()).then((c) => {
+  if (!c?.version) return;
+  const mins = Math.max(0, Math.round((Date.now() - c.started) / 60000));
+  document.getElementById('ver').textContent = `Version ${c.version}, running ${mins < 90 ? mins + ' min' : Math.round(mins / 60) + ' h'}`;
+}).catch(() => {});
 </script>
 </body>
 </html>

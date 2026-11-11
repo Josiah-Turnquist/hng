@@ -61,6 +61,11 @@ import { tankFor } from '../src/game/ribbons.js';
 import { openProgressStore } from '../src/server/progressStore.js';
 import { PROTOCOL_VERSION } from '../src/net/protocol.js';
 
+// Which copy of the game this is: the commit Railway built it from (so the
+// admin page can say whether a change has gone live yet), and since when.
+const VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || 'local';
+const STARTED = Date.now();
+
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Only the game's own files are handed out.
 const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
@@ -193,7 +198,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname === '/health') return res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
-      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION, devNames, progress: !!store }));
+      if (url.pathname === '/api/config') return res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ online: true, protocol: PROTOCOL_VERSION, devNames, progress: !!store, version: VERSION, started: STARTED }));
       if (url.pathname.startsWith('/api/auth/')) {
         // (How long each sign-in step takes, in the server's log: no names or addresses.)
         const t0 = performance.now();
