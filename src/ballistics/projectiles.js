@@ -9,6 +9,7 @@ import { TABLES, dragDecel } from './drag.js';
 import { MATERIALS, residualSpeed, ricochetChance, armorPenetrationMM, effectiveArmorMM, penetrationDepth } from './materials.js';
 import { RayHit, FLAG_BULLET } from '../physics/collision.js';
 import { G, rand } from '../core/math.js';
+import { damageScale } from '../weapons/falloff.js';
 
 const MIN_SPEED = 25; // m/s: below this a bullet is spent
 
@@ -397,6 +398,8 @@ export class ProjectileSystem {
     const mm = Math.max(1, info.armorMM || 0);
     let pen = armorPenetrationMM(ammo, speed);
     if (!pen && !ammo.heat) pen = penetrationDepth(speed, p.mass, p.area, MATERIALS.armor, ammo.hardness || 1) * 1000;
+    // A harder-hitting round or barrel (weapons/upgrades.js) goes through more plate too.
+    if (!ammo.heat && p.weapon?.falloff) pen *= Math.sqrt(damageScale(p.weapon, p.distance));
     const eff = effectiveArmorMM(mm, angle, ammo);
     info.angle = angle;
     info.penMM = pen;

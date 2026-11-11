@@ -8,8 +8,17 @@
 //       damage out to rangeNear, falling to damageFar at rangeFar. Here bullets
 //       wound by their energy (soldier.js), and the upgrade scales that by how
 //       much it changes the original's damage at that distance.
+//   rangeNear, rangeFar on a barrel or bolt   also the bullet's speed. Here a
+//       bullet's punch far off is the speed it still has, and the original's
+//       falloff alone never changed how many hits a man takes: a barrel that
+//       only added range cost credits and kick for nothing. So 5% more range
+//       is 5% more speed out of the muzzle: flatter, less lead, and harder
+//       hitting at every distance (a hit's damage goes with the speed).
 //   recoilUp, recoilRight, recoilVariance     the kick up and to the side
-//   chamberTime    time between shots (the bolt's cycle, the rate of fire)
+//   chamberTime    time between shots (the bolt's cycle, the rate of fire). A
+//       gun that fires one shot a pull with no bolt to work (a self-loading
+//       rifle, a pistol) already fires as fast as a finger can, so there it
+//       also speeds or slows the gun's return to the aim after each shot.
 //   recoilTime     how long the kick takes to settle
 //   coneAim        spread when aiming (the rifle's accuracy)
 //   coneStand, coneCrouch, coneProne         spread from the hip in each stance
@@ -35,6 +44,9 @@
 import { UPGRADES, AMMO_TYPES, GUN_UPGRADES } from './upgradeData.js';
 import { WEAPONS } from './defs.js';
 import { ribbonInfo, ribbonLevel } from '../game/ribbons.js';
+import { damageScale } from './falloff.js';
+
+export { damageScale };
 
 export { UPGRADES, AMMO_TYPES, GUN_UPGRADES };
 
@@ -136,20 +148,24 @@ export function upgradeOpen(s, gun, id) {
   return !k || ribbonLevel(s?.ribbons?.[k]).level >= lv;
 }
 
-// The original's damage at a distance for a round (damage, damageFar,
-// rangeNear, rangeFar).
-function hgDamage(h, d) {
-  if (d <= h.rangeNear) return h.damage;
-  if (d >= h.rangeFar) return h.damageFar;
-  return h.damage + ((h.damageFar - h.damage) * (d - h.rangeNear)) / (h.rangeFar - h.rangeNear);
+// How hard the upgraded gun hits at a distance next to the gun as issued:
+// the damage multiplier and the bullet's speed together (for the shop).
+export function punch(def, base, distance) {
+  return damageScale(def, distance) * (def.mv / base.mv);
 }
 
-// A hit's damage multiplier: how much the gun's upgrades and ammunition change
-// the original's damage at this distance. 1 for a stock gun.
-export function damageScale(def, distance) {
-  const h = def?.falloff;
-  if (!h) return 1;
-  return hgDamage(h.now, distance) / hgDamage(h.stock, distance);
+// A gun that fires one shot a pull with no bolt to work and a rate no finger
+// reaches: its rate of fire is the shooter's own.
+function fingerPaced(base) {
+  return !base.bolt && base.rpm > 320 && !(base.modes || []).some((x) => x === 'auto' || x === 'slow');
+}
+
+// How much quicker the upgraded gun fires than the gun as issued (1: the
+// same), where the gun and not the finger sets the pace.
+export function paceOf(def, base) {
+  if (base.bolt?.cycle) return base.bolt.cycle / def.bolt.cycle;
+  if (fingerPaced(base) || !def.rpm || !base.rpm) return 1;
+  return def.rpm / base.rpm;
 }
 
 // The upgrades picked for a gun, kept to those it takes: { slot: id }.
@@ -191,7 +207,8 @@ export function upgradedDef(gun, picks) {
     now.rangeNear *= m('rangeNear');
     now.rangeFar = Math.max(now.rangeNear + 1, now.rangeFar * m('rangeFar'));
     w.falloff = { stock: fall(stockRound), now };
-    w.mv = Math.round(base.mv * (round.speed / stockRound.speed));
+    // The round's own speed, and the barrel's and bolt's range as speed.
+    w.mv = Math.round(base.mv * (round.speed / stockRound.speed) * ((m('rangeNear') + m('rangeFar')) / 2));
   }
   const cone = (round.cone ?? 1) / (stockRound?.cone ?? 1),
     kick = (round.recoil ?? 1) / (stockRound?.recoil ?? 1);
@@ -199,7 +216,9 @@ export function upgradedDef(gun, picks) {
   w.hipStance = { stand: m('coneStand') * cone, crouch: m('coneCrouch') * cone, prone: m('coneProne') * cone };
   const r = base.recoil || { rise: 1, side: 0.3 };
   w.recoil = { ...r, rise: r.rise * m('recoilUp') * kick, side: r.side * ((m('recoilRight') + m('recoilVariance')) / 2) * kick };
-  w.recoilSettle = 1 / m('recoilTime');
+  // Where the finger sets the pace, a quicker or slower action shows in how
+  // fast the sights come back.
+  w.recoilSettle = 1 / (m('recoilTime') * (fingerPaced(base) ? m('chamberTime') : 1));
   w.heatSettle = m('coneSettle');
   if (w.rpm) w.rpm = Math.round(w.rpm / m('chamberTime'));
   if (w.rpmSlow) w.rpmSlow = Math.round(w.rpmSlow / m('chamberTime'));
@@ -234,8 +253,7 @@ export function upgradedDef(gun, picks) {
 const PCT = [
   ['damage', 'damage close in', 1],
   ['damageFar', 'damage far off', 1],
-  ['rangeNear', 'full-damage range', 1],
-  ['rangeFar', 'falloff range', 1],
+  ['speed', 'bullet speed', 1],
   ['recoilUp', 'kick upward', -1],
   ['recoilRight', 'kick sideways', -1],
   ['chamberTime', 'time between shots', -1],
@@ -254,8 +272,6 @@ export function describe(gun, id) {
     const f = {
       damage: rel(u.damage, stock.damage),
       damageFar: rel(u.damageFar, stock.damageFar),
-      rangeNear: rel(u.rangeNear, stock.rangeNear),
-      rangeFar: rel(u.rangeFar, stock.rangeFar),
       coneAim: u.cone / stock.cone,
       recoilUp: u.recoil / stock.recoil,
     };
@@ -264,7 +280,9 @@ export function describe(gun, id) {
     return out;
   }
   if (u.family) out.push({ text: `${u.mag}x, ${u.drum[0]} to ${u.drum[1]} m`, good: true });
-  pushPct(out, u.f || {});
+  const f = { ...u.f };
+  if (f.rangeNear || f.rangeFar) f.speed = ((f.rangeNear ?? 1) + (f.rangeFar ?? 1)) / 2;
+  pushPct(out, f);
   return out;
 }
 function pushPct(out, f) {

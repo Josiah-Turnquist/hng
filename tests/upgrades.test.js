@@ -113,3 +113,109 @@ test('upgrades: every scope pairing has a model and the same mount as its model 
     }
   }
 });
+
+// What an upgrade does in a fight: the damage of a hit at each distance (the
+// energy the bullet still has, times the upgrade's scale), and with it the
+// hits a man takes in the chest, the belly and a limb.
+const FAR = [5, 15, 30, 50, 75, 100, 150, 200, 300, 400];
+const ZONE = [1.15, 1.0, 0.55];
+const flown = new Map();
+async function hitsAt(def) {
+  const { AMMO } = await import('../src/weapons/ammo.js');
+  const { trajectory } = await import('../src/ballistics/solver.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const { bulletDamage } = await import('../src/game/soldier.js');
+  const ammo = AMMO[def.ammo];
+  const key = `${def.ammo}|${def.mv}`;
+  if (!flown.has(key)) flown.set(key, trajectory(ammo, def.mv, 0.002, new Atmosphere(), FAR, { step: 0.002 }).map((p) => 0.5 * ammo.mass * p.speed * p.speed));
+  const e = flown.get(key);
+  return FAR.map((d, i) => bulletDamage(e[i] ?? 0, ammo.diameter) * damageScale(def, d));
+}
+const fewerHits = (now, stock) => now.some((d, i) => ZONE.some((z) => Math.ceil(100 / (d * z)) < Math.ceil(100 / (stock[i] * z))));
+
+test('upgrades: every part gives the gun something back', async () => {
+  // The original's numbers were made for its own rules. Under ours a good
+  // many parts cost credits and handling and gave nothing: a barrel that only
+  // added range, a quicker trigger on a rifle that already fires as fast as a
+  // finger. Each part on each gun must now do at least one thing worth having.
+  const { paceOf } = await import('../src/weapons/upgrades.js');
+  const none = [];
+  for (const gun of Object.keys(GUN_UPGRADES)) {
+    const base = WEAPONS[gun];
+    const stock = await hitsAt(base);
+    for (const u of upgradesOf(gun)) {
+      if (u.slot === 'ammo' || u.family) continue;
+      const d = upgradedDef(gun, { [u.slot]: u.id });
+      const gain =
+        fewerHits(await hitsAt(d), stock) ||
+        paceOf(d, base) >= 1.05 ||
+        d.recoil.rise / (base.recoil?.rise ?? 1) <= 0.92 ||
+        d.recoilSettle >= 1.1 ||
+        d.accuracy / base.accuracy <= 0.92 ||
+        d.mv / base.mv >= 1.03;
+      if (!gain) none.push(`${gun} ${u.name}`);
+    }
+  }
+  assert.deepEqual(none, []);
+});
+
+test('upgrades: range is bullet speed, and a quick trigger on a self-loader is a quick return to the aim', async () => {
+  const { paceOf, punch } = await import('../src/weapons/upgrades.js');
+  // The Garand's Stainless Steel Barrel: 5% more range and nothing else good.
+  const garand = WEAPONS.m1_garand;
+  const barrel = upgradesOf('m1_garand').find((u) => u.name === 'Stainless Steel Barrel');
+  assert.deepEqual([barrel.f.rangeNear, barrel.f.rangeFar, barrel.f.damage], [1.05, 1.05, undefined]);
+  const b = upgradedDef('m1_garand', { barrel: barrel.id });
+  assert.ok(Math.abs(b.mv / garand.mv - 1.05) < 0.002, `speed ${b.mv}`);
+  assert.ok(punch(b, garand, 20) > 1.04 && punch(b, garand, 200) > 1.04);
+  assert.ok(fewerHits(await hitsAt(b), await hitsAt(garand)), 'a hit less somewhere');
+  // A lightened bolt gives speed up for its quicker action.
+  const light = upgradesOf('kar98k').find((u) => u.name === 'Lightened Bolt');
+  const lb = upgradedDef('kar98k', { internal: light.id });
+  assert.ok(lb.mv < WEAPONS.kar98k.mv && paceOf(lb, WEAPONS.kar98k) > 1.1);
+  // The Garand fires as fast as a finger: its trigger job is no faster shot
+  // to shot, and brings the sights back sooner than the kick's own change.
+  const job = upgradesOf('m1_garand').find((u) => u.name === 'Field Trigger Job');
+  const j = upgradedDef('m1_garand', { trigger: job.id });
+  assert.equal(paceOf(j, garand), 1);
+  assert.ok(j.recoilSettle > 1.15 && j.recoilSettle > 1 / job.f.recoilTime + 0.05, `settle ${j.recoilSettle}`);
+  // The Thompson's rate of fire is the gun's: the same job is more rounds a minute.
+  const tj = upgradesOf('thompson_m1a1').find((u) => u.name === 'Field Trigger Job');
+  const t = upgradedDef('thompson_m1a1', { trigger: tj.id });
+  assert.ok(paceOf(t, WEAPONS.thompson_m1a1) > 1.05);
+  assert.ok(Math.abs(t.recoilSettle - 1 / tj.f.recoilTime) < 1e-9);
+  // A revolver's slow action is felt, so there it is the rate of fire.
+  assert.ok(paceOf(upgradedDef('nagant_m1895', { trigger: 'u21' }), WEAPONS.nagant_m1895) > 1.05);
+});
+
+test('upgrades: every round has a use, and a harder-hitting round goes through more plate', async () => {
+  const none = [];
+  for (const [gun, e] of Object.entries(GUN_UPGRADES)) {
+    const base = WEAPONS[gun];
+    const stock = await hitsAt(base);
+    for (const id of e.rounds) {
+      const d = upgradedDef(gun, { ammo: id });
+      // Fewer hits somewhere, or enough more punch near or far to get there with a barrel.
+      const gain = fewerHits(await hitsAt(d), stock) || damageScale(d, 20) >= 1.03 || damageScale(d, 500) >= 1.03;
+      if (!gain) none.push(`${gun} ${AMMO_TYPES[id].name}`);
+    }
+  }
+  assert.deepEqual(none, []);
+  // The anti-tank rifle against a plate at 100 m: the hot round pierces more.
+  const { ProjectileSystem } = await import('../src/ballistics/projectiles.js');
+  const { Atmosphere } = await import('../src/ballistics/atmosphere.js');
+  const { AMMO } = await import('../src/weapons/ammo.js');
+  const pierced = (def) => {
+    let pen = 0;
+    const plate = (ox, oy, oz, dx, dy, dz, max) => (ox < 100 && ox + dx * max >= 100 ? { t: (100 - ox) / dx, tExit: (100.03 - ox) / dx, nx: -1, ny: 0, nz: 0, material: 'armor', armorMM: 30 } : null);
+    const sys = new ProjectileSystem({ world: null, atmosphere: new Atmosphere(), dynamicRaycast: plate });
+    sys.onImpact = (p, info) => (pen ||= info.penMM || 0);
+    sys.fire({ x: 0, y: 50, z: 0, vx: def.mv, vy: 0, vz: 0, ammo: AMMO[def.ammo], weapon: def });
+    for (let i = 0; i < 60 && !pen; i++) sys.update(1 / 120);
+    return pen;
+  };
+  const stock = pierced(WEAPONS.ptrd41);
+  const hot = pierced(upgradedDef('ptrd41', { ammo: 'a48' }));
+  assert.ok(stock > 20, `stock ${stock}`);
+  assert.ok(hot > stock * 1.1 && hot < stock * 1.2, `${stock} -> ${hot}`);
+});

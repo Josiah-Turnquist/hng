@@ -15,7 +15,7 @@ import { RIBBONS, RIBBON_XP, ribbonInfo, ribbonLevel, ribbonsFor, requirement, r
 import { ribbonSvg, RIBBON_GROUPS } from './ribbonArt.js';
 import { badgeSvg } from './badgeArt.js';
 import { AMMO } from '../weapons/ammo.js';
-import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, damageScale as scaleAt, SCOPE_FAMILIES } from '../weapons/upgrades.js';
+import { UPGRADE_SLOTS, SLOT_NAMES, AMMO_TYPES, GUN_UPGRADES, upgradesOf, upgradedDef, upgradeOpen, specialistKey, punch, paceOf, SCOPE_FAMILIES } from '../weapons/upgrades.js';
 import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, picksOf, fit, loadoutUpgrades } from '../game/armory.js';
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
@@ -73,38 +73,43 @@ function weaponStats(w) {
 }
 
 // The bars of the customization screen: each a score where the gun as
-// issued is 1 and higher is better.
+// issued is 1 and higher is better. They show what is felt in battle: how
+// hard a hit lands near and far (the round, the parts and the bullet's
+// speed together), and the rate of fire only where the gun sets it.
+const kickOf = (d) => d.recoil?.rise ?? 1;
+const hipOf = (d) => d.hipError * (d.hipStance?.stand ?? 1);
 const METRICS = [
-  ['Damage', (d) => scaleAt(d, 20)],
-  ['Range', (d) => scaleAt(d, 200)],
+  ['Damage', (d, b) => punch(d, b, 20)],
+  ['Range', (d, b) => punch(d, b, 200)],
   ['Bullet speed', (d, b) => d.mv / b.mv],
   ['Accuracy', (d, b) => b.accuracy / d.accuracy],
-  ['Fire rate', (d, b) => (b.bolt?.cycle ? b.bolt.cycle / d.bolt.cycle : d.rpm && b.rpm ? d.rpm / b.rpm : 1)],
-  ['Control', (d, b) => (b.recoil?.rise ?? 1) / (d.recoil?.rise ?? 1)],
-  ['Hip fire', (d, b) => b.hipError / (d.hipError * (d.hipStance?.stand ?? 1))],
+  ['Fire rate', (d, b) => paceOf(d, b)],
+  ['Control', (d, b) => kickOf(b) / kickOf(d)],
+  ['Recovery', (d) => d.recoilSettle ?? 1],
+  ['Hip fire', (d, b) => hipOf(b) / hipOf(d)],
 ];
 
-// One line on what an upgrade does, from its biggest changes.
-const SAYS = [
-  ['damage', 'hits harder', 'hits softer'],
-  ['rangeNear', 'keeps its punch further out', 'loses its punch sooner'],
-  ['coneAim', 'less accurate', 'more accurate'],
-  ['chamberTime', 'slower between shots', 'quicker between shots'],
-  ['recoilUp', 'kicks more', 'kicks less'],
-  ['coneStand', 'wilder from the hip', 'steadier from the hip'],
-];
+// One line on what an upgrade does to the gun as issued, from its biggest
+// changes: [how much better (worse below zero), said when better, when worse].
 function summary(gun, u) {
-  const f = u.f || {};
-  if (u.slot === 'ammo') {
-    const d = upgradedDef(gun, { ammo: u.id });
-    const b = WEAPONS[gun];
-    Object.assign(f, { damage: scaleAt(d, 20), rangeNear: scaleAt(d, 200) / scaleAt(d, 20), coneAim: d.accuracy / b.accuracy, recoilUp: d.recoil.rise / b.recoil.rise });
-  }
-  const out = SAYS.map(([k, up, down]) => ({ v: (f[k] ?? 1) - 1, text: (f[k] ?? 1) > 1 ? up : down }))
-    .filter((x) => Math.abs(x.v) >= 0.02)
-    .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+  const b = WEAPONS[gun];
+  const d = upgradedDef(gun, { [u.slot]: u.id });
+  const near = punch(d, b, 20);
+  const facts = [
+    [near - 1, 'hits harder', 'hits softer'],
+    [punch(d, b, 200) / near - 1, 'keeps its punch further out', 'loses its punch sooner'],
+    [d.mv / b.mv - 1, 'faster, flatter bullet', 'slower bullet'],
+    [b.accuracy / d.accuracy - 1, 'more accurate', 'less accurate'],
+    [paceOf(d, b) - 1, 'quicker between shots', 'slower between shots'],
+    [kickOf(b) / kickOf(d) - 1, 'kicks less', 'kicks more'],
+    [(d.recoilSettle ?? 1) - 1, 'back on aim sooner', 'slower back on aim'],
+    [hipOf(b) / hipOf(d) - 1, 'steadier from the hip', 'wilder from the hip'],
+  ];
+  const out = facts
+    .filter(([v]) => Math.abs(v) >= 0.02)
+    .sort((x, y) => Math.abs(y[0]) - Math.abs(x[0]))
     .slice(0, 3)
-    .map((x) => x.text);
+    .map(([v, up, down]) => (v > 0 ? up : down));
   if (u.family) return `${SCOPE_FAMILIES[u.family].name} telescopic sight, ${u.name.match(/\((.*)\)/)?.[1] || 'its own'} reticle.`;
   if (!out.length) return 'Little change.';
   const t = out.join(', ');
