@@ -3,8 +3,11 @@
 // uses a single map over a short distance). The shadow settings can be changed while
 // playing (apply): the maps are remade and the materials recompiled.
 //
-// The near cascades are drawn every frame; the far ones every other frame, taking
-// turns (they change slowly), unless the camera moves or turns quickly.
+// The nearest cascade is drawn every frame; the others every other frame, taking
+// turns (they change slowly, and a map not redrawn keeps the place it was drawn
+// for), unless the camera moves or turns quickly. Each one redraws the trees,
+// the village and everything else in its reach, so with three cascades that is
+// two maps a frame, not two and a half.
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { addPatch } from './materialPatch.js';
@@ -161,7 +164,7 @@ export class Shadows {
     this.forceUpdate = false;
     const n = csm.lights.length;
     csm.lights.forEach((l, i) => {
-      l.shadow.needsUpdate = fast || i < 2 || n <= 2 || (this.frame + i) % 2 === 0;
+      l.shadow.needsUpdate = fast || i < 1 || n <= 2 || (this.frame + i) % 2 === 0;
     });
   }
 }

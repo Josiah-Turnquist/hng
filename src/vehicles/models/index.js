@@ -41,6 +41,7 @@ import * as soviet from './soviet.js';
 import * as bikes from './bikes.js';
 import { weatherVehicleMaterial, bakeModelPlaces } from '../weather.js';
 import { addMarkings } from './markings.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export { trackPath, pathLength };
 
@@ -311,6 +312,49 @@ function shadowPlan(group) {
   return plan;
 }
 
+// From far off nobody sees a wheel turn or ride its spring, yet every wheel
+// was two or three draws of its own (a tank's running gear, 44). So a built
+// model also has all its wheels as one mesh per material, standing where they
+// do at rest, to draw in their place from a distance (vehicle.js). Not for
+// bikes, which have a far model of their own.
+const WHEEL_PART = /^(wheel|road|roller|sprocket|idler)/;
+function farWheels(proto) {
+  if (proto.farWheels !== undefined) return proto.farWheels;
+  proto.farWheels = null;
+  if (proto.parts.far) return null;
+  const byMat = new Map();
+  let count = 0;
+  for (const [name, g] of Object.entries(proto.parts)) {
+    if (!WHEEL_PART.test(name)) continue;
+    count++;
+    for (const c of g.children) {
+      if (!c.isMesh || c.userData.marking || Array.isArray(c.material)) continue;
+      const geo = c.geometry.clone();
+      geo.translate(g.position.x, g.position.y, g.position.z);
+      if (!byMat.has(c.material)) byMat.set(c.material, { cast: c.castShadow, receive: c.receiveShadow, geos: [] });
+      byMat.get(c.material).geos.push(geo);
+    }
+  }
+  if (count < 2) return null;
+  const meshes = [];
+  for (const [material, m] of byMat) {
+    const geo = mergeGeometries(m.geos, false);
+    if (!geo) return null;
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
+    meshes.push({ geo, material, receive: m.receive });
+  }
+  // Their shadow, as one stand-in.
+  const group = new THREE.Group();
+  for (const m of meshes) {
+    const mesh = new THREE.Mesh(m.geo, m.material);
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+  const plan = shadowPlan(group);
+  return (proto.farWheels = { meshes, shade: plan?.geo || null });
+}
+
 export function instanceVehicle(id, textures) {
   const proto = protoOf(id, textures);
   const root = new THREE.Group();
@@ -352,7 +396,33 @@ export function instanceVehicle(id, textures) {
   const anchors = {};
   for (const [k, p] of Object.entries(proto.anchors)) anchors[k] = p.clone();
   root.userData = { anchors, parts, meta: proto.meta };
-  return { root, parts, anchors, meta: proto.meta, mats: proto.mats, stats: proto.stats };
+  // All the wheels as one, for drawing from far off (hidden until then).
+  let wheelsFar = null;
+  const fw = farWheels(proto);
+  if (fw) {
+    const group = new THREE.Group();
+    group.name = 'wheelsFar';
+    group.visible = false;
+    for (const m of fw.meshes) {
+      const mesh = new THREE.Mesh(m.geo, m.material);
+      mesh.castShadow = !fw.shade;
+      mesh.receiveShadow = m.receive;
+      group.add(mesh);
+    }
+    if (fw.shade) {
+      const shade = new THREE.Mesh(fw.shade, hiddenMaterial());
+      shade.name = 'shadow';
+      shade.castShadow = true;
+      shade.receiveShadow = false;
+      shade.userData.shadowProxy = true;
+      shade.onBeforeShadow = () => fw.shade.setDrawRange(0, Infinity);
+      shade.onAfterShadow = () => fw.shade.setDrawRange(0, 0);
+      group.add(shade);
+    }
+    root.add(group);
+    wheelsFar = { group, parts: Object.keys(parts).filter((k) => WHEEL_PART.test(k)).map((k) => parts[k]) };
+  }
+  return { root, parts, anchors, meta: proto.meta, mats: proto.mats, stats: proto.stats, wheelsFar };
 }
 
 // Re-parent the parts listed in meta.partParents (gun -> turret, turret hatches and pintle

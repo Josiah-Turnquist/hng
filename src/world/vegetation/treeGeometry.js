@@ -722,8 +722,10 @@ export function hedgeGeometry(L, detail, seed = 1) {
       G.tri(base + 1, base + 2, base + 3);
     }
   };
+  // (Kept dark: its flat slopes take the low sun whole, and lighter than this
+  // the banks stood out of the meadow like painted kerbs.)
   const bankShade = (p) => {
-    const k = 0.58 + 0.27 * clamp(p[1] / bankH, 0, 1);
+    const k = 0.42 + 0.2 * clamp(p[1] / bankH, 0, 1);
     return [k, k, k];
   };
   const coreShade = (p) => {
@@ -778,10 +780,23 @@ export function hedgeGeometry(L, detail, seed = 1) {
       [0, 1, 2],
       [0, 2, 3],
       [0, 3, 4],
-      [8, 5, 6],
-      [8, 6, 7],
     ])
       sx > 0 ? G.tri(base + a, base + b, base + c) : G.tri(base + a, base + c, base + b);
+    // The bank runs out into the ground in a slope, not a cut face (hidden
+    // inside the next section's bank; the end of the mound where a hedge ends).
+    const xe = x + sx * 1.7;
+    const ramp = [
+      [[x, bankH, -0.62], [x, bankH, 0.62], [xe, -0.6, 1.2], [xe, -0.6, -1.2], norm([sx * 0.7, 0.72, 0])],
+      [[x, bankH, 0.62], [x, -0.6, 1.55], [xe, -0.6, 1.2], null, norm([sx * 0.35, 0.55, 0.75])],
+      [[x, -0.6, -1.55], [x, bankH, -0.62], [xe, -0.6, -1.2], null, norm([sx * 0.35, 0.55, -0.75])],
+    ];
+    for (const [p0, p1, p2, p3, nrm] of ramp) {
+      const b0 = G.n;
+      for (const q of [p0, p1, p2, p3]) if (q) G.v(q, nrm, bankCell[0] + (bankCell[2] - bankCell[0]) * (0.5 + q[2] / 3.2), bankCell[1] + (bankCell[3] - bankCell[1]) * clamp((q[1] + 0.6) / 4, 0, 1), bankShade(q), 0, 0, 0);
+      const quad = p3 ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 2]];
+      // (The plants' material is drawn from both sides: either way round will do.)
+      for (const [i, j, k] of quad) G.tri(b0 + i, b0 + j, b0 + k);
+    }
   }
   // Leaf sprays standing out of the top and the sides.
   const cardNormal = (p) => norm([0, 0.55 + (p[1] - yTop) * 0.4, p[2] * 1.1]);

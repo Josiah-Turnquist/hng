@@ -161,7 +161,11 @@ export class GroundCover {
     if (w01 > bw) (bw = w01), (best = s[i + res]);
     if (w11 > bw) best = s[i + res + 1];
     const edge = s[i] !== s[i + 1] || s[i] !== s[i + res] || s[i] !== s[i + res + 1];
-    return { surf: best, edge };
+    // bare: how much of this spot is ground that grows next to nothing (mud,
+    // sand, rock, a road), 0 to 1, for thinning a meadow out toward it.
+    const thin = (t) => !(COVER[t]?.d >= 3);
+    const bare = edge ? (thin(s[i]) ? w00 : 0) + (thin(s[i + 1]) ? w10 : 0) + (thin(s[i + res]) ? w01 : 0) + (thin(s[i + res + 1]) ? w11 : 0) : 0;
+    return { surf: best, edge, bare };
   }
 
   _tile(tx, tz) {
@@ -209,9 +213,13 @@ export class GroundCover {
         const ua = Math.floor((x + half) / cell) - gx0,
           ub = Math.floor((z + half) / cell) - gz0;
         const u = ua >= 0 && ub >= 0 && ua < gn && ub < gn ? uni[ub * gn + ua] : -1;
-        const { surf, edge } = u >= 0 ? { surf: u, edge: false } : this._surface(x, z);
+        const { surf, edge, bare } = u >= 0 ? { surf: u, edge: false, bare: 0 } : this._surface(x, z);
         let cov = COVER[surf];
         if (!cov || (cov.edge && !edge)) continue;
+        // A meadow thins out and grows shorter over its last metre or two
+        // toward bare ground: it stopped along a hard, stepped line.
+        const fade = bare > 0 && cov.d >= 3 && surf !== SURF.WHEAT ? Math.min(1, bare * 1.6) : 0;
+        if (fade > 0 && hash(i * 3 + tx, j * 5 + tz, 97) < fade * 0.85) continue;
         if (surf === SURF.WHEAT && m & EX_FLAT) cov = COVER[SURF.GRASS];
         if (h0 * MAX_DENSITY > cov.d) continue;
         let pick = hash(i * 31 + tx, j * 17 + tz, 41);
@@ -238,7 +246,7 @@ export class GroundCover {
         const w = (sz[0] + (sz[1] - sz[0]) * a) * (type === GC.wheat ? 1 : this.tuft);
         // Patchy heights: some meadow patches grow taller.
         const patch = 0.85 + 0.3 * (0.5 + 0.5 * noise.noise2(x / 23 + 7.7, z / 23 - 3.1));
-        const h = (sz[2] + (sz[3] - sz[2]) * b) * (type === GC.wheat ? 1 : patch) * (mown ? 0.45 : 1) * (surf === SURF.DRY_GRASS && type === GC.grass ? 0.8 : 1);
+        const h = (sz[2] + (sz[3] - sz[2]) * b) * (type === GC.wheat ? 1 : patch) * (mown ? 0.45 : 1) * (surf === SURF.DRY_GRASS && type === GC.grass ? 0.8 : 1) * (1 - 0.45 * fade);
         const y = site.hf.getHeight(x, z);
         const tint = Math.min(0.99, Math.max(0, 0.5 + 0.45 * noise.noise2(x / 17 - 4.1, z / 17 + 2.3) + (a - 0.5) * 0.25));
         tmp.push([x, y - 0.03, z, hash(i, j, 77) * Math.PI * 2, w, h, type + tint, hash(i * 13 + 1, j * 7 + 3, tx + tz)]);

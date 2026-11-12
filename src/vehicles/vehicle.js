@@ -65,6 +65,9 @@ function solve3(A, b) {
 }
 
 // Which part each anchor rides on (the gun is a child of the turret).
+// Beyond this (m) a vehicle's wheels are drawn as one mesh (syncModel).
+const WHEELS_FAR = 70;
+
 const ANCHOR_PART = {
   muzzle: 'gun',
   coaxMuzzle: 'gun',
@@ -781,6 +784,20 @@ export class Vehicle {
   syncModel() {
     const root = this.model.root;
     const b = this.body;
+    // From far off its wheels are drawn as one mesh, at rest (models/index.js);
+    // a few metres between going over and coming back, so one at the edge
+    // doesn't flicker between the two.
+    const fw = this.model.wheelsFar;
+    const cam = fw && this.game.camera?.position;
+    if (cam) {
+      const lim = this._wheelsFar ? WHEELS_FAR - 6 : WHEELS_FAR + 6;
+      const far = cam.distanceToSquared(b.position) > lim * lim;
+      if (far !== !!this._wheelsFar) {
+        this._wheelsFar = far;
+        fw.group.visible = far;
+        for (const g of fw.parts) g.visible = !far;
+      }
+    }
     root.quaternion.copy(b.quaternion);
     root.position.copy(this.cg).negate().applyQuaternion(b.quaternion).add(b.position);
     root.updateMatrixWorld(true);
