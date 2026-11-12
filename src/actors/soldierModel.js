@@ -35,16 +35,19 @@ export { raycastHitboxes, rayCapsule, HITBOX_DEFS };
 export const HITBOX_PARTS = HITBOX_DEFS.map((d) => d[0]);
 export const LODS = 3;
 
-// Outfit builders are shared by every soldier with the same army, class,
-// variant, weapon role and level of detail (the geometry for LOD 0, the builder
-// for merging with each soldier's own person at LOD 1 and 2).
+// Outfits are shared by every soldier with the same army, class, variant,
+// weapon role and level of detail: the finished geometry for LOD 0, the
+// builder for merging with each soldier's own person at LOD 1 and 2.
+// (Only what is used again is kept. The LOD 0 builder, the biggest by far, was
+// kept too and never read: with the others' lists as plain arrays that was
+// 280 MB held for a battle of 48 men, over a third of all the page's memory.)
 const OUTFIT_CACHE = new Map();
 function outfitFor(faction, cls, variant, role, lod, camo = null, carry = null) {
   const key = `${faction}|${cls}|${variant}|${role}|${lod}|${camo || ''}|${carryKey(carry)}`;
   let g = OUTFIT_CACHE.get(key);
   if (!g) {
     const { b, info } = buildOutfit(faction, cls, variant, lod, role, { camo, carry });
-    g = { b, info, geo: lod === 0 ? b.toGeometry() : null };
+    g = lod === 0 ? { b: null, info, geo: b.toGeometry() } : { b: b.pack(), info, geo: null };
     OUTFIT_CACHE.set(key, g);
   }
   return g;

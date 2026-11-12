@@ -64,7 +64,9 @@ test('routes worked out a little each step are the same routes', async () => {
     asks.push({ who: { i }, nav, a: [(rnd() * 2 - 1) * 600, (rnd() * 2 - 1) * 600], b: [(rnd() * 2 - 1) * 600, (rnd() * 2 - 1) * 600], limit: i % 3 ? 120000 : 80000 });
   }
   const key = (p) => (p ? `${p.partial ? 'part ' : ''}${p.map((q) => `${q.x.toFixed(1)},${q.z.toFixed(1)}`).join(' ')}` : 'none');
+  const began = performance.now();
   const want = asks.map((q) => key(q.nav.findPath(q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true })));
+  const whole = performance.now() - began;
   assert.ok(want.filter((w) => w !== 'none').length > 12, 'most of the routes exist');
   // All asked at once, then collected as they come.
   const got = new Array(asks.length);
@@ -86,7 +88,9 @@ test('routes worked out a little each step are the same routes', async () => {
   assert.deepEqual(got, want);
   // (Spread over many steps, none of them long.)
   assert.ok(ticks > 40, `${ticks} steps`);
-  assert.ok(worst < 30, `longest step ${worst.toFixed(1)} ms`);
+  // (Measured against the same searches done all at once, not against the
+  // clock alone: with other tests running beside this one a fixed 30 ms failed.)
+  assert.ok(worst < Math.max(30, whole / 5), `longest step ${worst.toFixed(1)} ms, all at once ${whole.toFixed(0)} ms`);
   // A search all at once while others are part way: they start again and still come out right.
   const q = asks[1];
   assert.equal(q.nav.findPathSoon(q.who, q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true }), undefined);

@@ -73,6 +73,8 @@ The programs the graphics card needs (one per kind of material) are asked for ah
 
 `App.start` keeps the loading screen up until three frames have been drawn (four seconds at most), since the first frames are the slowest of the battle.
 
+Memory: the soldiers' outfits are shared between men of the same army, class, kit and level of detail (`soldierModel.js` `outfitFor`). What is kept of each is only what is used again: the finished geometry at full detail, and at the two lower levels the builder (each man's own body is merged into it), packed into plain number lists with `SkinBuilder.pack`. Keeping every builder as it was built held 280 MB in a battle of 48 men, a third of the page's memory.
+
 ## Debug pages
 
 Open these through the dev server:

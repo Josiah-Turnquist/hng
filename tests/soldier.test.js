@@ -459,3 +459,26 @@ test('first person: a hit knocks the gun once and it settles, with no shaking', 
   }
   assert.ok(jump < 0.0005, `the sway jumps ${jump} rad in a frame`);
 });
+
+test('a kept outfit, packed small, builds the very same soldier', async () => {
+  // (The outfits kept for the middle and far levels of detail are packed into
+  // plain number lists a quarter the size: soldierGeo.js pack.)
+  const { buildOutfit, buildPerson, personParams, mulberry } = await import('../src/actors/soldierKit.js');
+  const { SkinBuilder } = await import('../src/actors/soldierGeo.js');
+  for (const [faction, lod] of [
+    ['US', 1],
+    ['GE', 2],
+  ]) {
+    const { b, info } = buildOutfit(faction, 'infantry', 1, lod, 'rifle');
+    const person = personParams(faction, mulberry(7));
+    const whole = () => new SkinBuilder(1).append(b).append(buildPerson(person, lod, info)).toGeometry();
+    const loose = whole();
+    const count = b.count;
+    assert.equal(b.pack(), b);
+    assert.equal(b.count, count);
+    const packed = whole();
+    for (const name of Object.keys(loose.attributes)) assert.deepEqual(packed.attributes[name].array, loose.attributes[name].array, `${faction} lod ${lod}: ${name}`);
+    assert.deepEqual(packed.index.array, loose.index.array, `${faction} lod ${lod}: triangles`);
+    assert.ok(count > 300, `${count} points`);
+  }
+});

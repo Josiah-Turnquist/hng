@@ -864,6 +864,18 @@ export class SkinBuilder {
     return this;
   }
 
+  // Done adding: the lists as packed numbers, a quarter of the memory of
+  // plain arrays, for a builder that is kept to be appended to others. (The
+  // same number types toGeometry makes of them, so nothing built from it
+  // changes.) Nothing more can be added to it after this.
+  pack() {
+    for (const k of ['pos', 'nor', 'uv', 'col', 'sw', 'mat']) this[k] = new Float32Array(this[k]);
+    this.si = new Uint16Array(this.si);
+    this.prim = new Uint32Array(this.prim);
+    this.idx = new Uint32Array(this.idx);
+    return this;
+  }
+
   toGeometry() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
