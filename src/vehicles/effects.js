@@ -304,7 +304,7 @@ function ownMaterials(v) {
   const standIn = !!v.model.meta?.placeholder;
   v.model.root.traverse((o) => {
     // (Hit marks keep their own look; painted markings burn with the rest.)
-    if (!o.isMesh || (o.userData.damageMarks && !o.userData.marking)) return;
+    if (!o.isMesh || o.userData.shadowProxy || (o.userData.damageMarks && !o.userData.marking)) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     const out = mats.map((m) => {
       let c = done.get(m);

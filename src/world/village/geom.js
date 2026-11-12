@@ -72,6 +72,24 @@ class Bucket {
 }
 
 const WHITE = [1, 1, 1];
+// Triangles of one material in the whole village up to which it is drawn as a
+// single mesh (finish).
+const SMALL_MATERIAL = 4000;
+
+// The material of a mesh that only casts a shadow: on screen it draws nothing.
+let hiddenMat = null;
+function hiddenMaterial() {
+  return (hiddenMat ||= Object.assign(
+    new THREE.ShaderMaterial({
+      vertexShader: 'void main() { gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 ); }',
+      fragmentShader: 'void main() { gl_FragColor = vec4( 0.0 ); }',
+      colorWrite: false,
+      depthWrite: false,
+      depthTest: false,
+    }),
+    { name: 'village:shadowOnly' },
+  ));
+}
 const _uv = [0, 0];
 
 // Collects geometry per (material, chunk) and colliders.
@@ -125,8 +143,62 @@ export class VillageBuilder {
   finish(name = 'village') {
     const group = new THREE.Group();
     group.name = name;
+    // A material with little of it in the whole village (signs, floor tiles,
+    // iron fittings...) is one mesh, not one per 100 m chunk: each chunk's
+    // handful of triangles cost a draw of its own, in the picture and again in
+    // every shadow map.
+    const total = new Map();
+    for (const b of this.buckets.values()) total.set(b.matKey, (total.get(b.matKey) || 0) + b.idx.length / 3);
+    const merged = new Map();
+    const list = [];
     for (const b of this.buckets.values()) {
       if (b.count === 0) continue;
+      if (total.get(b.matKey) > SMALL_MATERIAL) {
+        list.push(b);
+        continue;
+      }
+      let m = merged.get(b.matKey);
+      if (!m) {
+        merged.set(b.matKey, (m = { matKey: b.matKey, chunk: 'all', pos: [], nor: [], uv: [], col: [], idx: [], count: 0 }));
+        list.push(m);
+      }
+      for (const k of ['pos', 'nor', 'uv', 'col']) for (let i = 0; i < b[k].length; i++) m[k].push(b[k][i]);
+      for (let i = 0; i < b.idx.length; i++) m.idx.push(b.idx[i] + m.count);
+      m.count += b.count;
+    }
+    // Shadows have no materials: each chunk's solid pieces cast theirs as one
+    // mesh (a stand-in that draws nothing on screen) instead of one mesh per
+    // material, drawn again into every shadow map.
+    // (Not the two-sided ones, leaves and the like: they cast from both faces, on their own.)
+    const solid = (mat) => !mat.userData.noShadow && !mat.transparent && !(mat.alphaTest > 0) && mat.side !== THREE.DoubleSide;
+    const shade = new Map();
+    for (const b of this.buckets.values()) {
+      if (b.count === 0 || !solid(this.materials[b.matKey])) continue;
+      let c = shade.get(b.chunk);
+      if (!c) shade.set(b.chunk, (c = { pos: [], idx: [], count: 0 }));
+      for (let i = 0; i < b.pos.length; i++) c.pos.push(b.pos[i]);
+      for (let i = 0; i < b.idx.length; i++) c.idx.push(b.idx[i] + c.count);
+      c.count += b.count;
+    }
+    for (const [chunk, c] of shade) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(c.pos, 3));
+      g.setIndex(c.count > 65535 ? new THREE.Uint32BufferAttribute(c.idx, 1) : new THREE.Uint16BufferAttribute(c.idx, 1));
+      g.computeBoundingSphere();
+      g.computeBoundingBox();
+      const mesh = new THREE.Mesh(g, hiddenMaterial());
+      mesh.name = `${name}:shadow:${chunk}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = false;
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      // (All of it into the shadow maps, none of it to the screen.)
+      g.setDrawRange(0, 0);
+      mesh.onBeforeShadow = () => g.setDrawRange(0, Infinity);
+      mesh.onAfterShadow = () => g.setDrawRange(0, 0);
+      group.add(mesh);
+    }
+    for (const b of list) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
@@ -138,8 +210,8 @@ export class VillageBuilder {
       const mat = this.materials[b.matKey];
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = `${name}:${b.matKey}:${b.chunk}`;
-      const noShadow = mat.userData.noShadow;
-      mesh.castShadow = !noShadow;
+      // (Solid pieces cast through their chunk's stand-in, above.)
+      mesh.castShadow = !mat.userData.noShadow && !solid(mat);
       mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();

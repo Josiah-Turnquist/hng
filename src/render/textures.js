@@ -67,9 +67,10 @@ export const PRESETS = {
   dryGrass: { mat: 'dryGrass', world: 3 },
   dirt: { mat: 'dirt', world: 3 },
   mud: { mat: 'mud', world: 4 },
-  rock: { mat: 'rock', world: 6 },
+  rock: { mat: 'rock', world: 4 },
   plowed: { mat: 'plowed', world: 2.4 },
-  cobble: { mat: 'cobble', world: 2 },
+  // (Setts a hand or two across, not flagstones: 1.2 m of ground a tile.)
+  cobble: { mat: 'cobble', world: 1.2 },
   forest: { mat: 'forest', world: 3 },
   sand: { mat: 'sand', world: 3 },
   roadDirt: { mat: 'roadDirt', world: 6, alpha: true },
@@ -78,7 +79,8 @@ export const PRESETS = {
   plasterGrey: { mat: 'plaster', world: 3, a: lin(0.66, 0.65, 0.62), b: lin(0.58, 0.57, 0.54) },
   plasterOchre: { mat: 'plaster', world: 3, a: lin(0.76, 0.64, 0.42), b: lin(0.68, 0.56, 0.38) },
   plasterWhite: { mat: 'plaster', world: 3, a: lin(0.84, 0.83, 0.79), b: lin(0.75, 0.74, 0.7) },
-  stoneWall: { mat: 'stoneWall', world: 3 },
+  // (Rubble stones about a foot across.)
+  stoneWall: { mat: 'stoneWall', world: 1.9 },
   roofTiles: { mat: 'roofTiles', world: 2 },
   woodPlanks: { mat: 'woodPlanks', world: 1.4, a: lin(0.42, 0.35, 0.27), b: lin(0.35, 0.3, 0.25) },
   woodDark: { mat: 'woodPlanks', world: 1.4, a: lin(0.25, 0.18, 0.12), b: lin(0.2, 0.15, 0.1) },

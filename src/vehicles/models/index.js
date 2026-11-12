@@ -231,6 +231,86 @@ export function prepareVehicle(id, textures) {
   if (VEHICLE_MODELS[id]) protoOf(id, textures);
 }
 
+// A vehicle's shadow cost as much as the vehicle: every piece of it (some 25
+// for a jeep, 65 for a tank, one per material per part) was drawn again into
+// each shadow map. A shadow has no materials, so a big part (hull, turret,
+// body) casts its shadow as one mesh, a stand-in that draws nothing on screen,
+// and of a small part (a wheel) only the largest piece casts.
+let hiddenMat = null;
+function hiddenMaterial() {
+  return (hiddenMat ||= Object.assign(
+    new THREE.ShaderMaterial({
+      vertexShader: 'void main() { gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 ); }',
+      fragmentShader: 'void main() { gl_FragColor = vec4( 0.0 ); }',
+      colorWrite: false,
+      depthWrite: false,
+      depthTest: false,
+    }),
+    { name: 'vehicle:shadowOnly' },
+  ));
+}
+
+// How a part's pieces cast: { geo } (one merged stand-in) for a big part with
+// several casting pieces, { keep } (the one piece that goes on casting) for a
+// small one, or null (as built); merged: which of its meshes that covers.
+// Worked out once per part of a built model.
+function shadowPlan(group) {
+  if (group.userData.shadowPlan !== undefined) return group.userData.shadowPlan;
+  // (Not two-sided pieces, canvas and thin sheet: they cast from both faces, on their own.)
+  const casters = group.children.filter((c) => c.isMesh && c.castShadow && c.geometry?.attributes?.position && c.material?.side !== THREE.DoubleSide && !Array.isArray(c.material));
+  let plan = null;
+  if (casters.length > 1) {
+    const box = new THREE.Box3();
+    let big = casters[0],
+      bigR = 0;
+    for (const c of casters) {
+      if (!c.geometry.boundingBox) c.geometry.computeBoundingBox();
+      box.union(c.geometry.boundingBox);
+      if (!c.geometry.boundingSphere) c.geometry.computeBoundingSphere();
+      if (c.geometry.boundingSphere.radius > bigR) {
+        bigR = c.geometry.boundingSphere.radius;
+        big = c;
+      }
+    }
+    const meshes = group.children.filter((c) => c.isMesh);
+    const merged = casters.map((c) => meshes.indexOf(c));
+    if (box.getSize(new THREE.Vector3()).length() < 1.5) plan = { merged, keep: meshes.indexOf(big) };
+    else {
+      let nv = 0,
+        ni = 0;
+      for (const c of casters) {
+        nv += c.geometry.attributes.position.count;
+        ni += c.geometry.index ? c.geometry.index.count : c.geometry.attributes.position.count;
+      }
+      const pos = new Float32Array(nv * 3);
+      const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+      let v = 0,
+        k = 0;
+      for (const c of casters) {
+        const p = c.geometry.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          pos[(v + i) * 3] = p.getX(i);
+          pos[(v + i) * 3 + 1] = p.getY(i);
+          pos[(v + i) * 3 + 2] = p.getZ(i);
+        }
+        const ix = c.geometry.index;
+        if (ix) for (let i = 0; i < ix.count; i++) idx[k++] = ix.getX(i) + v;
+        else for (let i = 0; i < p.count; i++) idx[k++] = v + i;
+        v += p.count;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeBoundingSphere();
+      geo.computeBoundingBox();
+      geo.setDrawRange(0, 0);
+      plan = { merged, geo };
+    }
+  }
+  group.userData.shadowPlan = plan;
+  return plan;
+}
+
 export function instanceVehicle(id, textures) {
   const proto = protoOf(id, textures);
   const root = new THREE.Group();
@@ -250,6 +330,21 @@ export function instanceVehicle(id, textures) {
       mesh.renderOrder = c.renderOrder;
       if (c.userData.marking) mesh.userData = { ...c.userData };
       ng.add(mesh);
+    }
+    const plan = shadowPlan(g);
+    if (plan) {
+      for (const i of plan.merged) ng.children[i].castShadow = i === plan.keep;
+      if (plan.geo) {
+        const shade = new THREE.Mesh(plan.geo, hiddenMaterial());
+        shade.name = 'shadow';
+        shade.castShadow = true;
+        shade.receiveShadow = false;
+        shade.userData.shadowProxy = true;
+        // (All of it into the shadow maps, none of it to the screen.)
+        shade.onBeforeShadow = () => plan.geo.setDrawRange(0, Infinity);
+        shade.onAfterShadow = () => plan.geo.setDrawRange(0, 0);
+        ng.add(shade);
+      }
     }
     root.add(ng);
     parts[name] = ng;

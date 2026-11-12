@@ -187,6 +187,21 @@ void terrainSample(vec3 wp) {
     vec2 uv2 = mat2(0.8, -0.6, 0.6, 0.8) * xz * (uLayerScale[tMain] * 0.31) + vec2(0.37, 0.71);
     tAlb = mix(tAlb, texture(tLayerAlbedo, vec3(uv2, float(tMain))), tFar);
   }
+  // Steep ground is bare rock, drawn from the side: laid flat from above like
+  // the rest, the texture was dragged out into streaks down every slope.
+  vec2 nuv = (xz + uTerrain.x) / uTerrain.y;
+  vec3 N = texture(tTerrainNormal, (nuv + 0.5) / uTerrain.z).xyz * 2.0 - 1.0;
+  float steep = smoothstep(0.2, 0.4, 1.0 - N.y);
+  vec3 sideN = vec3(0.0);
+  if (steep > 0.0) {
+    vec2 along = normalize(vec2(-N.z, N.x) + 1e-5);
+    vec2 uvS = vec2(dot(xz, along), wp.y) * uLayerScale[4];
+    tAlb = mix(tAlb, texture(tLayerAlbedo, vec3(uvS, 4.0)), steep);
+    vec2 d = texture(tLayerNormal, vec3(uvS, 4.0)).xy * 2.0 - 1.0;
+    sideN = vec3(along.x * d.x, d.y, along.y * d.x) * steep;
+    tNrmW *= 1.0 - steep;
+    if (steep > 0.5) tMain = 4;
+  }
   // Large-scale color variation hides texture repetition; grass also varies a
   // little in hue (lusher and yellower patches).
   float macro = tvn(xz * 0.018) * 0.6 + tvn(xz * 0.075) * 0.4;
@@ -201,10 +216,8 @@ void terrainSample(vec3 wp) {
   else if (tMain == 2 || tMain == 3) tAlb.rgb = mix(tAlb.rgb, vec3(dot(tAlb.rgb, vec3(0.3, 0.59, 0.11))), 0.22);
   tRough = tAlb.a;
   // Combine the smooth ground normal with the texture detail normal.
-  vec2 nuv = (xz + uTerrain.x) / uTerrain.y;
-  vec3 N = texture(tTerrainNormal, (nuv + 0.5) / uTerrain.z).xyz * 2.0 - 1.0;
   float detailFade = 1.0 - smoothstep(60.0, 260.0, tDist);
-  tNrmW = normalize(vec3(N.x + tNrmW.x * detailFade, N.y, N.z + tNrmW.y * detailFade));
+  tNrmW = normalize(vec3(N.x + tNrmW.x * detailFade, N.y, N.z + tNrmW.y * detailFade) + sideN * detailFade);
 }`,
         )
         .replace(
@@ -241,6 +254,28 @@ diffuseColor.rgb *= tAlb.rgb;`,
         const chunk = { mesh, lods, lod: 0, cx: x0 + size / 2, cz: z0 + size / 2, size };
         this.chunks.push(chunk);
         this.group.add(mesh);
+      }
+    }
+    // Far ground in big pieces: where every chunk of a block of 4 x 4 (or
+    // 2 x 2) is far enough for the two coarsest levels, the block is drawn as
+    // one mesh in their place. (Looking across the map the ground alone was
+    // some 170 separate pieces to draw, most of them far away.)
+    this.blocks = [];
+    for (const span of [4, 2]) {
+      for (let bz = 0; bz < nChunks; bz += span) {
+        for (let bx = 0; bx < nChunks; bx += span) {
+          const lods = [4, 8].map((step) => this._chunkGeometry(bx * cc, bz * cc, cc * span, step));
+          const mesh = new THREE.Mesh(lods[0], this.material);
+          mesh.receiveShadow = true;
+          mesh.castShadow = false;
+          mesh.matrixAutoUpdate = false;
+          mesh.updateMatrix();
+          mesh.visible = false;
+          const members = [];
+          for (let z = bz; z < Math.min(nChunks, bz + span); z++) for (let x = bx; x < Math.min(nChunks, bx + span); x++) members.push(this.chunks[z * nChunks + x]);
+          this.blocks.push({ mesh, lods, members, span, on: false });
+          this.group.add(mesh);
+        }
       }
     }
   }
@@ -328,6 +363,28 @@ diffuseColor.rgb *= tAlb.rgb;`,
         c.lod = lod;
         c.mesh.geometry = c.lods[lod];
       }
+      c.inBlock = false;
     }
+    // Blocks of far chunks drawn as one (the 4 x 4 blocks first, then the
+    // 2 x 2 ones outside them), at the finer of their chunks' levels.
+    for (const b of this.blocks) {
+      let min = 3,
+        free = true;
+      for (const c of b.members) {
+        if (c.lod < min) min = c.lod;
+        if (c.inBlock) free = false;
+      }
+      const on = free && min >= 2;
+      if (on) {
+        for (const c of b.members) c.inBlock = true;
+        const geo = b.lods[min - 2];
+        if (b.mesh.geometry !== geo) b.mesh.geometry = geo;
+      }
+      if (on !== b.on) {
+        b.on = on;
+        b.mesh.visible = on;
+      }
+    }
+    for (const c of this.chunks) if (c.mesh.visible === c.inBlock) c.mesh.visible = !c.inBlock;
   }
 }
