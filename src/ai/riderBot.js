@@ -236,7 +236,7 @@ export class BikeRide {
     this.phase = 'wait';
   }
 
-  // Route from here to the goal on the bike grid (one search per tick for all bots).
+  // Route from here to the goal on the bike grid.
   _plan() {
     const g = this.game;
     const nav = bikeNav(g);
@@ -248,9 +248,9 @@ export class BikeRide {
       this.i = 0;
       return;
     }
-    if (g.navBudget <= 0) return;
-    g.navBudget--;
-    const path = nav.findPath(p.x, p.z, goal.x, goal.z, 120000, { partial: true });
+    // (Worked out over the next few steps: asked for again each update until it comes.)
+    const path = nav.findPathSoon(this, p.x, p.z, goal.x, goal.z, 120000, { partial: true });
+    if (path === undefined) return;
     this.planT = g.time + (path?.partial ? 6 : 25);
     if (!path || !path.length) {
       this.failed = (this.failed || 0) + 1;

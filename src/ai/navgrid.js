@@ -6,6 +6,12 @@
 import { FLAG_SOLID, FLAG_WALKABLE } from '../physics/collision.js';
 
 const SQRT2 = Math.SQRT2;
+// Cells searched in one step of the battle for the routes being worked out a
+// little at a time (findPathSoon): about a millisecond's worth, more for each
+// search waiting, up to a limit.
+const SLICE = 3000,
+  SLICE_MORE = 2500,
+  SLICE_MAX = 14000;
 
 export class NavGrid {
   constructor(world, { radius, cell = 2, centerX = 0, centerZ = 0 } = {}) {
@@ -27,6 +33,12 @@ export class NavGrid {
     this.gen = 0;
     this.heap = new Int32Array(N);
     this.heapF = new Float32Array(N);
+    // Routes asked for with findPathSoon: the one being worked out, those
+    // waiting their turn, and the finished ones not yet collected.
+    this.job = null;
+    this.queue = [];
+    this.answers = new Map();
+    this.ticks = 0;
   }
 
   index(x, z) {
@@ -236,7 +248,92 @@ export class NavGrid {
   // A* from (sx, sz) to (gx, gz). Returns [{x, z}, ...] or null. With partial,
   // a search that runs out of steps returns the route to the point it got
   // closest to the goal (flagged .partial), to walk while planning on from there.
+  // All of it at once: a long route across the map takes tens of milliseconds,
+  // which is a stutter in a battle. The bots ask with findPathSoon instead.
   findPath(sx, sz, gx, gz, maxExpand = 80000, { partial = false } = {}) {
+    // (The search's working data is shared: one part way through starts again.)
+    if (this.job) this.job.restart = true;
+    const job = this._begin(sx, sz, gx, gz, maxExpand, partial);
+    if (job.done) return job.path;
+    this._advance(job, Infinity);
+    return this._finish(job);
+  }
+
+  // The same route, worked out a little each step of the battle (tick) and
+  // handed over when it is ready: undefined while it is being worked out, then
+  // what findPath would have returned (and lastFail as it would have set it).
+  // who: whoever is asking (one search each; asking again while waiting is
+  // how to collect the answer).
+  findPathSoon(who, sx, sz, gx, gz, maxExpand = 80000, { partial = false } = {}) {
+    const moved = (o) => Math.hypot(o.gx - gx, o.gz - gz) > 20;
+    const done = this.answers.get(who);
+    if (done) {
+      this.answers.delete(who);
+      // (An answer to somewhere he no longer wants to go is dropped.)
+      if (!moved(done)) {
+        this.lastFail = done.fail;
+        return done.path;
+      }
+    }
+    const ask = { who, sx, sz, gx, gz, maxExpand, partial };
+    const waiting = this.queue.findIndex((q) => q.who === who);
+    if (this.job?.who === who) {
+      if (moved(this.job.ask)) {
+        this.job.ask = ask;
+        this.job.restart = true;
+      }
+    } else if (waiting >= 0) {
+      if (moved(this.queue[waiting])) this.queue[waiting] = ask;
+    } else this.queue.push(ask);
+    this.lastFail = 'thinking';
+    return undefined;
+  }
+
+  // One step's share of the searches waiting (called once a step by the game).
+  // More of them waiting (a whole side setting off at once): a bigger share,
+  // so nobody stands about for long.
+  tick() {
+    this.ticks++;
+    if (this.answers.size) for (const [who, a] of this.answers) if (this.ticks - a.at > 1200) this.answers.delete(who);
+    let budget = Math.min(SLICE_MAX, SLICE + SLICE_MORE * this.queue.length);
+    while (budget > 0) {
+      let job = this.job;
+      if (!job) {
+        const q = this.queue.shift();
+        if (!q) return;
+        job = this._begin(q.sx, q.sz, q.gx, q.gz, q.maxExpand, q.partial);
+        job.who = q.who;
+        job.ask = q;
+        budget -= 200;
+        if (job.done) {
+          this.answers.set(q.who, { path: job.path, fail: this.lastFail, at: this.ticks, gx: q.gx, gz: q.gz });
+          continue;
+        }
+        this.job = job;
+      } else if (job.restart) {
+        const q = job.ask;
+        this.job = null;
+        this.queue.unshift(q);
+        continue;
+      }
+      // The search, then (in a step of its own: it can take as long) the tidying of its route.
+      if (!job.over) {
+        const before = job.expanded;
+        this._advance(job, budget);
+        budget -= job.expanded - before + 1;
+        if (!job.over) return;
+        if (job.found || job.partial) return;
+      }
+      this.job = null;
+      const path = this._finish(job);
+      this.answers.set(job.who, { path, fail: this.lastFail, at: this.ticks, gx: job.ask.gx, gz: job.ask.gz });
+      return;
+    }
+  }
+
+  // The start of a search: its state, or (done) the answer where there is
+  // nothing to search.
+  _begin(sx, sz, gx, gz, maxExpand, partial) {
     const n = this.n;
     const start = this.nearestWalkable(sx, sz);
     const goal = this.nearestWalkable(gx, gz);
@@ -245,23 +342,39 @@ export class NavGrid {
     this.lastFail = null;
     if (start < 0 || goal < 0) {
       this.lastFail = 'blocked';
-      return null;
+      return { done: true, path: null };
     }
-    if (start === goal) return [{ x: gx, z: gz }];
+    if (start === goal) return { done: true, path: [{ x: gx, z: gz }] };
     if (this.comp && this.comp[start] !== this.comp[goal]) {
       this.lastFail = 'apart';
-      return null;
+      return { done: true, path: null };
     }
     const gen = ++this.gen;
-    const { g, parent, stamp, closed, cost, heap, heapF } = this;
     const gxI = goal % n,
       gzI = Math.floor(goal / n);
+    const dx = Math.abs((start % n) - gxI),
+      dz = Math.abs(Math.floor(start / n) - gzI);
+    const h0 = 10 * (dx + dz) + (10 * SQRT2 - 20) * Math.min(dx, dz);
+    this.stamp[start] = gen;
+    this.g[start] = 0;
+    this.parent[start] = -1;
+    this.heap[0] = start;
+    this.heapF[0] = h0;
+    return { sx, sz, gx, gz, maxExpand, partial, start, goal, gen, gxI, gzI, size: 1, expanded: 0, best: start, bestH: h0, found: false, over: false };
+  }
+
+  // Carry a search on by up to `budget` cells. job.over once it has found the
+  // goal, run out of cells or reached its limit.
+  _advance(job, budget) {
+    const n = this.n;
+    const { g, parent, stamp, closed, cost, heap, heapF } = this;
+    const { gen, goal, gxI, gzI, maxExpand } = job;
     const h = (i) => {
       const dx = Math.abs((i % n) - gxI),
         dz = Math.abs(Math.floor(i / n) - gzI);
       return 10 * (dx + dz) + (10 * SQRT2 - 20) * Math.min(dx, dz);
     };
-    let size = 0;
+    let size = job.size;
     const push = (i, f) => {
       let k = size++;
       while (k > 0) {
@@ -292,20 +405,24 @@ export class NavGrid {
       heapF[k] = lf;
       return top;
     };
-    stamp[start] = gen;
-    g[start] = 0;
-    parent[start] = -1;
-    push(start, h(start));
-    let expanded = 0;
+    let expanded = job.expanded;
+    const stop = expanded + budget;
     let found = false;
-    let best = start,
-      bestH = h(start);
-    while (size > 0) {
+    let over = false;
+    let best = job.best,
+      bestH = job.bestH;
+    for (;;) {
+      if (size <= 0) {
+        over = true;
+        break;
+      }
+      if (expanded >= stop) break;
       const cur = pop();
       if (closed[cur] === gen) continue;
       closed[cur] = gen;
       if (cur === goal) {
         found = true;
+        over = true;
         break;
       }
       const hc = h(cur);
@@ -313,7 +430,10 @@ export class NavGrid {
         bestH = hc;
         best = cur;
       }
-      if (++expanded > maxExpand) break;
+      if (++expanded > maxExpand) {
+        over = true;
+        break;
+      }
       const cx = cur % n,
         cz = (cur - cx) / n;
       for (let k = 0; k < 8; k++) {
@@ -337,6 +457,19 @@ export class NavGrid {
         }
       }
     }
+    job.size = size;
+    job.expanded = expanded;
+    job.best = best;
+    job.bestH = bestH;
+    job.found = found;
+    job.over = over;
+  }
+
+  // A finished search's route (or null), with lastFail set.
+  _finish(job) {
+    const { parent } = this;
+    const { sx, sz, gx, gz, start, goal, found, partial, best } = job;
+    this.lastFail = null;
     let end = goal;
     if (!found) {
       this.lastFail = 'limit';

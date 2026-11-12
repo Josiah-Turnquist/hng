@@ -52,8 +52,11 @@ test('a snapshot carries every soldier, vehicle and point, and reads back', asyn
   assert.ok(s.events.some((e) => e[0] === 'f'), 'shots were fired');
   const r = roster(g);
   assert.equal(r.s.length, g.soldiers.length);
-  // About a kilobyte and a half for 8 soldiers and the town's 22 points.
-  assert.ok(JSON.stringify(m).length < 4000);
+  // Under a kilobyte and a half for 8 soldiers and the town's 22 points. (The
+  // shots of the 45 s before it ride along as events, some 80 characters
+  // each: how many there are depends on how the fight went.)
+  assert.ok(JSON.stringify({ ...m, e: [] }).length < 1500, `${JSON.stringify({ ...m, e: [] }).length} characters`);
+  assert.ok(JSON.stringify(m.e).length < 100 * s.events.length, 'an event is under 100 characters');
 });
 
 test('a recorded battle plays back the same, fingerprint by fingerprint', async () => {

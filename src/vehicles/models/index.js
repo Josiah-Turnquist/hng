@@ -215,11 +215,24 @@ function finish(v, b) {
 // read-only; do not dispose the geometry of an instance while others are alive).
 const protos = new WeakMap();
 
-export function instanceVehicle(id, textures) {
+// The built model a type's copies are made from (built on first use: tens of
+// milliseconds, a hundred and more for a tank).
+function protoOf(id, textures) {
   let byId = protos.get(textures);
   if (!byId) protos.set(textures, (byId = new Map()));
   let proto = byId.get(id);
   if (!proto) byId.set(id, (proto = buildVehicle(id, textures)));
+  return proto;
+}
+
+// Build a type's model ahead of need (while a battle loads), so the first one
+// to appear in the battle costs no more than the rest.
+export function prepareVehicle(id, textures) {
+  if (VEHICLE_MODELS[id]) protoOf(id, textures);
+}
+
+export function instanceVehicle(id, textures) {
+  const proto = protoOf(id, textures);
   const root = new THREE.Group();
   root.name = proto.root.name;
   const parts = {};

@@ -157,6 +157,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
     },
   };
   g.mode.start();
+  g.prepareTanks();
   g.mode.spawnSoldier(ps, g.mode._spawnPoints(ATT)[0]);
   // Kills, scores and the players' ribbon tallies as in the game; the side totals too.
   g.onDeath = (s, cause) => {

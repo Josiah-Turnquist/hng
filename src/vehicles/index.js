@@ -13,14 +13,28 @@ export { VEHICLES };
 
 const STANDIN_COLOR = { US: 0x4b5320, GE: 0x8a7d5a, SU: 0x46502e };
 
+// Build these types' models now (while the battle loads) rather than when the
+// first of each drives in.
+export function prepareVehicles(game, ids) {
+  for (const id of ids) {
+    try {
+      if (VEHICLES[id]) models.prepareVehicle?.(id, game.world.textures);
+    } catch (e) {
+      console.warn(`Vehicle model ${id} failed`, e);
+    }
+  }
+}
+
 export function spawnVehicle(game, id, x, z, yaw = 0) {
   const def = { ...VEHICLES[id], id };
   if (!VEHICLES[id]) throw new Error(`Unknown vehicle ${id}`);
   let model = null;
   try {
-    // Bicycles and motorcycles come in numbers: they share one built model's
-    // geometry and materials per type.
-    const build = def.kind === 'bike' && models.instanceVehicle ? models.instanceVehicle : models.buildVehicle;
+    // Every vehicle of a type shares one built model's geometry and materials
+    // (its damage is painted on copies of its own: effects.js). Building a
+    // tank's model afresh took a tenth of a second and more, a stall in the
+    // middle of a battle each time one arrived.
+    const build = models.instanceVehicle || models.buildVehicle;
     model = build ? build(id, game.world.textures) : null;
   } catch (e) {
     console.warn(`Vehicle model ${id} failed, using a stand-in`, e);

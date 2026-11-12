@@ -26,7 +26,7 @@ import { RibbonTally, LONG_RANGE } from './ribbons.js';
 import { STANCE } from '../actors/body.js';
 import { AMMO } from '../weapons/ammo.js';
 import { hitboxesFor, raycastSoldier } from './hitboxes.js';
-import { spawnVehicle } from '../vehicles/index.js';
+import { spawnVehicle, prepareVehicles } from '../vehicles/index.js';
 import { updateVehicleEffects, charModel, addHitMark } from '../vehicles/effects.js';
 import { SURFACE_INFO } from '../world/heightfield.js';
 import { MATERIALS } from '../ballistics/materials.js';
@@ -34,6 +34,8 @@ import { updateVehicleSound } from '../vehicles/sound.js';
 import { clamp } from '../core/math.js';
 
 // Enemy gunfire within this many meters shows which way it came from (the shot marks).
+// The tank each army's crews bring unless they chose another.
+const ARMY_TANK = { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' };
 const HEAR_RANGE = 300;
 
 // A tank's own shells pass over it for their first 40 m of flight (they leave
@@ -152,6 +154,7 @@ export class Game {
     player.tally = this.ribbonTally;
     if (cls === 'paratrooper') this.ribbonTally.jump();
     this.mode.start();
+    this.prepareTanks();
     this.deploy = { t: 0, index: 0 };
 
     // Optional fixed camera for screenshots: ?cam=x,y,z,yawDeg,pitchDeg
@@ -211,10 +214,19 @@ export class Game {
     return null;
   }
 
+  // The tanks this battle's armies bring: built now, while it loads (a tank's
+  // model built as it drove in stalled the battle for a tenth of a second).
+  prepareTanks() {
+    const ids = new Set();
+    for (const s of this.soldiers) ids.add((s.isPlayer && this.opts.tank) || s.tankId || ARMY_TANK[s.faction]);
+    ids.delete(undefined);
+    prepareVehicles(this, ids);
+  }
+
   // Put a soldier in a fresh tank of their army near where they stand.
   _deployInTank(s) {
     // (The player's own choice; a player on the game server brings his, s.tankId.)
-    const id = (s.isPlayer && this.opts.tank) || s.tankId || { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' }[s.faction];
+    const id = (s.isPlayer && this.opts.tank) || s.tankId || ARMY_TANK[s.faction];
     if (!id) return null;
     const b = s.body;
     // Somewhere a tank can actually drive out of (not wedged between houses).
@@ -271,7 +283,10 @@ export class Game {
     this.time += dt;
     // Online: others placed from the server's snapshots (net/online.js).
     this.online?.update(dt);
-    this.navBudget = 1;
+    // The bots' routes, worked out a little each step (ai/navgrid.js).
+    this.nav?.tick();
+    if (this.vnav !== this.nav) this.vnav?.tick();
+    if (this._bikeNav && this._bikeNav !== this.nav && this._bikeNav !== this.vnav) this._bikeNav.tick();
     this._guard(this.player.soldier, () => this.player.update(dt));
     // Players on a game server, each driven by his input messages (server/battle.js).
     for (const p of this.remotePlayers || [])

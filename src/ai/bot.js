@@ -621,7 +621,7 @@ export class BotBrain {
       this.lookPitch = 0;
       if (b.targetStance !== p.low) b.setStance(p.low);
     } else {
-      if (!this.path || this.pathI >= this.path.length || g.time > this.pathT) this._plan(p.x, p.z);
+      if (!this.path || this.pathI >= this.path.length || g.time > this.pathT) this._plan(p.x, p.z, true);
       if (b.targetStance !== STANCE.STAND && Math.hypot(p.x - b.x, p.z - b.z) > 6) b.setStance(STANCE.STAND);
     }
     return true;
@@ -842,22 +842,37 @@ export class BotBrain {
     return g && Math.hypot(this.s.body.x - g.x, this.s.body.z - g.z) < g.radius * 0.85;
   }
 
-  _plan(x, z) {
+  // A route to a point. It is worked out over the next few steps of the
+  // battle (a long one all at once is a stutter): until it comes he sets off
+  // straight for the spot, or on a routine re-plan keeps to the route he has.
+  _plan(x, z, routine = false) {
     const nav = this.game.nav;
     const b = this.s.body;
-    this.pathT = this.game.time + 12 + rand() * 6;
+    // (A routine re-plan waits for a route to cover or a post that is on its way.)
+    if (routine && this.want && !this.want.routine) return;
     if (!nav) {
+      this.pathT = this.game.time + 12 + rand() * 6;
       this.path = [{ x, z }];
       this.pathI = 0;
       return;
     }
-    // Path searches are spread out: at most one per tick for all bots.
-    if (this.game.navBudget <= 0) {
-      this.pathT = this.game.time + 0.3 + rand() * 0.5;
+    const p = nav.findPathSoon(this, b.x, b.z, x, z, 80000, { partial: true });
+    if (p === undefined) {
+      const w = this.want;
+      if (!w || w.x !== x || w.z !== z || w.path !== this.path) {
+        if (!routine) {
+          this.path = [{ x, z }];
+          this.pathI = 0;
+        }
+        // (path: the route he had when he asked. Changed since by anything
+        // else, the answer is no longer wanted: _move.)
+        this.want = { x, z, routine, path: this.path };
+      }
+      this.pathT = this.game.time + 12;
       return;
     }
-    this.game.navBudget--;
-    const p = nav.findPath(b.x, b.z, x, z, 80000, { partial: true });
+    this.want = null;
+    this.pathT = this.game.time + 12 + rand() * 6;
     this.path = p || [{ x, z }];
     this.pathI = 0;
     // Part of the way only (a long route): plan on again soon.
@@ -874,6 +889,12 @@ export class BotBrain {
     it.walk = false;
     it.jump = false;
     it.leanL = it.leanR = false;
+    // A route being worked out: collect it when it is ready, unless his plans
+    // changed meanwhile.
+    if (this.want) {
+      if (this.want.path !== this.path) this.want = null;
+      else this._plan(this.want.x, this.want.z, this.want.routine);
+    }
     // Treating a wound (moving would undo it), about to, or throwing a grenade: keep still.
     if (s.action || this.game.time < this.treatT || (s.throwing && s.throwing.phase !== 'follow')) return;
     // Up behind a corner (fighting or watching): lean out past it.

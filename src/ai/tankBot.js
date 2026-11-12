@@ -10,6 +10,9 @@ import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { SHELLS, isHE } from '../vehicles/defs.js';
 import { leavesBetween } from './tactics.js';
 
+// How far short of a point a tank that can't reach it tries to get, in turn (m).
+const BACK = [0, 50, 90, 140];
+
 // How far a tank crew makes out men at all (m).
 const INFANTRY_SIGHT = 900;
 const _lv = { total: 0, dense: 0, hides: false };
@@ -147,24 +150,30 @@ export class TankBrain {
     const g = this.game;
     const nav = g.vnav || g.nav;
     const b = this.v.body.position;
-    this.pathT = g.time + 15 + rand() * 5;
-    if (!nav || g.navBudget <= 0) {
+    if (!nav) {
       this.pathT = g.time + 0.5;
       return;
     }
-    g.navBudget--;
-    let p = nav.findPath(b.x, b.z, x, z, 120000);
+    // The route is worked out over the next few steps of the battle (a long
+    // one all at once is a stutter): asked for again until it comes.
     // Can't get right there (e.g. the point is inside the village): get as
-    // close as the tank can, on the side it's coming from. (Not when the
-    // route is simply too long: points a little nearer won't be any shorter.)
-    if (!p && nav.lastFail !== 'limit') {
-      const d = Math.hypot(x - b.x, z - b.z) || 1;
-      for (const back of [50, 90, 140]) {
-        if (back >= d) break;
-        p = nav.findPath(b.x, b.z, x - ((x - b.x) / d) * back, z - ((z - b.z) / d) * back, 120000);
-        if (p) break;
-      }
+    // close as the tank can, on the side it's coming from, trying 50, 90 and
+    // 140 m short in turn. (Not when the route is simply too long: points a
+    // little nearer won't be any shorter.)
+    const d = Math.hypot(x - b.x, z - b.z) || 1;
+    const back = BACK[this.planTry || 0];
+    const p = nav.findPathSoon(this, b.x, b.z, x - ((x - b.x) / d) * back, z - ((z - b.z) / d) * back, 120000);
+    if (p === undefined) {
+      this.pathT = g.time + 0.05;
+      return;
     }
+    if (!p && nav.lastFail !== 'limit' && (this.planTry || 0) < BACK.length - 1 && BACK[(this.planTry || 0) + 1] < d) {
+      this.planTry = (this.planTry || 0) + 1;
+      this.pathT = g.time + 0.05;
+      return;
+    }
+    this.planTry = 0;
+    this.pathT = g.time + 15 + rand() * 5;
     // Stop well short of the point itself.
     if (p) {
       while (p.length > 1) {
