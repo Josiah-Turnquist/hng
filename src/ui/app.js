@@ -180,10 +180,6 @@ export class App {
     await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();
     window.addEventListener('resize', () => this._resize());
-    this.loading.el.classList.add('done');
-    report('load', { ms: performance.now() - loadStart, online: !!this.conn, quality: this.settings.quality?.preset || '' });
-    watchBattle(game, { quality: this.settings.quality?.preset || '', online: !!this.conn });
-    setTimeout(() => this.loading.el.remove(), 800);
     // Releasing the mouse (Esc) pauses, once the player has started playing.
     this.pause = new PauseMenu(this, game);
     // Experience for the soldier when the battle ends, or when he leaves it.
@@ -206,6 +202,17 @@ export class App {
     });
     this._fpsCounter();
     game.start();
+    // The loading screen stays up until the first frames have really been
+    // drawn (they are the slowest of the battle), or four seconds at most.
+    const shown = performance.now();
+    await new Promise((done) => {
+      const look = () => (game.loop.frame > 2 || performance.now() - shown > 4000 ? done() : requestAnimationFrame(look));
+      look();
+    });
+    this.loading.el.classList.add('done');
+    report('load', { ms: performance.now() - loadStart, online: !!this.conn, quality: this.settings.quality?.preset || '' });
+    watchBattle(game, { quality: this.settings.quality?.preset || '', online: !!this.conn });
+    setTimeout(() => this.loading.el.remove(), 800);
   }
 
   // Sharpest pixel ratio the quality allows on this screen.

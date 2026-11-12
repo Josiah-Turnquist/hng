@@ -65,6 +65,14 @@ Vehicles answer the same ray query with their armor plates (oriented boxes from 
 
 Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the biggest (each shadow map redraws the scene from the sun; all but the nearest map are redrawn every other frame, taking turns; the village and each vehicle cast through merged shadow-only meshes, so a shadow map costs a draw per village chunk and per vehicle part, not one per material), then 4x MSAA (memory and bandwidth), contact shadows (two half-resolution passes), TAA (one full pass and a copy), focus when aiming (one pass, only while aiming), motion blur (one pass), sun rays (two quarter-resolution passes), bloom (ten small passes), eye adaptation (two tiny passes). Each flash light (Effects: Medium 2, High 4) adds a little to every lit pixel. Knee-high meadow grass is many layers of see-through cards, and the nearest 7,000 clumps are also drawn into the sharpest shadow map: on a slower card, Grass density and Grass distance are the next settings to lower after shadows.
 
+## Loading a battle
+
+`Game.load` builds the land (three fifths of the bar), then the route grids, the soldiers and vehicles, and last the picture. The bar's message says what is really being done at each stage ("Finding the ways through", "Mustering the soldiers", "Readying the picture"); `load` gives the page one frame to show each message before the work behind it starts.
+
+The programs the graphics card needs (one per kind of material) are asked for ahead of the first frame, with `Game._warmPicture`: once for the land before the soldiers are dressed, and once for everything at the end. It must run after the effects are made, because the lights in the scene are part of what each program is; asked for earlier, every program came out as one the game never draws with. Where the browser can compile in the background this work goes on beside the rest of loading; where it can't, programs are compiled when first drawn, as before. The texture painter's programs are not asked for ahead: a battle paints with about a quarter of them, and which quarter is only known as the land is built.
+
+`App.start` keeps the loading screen up until three frames have been drawn (four seconds at most), since the first frames are the slowest of the battle.
+
 ## Debug pages
 
 Open these through the dev server:

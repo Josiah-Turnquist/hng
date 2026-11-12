@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Loop } from '../core/loop.js';
 import { World } from './world.js';
-import { Pipeline } from '../render/pipeline.js';
+import { Pipeline, LAYER_WORLD } from '../render/pipeline.js';
 import { Effects } from '../render/effects.js';
 import { ProjectileSystem } from '../ballistics/projectiles.js';
 import { RayHit } from '../physics/collision.js';
@@ -94,7 +94,14 @@ export class Game {
     const def = MAPS[this.opts.map] || MAPS.town;
     this.mapDef = def;
     this.world = new World(this.renderer, this.camera, this.settings, def);
-    await this.world.build(progress);
+    // (The land is three fifths of the bar; routes, soldiers and the first
+    // picture the rest. The bar used to stand full, saying Ready, through
+    // all of that.)
+    const step = async (p, msg) => {
+      progress(p, msg);
+      await new Promise((r) => requestAnimationFrame(() => r()));
+    };
+    await this.world.build((p, msg) => progress(p * 0.6, msg === 'Ready' ? 'The land is ready' : msg));
     this.pipeline = new Pipeline(this.renderer, this.quality);
     this.pipeline.setSky(this.world.sky.skyCube);
     this.effects = new Effects(this.world);
@@ -123,6 +130,7 @@ export class Game {
     const modeName = this.opts.mode && this.opts.mode !== 'auto' ? this.opts.mode : def.objectives ? 'assault' : 'range';
     let team = 0;
     if (modeName === 'assault' && def.objectives) {
+      await step(0.62, 'Finding the ways through');
       // Bots find their way on a walkability grid over the battlefield.
       const t0 = performance.now();
       this.nav = new NavGrid(this.world, { radius: (def.playRadius || 700) + 60 });
@@ -143,6 +151,10 @@ export class Game {
         minutes: this.opts.minutes || Number(this.app.params.get('minutes') || 20),
       });
     } else this.mode = new RangeMode(this);
+    // The land's programs start compiling while the soldiers are dressed.
+    // (After the effects, whose lights are part of what each program is.)
+    this._warmPicture(false);
+    await step(0.7, 'Mustering the soldiers');
     const spawn = this.mode.playerSpawn();
     const player = new Soldier(this, { faction, cls, loadout, team, name: 'You', isPlayer: true, x: spawn.x, z: spawn.z, badges: this.opts.badges || [], upgrades: this.opts.upgrades || null });
     player.yaw = spawn.yaw;
@@ -160,6 +172,10 @@ export class Game {
     this.mode.start();
     this.prepareTanks();
     this.deploy = { t: 0, index: 0 };
+    // Every program the picture needs, soldiers and vehicles now among them,
+    // compiled before the first frame is asked for.
+    await step(0.94, 'Readying the picture');
+    await this._warmPicture(true);
 
     // Optional fixed camera for screenshots: ?cam=x,y,z,yawDeg,pitchDeg
     const cam = this.app.params.get('cam');
@@ -184,6 +200,32 @@ export class Game {
 
   start() {
     this.loop.start();
+  }
+
+  // Start the compiling of the programs the world's picture needs, as the
+  // world is drawn (into the pipeline's own target, the world's layer); with
+  // wait, come back when they are all ready. Where the browser compiles in the
+  // background this is side by side and holds nothing up; where it can't,
+  // they are compiled as they are first drawn, as before.
+  async _warmPicture(wait) {
+    const r = this.renderer,
+      cam = this.camera;
+    const prev = r.getRenderTarget();
+    const layers = cam.layers.mask;
+    let ready = null;
+    try {
+      cam.layers.set(LAYER_WORLD);
+      r.setRenderTarget(this.pipeline.sceneRT);
+      if (wait && r.compileAsync) ready = r.compileAsync(this.world.scene, cam);
+      else r.compile(this.world.scene, cam);
+    } catch (e) {
+      console.warn('Compiling ahead failed; the programs are compiled as they are drawn', e);
+    } finally {
+      r.setRenderTarget(prev);
+      cam.layers.mask = layers;
+    }
+    // (At most ten seconds: a first frame that stutters beats a bar that never ends.)
+    if (ready) await Promise.race([ready.catch(() => {}), new Promise((res) => setTimeout(res, 10000))]);
   }
 
   resize(w, h, pr) {
