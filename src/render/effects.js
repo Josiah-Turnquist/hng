@@ -31,11 +31,12 @@ const QUALITY = {
 const PARTICLE_VERT = /* glsl */ `
 attribute vec3 iPos;
 attribute vec4 iColor;
-attribute vec3 iParams; // size, rotation, seed
+attribute vec4 iParams; // size, rotation, seed, age (0 new to 1 gone; below 0: a solid bit, not a puff)
 uniform float uAdditive;
 varying vec4 vColor;
 varying vec2 vUv;
 varying float vSeed;
+varying float vAge;
 varying vec3 vWorld;
 varying float vViewZ;
 varying vec3 vRight;
@@ -45,6 +46,7 @@ void main() {
   vColor = iColor;
   vUv = uv;
   vSeed = iParams.z;
+  vAge = iParams.w;
   vec4 mv = viewMatrix * vec4(iPos, 1.0);
   float c = cos(iParams.y), s = sin(iParams.y);
   vec2 p = position.xy;
@@ -77,6 +79,7 @@ ${ATMOSPHERE_PARS}
 varying vec4 vColor;
 varying vec2 vUv;
 varying float vSeed;
+varying float vAge;
 varying vec3 vWorld;
 varying float vViewZ;
 varying vec3 vRight;
@@ -103,8 +106,26 @@ void main() {
     }
   } else {
     vec2 q = c * 3.0 + vSeed * 17.0;
-    float noise = n(q) * 0.55 + n(q * 2.1 + 3.0) * 0.3 + n(q * 4.3) * 0.15;
-    a = smoothstep(1.0, 0.25, r + (noise - 0.5) * 0.85);
+    float noise;
+    if (vAge < 0.0) {
+      // A solid bit (a clod, a chip, a drop): a rough-edged spot.
+      noise = n(q) * 0.55 + n(q * 2.1 + 3.0) * 0.3 + n(q * 4.3) * 0.15;
+      a = smoothstep(1.0, 0.25, r + (noise - 0.5) * 0.85);
+    } else {
+      // Smoke and dust: a lumpy outline, thick in the middle, in strands that
+      // curl and come apart as the puff ages until only wisps are left. (It
+      // was a disc with a rough edge, the same from first to last: a grey
+      // ball, and a burst of fire a wall of them. Set by measuring: over its
+      // life a puff now covers three quarters of what the disc did.)
+      q = c * 2.6 + vSeed * 17.0;
+      vec2 curl = vec2(n(q * 0.8 + vAge * 1.3), n(q * 0.8 + 5.2 - vAge * 1.1)) - 0.5;
+      q += curl * (1.45 + vAge * 1.2);
+      float f1 = n(q), f2 = n(q * 2.2 + 3.0), f3 = n(q * 4.7 + vAge * 2.0);
+      float body = smoothstep(1.0, 0.2, r + (f1 * 0.6 + f2 * 0.4 - 0.5) * 1.3);
+      noise = f1 * 0.35 + f2 * 0.4 + f3 * 0.25;
+      float thin = mix(0.22, 0.7, vAge);
+      a = body * smoothstep(thin, thin + 0.3, noise + body * 0.25) * smoothstep(1.0, 0.8, r);
+    }
     // Light the puff like a soft ball: sun from its side, sky from above; light
     // also comes through thin smoke when looking toward the sun.
     vec2 s = c * 2.0;
@@ -112,7 +133,9 @@ void main() {
     float wrap = clamp(dot(nrm, uSunDir) * 0.6 + 0.4, 0.0, 1.0);
     float through = pow(max(dot(-vBack, uSunDir), 0.0), 6.0) * (1.0 - vColor.a * 0.6);
     float sky = 0.75 + 0.25 * nrm.y;
-    col *= uAmbient * sky + uSunLight * (wrap * 0.85 + through * 0.6) * 0.3183;
+    // (A puff does not know whether it hangs in a tree's shade, so it takes
+    // three quarters of the sun: at full sun it glowed white in a wood.)
+    col *= uAmbient * sky + uSunLight * (wrap * 0.85 + through * 0.6) * 0.3183 * 0.75;
   }
   a *= vColor.a;
   // Fade where the particle meets solid things.
@@ -230,22 +253,23 @@ void main() {
 // Presets: color (linear albedo, or light for additive ones), size range, growth,
 // life, gravity scale, drag, upward drift.
 const P = {
-  dust: { color: [0.3, 0.25, 0.19], alpha: 0.7, size: [0.25, 0.5], grow: 1.6, life: [1.2, 2.2], g: 0.0, drag: 2.5, rise: 0.3 },
+  dust: { color: [0.3, 0.25, 0.19], alpha: 0.7, size: [0.25, 0.5], grow: 1.6, life: [1.2, 2.2], g: 0.0, drag: 2.5, rise: 0.3, wisp: true },
   dirt: { color: [0.14, 0.11, 0.08], alpha: 0.95, size: [0.04, 0.09], grow: 0, life: [0.6, 1.0], g: 1.0, drag: 0.5, rise: 0 },
   mud: { color: [0.09, 0.07, 0.05], alpha: 0.95, size: [0.05, 0.11], grow: 0, life: [0.5, 0.9], g: 1.0, drag: 0.4, rise: 0 },
-  brick: { color: [0.42, 0.24, 0.17], alpha: 0.75, size: [0.2, 0.4], grow: 1.3, life: [1.0, 2.0], g: 0.05, drag: 2.5, rise: 0.15 },
-  stone: { color: [0.46, 0.44, 0.41], alpha: 0.75, size: [0.2, 0.4], grow: 1.3, life: [1.0, 2.0], g: 0.05, drag: 2.5, rise: 0.15 },
-  plaster: { color: [0.62, 0.6, 0.55], alpha: 0.8, size: [0.2, 0.45], grow: 1.4, life: [1.2, 2.2], g: 0.05, drag: 2.5, rise: 0.15 },
+  brick: { color: [0.42, 0.24, 0.17], alpha: 0.75, size: [0.2, 0.4], grow: 1.3, life: [1.0, 2.0], g: 0.05, drag: 2.5, rise: 0.15, wisp: true },
+  stone: { color: [0.46, 0.44, 0.41], alpha: 0.75, size: [0.2, 0.4], grow: 1.3, life: [1.0, 2.0], g: 0.05, drag: 2.5, rise: 0.15, wisp: true },
+  plaster: { color: [0.62, 0.6, 0.55], alpha: 0.8, size: [0.2, 0.45], grow: 1.4, life: [1.2, 2.2], g: 0.05, drag: 2.5, rise: 0.15, wisp: true },
   wood: { color: [0.36, 0.27, 0.17], alpha: 1, size: [0.03, 0.07], grow: 0, life: [0.6, 1.1], g: 1.0, drag: 0.6, rise: 0 },
   leaves: { color: [0.16, 0.24, 0.08], alpha: 1, size: [0.04, 0.08], grow: 0, life: [1.0, 2.0], g: 0.25, drag: 3, rise: 0 },
   spark: { color: [9, 5, 1.6], alpha: 1, size: [0.015, 0.03], grow: 0, life: [0.15, 0.35], g: 1.0, drag: 0.3, rise: 0, add: true },
   blood: { color: [0.2, 0.015, 0.01], alpha: 0.85, size: [0.12, 0.25], grow: 0.8, life: [0.25, 0.5], g: 0.4, drag: 4, rise: 0 },
   water: { color: [0.62, 0.67, 0.7], alpha: 0.75, size: [0.1, 0.22], grow: 0.6, life: [0.6, 1.1], g: 1.0, drag: 0.6, rise: 0 },
   glass: { color: [0.7, 0.8, 0.85], alpha: 0.9, size: [0.02, 0.04], grow: 0, life: [0.5, 0.9], g: 1.0, drag: 0.3, rise: 0 },
-  muzzleSmoke: { color: [0.5, 0.5, 0.48], alpha: 0.3, size: [0.08, 0.16], grow: 0.9, life: [0.9, 1.8], g: 0, drag: 3, rise: 0.15 },
+  // Powder smoke: thin and pale, it drifts up and is gone in a second or so.
+  muzzleSmoke: { color: [0.37, 0.38, 0.39], alpha: 0.3, size: [0.08, 0.16], grow: 0.9, life: [0.9, 1.8], g: 0, drag: 3, rise: 0.3, wisp: true },
   // A rocket motor's smoke: a pale trail hanging in the air behind it.
-  rocketSmoke: { color: [0.66, 0.66, 0.64], alpha: 0.8, size: [0.26, 0.4], grow: 1.3, life: [1.8, 3.0], g: 0, drag: 2.5, rise: 0.12 },
-  smoke: { color: [0.24, 0.24, 0.23], alpha: 0.7, size: [1.2, 2.2], grow: 1.2, life: [5, 9], g: 0, drag: 0.8, rise: 0.9 },
+  rocketSmoke: { color: [0.66, 0.66, 0.64], alpha: 0.8, size: [0.26, 0.4], grow: 1.3, life: [1.8, 3.0], g: 0, drag: 2.5, rise: 0.12, wisp: true },
+  smoke: { color: [0.24, 0.24, 0.23], alpha: 0.7, size: [1.2, 2.2], grow: 1.2, life: [5, 9], g: 0, drag: 0.8, rise: 0.9, wisp: true },
   fire: { color: [7, 2.6, 0.6], alpha: 0.9, size: [0.6, 1.1], grow: 0.4, life: [0.4, 0.8], g: 0, drag: 1.5, rise: 2.5, add: true },
   flash: { color: [30, 18, 7], alpha: 1, size: [2.5, 3.5], grow: 2, life: [0.06, 0.1], g: 0, drag: 0, rise: 0, add: true },
   // A high-explosive burst is over in a fraction of a second (no lingering flames).
@@ -254,7 +278,7 @@ const P = {
   debris: { color: [0.12, 0.1, 0.07], alpha: 1, size: [0.05, 0.14], grow: 0, life: [1.2, 2.2], g: 1.0, drag: 0.25, rise: 0 },
   // A shell's burst of earth: dark clods thrown high, and a brown dust column.
   clods: { color: [0.08, 0.065, 0.05], alpha: 1, size: [0.12, 0.3], grow: 0, life: [1.4, 2.4], g: 1.0, drag: 0.15, rise: 0 },
-  column: { color: [0.16, 0.13, 0.1], alpha: 0.85, size: [0.8, 1.4], grow: 2.2, life: [2.5, 4.5], g: 0.02, drag: 1.2, rise: 0.3 },
+  column: { color: [0.16, 0.13, 0.1], alpha: 0.85, size: [0.8, 1.4], grow: 2.2, life: [2.5, 4.5], g: 0.02, drag: 1.2, rise: 0.3, wisp: true },
 };
 
 class ParticleLayer {
@@ -266,10 +290,10 @@ class ParticleLayer {
     geo.attributes.uv = base.attributes.uv;
     this.pos = new Float32Array(MAX_PARTICLES * 3);
     this.col = new Float32Array(MAX_PARTICLES * 4);
-    this.par = new Float32Array(MAX_PARTICLES * 3);
+    this.par = new Float32Array(MAX_PARTICLES * 4);
     this.aPos = new THREE.InstancedBufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage);
     this.aCol = new THREE.InstancedBufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage);
-    this.aPar = new THREE.InstancedBufferAttribute(this.par, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aPar = new THREE.InstancedBufferAttribute(this.par, 4).setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('iPos', this.aPos);
     geo.setAttribute('iColor', this.aCol);
     geo.setAttribute('iParams', this.aPar);
@@ -349,9 +373,10 @@ class ParticleLayer {
       this.col[n * 4 + 1] = p.gc;
       this.col[n * 4 + 2] = p.b;
       this.col[n * 4 + 3] = p.a * fade;
-      this.par[n * 3] = p.size;
-      this.par[n * 3 + 1] = p.rot;
-      this.par[n * 3 + 2] = p.seed;
+      this.par[n * 4] = p.size;
+      this.par[n * 4 + 1] = p.rot;
+      this.par[n * 4 + 2] = p.seed;
+      this.par[n * 4 + 3] = p.wisp ? t : -1;
       n++;
     }
     this.mesh.geometry.instanceCount = n;
@@ -433,6 +458,7 @@ export class Effects {
         spin: (Math.random() - 0.5) * 2,
         seed: Math.random() + (p.star ? 2 : 0),
         star: !!p.star,
+        wisp: !!p.wisp,
         ground,
       });
     }
@@ -493,7 +519,9 @@ export class Effects {
   }
 
   muzzle(x, y, z, dx, dy, dz, big = 1) {
-    this.spawn('muzzleSmoke', x + dx * 0.1, y + dy * 0.1, z + dz * 0.1, { count: 2 + Math.round(big), dir: [dx * 1.5, dy * 1.5, dz * 1.5], spread: 0.25, scale: 0.6 + big * 0.5 });
+    // (A fifth fewer puffs than there were, and each covers a quarter less:
+    // a burst of fire hid everything in front of the gun.)
+    this.spawn('muzzleSmoke', x + dx * 0.1, y + dy * 0.1, z + dz * 0.1, { count: Math.max(1, Math.round((2 + big) * 0.8)), dir: [dx * 2.2, dy * 2.2, dz * 2.2], spread: 0.3, scale: 0.6 + big * 0.5 });
     // The flash, seen by everyone but the shooter (whose own gun draws its flash).
     const near = (x - this.camPos.x) ** 2 + (y - this.camPos.y) ** 2 + (z - this.camPos.z) ** 2 < 2.5 * 2.5;
     if (!near) {

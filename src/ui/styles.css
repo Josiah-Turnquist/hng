@@ -199,6 +199,15 @@ canvas.game {
   letter-spacing: 0.05em;
   opacity: 0;
 }
+/* Bad news about his own vehicle: bigger, in red, readable over anything. */
+.hud-msg.alert {
+  left: 24%;
+  right: 24%;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffb8a6;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.95), 0 1px 3px rgba(0, 0, 0, 0.95);
+}
 .hud-hint {
   position: absolute;
   bottom: 18px;
@@ -465,32 +474,40 @@ canvas.game {
   pointer-events: none;
 }
 .hud-gunmark.ready { border-color: rgba(220, 220, 200, 0.9); }
-.hud-tankdir {
+.hud-tank {
   position: absolute;
   left: 18px;
-  bottom: 110px;
-  width: 54px;
-  height: 54px;
+  bottom: 104px;
   display: none;
+  align-items: center;
+  gap: 12px;
 }
-.hud-tankdir .hull {
+.hud-tank .tk-pic { position: relative; width: 96px; height: 96px; flex: none; transform: scale(1.2); margin: 8px 10px; }
+.hud-tank .tk-hull,
+.hud-tank .tk-turret { position: absolute; inset: 0; transform-origin: 50% 50%; }
+/* Each part: pale outline while sound, amber when damaged, red when out of action. */
+.hud-tank .tk-p {
   position: absolute;
-  left: 15px;
-  top: 6px;
-  width: 24px;
-  height: 42px;
-  border: 2px solid rgba(220, 215, 195, 0.8);
-  border-radius: 3px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(225, 220, 200, 0.85);
+  background: rgba(20, 22, 18, 0.55);
+  border-radius: 2px;
 }
-.hud-tankdir .turret {
-  position: absolute;
-  left: 26px;
-  top: 4px;
-  width: 3px;
-  height: 24px;
-  background: rgba(230, 190, 120, 0.95);
-  transform-origin: 50% 100%;
-}
+.hud-tank .tk-p.trackL { left: 19px; top: 8px; width: 12px; height: 80px; }
+.hud-tank .tk-p.trackR { left: 65px; top: 8px; width: 12px; height: 80px; }
+.hud-tank .tk-p.body { left: 31px; top: 11px; width: 34px; height: 74px; }
+.hud-tank .tk-p.engine { left: 35px; top: 61px; width: 26px; height: 20px; }
+.hud-tank .tk-p.transmission { left: 35px; top: 14px; width: 26px; height: 12px; }
+.hud-tank .tk-p.turret { left: 34px; top: 34px; width: 28px; height: 28px; border-radius: 50%; background: rgba(20, 22, 18, 0.8); }
+.hud-tank .tk-p.gun { left: 45px; top: 2px; width: 6px; height: 34px; background: rgba(225, 220, 200, 0.85); }
+.hud-tank .tk-p.hurt { background: rgba(214, 154, 74, 0.9); border-color: #f2cf96; }
+.hud-tank .tk-p.dead { background: rgba(200, 66, 50, 0.92); border-color: #ffa594; }
+.hud-tank .tk-p.fire { background: rgba(226, 120, 40, 0.75); border-color: #ffc27a; animation: hud-crit 0.5s ease-in-out infinite alternate; }
+.hud-tank .tk-p.new { animation: tk-blink 0.5s steps(2, jump-none) infinite; }
+@keyframes tk-blink { from { opacity: 1; } to { opacity: 0.2; } }
+.hud-tank .tk-list { min-width: 150px; font-size: 13px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+.hud-tank .tk-list .hurt { color: #efb667; }
+.hud-tank .tk-list .dead { color: #ff7d66; }
 
 /* Assault: capture points and timer at the top, over the deploy screen. The
    points show only with the scoreboard (Tab); see Hud._updateScores. */

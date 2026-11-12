@@ -11,6 +11,7 @@ import { BattleMap } from './battleMap.js';
 import { healthStage } from '../vehicles/effects.js';
 import { SHELLS, isHE } from '../vehicles/defs.js';
 import { healTarget, repairTarget, isHealKit } from '../game/kits.js';
+import { TANK_PARTS, TANK_STATE, tankNews } from './tankReport.js';
 
 const _cv = new THREE.Vector3();
 
@@ -66,7 +67,13 @@ export class Hud {
         <div class="vseat"></div>
       </div>
       <div class="hud-gunmark"></div>
-      <div class="hud-tankdir"><div class="hull"></div><div class="turret"></div></div>
+      <div class="hud-tank">
+        <div class="tk-pic">
+          <div class="tk-hull"><i class="tk-p trackL"></i><i class="tk-p trackR"></i><i class="tk-p body"></i><i class="tk-p transmission"></i><i class="tk-p engine"></i></div>
+          <div class="tk-turret"><i class="tk-p turret"></i><i class="tk-p gun"></i></div>
+        </div>
+        <div class="tk-list"></div>
+      </div>
       <canvas class="hud-scope"></canvas>
       <canvas class="hud-shots"></canvas>
       <div class="hud-hurt"></div>
@@ -118,9 +125,17 @@ export class Hud {
       seat: this.el('.hud-vehicle .vseat'),
     };
     this.gunMark = this.el('.hud-gunmark');
-    this.tankDir = this.el('.hud-tankdir');
-    this.tankDirHull = this.el('.hud-tankdir .hull');
-    this.tankDirTurret = this.el('.hud-tankdir .turret');
+    // A tank seen from above: which way the hull and the turret point, and
+    // the state of each part (see _updateTank).
+    this.tankEl = this.el('.hud-tank');
+    this.tankDirHull = this.el('.hud-tank .tk-hull');
+    this.tankDirTurret = this.el('.hud-tank .tk-turret');
+    this.tk = {
+      parts: Object.fromEntries(TANK_PARTS.map((k) => [k, this.el(`.hud-tank .tk-p.${k}`)])),
+      body: this.el('.hud-tank .tk-p.body'),
+      list: this.el('.hud-tank .tk-list'),
+      seen: null, // the vehicle and the state of its parts as last shown
+    };
     this.scope = this.el('.hud-scope');
     this.scopeCtx = this.scope.getContext('2d');
     this.shotsCanvas = this.el('.hud-shots');
@@ -271,8 +286,10 @@ export class Hud {
     this.game.deploy.id = o.id;
   }
 
-  flash(text, seconds = 1.6) {
+  // alert: bad news about his own vehicle, bigger and in red.
+  flash(text, seconds = 1.6, alert = false) {
     this.msgEl.textContent = text;
+    this.msgEl.classList.toggle('alert', alert);
     this.msgT = seconds;
   }
 
@@ -989,7 +1006,9 @@ export class Hud {
     const role = inV ? vc.role : null;
     const showMark = inV && ((role === 'gunner' && !vc.sight) || (role === 'sidecarMg' && vc.view !== 'first')) && v.alive;
     this.gunMark.style.display = showMark ? 'block' : 'none';
-    this.tankDir.style.display = inV && v.def.kind === 'tracked' ? 'block' : 'none';
+    const tank = inV && v.def.kind === 'tracked';
+    this.tankEl.style.display = tank ? 'flex' : 'none';
+    if (!tank) this.tk.seen = null;
     if (!inV) return;
     const E = this.vEls;
     const d = v.def;
@@ -1040,8 +1059,11 @@ export class Hud {
     if (m.tireS <= 0) bad.push('sidecar tire flat');
     if (v.fallen && !d.pedal) bad.push('on its side');
     if (v.fire > 0 && v.alive) bad.push('ON FIRE');
+    // (A tank's parts are on its own picture, at the left: _updateTank.)
     E.mods.textContent = bad.join(' · ');
-    E.mods.style.display = bad.length ? 'block' : 'none';
+    E.mods.style.display = bad.length && !tank ? 'block' : 'none';
+    if (tank) this._updateTank(v);
+    E.hpBar.style.display = tank ? 'none' : 'block';
     if (role === 'gunner') {
       const types = v.ammoTypes.map((id, i) => `[${i + 1}] ${id} ${isHE(SHELLS[id]) ? '(men)' : '(armor)'} ${v.stowed[id] + (v.loaded === id ? 1 : 0)}${v.nextAmmo === id ? ' <' : ''}`).join('   ');
       const state = v.loaded ? `${v.loaded} loaded` : v.nextAmmo ? 'loading...' : 'no ammunition';
@@ -1078,6 +1100,66 @@ export class Hud {
       }
       this.gunMark.classList.toggle('ready', role === 'sidecarMg' ? v.mg?.reloadT <= 0 : !!v.loaded);
     }
+  }
+
+  // The tank's own picture: each part pale while sound, amber when damaged, red
+  // when out of action, and it blinks as it changes. Beside it the damaged
+  // parts by name. A part going is also said in the middle of the screen, by
+  // name. (A broken track used to be one line of small print in a corner.)
+  // No strength bar or number for a tank, here or by the speed: a crew knows
+  // what is broken and how badly things stand, not a percentage.
+  _updateTank(v) {
+    const T = this.tk;
+    const now = performance.now();
+    const m = v.modules;
+    let seen = T.seen;
+    if (!seen || seen.v !== v) {
+      // Climbing in: the tank as it is, with nothing announced.
+      seen = T.seen = { v, level: tankNews(m).levels, until: {}, fire: v.fire > 0, text: null };
+      // Where the engine and the gearbox sit differs from tank to tank.
+      const L = v.def.dims[2];
+      const where = (name, h) => {
+        const box = v.internals?.find((x) => x.name === name);
+        const el = T.parts[name];
+        el.style.display = box ? 'block' : 'none';
+        if (box) el.style.top = `${Math.max(13, Math.min(83 - h, 11 + ((box.local.elements[14] + L / 2) / L) * 74 - h / 2))}px`;
+      };
+      where('engine', 20);
+      where('transmission', 12);
+    }
+    const news = tankNews(m, seen.level);
+    const said = news.worse.map((w) => w.said);
+    for (const w of news.worse) seen.until[w.part] = now + 4000;
+    seen.level = news.levels;
+    for (const k of TANK_PARTS) {
+      const l = seen.level[k];
+      const el = T.parts[k];
+      el.classList.toggle('hurt', l === 1);
+      el.classList.toggle('dead', l === 2);
+      el.classList.toggle('new', now < (seen.until[k] || 0));
+    }
+    const fire = v.fire > 0 && v.alive;
+    if (fire && !seen.fire) said.push('We are on fire!');
+    seen.fire = fire;
+    // (One shell can do several things at once: all of them are said.)
+    if (said.length) this.flash(said.join('  ·  '), 4, true);
+    T.body.classList.toggle('fire', fire);
+    T.body.classList.toggle('dead', !v.alive);
+    const lines = [];
+    for (const k of TANK_PARTS) if (seen.level[k]) lines.push(`<div class="${seen.level[k] === 2 ? 'dead' : 'hurt'}">${TANK_STATE[k][seen.level[k] - 1]}</div>`);
+    if (m.fuel <= 0) lines.push('<div class="hurt">Fuel tank holed</div>');
+    if (fire) lines.push('<div class="dead">On fire</div>');
+    const text = lines.join('');
+    if (text !== seen.text) T.list.innerHTML = seen.text = text;
+  }
+
+  // His own vehicle was struck by something that matters (a shell, a rocket,
+  // or anything that came through): said in the middle of the screen.
+  // how: 2 came through, 1 glanced off, 0 stopped by the armor.
+  vehicleStruck(how) {
+    // (Not over news of a part just lost, which matters more.)
+    if (this.msgT > 0 && this.msgEl.classList.contains('alert')) return;
+    this.flash(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5, how === 2);
   }
 
   // Telescopic sight picture: black around the eyepiece and the period reticle.

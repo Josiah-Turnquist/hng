@@ -684,11 +684,12 @@ export class OnlineBattle {
         }
         const p = this.me.vehicle.body.position;
         g.audio?.impact?.('armor', p.x, p.y, p.z, 20000);
-        g.hud?.flash?.(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5);
+        g.hud?.vehicleStruck?.(how);
       } else if (e[0] === 've') {
         const [, vid, kind, by] = e;
         if (by === this.me.id) g.hud?.flash?.(kind === 'track' ? 'Track destroyed' : kind === 'fire' ? 'Target on fire' : kind, 2);
-        if (this.me.vehicle?.id === vid) g.hud?.flash?.(kind === 'track' ? 'Our track is broken!' : kind === 'fire' ? 'We are on fire!' : kind, 2.5);
+        // (His own tank's track or a fire: the tank's picture says which, ui/hud.js _updateTank.)
+        if (this.me.vehicle?.id === vid && this.me.vehicle.def.kind !== 'tracked') g.hud?.flash?.(kind === 'fire' ? 'We are on fire!' : kind, 2.5);
       }
     }
   }

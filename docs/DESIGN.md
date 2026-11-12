@@ -65,6 +65,14 @@ Vehicles answer the same ray query with their armor plates (oriented boxes from 
 
 Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the biggest (each shadow map redraws the scene from the sun; all but the nearest map are redrawn every other frame, taking turns; the village and each vehicle cast through merged shadow-only meshes, so a shadow map costs a draw per village chunk and per vehicle part, not one per material), then 4x MSAA (memory and bandwidth), contact shadows (two half-resolution passes), TAA (one full pass and a copy), focus when aiming (one pass, only while aiming), motion blur (one pass), sun rays (two quarter-resolution passes), bloom (ten small passes), eye adaptation (two tiny passes). Each flash light (Effects: Medium 2, High 4) adds a little to every lit pixel. Knee-high meadow grass is many layers of see-through cards, and the nearest 7,000 clumps are also drawn into the sharpest shadow map: on a slower card, Grass density and Grass distance are the next settings to lower after shadows.
 
+## Smoke, dust and grass up close
+
+Smoke and dust puffs (`render/effects.js`, the kinds marked `wisp`) are drawn with a lumpy outline, thick in the middle, in strands that curl and come apart as the puff ages; each puff's age goes to the graphics card with it. Solid bits (clods, chips, drops) keep the plain rough-edged spot. A gun makes a fifth fewer puffs than it did and each covers about a quarter less over its life: the numbers were set by measuring what a puff covers, old drawing against new, since a burst of fire used to hide everything in front of the gun. Puffs take three quarters of the sun, as they cannot tell whether they hang in shade.
+
+Grass (`world/vegetation/materials.js`, `makeGroundMaterial`): farther from the camera fewer clumps are kept, each wider. A clump that comes in as the camera nears dissolves in where it stands, at four fifths of its height or more, instead of rising out of the ground; within the full-density distance every clump is all there, so nothing dissolves at the player's feet. All of this is done on the graphics card: what the processor does for grass is unchanged.
+
+A tank's own picture on screen is `Hud._updateTank` (`ui/hud.js`); what is said of each part, and when, is in `ui/tankReport.js` (tests/tankReport.test.js).
+
 ## Loading a battle
 
 `Game.load` builds the land (three fifths of the bar), then the route grids, the soldiers and vehicles, and last the picture. The bar's message says what is really being done at each stage ("Finding the ways through", "Mustering the soldiers", "Readying the picture"); `load` gives the page one frame to show each message before the work behind it starts.
