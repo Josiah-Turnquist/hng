@@ -199,15 +199,6 @@ canvas.game {
   letter-spacing: 0.05em;
   opacity: 0;
 }
-/* Bad news about his own vehicle: bigger, in red, readable over anything. */
-.hud-msg.alert {
-  left: 24%;
-  right: 24%;
-  font-size: 20px;
-  font-weight: 700;
-  color: #ffb8a6;
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.95), 0 1px 3px rgba(0, 0, 0, 0.95);
-}
 .hud-hint {
   position: absolute;
   bottom: 18px;

@@ -71,7 +71,7 @@ Smoke and dust puffs (`render/effects.js`, the kinds marked `wisp`) are drawn wi
 
 Grass (`world/vegetation/materials.js`, `makeGroundMaterial`): farther from the camera fewer clumps are kept, each wider. A clump that comes in as the camera nears dissolves in where it stands, at four fifths of its height or more, instead of rising out of the ground; within the full-density distance every clump is all there, so nothing dissolves at the player's feet. All of this is done on the graphics card: what the processor does for grass is unchanged.
 
-A tank's own picture on screen is `Hud._updateTank` (`ui/hud.js`); what is said of each part, and when, is in `ui/tankReport.js` (tests/tankReport.test.js).
+A tank's own picture on screen is `Hud._updateTank` (`ui/hud.js`); the parts, their names and which just got worse are in `ui/tankReport.js` (tests/tankReport.test.js).
 
 ## Loading a battle
 

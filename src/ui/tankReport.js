@@ -1,6 +1,5 @@
 // What a tank's crew is told about their own tank: the state of each part on
-// the tank's picture (ui/hud.js _updateTank), and what is said, by name, in the
-// middle of the screen as a part is damaged or put out of action.
+// the tank's picture (ui/hud.js _updateTank) and its name on the list beside it.
 export const TANK_PARTS = ['trackL', 'trackR', 'engine', 'transmission', 'turret', 'gun'];
 
 // On the list beside the picture: [damaged, out of action].
@@ -13,30 +12,20 @@ export const TANK_STATE = {
   gun: ['Gun damaged', 'Gun out of action'],
 };
 
-// Said as it happens, with what it means for the crew.
-export const TANK_SAID = {
-  trackL: ['Left track damaged', 'Left track broken! We can only swing left'],
-  trackR: ['Right track damaged', 'Right track broken! We can only swing right'],
-  engine: ['Engine damaged: we have lost power', 'Engine destroyed! We cannot move'],
-  transmission: ['Gearbox damaged', 'Gearbox destroyed! We cannot move'],
-  turret: ['Turret damaged', 'Turret jammed! It will not turn'],
-  gun: ['Gun damaged: it loads slower', 'Gun out of action!'],
-};
-
 // 0 sound, 1 damaged, 2 out of action.
 export function partLevel(modules, part) {
   const m = modules[part];
   return m <= 0 ? 2 : m < 1 ? 1 : 0;
 }
 
-// The parts' levels now, and what to say of those that got worse since `before`
-// (the levels as last told; none given: climbing in, nothing is said).
+// The parts' levels now, and which got worse since `before` (the levels as last
+// shown; none given: climbing in, nothing is new). A part that got worse blinks.
 export function tankNews(modules, before = null) {
   const levels = {};
   const worse = [];
   for (const part of TANK_PARTS) {
     const l = (levels[part] = partLevel(modules, part));
-    if (before && l > (before[part] || 0)) worse.push({ part, level: l, said: TANK_SAID[part][l - 1] });
+    if (before && l > (before[part] || 0)) worse.push({ part, level: l });
   }
   return { levels, worse };
 }

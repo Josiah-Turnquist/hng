@@ -286,10 +286,8 @@ export class Hud {
     this.game.deploy.id = o.id;
   }
 
-  // alert: bad news about his own vehicle, bigger and in red.
-  flash(text, seconds = 1.6, alert = false) {
+  flash(text, seconds = 1.6) {
     this.msgEl.textContent = text;
-    this.msgEl.classList.toggle('alert', alert);
     this.msgT = seconds;
   }
 
@@ -1104,8 +1102,9 @@ export class Hud {
 
   // The tank's own picture: each part pale while sound, amber when damaged, red
   // when out of action, and it blinks as it changes. Beside it the damaged
-  // parts by name. A part going is also said in the middle of the screen, by
-  // name. (A broken track used to be one line of small print in a corner.)
+  // parts by name. (A broken track used to be one line of small print in a
+  // corner. Nothing is written across the middle of the screen for it: the
+  // picture and the list are enough.)
   // No strength bar or number for a tank, here or by the speed: a crew knows
   // what is broken and how badly things stand, not a percentage.
   _updateTank(v) {
@@ -1128,7 +1127,6 @@ export class Hud {
       where('transmission', 12);
     }
     const news = tankNews(m, seen.level);
-    const said = news.worse.map((w) => w.said);
     for (const w of news.worse) seen.until[w.part] = now + 4000;
     seen.level = news.levels;
     for (const k of TANK_PARTS) {
@@ -1139,10 +1137,7 @@ export class Hud {
       el.classList.toggle('new', now < (seen.until[k] || 0));
     }
     const fire = v.fire > 0 && v.alive;
-    if (fire && !seen.fire) said.push('We are on fire!');
     seen.fire = fire;
-    // (One shell can do several things at once: all of them are said.)
-    if (said.length) this.flash(said.join('  ·  '), 4, true);
     T.body.classList.toggle('fire', fire);
     T.body.classList.toggle('dead', !v.alive);
     const lines = [];
@@ -1157,9 +1152,7 @@ export class Hud {
   // or anything that came through): said in the middle of the screen.
   // how: 2 came through, 1 glanced off, 0 stopped by the armor.
   vehicleStruck(how) {
-    // (Not over news of a part just lost, which matters more.)
-    if (this.msgT > 0 && this.msgEl.classList.contains('alert')) return;
-    this.flash(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5, how === 2);
+    this.flash(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5);
   }
 
   // Telescopic sight picture: black around the eyepiece and the period reticle.

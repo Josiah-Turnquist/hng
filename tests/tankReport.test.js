@@ -1,9 +1,9 @@
-// What a tank's crew is told about their own tank (ui/tankReport.js): each
-// part by name as it is damaged or put out of action, once. (A broken track
+// What a tank's crew is shown about their own tank (ui/tankReport.js): each
+// part marked as it is damaged or put out of action, once. (A broken track
 // used to be one line of small print in a corner of the screen.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TANK_PARTS, TANK_STATE, TANK_SAID, partLevel, tankNews } from '../src/ui/tankReport.js';
+import { TANK_PARTS, TANK_STATE, partLevel, tankNews } from '../src/ui/tankReport.js';
 import { makeBattle } from './helpers/battle.js';
 
 test('a broken track is told by its side, once', () => {
@@ -16,7 +16,7 @@ test('a broken track is told by its side, once', () => {
   m.trackL = 0;
   let news = tankNews(m, seen.levels);
   assert.deepEqual(news.worse.map((w) => w.part), ['trackL']);
-  assert.match(news.worse[0].said, /^Left track broken/);
+  assert.match(TANK_STATE.trackL[news.worse[0].level - 1], /^Left track broken/);
   assert.equal(news.levels.trackL, 2);
   assert.equal(news.levels.trackR, 0);
   // Not said again while it stays broken.
@@ -25,12 +25,12 @@ test('a broken track is told by its side, once', () => {
   m.engine = 0.5;
   news = tankNews(m, news.levels);
   assert.deepEqual(news.worse.map((w) => [w.part, w.level]), [['engine', 1]]);
-  assert.match(news.worse[0].said, /^Engine damaged/);
+  assert.match(TANK_STATE.engine[news.worse[0].level - 1], /^Engine damaged/);
   m.engine = 0;
   m.trackR = 0;
   news = tankNews(m, news.levels);
   assert.deepEqual(news.worse.map((w) => w.part).sort(), ['engine', 'trackR']);
-  assert.match(news.worse.find((w) => w.part === 'trackR').said, /^Right track broken/);
+  assert.match(TANK_STATE.trackR[1], /^Right track broken/);
   // Mended: nothing said, and it can be told again later.
   m.trackL = 1;
   news = tankNews(m, news.levels);
@@ -40,8 +40,7 @@ test('a broken track is told by its side, once', () => {
 
 test('every part on the picture has its words, and is a part real tanks have', async () => {
   for (const part of TANK_PARTS) {
-    for (const table of [TANK_STATE, TANK_SAID]) assert.ok(table[part]?.length === 2 && table[part].every((t) => t.length > 5), part);
-    assert.ok(!/—/.test(TANK_SAID[part].join(' ')));
+    assert.ok(TANK_STATE[part]?.length === 2 && TANK_STATE[part].every((t) => t.length > 5), part);
   }
   assert.equal(partLevel({ gun: 0.4 }, 'gun'), 1);
   const g = await makeBattle({ perSide: 1, vehicles: false, seed: 2 });
