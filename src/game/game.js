@@ -836,7 +836,10 @@ export class Game {
     }
     // Fragments.
     const n = Math.min(60, ex.fragments || 30);
-    const frag = { diameter: 0.004, mass: 0.0008, bc: 0.015, drag: 'G1', maxAge: 1.5, fragment: true };
+    // (Spent below 150 m/s: by then a splinter does a scratch at most, and
+    // sixty of them followed through the air for a second and a half more
+    // after every burst cost more than the rest of the battle's bullets.)
+    const frag = { diameter: 0.004, mass: 0.0008, bc: 0.015, drag: 'G1', maxAge: 1.5, spent: 150, fragment: true };
     for (let i = 0; i < n; i++) {
       const u = rand() * 2 - 1,
         th = rand() * Math.PI * 2;

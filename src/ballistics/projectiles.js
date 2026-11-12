@@ -261,7 +261,8 @@ export class ProjectileSystem {
     }
     if (!p.alive) return;
     const sp = p.speed;
-    if (sp < MIN_SPEED && !p.ammo.thrown) this._expire(p, 'spent');
+    // (A shell splinter is spent, too slow to hurt, long before it stops: ammo.spent.)
+    if (sp < (p.ammo.spent || MIN_SPEED) && !p.ammo.thrown) this._expire(p, 'spent');
     else if (p.age > (p.ammo.maxAge || 10)) this._expire(p, 'age');
     else if (p.y < (this.world ? this.world.hf.minH - 50 : -1000) || Math.abs(p.x) > this.bounds || Math.abs(p.z) > this.bounds) this._expire(p, 'bounds');
   }
