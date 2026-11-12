@@ -23,12 +23,14 @@ const _hit = new RayHit();
 
 // The vehicle grid with costs for two wheels: roads and village streets are
 // quick, fields slower, mud and wading avoided. It shares the grid's cells,
-// areas and search buffers (searches never overlap).
+// areas and search buffers, so its searches take turns with that grid's
+// (shared: navgrid.js).
 export function bikeNav(game) {
   if (game._bikeNav !== undefined) return game._bikeNav;
   const base = game.vnav || game.nav;
   if (!base) return (game._bikeNav = null);
   const nav = Object.create(base);
+  nav.shared = base;
   Object.defineProperty(nav, 'gen', { get: () => base.gen, set: (v) => (base.gen = v) });
   const hf = game.world.hf;
   const cost = new Uint8Array(base.cost.length);

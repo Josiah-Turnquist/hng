@@ -47,3 +47,56 @@ test('bots in the woods and hedgerows keep moving', () => {
   const stuck = bots.filter((s) => s.brain.stuckT > 2).length;
   assert.ok(stuck <= 1, `${stuck} bots stuck`);
 });
+
+// Routes worked out a little each step (findPathSoon, tick): the same routes
+// as worked out all at once, however the askers and the grids are mixed. The
+// bikes' grid shares its working data with the vehicles': their searches
+// must take turns, or each scrambles the other's.
+test('routes worked out a little each step are the same routes', async () => {
+  const { bikeNav } = await import('../src/ai/riderBot.js');
+  const bike = bikeNav(g);
+  assert.ok(bike && bike.shared === g.vnav, 'the bike grid shares the vehicle grid');
+  let seed = 4242;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const asks = [];
+  for (let i = 0; i < 24; i++) {
+    const nav = [g.nav, g.vnav, bike][i % 3];
+    asks.push({ who: { i }, nav, a: [(rnd() * 2 - 1) * 600, (rnd() * 2 - 1) * 600], b: [(rnd() * 2 - 1) * 600, (rnd() * 2 - 1) * 600], limit: i % 3 ? 120000 : 80000 });
+  }
+  const key = (p) => (p ? `${p.partial ? 'part ' : ''}${p.map((q) => `${q.x.toFixed(1)},${q.z.toFixed(1)}`).join(' ')}` : 'none');
+  const want = asks.map((q) => key(q.nav.findPath(q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true })));
+  assert.ok(want.filter((w) => w !== 'none').length > 12, 'most of the routes exist');
+  // All asked at once, then collected as they come.
+  const got = new Array(asks.length);
+  let ticks = 0,
+    worst = 0;
+  for (let left = asks.length; left > 0 && ticks < 6000; ticks++) {
+    asks.forEach((q, i) => {
+      if (got[i] !== undefined) return;
+      const p = q.nav.findPathSoon(q.who, q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true });
+      if (p === undefined) return;
+      got[i] = key(p);
+      left--;
+    });
+    const t = performance.now();
+    g.nav.tick();
+    g.vnav.tick();
+    worst = Math.max(worst, performance.now() - t);
+  }
+  assert.deepEqual(got, want);
+  // (Spread over many steps, none of them long.)
+  assert.ok(ticks > 40, `${ticks} steps`);
+  assert.ok(worst < 30, `longest step ${worst.toFixed(1)} ms`);
+  // A search all at once while others are part way: they start again and still come out right.
+  const q = asks[1];
+  assert.equal(q.nav.findPathSoon(q.who, q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true }), undefined);
+  g.vnav.tick();
+  const now = key(asks[4].nav.findPath(asks[4].a[0], asks[4].a[1], asks[4].b[0], asks[4].b[1], asks[4].limit, { partial: true }));
+  assert.equal(now, want[4]);
+  let late;
+  for (let i = 0; i < 3000 && late === undefined; i++) {
+    g.vnav.tick();
+    late = q.nav.findPathSoon(q.who, q.a[0], q.a[1], q.b[0], q.b[1], q.limit, { partial: true });
+  }
+  assert.equal(key(late), want[1]);
+});

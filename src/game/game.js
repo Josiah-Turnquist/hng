@@ -283,10 +283,10 @@ export class Game {
     this.time += dt;
     // Online: others placed from the server's snapshots (net/online.js).
     this.online?.update(dt);
-    // The bots' routes, worked out a little each step (ai/navgrid.js).
+    // The bots' routes, worked out a little each step (ai/navgrid.js; the
+    // bikes' grid takes its turns through the vehicles').
     this.nav?.tick();
     if (this.vnav !== this.nav) this.vnav?.tick();
-    if (this._bikeNav && this._bikeNav !== this.nav && this._bikeNav !== this.vnav) this._bikeNav.tick();
     this._guard(this.player.soldier, () => this.player.update(dt));
     // Players on a game server, each driven by his input messages (server/battle.js).
     for (const p of this.remotePlayers || [])

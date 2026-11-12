@@ -252,7 +252,8 @@ export class NavGrid {
   // which is a stutter in a battle. The bots ask with findPathSoon instead.
   findPath(sx, sz, gx, gz, maxExpand = 80000, { partial = false } = {}) {
     // (The search's working data is shared: one part way through starts again.)
-    if (this.job) this.job.restart = true;
+    const R = this.shared || this;
+    if (R.job) R.job.restart = true;
     const job = this._begin(sx, sz, gx, gz, maxExpand, partial);
     if (job.done) return job.path;
     this._advance(job, Infinity);
@@ -264,27 +265,30 @@ export class NavGrid {
   // what findPath would have returned (and lastFail as it would have set it).
   // who: whoever is asking (one search each; asking again while waiting is
   // how to collect the answer).
+  // (A grid made from another and sharing its working data, shared, as the
+  // bikes' is from the vehicles': the two take turns through the one queue.)
   findPathSoon(who, sx, sz, gx, gz, maxExpand = 80000, { partial = false } = {}) {
+    const R = this.shared || this;
     const moved = (o) => Math.hypot(o.gx - gx, o.gz - gz) > 20;
-    const done = this.answers.get(who);
+    const done = R.answers.get(who);
     if (done) {
-      this.answers.delete(who);
+      R.answers.delete(who);
       // (An answer to somewhere he no longer wants to go is dropped.)
       if (!moved(done)) {
         this.lastFail = done.fail;
         return done.path;
       }
     }
-    const ask = { who, sx, sz, gx, gz, maxExpand, partial };
-    const waiting = this.queue.findIndex((q) => q.who === who);
-    if (this.job?.who === who) {
-      if (moved(this.job.ask)) {
-        this.job.ask = ask;
-        this.job.restart = true;
+    const ask = { who, grid: this, sx, sz, gx, gz, maxExpand, partial };
+    const waiting = R.queue.findIndex((q) => q.who === who);
+    if (R.job?.who === who) {
+      if (moved(R.job.ask)) {
+        R.job.ask = ask;
+        R.job.restart = true;
       }
     } else if (waiting >= 0) {
-      if (moved(this.queue[waiting])) this.queue[waiting] = ask;
-    } else this.queue.push(ask);
+      if (moved(R.queue[waiting])) R.queue[waiting] = ask;
+    } else R.queue.push(ask);
     this.lastFail = 'thinking';
     return undefined;
   }
@@ -293,6 +297,7 @@ export class NavGrid {
   // More of them waiting (a whole side setting off at once): a bigger share,
   // so nobody stands about for long.
   tick() {
+    if (this.shared) return;
     this.ticks++;
     if (this.answers.size) for (const [who, a] of this.answers) if (this.ticks - a.at > 1200) this.answers.delete(who);
     let budget = Math.min(SLICE_MAX, SLICE + SLICE_MORE * this.queue.length);
@@ -301,12 +306,12 @@ export class NavGrid {
       if (!job) {
         const q = this.queue.shift();
         if (!q) return;
-        job = this._begin(q.sx, q.sz, q.gx, q.gz, q.maxExpand, q.partial);
+        job = q.grid._begin(q.sx, q.sz, q.gx, q.gz, q.maxExpand, q.partial);
         job.who = q.who;
         job.ask = q;
         budget -= 200;
         if (job.done) {
-          this.answers.set(q.who, { path: job.path, fail: this.lastFail, at: this.ticks, gx: q.gx, gz: q.gz });
+          this.answers.set(q.who, { path: job.path, fail: q.grid.lastFail, at: this.ticks, gx: q.gx, gz: q.gz });
           continue;
         }
         this.job = job;
@@ -319,14 +324,14 @@ export class NavGrid {
       // The search, then (in a step of its own: it can take as long) the tidying of its route.
       if (!job.over) {
         const before = job.expanded;
-        this._advance(job, budget);
+        job.ask.grid._advance(job, budget);
         budget -= job.expanded - before + 1;
         if (!job.over) return;
         if (job.found || job.partial) return;
       }
       this.job = null;
-      const path = this._finish(job);
-      this.answers.set(job.who, { path, fail: this.lastFail, at: this.ticks, gx: job.ask.gx, gz: job.ask.gz });
+      const path = job.ask.grid._finish(job);
+      this.answers.set(job.who, { path, fail: job.ask.grid.lastFail, at: this.ticks, gx: job.ask.gx, gz: job.ask.gz });
       return;
     }
   }
