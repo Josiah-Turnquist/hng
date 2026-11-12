@@ -1,16 +1,6 @@
-// What a tank's crew is told about their own tank: the state of each part on
-// the tank's picture (ui/hud.js _updateTank) and its name on the list beside it.
+// What a tank's crew is shown about their own tank: the state of each part on
+// the tank's picture (ui/hud.js _updateTank).
 export const TANK_PARTS = ['trackL', 'trackR', 'engine', 'transmission', 'turret', 'gun'];
-
-// On the list beside the picture: [damaged, out of action].
-export const TANK_STATE = {
-  trackL: ['Left track damaged', 'Left track broken'],
-  trackR: ['Right track damaged', 'Right track broken'],
-  engine: ['Engine damaged', 'Engine destroyed'],
-  transmission: ['Gearbox damaged', 'Gearbox destroyed'],
-  turret: ['Turret damaged', 'Turret jammed'],
-  gun: ['Gun damaged', 'Gun out of action'],
-};
 
 // 0 sound, 1 damaged, 2 out of action.
 export function partLevel(modules, part) {

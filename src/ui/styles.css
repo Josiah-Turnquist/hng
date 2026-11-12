@@ -470,8 +470,6 @@ canvas.game {
   left: 18px;
   bottom: 104px;
   display: none;
-  align-items: center;
-  gap: 12px;
 }
 .hud-tank .tk-pic { position: relative; width: 96px; height: 96px; flex: none; transform: scale(1.2); margin: 8px 10px; }
 .hud-tank .tk-hull,
@@ -496,9 +494,6 @@ canvas.game {
 .hud-tank .tk-p.fire { background: rgba(226, 120, 40, 0.75); border-color: #ffc27a; animation: hud-crit 0.5s ease-in-out infinite alternate; }
 .hud-tank .tk-p.new { animation: tk-blink 0.5s steps(2, jump-none) infinite; }
 @keyframes tk-blink { from { opacity: 1; } to { opacity: 0.2; } }
-.hud-tank .tk-list { min-width: 150px; font-size: 13px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
-.hud-tank .tk-list .hurt { color: #efb667; }
-.hud-tank .tk-list .dead { color: #ff7d66; }
 
 /* Assault: capture points and timer at the top, over the deploy screen. The
    points show only with the scoreboard (Tab); see Hud._updateScores. */

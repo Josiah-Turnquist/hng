@@ -11,7 +11,7 @@ import { BattleMap } from './battleMap.js';
 import { healthStage } from '../vehicles/effects.js';
 import { SHELLS, isHE } from '../vehicles/defs.js';
 import { healTarget, repairTarget, isHealKit } from '../game/kits.js';
-import { TANK_PARTS, TANK_STATE, tankNews } from './tankReport.js';
+import { TANK_PARTS, tankNews } from './tankReport.js';
 
 const _cv = new THREE.Vector3();
 
@@ -72,7 +72,6 @@ export class Hud {
           <div class="tk-hull"><i class="tk-p trackL"></i><i class="tk-p trackR"></i><i class="tk-p body"></i><i class="tk-p transmission"></i><i class="tk-p engine"></i></div>
           <div class="tk-turret"><i class="tk-p turret"></i><i class="tk-p gun"></i></div>
         </div>
-        <div class="tk-list"></div>
       </div>
       <canvas class="hud-scope"></canvas>
       <canvas class="hud-shots"></canvas>
@@ -133,7 +132,6 @@ export class Hud {
     this.tk = {
       parts: Object.fromEntries(TANK_PARTS.map((k) => [k, this.el(`.hud-tank .tk-p.${k}`)])),
       body: this.el('.hud-tank .tk-p.body'),
-      list: this.el('.hud-tank .tk-list'),
       seen: null, // the vehicle and the state of its parts as last shown
     };
     this.scope = this.el('.hud-scope');
@@ -1005,7 +1003,7 @@ export class Hud {
     const showMark = inV && ((role === 'gunner' && !vc.sight) || (role === 'sidecarMg' && vc.view !== 'first')) && v.alive;
     this.gunMark.style.display = showMark ? 'block' : 'none';
     const tank = inV && v.def.kind === 'tracked';
-    this.tankEl.style.display = tank ? 'flex' : 'none';
+    this.tankEl.style.display = tank ? 'block' : 'none';
     if (!tank) this.tk.seen = null;
     if (!inV) return;
     const E = this.vEls;
@@ -1101,10 +1099,10 @@ export class Hud {
   }
 
   // The tank's own picture: each part pale while sound, amber when damaged, red
-  // when out of action, and it blinks as it changes. Beside it the damaged
-  // parts by name. (A broken track used to be one line of small print in a
-  // corner. Nothing is written across the middle of the screen for it: the
-  // picture and the list are enough.)
+  // when out of action, and it blinks as it changes; the hull glows orange
+  // while the tank burns. (A broken track used to be one line of small print
+  // in a corner. The picture is all there is: no words beside it, none across
+  // the middle of the screen, and no note when a shell strikes.)
   // No strength bar or number for a tank, here or by the speed: a crew knows
   // what is broken and how badly things stand, not a percentage.
   _updateTank(v) {
@@ -1114,7 +1112,7 @@ export class Hud {
     let seen = T.seen;
     if (!seen || seen.v !== v) {
       // Climbing in: the tank as it is, with nothing announced.
-      seen = T.seen = { v, level: tankNews(m).levels, until: {}, fire: v.fire > 0, text: null };
+      seen = T.seen = { v, level: tankNews(m).levels, until: {} };
       // Where the engine and the gearbox sit differs from tank to tank.
       const L = v.def.dims[2];
       const where = (name, h) => {
@@ -1137,22 +1135,8 @@ export class Hud {
       el.classList.toggle('new', now < (seen.until[k] || 0));
     }
     const fire = v.fire > 0 && v.alive;
-    seen.fire = fire;
     T.body.classList.toggle('fire', fire);
     T.body.classList.toggle('dead', !v.alive);
-    const lines = [];
-    for (const k of TANK_PARTS) if (seen.level[k]) lines.push(`<div class="${seen.level[k] === 2 ? 'dead' : 'hurt'}">${TANK_STATE[k][seen.level[k] - 1]}</div>`);
-    if (m.fuel <= 0) lines.push('<div class="hurt">Fuel tank holed</div>');
-    if (fire) lines.push('<div class="dead">On fire</div>');
-    const text = lines.join('');
-    if (text !== seen.text) T.list.innerHTML = seen.text = text;
-  }
-
-  // His own vehicle was struck by something that matters (a shell, a rocket,
-  // or anything that came through): said in the middle of the screen.
-  // how: 2 came through, 1 glanced off, 0 stopped by the armor.
-  vehicleStruck(how) {
-    this.flash(how === 2 ? 'We are hit! It came through the armor' : how === 1 ? 'A shell glanced off our armor' : 'Hit! Our armor held', 2.5);
   }
 
   // Telescopic sight picture: black around the eyepiece and the period reticle.

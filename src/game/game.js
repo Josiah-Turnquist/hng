@@ -796,15 +796,14 @@ export class Game {
     // through the armor in red; small arms rattling off it, pale).
     if (v === this.player?.soldier.vehicle && p.owner !== this.player.soldier) {
       this.hud?.shotFrom?.(p.ox, p.oz, big || info.kind === 'penetrate' ? 'hit' : 'near', big ? 1 : 0.6);
-      // A shell, a rocket or anything that came through: a jolt, and what it
-      // did, said plainly (as a battle on the server tells him: net/online.js).
+      // A shell, a rocket or anything that came through: a jolt (as a battle
+      // on the server gives him: net/online.js). Nothing is written for it.
       if (big || info.kind === 'penetrate') {
         const vc = this.player.vehicleCtl;
         if (vc) {
           vc.shake = Math.max(vc.shake || 0, info.kind === 'penetrate' ? 1 : 0.6);
           vc.shakeT = 0;
         }
-        this.hud?.vehicleStruck?.(info.kind === 'penetrate' ? 2 : info.kind === 'ricochet' ? 1 : 0);
       }
     }
     if (p.owner === this.player?.soldier && big) {
@@ -850,7 +849,7 @@ export class Game {
 
   onVehicleEvent(v, kind, attacker) {
     if (attacker === this.player?.soldier) this.hud?.flash(kind === 'track' ? 'Track destroyed' : kind === 'fire' ? 'Target on fire' : kind, 2);
-    // (His own tank's track or a fire: the tank's picture says which, ui/hud.js _updateTank.)
+    // (His own tank's track or a fire: the tank's picture shows it, ui/hud.js _updateTank.)
     if (this.player?.soldier.vehicle === v && v.def.kind !== 'tracked') this.hud?.flash(kind === 'fire' ? 'We are on fire!' : kind, 2.5);
   }
 

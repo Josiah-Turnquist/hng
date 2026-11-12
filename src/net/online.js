@@ -672,7 +672,7 @@ export class OnlineBattle {
         // tank's explosive shell sounded like a hand grenade online.)
         g.audio?.explosion?.(size >= 12.5 ? 'shellExplosion' : 'grenadeExplosion', x / 100, y / 100, z / 100);
       } else if (e[0] === 'vh') {
-        // The vehicle he is in was struck: where from, a jolt, and what it did.
+        // The vehicle he is in was struck: where from, and a jolt.
         const [, vid, how, big, x, z, by] = e;
         if (this.me.vehicle?.id !== vid || by === this.me.id) continue;
         g.hud?.shotFrom?.(x / 100, z / 100, big || how === 2 ? 'hit' : 'near', big ? 1 : 0.6);
@@ -684,11 +684,10 @@ export class OnlineBattle {
         }
         const p = this.me.vehicle.body.position;
         g.audio?.impact?.('armor', p.x, p.y, p.z, 20000);
-        g.hud?.vehicleStruck?.(how);
       } else if (e[0] === 've') {
         const [, vid, kind, by] = e;
         if (by === this.me.id) g.hud?.flash?.(kind === 'track' ? 'Track destroyed' : kind === 'fire' ? 'Target on fire' : kind, 2);
-        // (His own tank's track or a fire: the tank's picture says which, ui/hud.js _updateTank.)
+        // (His own tank's track or a fire: the tank's picture shows it, ui/hud.js _updateTank.)
         if (this.me.vehicle?.id === vid && this.me.vehicle.def.kind !== 'tracked') g.hud?.flash?.(kind === 'fire' ? 'We are on fire!' : kind, 2.5);
       }
     }

@@ -363,12 +363,14 @@ bool vegHide = vegD < ( vegInfo.y + vegInfo.z ) * 0.5 || vegD > min( uVegShadow.
 // Per instance: iA (x, y, z, yaw), iB (width, height, atlas cell + tint in the
 // fraction, rank). The farther away, the fewer clumps are kept (by rank) and the
 // wider they get; all of them shrink into the ground at the far end.
-// A clump coming in as the camera nears thickens where it stands (it dissolves
-// in, at four fifths of its height or more), and the far clumps are a little
-// taller, by a third at most. They used to rise out of the ground from nothing
-// while the clumps round them shrank by half as much again: grass sprouting in
-// front of the player at every step. All of it is worked out on the graphics
-// card, as before.
+// A clump coming in as the camera nears widens where it stands, from a sliver
+// to its full width, already at three fifths of its height or more; the far
+// clumps are a little taller, by a third at most. They used to rise out of the
+// ground from nothing while the clumps round them shrank by half as much
+// again: grass sprouting in front of the player at every step. (Not a
+// dissolve by dots: three clumps in ten beyond the full density distance are
+// part way in at any moment, and dotted they made the whole picture look
+// fuzzy.) All of it is worked out on the graphics card, as before.
 // lod: (full-density distance, thinning exponent, fade start, fade end).
 export function makeGroundMaterial(atlas, shared, { lod, cols, rows }) {
   const own = {
@@ -390,8 +392,7 @@ uniform vec4 uGrassLod;
 uniform vec2 uGrassCells;
 varying float vGrassV;
 varying float vGrassTint;
-varying float vGrassGust;
-varying float vGrassIn;`;
+varying float vGrassGust;`;
   const uvCode = `
 {
   float cell = floor( iB.z );
@@ -404,8 +405,8 @@ varying float vGrassIn;`;
   // How much of this clump shows at its distance (farther: fewer, wider clumps).
   // gSize: the size it has when all there (the last quarter by rank are the
   // small tufts between the others). gIn: how far it has come in, 0 not yet to
-  // 1 all there, over as long a stretch as its rank leaves before the full
-  // density distance, where every clump is all there. gFar: the far end.
+  // 1 all there (its width), over as long a stretch as its rank leaves before
+  // the full density distance, where every clump is all there. gFar: the far end.
   const lodCode = `
 float gD = distance( iA.xyz, uVegCam ) * max( uVegLod, 0.6 );
 float gK = gD < uGrassLod.x ? 1.0 : pow( uGrassLod.x / gD, uGrassLod.y );
@@ -413,12 +414,11 @@ float gSize = clamp( ( 1.0 - iB.w ) / 0.25, 0.0, 1.0 );
 float gIn = clamp( ( gK - iB.w ) / ( clamp( 1.0 - iB.w, 0.03, 0.3 ) * gK ), 0.0, 1.0 );
 float gFar = 1.0 - smoothstep( uGrassLod.z, uGrassLod.w, gD );
 float gShow = gIn * gFar * gSize;
-vGrassIn = gIn;
 float gC = cos( iA.w ), gS = sin( iA.w );`;
   const placeCode = `
 vec3 gP = position;
-gP.xz *= iB.x * gSize * pow( gK, -0.5 ) * ( 0.75 + 0.25 * gIn ) * gFar;
-gP.y *= iB.y * gSize * pow( gK, -0.2 ) * ( 0.8 + 0.2 * gIn ) * gFar;
+gP.xz *= iB.x * gSize * pow( gK, -0.5 ) * gIn * gFar;
+gP.y *= iB.y * gSize * pow( gK, -0.2 ) * ( 0.6 + 0.4 * gIn ) * gFar;
 gP.xz = vec2( gC * gP.x + gS * gP.z, -gS * gP.x + gC * gP.z );
 // Wind: tips bend downwind with gusts rolling across the field, plus a flicker.
 float gGust = vegGust( iA.xz );
@@ -448,16 +448,11 @@ vec3 objectNormal = normalize( vec3( 0.0, 1.0, 0.0 ) + cardN * 0.45 );`,
     vs = replace(vs, '#include <project_vertex>', PROJECT);
     shader.vertexShader = vs;
     let fs = shader.fragmentShader;
-    fs = after(fs, '#include <common>', `${COMMON_FRAG}
+    fs = after(fs, '#include <common>', `
 varying float vGrassV;
 varying float vGrassTint;
-varying float vGrassGust;
-varying float vGrassIn;`);
+varying float vGrassGust;`);
     fs = after(fs, '#include <map_fragment>', ALPHA_BOOST);
-    // A clump part way in shows that share of its dots (smoothed over a few
-    // frames where the picture is, as the trees' levels of detail are).
-    fs = after(fs, '#include <alphatest_fragment>', `
-if ( vGrassIn < 0.995 && vGrassIn < vegDither() ) discard;`);
     // Each clump a little greener or more straw-colored; deep shade low in the
     // tufts; the blade tips glow when the low sun is behind them.
     fs = after(

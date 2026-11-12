@@ -69,9 +69,9 @@ Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the b
 
 Smoke and dust puffs (`render/effects.js`, the kinds marked `wisp`) are drawn with a lumpy outline, thick in the middle, in strands that curl and come apart as the puff ages; each puff's age goes to the graphics card with it. Solid bits (clods, chips, drops) keep the plain rough-edged spot. A gun makes a fifth fewer puffs than it did and each covers about a quarter less over its life: the numbers were set by measuring what a puff covers, old drawing against new, since a burst of fire used to hide everything in front of the gun. Puffs take three quarters of the sun, as they cannot tell whether they hang in shade.
 
-Grass (`world/vegetation/materials.js`, `makeGroundMaterial`): farther from the camera fewer clumps are kept, each wider. A clump that comes in as the camera nears dissolves in where it stands, at four fifths of its height or more, instead of rising out of the ground; within the full-density distance every clump is all there, so nothing dissolves at the player's feet. All of this is done on the graphics card: what the processor does for grass is unchanged.
+Grass (`world/vegetation/materials.js`, `makeGroundMaterial`): farther from the camera fewer clumps are kept, each wider. A clump that comes in as the camera nears widens where it stands, from a sliver to its full width and already at three fifths of its height or more, instead of rising out of the ground; within the full-density distance every clump is all there. (A dissolve by dots was tried first and made the whole picture look fuzzy: three clumps in ten beyond that distance are part way in at any moment.) All of this is done on the graphics card: what the processor does for grass is unchanged.
 
-A tank's own picture on screen is `Hud._updateTank` (`ui/hud.js`); the parts, their names and which just got worse are in `ui/tankReport.js` (tests/tankReport.test.js).
+A tank's own picture on screen is `Hud._updateTank` (`ui/hud.js`); the parts and which just got worse are in `ui/tankReport.js` (tests/tankReport.test.js).
 
 ## Loading a battle
 
