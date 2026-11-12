@@ -6,6 +6,73 @@ import { jeepWheel, roadWheel, sprocket, runningGear, steeringWheel } from './pa
 const side = (s) => (s < 0 ? 'L' : 'R');
 
 // ---------------------------------------------------------------------------------------
+// Small fittings shared by the tanks below.
+
+const along = (p, dir, t) => [p[0] + dir[0] * t, p[1] + dir[1] * t, p[2] + dir[2] * t];
+
+// Bolt heads in a row from p0 to p1 (n of them), standing h proud along the unit vector up.
+function studs(b, p0, p1, n, up, mat, r = 0.014, h = 0.012) {
+  for (let i = 0; i < n; i++) {
+    const p = along(p0, [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], n > 1 ? i / (n - 1) : 0.5);
+    b.rod({ from: along(p, up, -0.004), to: along(p, up, h), r, mat, seg: 6 });
+  }
+}
+
+// Grab handle: a bar from p0 to p1 held h off the surface (along up) by a leg at each end.
+function grab(b, p0, p1, up, h, mat, r = 0.008) {
+  const q0 = along(p0, up, h),
+    q1 = along(p1, up, h);
+  b.rod({ from: p0, to: q0, r, mat, seg: 6 });
+  b.rod({ from: p1, to: q1, r, mat, seg: 6 });
+  b.rod({ from: q0, to: q1, r, mat, seg: 6 });
+}
+
+// Wire, cable or bent bar through a list of points.
+function wire(b, pts, r, mat, seg = 6) {
+  for (let i = 0; i + 1 < pts.length; i++) b.rod({ from: pts[i], to: pts[i + 1], r, mat, seg });
+}
+
+// Flat lever from x0 to x1 between two round ends: side-view centres a and c ([z, y]) with
+// radii ra and rc (suspension arms).
+function lever(b, x0, x1, a, ra, c, rc, mat) {
+  const pts = [];
+  for (const x of [x0, x1]) {
+    for (const [u, v] of circle(ra, 10, a[0], a[1])) pts.push([x, v, u]);
+    for (const [u, v] of circle(rc, 10, c[0], c[1])) pts.push([x, v, u]);
+  }
+  b.convex({ points: pts, mat });
+}
+
+// Towing lug on a front (dir -1) or rear (dir +1) plate: two round-nosed ears with a pin
+// through them and a ring hanging from the pin.
+function towLug(b, x, y, z, dir, mat, ring = true) {
+  const ear = [[-0.04, -0.045], [-0.04, 0.045], [0.045, 0.045], [0.072, 0.03], [0.082, 0], [0.072, -0.03], [0.045, -0.045]].map(([u, v]) => [z + dir * u, y + v]);
+  for (const e of [-1, 1]) b.prismX({ points: ear, x0: x + e * 0.04 - 0.012, x1: x + e * 0.04 + 0.012, mat, bevel: 0.003, bevelSegments: 1 });
+  b.cylAxis({ axis: 'x', x, y, z: z + dir * 0.048, len: 0.13, r: 0.016, mat, seg: 8 });
+  if (ring) b.latheDir({ profile: torusProfile(0.042, 0.012, 6), at: [x, y - 0.04, z + dir * 0.058], dir: [1, 0, 0], mat, seg: 10 });
+}
+
+// Tail light on a rear plate facing +Z: lamp body, red lens and a strap guard over it.
+function tailLight(b, x, y, z, mat) {
+  b.cyl({ z0: z - 0.01, z1: z + 0.045, r0: 0.036, x, y, mat, seg: 10 });
+  b.cyl({ z0: z + 0.045, z1: z + 0.05, r0: 0.026, x, y, mat: 'redLamp', seg: 10 });
+  for (const e of [-1, 1]) b.box({ x: x + e * 0.055, y, z: z + 0.03, w: 0.008, h: 0.03, d: 0.075, r: 0, mat });
+  b.box({ x, y, z: z + 0.068, w: 0.118, h: 0.03, d: 0.008, r: 0, mat });
+}
+
+// A short run of spare track (n links, each w long across the track and `pitch` wide),
+// built flat around the origin: the run along X, the links' length along Z, +Y out of the
+// plate it hangs on. A retaining bar runs across it. Set it in place with b.place.
+function spareLinks(b, { n, w, pitch, thick, mat }) {
+  for (let i = 0; i < n; i++) {
+    const x = (i - (n - 1) / 2) * (pitch + 0.006);
+    b.box({ x, y: thick / 2, z: 0, w: pitch - 0.012, h: thick, d: w - 0.09, r: 0.012, mat: 'rubber' });
+    for (const e of [-1, 1]) b.box({ x, y: thick / 2, z: (e * (w - 0.04)) / 2, w: pitch + 0.004, h: thick * 0.85, d: 0.04, r: 0, mat: 'track' });
+  }
+  b.box({ x: 0, y: thick + 0.006, z: 0, w: n * (pitch + 0.006) + 0.05, h: 0.012, d: 0.035, r: 0, mat });
+}
+
+// ---------------------------------------------------------------------------------------
 // Willys MB 1/4-ton 4x4 truck, 1941-45. 3.33 m long, 1.57 m wide, 1.32 m to the top of the
 // windshield, 2.032 m wheelbase, 1.245 m track, 6.00-16 tires (0.357 m radius), 222 mm
 // ground clearance. Flat grille with 9 slots, fold-down windshield, top folded at the rear,
@@ -311,27 +378,23 @@ export function m4a1_sherman(b) {
     idler: { ...IDL, r: 0.27 + T / 2, items: roadWheel({ r: 0.27, width: 0.23, gap: 0.05, rubber: false, dish: 0.035, hubR: 0.08, hubLen: 0.05, mat: P, holes: 6 }) },
     track: { width: 0.421, pitch: 0.1524, thick: T, offsetX: OX, realLinks: 79 },
   });
-  // VVSS bogies: bracket bolted to the hull, volute springs, wheel arms, roller arm.
+  // VVSS bogies: a bracket bolted to the hull with the volute springs inside it, an arm from
+  // the pivot at its foot to each wheel, a track skid on top, the return roller trailing
+  // behind on its own fork.
+  const bracket = [[-0.05, 0.37], [0.05, 0.37], [0.065, 0.5], [0.19, 0.6], [0.23, 0.65], [0.23, 0.69], [0.1, 0.71], [0.03, 0.81], [-0.18, 0.81], [-0.23, 0.76], [-0.23, 0.65], [-0.19, 0.6], [-0.065, 0.5]];
   for (const s of [-1, 1]) {
     for (const zc of bogies) {
-      const pts = [];
-      for (const x of [0.79, 1.1])
-        for (const [dz, y] of [
-          [-0.25, 0.6],
-          [0.25, 0.6],
-          [0.21, 0.72],
-          [0.08, 0.775],
-          [-0.17, 0.765],
-          [-0.24, 0.68],
-        ])
-          pts.push([s * x, y, zc + dz]);
-      b.convex({ points: pts, mat: P, crease: 0.3 });
-      b.span({ z0: zc - 0.045, z1: zc + 0.045, y0: 0.36, y1: 0.62, w: 0.22, x: s * 0.95, mat: P, r: 0.015 });
-      for (const dz of [-0.075, 0.075]) b.cylAxis({ axis: 'y', x: s * 0.97, y: 0.5, z: zc + dz, len: 0.2, r: 0.058, mat: P, seg: 12 });
-      for (const d of [-1, 1]) b.rod({ from: [s * 0.925, 0.45, zc + d * 0.1], to: [s * 0.925, yW, zc + d * 0.31], r: 0.035, mat: P });
-      b.rod({ from: [s * 0.9, 0.74, zc + 0.12], to: [s * 0.95, 0.82, zc + 0.15], r: 0.04, mat: P });
-      b.cylAxis({ axis: 'x', x: s * 0.94, y: 0.82, z: zc + 0.15, len: 0.12, r: 0.032, mat: P, seg: 10 });
-      b.box({ x: s * 1.0, y: 0.785, z: zc - 0.1, w: 0.24, h: 0.03, d: 0.16, r: 0.008, mat: P }); // track skid
+      b.prismX({ points: bracket.map(([dz, y]) => [zc + dz, y]), x0: s * 0.79, x1: s * 1.2, mat: P, bevel: 0.012 });
+      b.box({ x: s * 1.2, y: 0.7, z: zc - 0.02, w: 0.03, h: 0.12, d: 0.3, r: 0.01, mat: P }); // spring cap
+      for (const d of [-1, 1]) {
+        // Outer arm across the face of the wheel, inner arm behind it.
+        lever(b, s * 1.172, s * 1.2, [zc + d * 0.03, 0.43], 0.06, [zc + d * 0.31, yW], 0.085, P);
+        b.rod({ from: [s * 0.925, 0.45, zc + d * 0.1], to: [s * 0.925, yW, zc + d * 0.31], r: 0.035, mat: P, seg: 8 });
+      }
+      b.cylAxis({ axis: 'x', x: s * 1.2, y: 0.43, z: zc, len: 0.03, r: 0.045, mat: P, seg: 10 }); // arm pivot
+      b.prismX({ points: ribbon([[zc - 0.3, 0.8], [zc - 0.24, 0.845], [zc - 0.02, 0.845], [zc + 0.05, 0.8]], 0.03), x0: s * 0.86, x1: s * 1.25, mat: P, bevel: 0.004 }); // track skid
+      for (const x of [0.948, 1.162]) b.prismX({ points: [[zc + 0.06, 0.7], [zc + 0.23, 0.66], [zc + 0.215, 0.83], [zc + 0.15, 0.87], [zc + 0.095, 0.83]], x0: s * (x - 0.012), x1: s * (x + 0.012), mat: P, bevel: 0.003 });
+      b.cylAxis({ axis: 'x', x: s * 1.055, y: 0.82, z: zc + 0.15, len: 0.25, r: 0.03, mat: P, seg: 8 });
     }
     // Idler bracket and final drive housing.
     b.convex({
@@ -419,14 +482,25 @@ export function m4a1_sherman(b) {
     false,
   );
   b.prismX({ points: [...nose, [-2.2, 1.075], [-2.2, 0.43]], x0: -0.88, x1: 0.88, mat: C, bevel: 0.07 });
-  for (const s of [-1, 1]) {
-    b.latheDir({ profile: torusProfile(0.05, 0.016, 8), at: [s * 0.55, 0.62, -2.79], dir: [1, 0, 0], mat: P, seg: 12 }); // tow clevis rings
-    b.box({ x: s * 0.55, y: 0.66, z: -2.75, w: 0.1, h: 0.08, d: 0.1, r: 0.01, mat: C });
+  // The flange where the nose bolts to the hull, with its row of bolts, and the tow lugs.
+  {
+    const fn = [0, 0.65, -0.76]; // out of the flange face
+    b.box({ x: 0, y: 1.02, z: -2.806, w: 1.62, h: 0.07, d: 0.03, r: 0.006, rx: 0.71, mat: C });
+    studs(b, [-0.75, 1.03, -2.818], [0.75, 1.03, -2.818], 13, fn, P, 0.017, 0.014);
   }
-  // Front fenders over the sprockets, headlamps with brush guards, siren.
+  for (const s of [-1, 1]) towLug(b, s * 0.55, 0.66, -2.75, -1, C);
+  // Sand shield mounting strip along the foot of each sponson side.
   for (const s of [-1, 1]) {
-    b.span({ z0: -2.86, z1: -2.36, y0: 0.99, y1: 1.0, w: 0.46, x: s * 1.065, mat: P, r: 0.004 });
-    b.span({ z0: -2.87, z1: -2.85, y0: 0.94, y1: 1.0, w: 0.46, x: s * 1.065, mat: P, r: 0.004 });
+    b.span({ z0: -2.3, z1: 2.5, y0: 0.982, y1: 1.03, w: 0.014, x: s * 1.298, mat: P, r: 0 });
+    studs(b, [s * 1.305, 1.006, -2.15], [s * 1.305, 1.006, 2.35], 14, [s, 0, 0], P, 0.01, 0.008);
+  }
+  // Front fenders over the sprockets (turned-down outer edge and front lip, a brace
+  // underneath), headlamps with brush guards, siren.
+  for (const s of [-1, 1]) {
+    b.span({ z0: -2.86, z1: -2.36, y0: 0.985, y1: 1.0, w: 0.46, x: s * 1.065, mat: P, r: 0.004 });
+    b.span({ z0: -2.87, z1: -2.85, y0: 0.93, y1: 1.0, w: 0.46, x: s * 1.065, mat: P, r: 0.004 });
+    b.span({ z0: -2.86, z1: -2.36, y0: 0.955, y1: 0.995, w: 0.01, x: s * 1.29, mat: P, r: 0 });
+    b.span({ z0: -2.62, z1: -2.59, y0: 0.96, y1: 0.99, w: 0.44, x: s * 1.065, mat: P, r: 0 });
     const hx = s * 0.9;
     b.box({ x: hx, y: 1.1, z: -2.64, w: 0.05, h: 0.08, d: 0.08, r: 0.01, mat: P });
     b.cyl({ z0: -2.76, z1: -2.66, r0: 0.075, r1: 0.07, x: hx, y: 1.17, mat: P, seg: 16 });
@@ -435,9 +509,25 @@ export function m4a1_sherman(b) {
     b.rod({ from: [hx + 0.11, 1.08, -2.62], to: [hx + 0.11, 1.27, -2.8], r: 0.011, mat: P });
     b.rod({ from: [hx - 0.11, 1.27, -2.8], to: [hx + 0.11, 1.27, -2.8], r: 0.011, mat: P });
     b.anchor(`headlight${side(s)}`, hx, 1.17, -2.77);
-    b.latheDir({ profile: torusProfile(0.045, 0.014, 8), at: [s * 1.0, 1.12, -2.5], dir: [1, 0, 0], mat: P, seg: 12 }); // lifting ring
+    b.latheDir({ profile: torusProfile(0.045, 0.014, 6), at: [s * 1.0, 1.69, -1.867], dir: [1, 0, 0], mat: C, seg: 10 }); // lifting eye
   }
   b.cyl({ z0: -2.68, z1: -2.5, r0: 0.07, x: -1.07, y: 1.07, mat: P, seg: 14 }); // siren on the left fender
+  b.cyl({ z0: -2.7, z1: -2.68, r0: 0.05, r1: 0.07, x: -1.07, y: 1.07, mat: P, seg: 14 });
+  b.box({ x: -1.07, y: 1.01, z: -2.59, w: 0.06, h: 0.03, d: 0.1, r: 0, mat: P });
+  // A run of spare track across the lower glacis.
+  b.place({ pos: [0, 1.2, -2.529], rot: [-0.606, 0, 0] }, () => spareLinks(b, { n: 5, w: 0.42, pitch: 0.152, thick: 0.055, mat: P }));
+  // Drivers' hoods: a raised casting each side at the top of the glacis with a rounded brow
+  // and a steep front face, its top kept just under the driver's line of sight. Each
+  // station across it is the same outline, lower and further back toward the edges.
+  for (const s of [-1, 1]) {
+    const hood = [];
+    for (const [x, k] of [[0.19, 0.2], [0.21, 0.7], [0.25, 0.95], [0.31, 1], [0.75, 1], [0.81, 0.95], [0.85, 0.7], [0.87, 0.2]])
+      for (const [z, y] of [[-1.45, 1.9], [-1.6, 1.845], [-1.93, 1.68], [-1.975, 1.652], [-2.005, 1.61], [-2.025, 1.545], [-1.45, 1.7]]) {
+        const g = Math.min(gY(z), 1.9) - 0.02;
+        hood.push([s * x, g + (y - g) * k, z + (1 - k) * 0.05]);
+      }
+    b.convex({ points: hood, mat: C, crease: 0.6 });
+  }
   // Bow MG ball mount (right) on the glacis.
   {
     const bx = 0.42,
@@ -452,26 +542,71 @@ export function m4a1_sherman(b) {
   // Driver's and assistant driver's hatches with periscopes, fixed periscopes, ventilator.
   for (const s of [-1, 1]) {
     const hx = s * 0.52;
-    b.box({ x: hx, y: 1.915, z: -1.2, w: 0.52, h: 0.04, d: 0.46, r: 0.015, mat: C });
+    // Raised rim cast into the roof, the door inside it, hinged on its outer edge.
+    b.prismY({ points: roundRect(hx, -1.2, 0.27, 0.235, 0.09), y0: 1.89, y1: 1.918, mat: C, bevel: 0.008 });
+    b.prismY({ points: roundRect(hx, -1.2, 0.24, 0.205, 0.07), y0: 1.91, y1: 1.936, mat: P, bevel: 0.007 });
+    for (const z of [-1.3, -1.08]) {
+      b.cyl({ z0: z - 0.04, z1: z + 0.04, r0: 0.017, x: hx + s * 0.255, y: 1.93, mat: P, seg: 6 });
+      b.box({ x: hx + s * 0.215, y: 1.938, z, w: 0.07, h: 0.008, d: 0.05, r: 0, mat: P });
+    }
+    grab(b, [hx - s * 0.13, 1.934, -1.13], [hx - s * 0.13, 1.934, -1.03], [0, 1, 0], 0.028, P);
+    b.cylAxis({ axis: 'y', x: hx, y: 1.94, z: -1.16, len: 0.012, r: 0.075, mat: P, seg: 10 }); // periscope mount
     b.box({ x: hx, y: 1.97, z: -1.16, w: 0.08, h: 0.08, d: 0.17, r: 0.01, mat: P });
     b.box({ x: hx, y: 1.99, z: -1.25, w: 0.07, h: 0.04, d: 0.01, r: 0.002, mat: 'dark' });
     b.box({ x: hx + s * 0.16, y: 1.93, z: -1.4, w: 0.07, h: 0.07, d: 0.14, r: 0.01, mat: P });
     b.rod({ from: [hx - 0.08, 1.92, -1.47], to: [hx + 0.08, 1.92, -1.47], r: 0.01, mat: P });
+    for (const e of [-1, 1]) b.box({ x: hx + e * 0.08, y: 1.905, z: -1.47, w: 0.016, h: 0.03, d: 0.02, r: 0, mat: P });
   }
   b.sphere({ x: 0, y: 1.9, z: -1.2, r: 0.1, sy: 0.6, mat: C, seg: 14 });
   b.anchor('driverEye', -0.52, 1.99, -1.3);
-  // Engine deck: grille doors, fuel fillers, tools.
+  // Engine deck: the two grille doors (hinges, lift handles), fuel filler caps, grouser box
+  // covers and lifting eyes at the rear corners.
   b.box({ x: 0, y: 1.91, z: 1.75, w: 1.5, h: 0.03, d: 1.2, r: 0.01, mat: P });
-  for (let i = 0; i < 9; i++) b.box({ x: 0, y: 1.93, z: 1.27 + i * 0.12, w: 1.36, h: 0.02, d: 0.035, r: 0.005, mat: 'black' });
+  for (let i = 0; i < 9; i++) b.box({ x: 0, y: 1.93, z: 1.27 + i * 0.12, w: 1.36, h: 0.02, d: 0.035, r: 0, mat: 'black' });
+  b.box({ x: 0, y: 1.933, z: 1.75, w: 0.05, h: 0.03, d: 1.2, r: 0, mat: P }); // where the doors meet
   for (const s of [-1, 1]) {
-    b.cylAxis({ axis: 'y', x: s * 0.95, y: 1.91, z: 0.75, len: 0.04, r: 0.07, mat: P, seg: 14 });
-    b.latheDir({ profile: torusProfile(0.045, 0.014, 8), at: [s * 1.12, 1.92, 2.6], dir: [0, 0, 1], mat: P, seg: 12 });
+    for (const z of [1.35, 2.15]) b.cyl({ z0: z - 0.06, z1: z + 0.06, r0: 0.017, x: s * 0.752, y: 1.925, mat: P, seg: 6 });
+    grab(b, [s * 0.25, 1.922, 1.195], [s * 0.45, 1.922, 1.195], [0, 1, 0], 0.03, P);
+    for (const z of [0.6, 0.83]) {
+      b.latheDir({ profile: [[0, 0.032], [0.035, 0.032], [0.055, 0.024], [0.06, 0.008], [0.078, 0.006], [0.078, -0.012], [0, -0.012]], at: [s * 0.95, 1.89, z], dir: [s * 0.09, 1, 0], mat: P, seg: 10 });
+    }
+    b.box({ x: s * 0.93, y: 1.895, z: 2.3, w: 0.2, h: 0.014, d: 0.3, r: 0.004, rz: -s * 0.088, mat: P }); // grouser box cover
+    for (const z of [2.18, 2.42]) studs(b, [s * 0.85, 1.905, z], [s * 1.01, 1.891, z], 2, [s * 0.088, 1, 0], P, 0.01, 0.008);
+    b.latheDir({ profile: torusProfile(0.045, 0.014, 6), at: [s * 1.05, 1.855, 2.6], dir: [0, 0, 1], mat: C, seg: 10 });
   }
-  b.box({ x: -1.12, y: 1.92, z: 1.2, w: 0.05, h: 0.04, d: 1.5, r: 0.01, mat: 'wood' }); // crowbar/handles
-  b.box({ x: 1.12, y: 1.92, z: 1.3, w: 0.06, h: 0.03, d: 0.9, r: 0.01, mat: 'wood' });
-  b.box({ x: 1.12, y: 1.93, z: 0.75, w: 0.2, h: 0.03, d: 0.22, r: 0.01, mat: P }); // shovel blade
-  // Rear plate: engine doors, exhaust deflector, air cleaners, tow hooks.
-  b.box({ x: 0, y: 1.38, z: 2.905, w: 1.5, h: 0.62, d: 0.03, r: 0.01, mat: P });
+  // Pioneer tools strapped down along the deck: shovel and mattock handle on the left,
+  // crowbar, track wrench and mattock head on the right, sledge and axe across the rear.
+  const strap = (x, y, z, w, d, rz = 0) => b.box({ x, y, z, w, h: 0.045, d, r: 0, rz, mat: P });
+  b.rod({ from: [-0.86, 1.925, 0.97], to: [-0.86, 1.925, 1.82], r: 0.017, mat: 'wood', seg: 8 }); // shovel
+  b.box({ x: -0.86, y: 1.925, z: 0.955, w: 0.1, h: 0.028, d: 0.03, r: 0.008, mat: 'wood' });
+  b.rod({ from: [-0.86, 1.925, 1.78], to: [-0.86, 1.918, 1.88], r: 0.021, mat: 'parkerized', seg: 8 });
+  b.box({ x: -0.86, y: 1.913, z: 1.99, w: 0.19, h: 0.014, d: 0.26, r: 0.006, mat: 'parkerized' });
+  b.rod({ from: [-0.975, 1.912, 1.0], to: [-0.975, 1.912, 1.9], r: 0.021, r1: 0.016, mat: 'wood', seg: 8 }); // mattock handle
+  for (const z of [1.12, 1.68]) strap(-0.915, 1.9, z, 0.2, 0.03, 0.04);
+  b.rod({ from: [0.82, 1.915, 0.95], to: [0.82, 1.915, 2.08], r: 0.012, mat: 'steel', seg: 6 }); // crowbar
+  b.rod({ from: [0.82, 1.915, 2.08], to: [0.82, 1.93, 2.13], r: 0.012, mat: 'steel', seg: 6 });
+  b.box({ x: 0.9, y: 1.905, z: 1.38, w: 0.035, h: 0.016, d: 0.6, r: 0, mat: 'parkerized' }); // track wrench
+  b.cylAxis({ axis: 'y', x: 0.9, y: 1.91, z: 1.7, len: 0.03, r: 0.038, mat: 'parkerized', seg: 8 });
+  b.box({ x: 0.985, y: 1.9, z: 1.4, w: 0.04, h: 0.03, d: 0.5, r: 0.012, rz: -0.12, mat: 'parkerized' }); // mattock head
+  b.box({ x: 0.985, y: 1.902, z: 1.4, w: 0.06, h: 0.04, d: 0.07, r: 0.01, rz: -0.12, mat: 'parkerized' });
+  for (const z of [1.15, 1.6]) strap(0.9, 1.9, z, 0.24, 0.03, -0.06);
+  b.rod({ from: [-0.25, 1.92, 2.44], to: [0.46, 1.92, 2.44], r: 0.017, mat: 'wood', seg: 8 }); // sledge
+  b.box({ x: 0.5, y: 1.925, z: 2.44, w: 0.07, h: 0.06, d: 0.15, r: 0.008, mat: 'parkerized' });
+  b.box({ x: -0.3, y: 1.9, z: 2.56, w: 0.62, h: 0.022, d: 0.04, r: 0.008, mat: 'wood' }); // axe
+  b.box({ x: -0.63, y: 1.9, z: 2.585, w: 0.1, h: 0.028, d: 0.15, r: 0.006, rx: 0.14, mat: 'parkerized' });
+  for (const x of [-0.1, 0.3]) strap(x, 1.92, 2.44, 0.03, 0.06);
+  for (const x of [-0.45, -0.1]) strap(x, 1.895, 2.56, 0.03, 0.07);
+  // Tow cable along the left edge of the deck, an eye at each end, three clamps.
+  wire(b, [[-1.036, 1.89, -1.2], [-1.042, 1.888, -0.2], [-1.04, 1.888, 0.9], [-1.036, 1.89, 1.95]], 0.013, 'steel');
+  for (const z of [-1.24, 1.99]) b.latheDir({ profile: torusProfile(0.032, 0.012, 6), at: [-1.04, 1.884, z], dir: [-0.38, 1, 0], mat: 'steel', seg: 8 });
+  for (const z of [-0.7, 0.35, 1.4]) b.box({ x: -1.04, y: 1.886, z, w: 0.055, h: 0.04, d: 0.03, r: 0, rz: 0.38, mat: P });
+  // Rear plate: the two engine doors (hinges, handles), exhaust deflector, air cleaners with
+  // their pipes, tail lights under guards, tow lugs.
+  for (const s of [-1, 1]) {
+    b.box({ x: s * 0.378, y: 1.38, z: 2.905, w: 0.744, h: 0.62, d: 0.03, r: 0.01, mat: P });
+    for (const y of [1.2, 1.56]) b.cylAxis({ axis: 'y', x: s * 0.752, y, z: 2.918, len: 0.1, r: 0.017, mat: P, seg: 6 });
+    grab(b, [s * 0.1, 1.32, 2.918], [s * 0.1, 1.44, 2.918], [0, 0, 1], 0.03, P);
+  }
   b.convex({
     points: [
       [-0.95, 0.98, 2.84],
@@ -484,8 +619,11 @@ export function m4a1_sherman(b) {
     mat: P,
   });
   for (const s of [-1, 1]) {
-    b.cylAxis({ axis: 'y', x: s * 1.02, y: 1.4, z: 2.96, len: 0.42, r: 0.09, mat: P, seg: 16 });
-    b.box({ x: s * 0.6, y: 0.62, z: 2.83, w: 0.1, h: 0.1, d: 0.12, r: 0.02, mat: P });
+    b.latheDir({ profile: [[0, -0.22], [0.05, -0.215], [0.08, -0.19], [0.088, -0.15], [0.088, 0.15], [0.092, 0.155], [0.092, 0.18], [0.07, 0.2], [0, 0.205]], at: [s * 1.02, 1.4, 2.96], dir: [0, 1, 0], mat: P, seg: 12 });
+    b.box({ x: s * 1.02, y: 1.4, z: 2.91, w: 0.2, h: 0.05, d: 0.06, r: 0, mat: P });
+    b.rod({ from: [s * 0.95, 1.5, 2.95], to: [s * 0.84, 1.5, 2.9], r: 0.03, mat: P, seg: 8 });
+    tailLight(b, s * 0.88, 1.665, 2.9, P);
+    towLug(b, s * 0.6, 0.66, 2.77, 1, P);
     b.anchor(`exhaust${side(s)}`, s * 0.5, 1.0, 3.0);
   }
 
@@ -493,12 +631,17 @@ export function m4a1_sherman(b) {
   const zT = -0.15,
     yR = 1.9;
   b.part('turret', [0, yR, zT]);
+  // Cast 75 mm turret. Plan at its widest: a flat face for the gun mount, a cheek each side,
+  // sides bulging over the ring, the bustle behind. Each layer scales that plan sideways
+  // (sx), forward (sf) and to the rear (sr): the foot tucks in to the ring, the bustle
+  // overhangs the deck, the brow slopes back above the gun mount and the sides curve in to
+  // a low domed roof.
   const plan = mirrorHalf([
     [0, -0.84],
-    [0.48, -0.84],
-    [0.66, -0.78],
-    [0.8, -0.64],
-    [0.9, -0.44],
+    [0.45, -0.84],
+    [0.54, -0.82],
+    [0.85, -0.52],
+    [0.92, -0.38],
     [0.955, -0.2],
     [0.965, 0.1],
     [0.94, 0.4],
@@ -507,9 +650,20 @@ export function m4a1_sherman(b) {
     [0.56, 1.06],
     [0.3, 1.15],
     [0, 1.18],
-  ]).map(([x, dz]) => [x, zT + dz]);
+  ]);
+  const ring = (y, sx, sf, sr) => plan.map(([x, dz]) => [x * sx, y, zT + dz * (dz < 0 ? sf : sr)]);
   b.convex({
-    points: [...layer(plan, 1.92, 0.985, 0, zT), ...layer(plan, 2.06, 1.0, 0, zT), ...layer(plan, 2.36, 0.99, 0, zT), ...layer(plan, 2.47, 0.955, 0, zT), ...layer(plan, 2.54, 0.89, 0, zT), ...layer(plan, 2.575, 0.79, 0, zT)],
+    points: [
+      ...ring(1.92, 0.93, 0.985, 0.75),
+      ...ring(1.99, 0.985, 1, 0.8),
+      ...ring(2.07, 1, 1, 0.985),
+      ...ring(2.13, 1, 1, 1),
+      ...ring(2.33, 0.995, 1, 1),
+      ...ring(2.44, 0.955, 0.95, 0.975),
+      ...ring(2.52, 0.88, 0.84, 0.92),
+      ...ring(2.56, 0.79, 0.72, 0.84),
+      ...ring(2.575, 0.68, 0.5, 0.72),
+    ],
     mat: C,
     crease: 0.55,
   });
@@ -518,14 +672,23 @@ export function m4a1_sherman(b) {
   b.cylAxis({ axis: 'y', x: ch[0], y: 2.57, z: ch[1], len: 0.04, r: 0.3, mat: C, seg: 24 });
   b.prismY({ points: [...circle(0.28, 24, ch[0], ch[1]).filter(([x]) => x >= ch[0] - 1e-6), [ch[0] + 0.005, ch[1] - 0.28]], y0: 2.59, y1: 2.62, mat: P, bevel: 0.006 });
   b.prismY({ points: [...circle(0.28, 24, ch[0], ch[1]).filter(([x]) => x <= ch[0] + 1e-6), [ch[0] - 0.005, ch[1] + 0.28]], y0: 2.59, y1: 2.62, mat: P, bevel: 0.006 });
+  for (const e of [-1, 1]) for (const dz of [-0.1, 0.1]) b.cyl({ z0: ch[1] + dz - 0.035, z1: ch[1] + dz + 0.035, r0: 0.016, x: ch[0] + e * 0.287, y: 2.6, mat: P, seg: 6 });
+  grab(b, [ch[0] - 0.13, 2.618, ch[1] + 0.06], [ch[0] - 0.13, 2.618, ch[1] + 0.17], [0, 1, 0], 0.025, P);
   b.box({ x: ch[0] + 0.14, y: 2.66, z: ch[1] - 0.05, w: 0.09, h: 0.08, d: 0.16, r: 0.01, mat: P });
+  b.cylAxis({ axis: 'y', x: 0.33, y: 2.565, z: zT - 0.48, len: 0.02, r: 0.085, mat: C, seg: 10 }); // periscope mounts
+  b.cylAxis({ axis: 'y', x: -0.38, y: 2.57, z: zT - 0.3, len: 0.02, r: 0.085, mat: C, seg: 10 });
   b.box({ x: 0.33, y: 2.6, z: zT - 0.48, w: 0.1, h: 0.1, d: 0.18, r: 0.01, mat: P }); // gunner's periscope
   b.box({ x: 0.33, y: 2.62, z: zT - 0.575, w: 0.08, h: 0.05, d: 0.01, r: 0.002, mat: 'dark' });
   b.box({ x: -0.38, y: 2.6, z: zT - 0.3, w: 0.1, h: 0.1, d: 0.18, r: 0.01, mat: P }); // loader's periscope
   b.sphere({ x: 0.05, y: 2.56, z: zT - 0.3, r: 0.09, sy: 0.55, mat: C, seg: 12 }); // ventilator
   b.cylAxis({ axis: 'x', x: -0.93, y: 2.17, z: zT + 0.3, len: 0.06, r: 0.08, mat: C, seg: 16 }); // pistol port
-  for (const s of [-1, 1]) b.latheDir({ profile: torusProfile(0.045, 0.014, 8), at: [s * 0.82, 2.48, zT + 0.15], dir: [0, 0, 1], mat: P, seg: 12 });
-  b.cylAxis({ axis: 'y', x: -0.42, y: 2.56, z: zT + 0.85, len: 0.08, r: 0.04, mat: P, seg: 10 }); // antenna base
+  // Lifting eyes: one on each side toward the front, one on the bustle.
+  for (const s of [-1, 1]) b.latheDir({ profile: torusProfile(0.045, 0.014, 6), at: [s * 0.77, 2.52, zT - 0.25], dir: [0, 0, 1], mat: C, seg: 10 });
+  b.latheDir({ profile: torusProfile(0.045, 0.014, 6), at: [0, 2.525, zT + 1.02], dir: [1, 0, 0], mat: C, seg: 10 });
+  // Antenna on its sprung base at the left rear of the bustle (kept below the machine gun).
+  b.cylAxis({ axis: 'y', x: -0.42, y: 2.56, z: zT + 0.85, len: 0.08, r: 0.04, mat: P, seg: 10 });
+  b.cylAxis({ axis: 'y', x: -0.42, y: 2.64, z: zT + 0.85, len: 0.08, r: 0.02, mat: 'black', seg: 8 });
+  b.rod({ from: [-0.42, 2.68, zT + 0.85], to: [-0.42, 2.975, zT + 0.85], r: 0.006, r1: 0.004, mat: 'black', seg: 5 });
   b.anchor('commanderEye', ch[0], 2.8, ch[1]);
   b.meta.anchorParts.commanderEye = 'turret';
   // Pintle for the .50 cal.
@@ -533,13 +696,14 @@ export function m4a1_sherman(b) {
   b.cylAxis({ axis: 'y', x: mg[0], y: 2.68, z: mg[2], len: 0.24, r: 0.03, mat: P, seg: 10 });
   // .50 cal M2HB on its cradle (separate part: traverse about Y, elevate about X).
   b.part('pintleMg', mg);
-  b.box({ x: mg[0], y: mg[1] + 0.06, z: mg[2] + 0.05, w: 0.14, h: 0.17, d: 0.6, r: 0.012, mat: 'blued' });
+  b.box({ x: mg[0], y: mg[1] + 0.075, z: mg[2] + 0.06, w: 0.095, h: 0.14, d: 0.54, r: 0.012, mat: 'blued' });
+  b.cyl({ z0: mg[2] + 0.33, z1: mg[2] + 0.39, r0: 0.022, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 8 });
   b.cyl({ z0: mg[2] - 0.25, z1: mg[2] - 0.47, r0: 0.032, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
   b.cyl({ z0: mg[2] - 0.47, z1: mg[2] - 1.13, r0: 0.022, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
   b.cyl({ z0: mg[2] - 1.13, z1: mg[2] - 1.17, r0: 0.026, x: mg[0], y: mg[1] + 0.07, mat: 'blued', seg: 12 });
   b.box({ x: mg[0] - 0.15, y: mg[1] + 0.03, z: mg[2] - 0.02, w: 0.11, h: 0.17, d: 0.28, r: 0.008, mat: P }); // ammo can
-  b.rod({ from: [mg[0] - 0.05, mg[1] + 0.06, mg[2] + 0.35], to: [mg[0] - 0.05, mg[1] - 0.02, mg[2] + 0.4], r: 0.014, mat: 'black' }); // spade grips
-  b.rod({ from: [mg[0] + 0.05, mg[1] + 0.06, mg[2] + 0.35], to: [mg[0] + 0.05, mg[1] - 0.02, mg[2] + 0.4], r: 0.014, mat: 'black' });
+  for (const e of [-1, 1]) b.rod({ from: [mg[0] + e * 0.04, mg[1] + 0.02, mg[2] + 0.39], to: [mg[0] + e * 0.04, mg[1] + 0.12, mg[2] + 0.39], r: 0.013, mat: 'black', seg: 6 }); // spade grips
+  b.box({ x: mg[0], y: mg[1] + 0.07, z: mg[2] + 0.39, w: 0.1, h: 0.02, d: 0.02, r: 0, mat: 'blued' });
   b.box({ x: mg[0], y: mg[1] - 0.02, z: mg[2], w: 0.08, h: 0.06, d: 0.12, r: 0.01, mat: P }); // cradle
   b.at('pintleMg', 'mgMount', mg[0], mg[1], mg[2]);
   b.at('pintleMg', 'mgMuzzle', mg[0], mg[1] + 0.07, mg[2] - 1.17);
@@ -549,14 +713,35 @@ export function m4a1_sherman(b) {
   const yG = 2.22,
     zG = zT - 0.7;
   b.part('gun', [0, yG, zG]);
+  // Rotor: a drum across the turret front turning on the trunnions, its ends rounded off,
+  // reaching back into the turret.
+  const onArc = (x, r, a) => [x, yG + r * Math.sin(a), zG - r * Math.cos(a)];
   const rotor = [];
-  for (let i = 0; i <= 10; i++) {
-    const a = -0.95 + (1.9 * i) / 10;
-    for (const x of [-0.42, 0.42]) rotor.push([x, yG + 0.3 * Math.sin(a), zG - 0.3 * Math.cos(a)]);
+  for (const e of [-1, 1]) {
+    for (let i = 0; i <= 10; i++) {
+      const a = -1.2 + (2.4 * i) / 10;
+      rotor.push(onArc(e * 0.42, 0.27, a), onArc(e * 0.39, 0.3, a));
+    }
+    rotor.push([e * 0.42, yG - 0.2, zG + 0.15], [e * 0.42, yG + 0.2, zG + 0.15]);
   }
   b.convex({ points: rotor, mat: C, crease: 0.45 });
   const zS = zG - 0.39; // gun shield front face
-  b.box({ x: 0.08, y: yG, z: zS + 0.045, w: 0.74, h: 0.46, d: 0.09, r: 0.035, mat: C });
+  // Gun shield: a wide plate curved about the trunnions, lying on the rotor.
+  const shield = [];
+  for (const [x, r] of [[-0.31, 0.37], [-0.285, 0.39], [0.445, 0.39], [0.47, 0.37]]) for (let i = 0; i <= 8; i++) shield.push(onArc(x, r, -0.63 + (1.26 * i) / 8));
+  for (const x of [-0.31, 0.47]) shield.push(onArc(x, 0.29, -0.63), onArc(x, 0.29, 0.63));
+  b.convex({ points: shield, mat: C, crease: 0.45 });
+  // The middle of the shield swells into a boss round the barrel, leaving a wing of plate
+  // each side; a lifting hook on each top corner; raised rims round the telescope and
+  // coax ports.
+  const boss = [];
+  for (const [u, v] of roundRect(0, yG, 0.15, 0.175, 0.06, 2)) boss.push([u, v, zS + 0.045]);
+  for (const [u, v] of circle(0.128, 12, 0, yG)) boss.push([u, v, zS - 0.045]);
+  for (const [u, v] of circle(0.1, 12, 0, yG)) boss.push([u, v, zS - 0.14]);
+  b.convex({ points: boss, mat: C, crease: 0.6 });
+  for (const x of [-0.22, 0.38]) b.latheDir({ profile: torusProfile(0.03, 0.01, 6), at: [x, yG + 0.208, zG - 0.348], dir: [1, 0, 0], mat: C, seg: 8 });
+  b.cyl({ z0: zS + 0.02, z1: zS - 0.002, r0: 0.042, x: 0.36, y: yG + 0.07, mat: C, seg: 10 });
+  b.cyl({ z0: zS + 0.02, z1: zS - 0.012, r0: 0.03, x: 0.19, y: yG - 0.01, mat: C, seg: 8 });
   b.latheDir({
     profile: [
       [0, -0.02],
@@ -688,23 +873,24 @@ export function m5a1_stuart(b) {
   });
   // The trailing idler runs on the ground: the contact length reaches its center.
   b.meta.wheelbase = Math.round((IDL.z - wheels[0][0]) * 1000) / 1000;
+  // VVSS bogies as on the medium tank, smaller: a bracket on the hull with a cap over its
+  // springs, an arm from the pivot at its foot across the face of each wheel. Return rollers
+  // on stub axles; the trailing idler swings on its own arm from a bracket on the hull.
+  const bracket = [[-0.035, 0.41], [0.035, 0.41], [0.05, 0.5], [0.16, 0.57], [0.2, 0.6], [0.2, 0.635], [0.16, 0.655], [-0.16, 0.655], [-0.2, 0.635], [-0.2, 0.6], [-0.16, 0.57], [-0.05, 0.5]];
   for (const s of [-1, 1]) {
     for (const zc of bogies) {
-      const pts = [];
-      for (const x of [0.66, 0.92])
-        for (const [dz, y] of [
-          [-0.2, 0.52],
-          [0.2, 0.52],
-          [0.16, 0.66],
-          [-0.16, 0.68],
-        ])
-          pts.push([s * x, y, zc + dz]);
-      b.convex({ points: pts, mat: P, crease: 0.3 });
-      b.span({ z0: zc - 0.04, z1: zc + 0.04, y0: 0.32, y1: 0.55, w: 0.16, x: s * 0.82, mat: P, r: 0.012 });
-      for (const d of [-1, 1]) b.rod({ from: [s * 0.8, 0.4, zc + d * 0.08], to: [s * 0.8, yW, zc + d * 0.27], r: 0.03, mat: P });
+      b.prismX({ points: bracket.map(([dz, y]) => [zc + dz, y]), x0: s * 0.69, x1: s * 1.045, mat: P, bevel: 0.01 });
+      b.box({ x: s * 1.045, y: 0.6, z: zc, w: 0.025, h: 0.075, d: 0.26, r: 0.008, mat: P }); // spring cap
+      for (const d of [-1, 1]) {
+        lever(b, s * 1.02, s * 1.045, [zc + d * 0.025, 0.45], 0.05, [zc + d * 0.27, yW], 0.075, P);
+        b.rod({ from: [s * 0.8, 0.45, zc + d * 0.05], to: [s * 0.8, yW, zc + d * 0.27], r: 0.03, mat: P, seg: 8 });
+      }
+      b.cylAxis({ axis: 'x', x: s * 1.045, y: 0.45, z: zc, len: 0.03, r: 0.038, mat: P, seg: 10 }); // arm pivot
     }
     for (const [z, y] of rollers) b.cylAxis({ axis: 'x', x: s * 0.78, y, z, len: 0.16, r: 0.025, mat: P, seg: 8 });
-    b.rod({ from: [s * 0.7, 0.7, 1.1], to: [s * 0.82, IDL.y, IDL.z], r: 0.05, mat: P }); // idler arm
+    b.box({ x: s * 0.86, y: 0.58, z: 1.0, w: 0.35, h: 0.15, d: 0.15, r: 0.02, mat: P }); // idler arm bracket
+    lever(b, s * 1.02, s * 1.045, [1.0, 0.58], 0.065, [IDL.z, IDL.y], 0.085, P);
+    b.rod({ from: [s * 0.8, 0.58, 1.02], to: [s * 0.8, IDL.y, IDL.z], r: 0.04, mat: P, seg: 8 });
     b.cylAxis({ axis: 'x', x: s * 0.74, y: SPR.y, z: SPR.z, len: 0.1, r: 0.17, mat: P, seg: 18 });
   }
 
@@ -736,47 +922,89 @@ export function m5a1_stuart(b) {
     ]),
     mat: P,
   });
-  // Driver and assistant driver hatches with periscopes on the glacis, bow MG (right),
-  // headlights with brush guards, lifting eyes.
-  const gn = [0, Math.sin(42 * DEG), -Math.cos(42 * DEG)];
+  // The bolted flange where the differential cover meets the glacis, tow lugs below it.
+  b.box({ x: 0, y: 0.906, z: -2.269, w: 1.36, h: 0.05, d: 0.02, r: 0.004, rx: 0.19, mat: P });
+  studs(b, [-0.62, 0.908, -2.279], [0.62, 0.908, -2.279], 11, [0, 0.19, -0.98], P, 0.014, 0.012);
+  for (const s of [-1, 1]) towLug(b, s * 0.42, 0.62, -2.225, -1, P);
+  // Drivers' hoods at the head of the glacis: a wedge each side with a rounded brow, a steep
+  // front face and a vision plug in it, kept out of the driver's view. The door lies on the
+  // roof behind it, hinged on its outer edge, with the periscope in it. Then the bow MG
+  // (right), headlights with brush guards, lifting eyes, front fenders and the sand shield
+  // strips along the sponsons.
+  const gn = [0, Math.sin(42 * DEG), -Math.cos(42 * DEG)]; // out of the glacis
+  const gy = (z) => 0.92 + (z + 2.26) / Math.tan(48 * DEG); // glacis surface height at z
   for (const s of [-1, 1]) {
-    const x = s * 0.48,
-      y0 = 1.36,
-      y1 = 1.6;
-    b.quad({
-      p: [
-        [x - 0.24, y0, gl(y0)],
-        [x + 0.24, y0, gl(y0)],
-        [x + 0.24, y1, gl(y1)],
-        [x - 0.24, y1, gl(y1)],
-      ].map((p) => [p[0] + gn[0] * 0.03, p[1] + gn[1] * 0.03, p[2] + gn[2] * 0.03]),
-      t: 0.03,
-      mat: P,
-      out: gn,
-    });
+    const x = s * 0.48;
+    const hood = [];
+    for (const [hx, k] of [[0.21, 0.2], [0.235, 0.7], [0.27, 0.95], [0.32, 1], [0.64, 1], [0.69, 0.95], [0.725, 0.7], [0.75, 0.2]])
+      for (const [z, y] of [[-1.44, 1.632], [-1.6, 1.565], [-1.78, 1.45], [-1.83, 1.405], [-1.855, 1.35], [-1.865, 1.27], [-1.44, 1.5]]) {
+        const g = Math.min(gy(z), 1.62) - 0.02;
+        hood.push([s * hx, g + (y - g) * k, z + (1 - k) * 0.04]);
+      }
+    b.convex({ points: hood, mat: P, crease: 0.6 });
+    b.box({ x, y: 1.335, z: -1.863, w: 0.16, h: 0.06, d: 0.014, r: 0.005, rx: 0.3, mat: P }); // vision plug
+    b.prismY({ points: roundRect(x, -1.25, 0.215, 0.2, 0.05), y0: 1.612, y1: 1.642, mat: P, bevel: 0.006 });
+    for (const z of [-1.35, -1.15]) b.cyl({ z0: z - 0.035, z1: z + 0.035, r0: 0.014, x: x + s * 0.222, y: 1.638, mat: P, seg: 6 });
+    grab(b, [x - s * 0.13, 1.64, -1.17], [x - s * 0.13, 1.64, -1.09], [0, 1, 0], 0.022, P, 0.007);
     b.box({ x, y: 1.66, z: gl(1.62) + 0.12, w: 0.08, h: 0.08, d: 0.16, r: 0.01, mat: P });
     b.box({ x, y: 1.68, z: gl(1.62) + 0.035, w: 0.06, h: 0.04, d: 0.005, r: 0.002, mat: 'dark' });
     const hx = s * 0.95;
     b.cyl({ z0: gl(1.1) - 0.13, z1: gl(1.1) - 0.03, r0: 0.07, r1: 0.065, x: hx, y: 1.12, mat: P, seg: 14 });
     b.cyl({ z0: gl(1.1) - 0.136, z1: gl(1.1) - 0.128, r0: 0.06, x: hx, y: 1.12, mat: 'lamp', seg: 14 });
     b.anchor(`headlight${side(s)}`, hx, 1.12, gl(1.1) - 0.14);
-    b.rod({ from: [hx - 0.09, 1.0, gl(1.0) - 0.02], to: [hx - 0.09, 1.24, gl(1.24) - 0.18], r: 0.009, mat: P });
-    b.rod({ from: [hx + 0.09, 1.0, gl(1.0) - 0.02], to: [hx + 0.09, 1.24, gl(1.24) - 0.18], r: 0.009, mat: P });
-    b.latheDir({ profile: torusProfile(0.04, 0.012, 6), at: [s * 0.62, 0.8, -2.28], dir: [1, 0, 0], mat: P, seg: 10 });
-    // Sand shields along the sponsons.
-    b.span({ z0: -1.9, z1: 2.05, y0: 0.84, y1: 0.93, w: 0.01, x: s * 1.125, mat: P, r: 0.003 });
+    wire(b, [[hx - 0.09, 1.0, gl(1.0) - 0.02], [hx - 0.09, 1.24, gl(1.24) - 0.18], [hx + 0.09, 1.24, gl(1.24) - 0.18], [hx + 0.09, 1.0, gl(1.0) - 0.02]], 0.009, P);
+    b.latheDir({ profile: torusProfile(0.035, 0.011, 6), at: [s * 0.88, 1.6, gl(1.58) - 0.012], dir: [1, 0, 0], mat: P, seg: 8 }); // lifting eye
+    // Front fender over the sprocket with a turned-down lip, joined to the sand shield strip.
+    b.span({ z0: -2.44, z1: -2.24, y0: 0.935, y1: 0.95, w: 0.42, x: s * 0.918, mat: P, r: 0.003 });
+    b.quad({ p: [[s * 0.708, 0.948, -2.436], [s * 1.128, 0.948, -2.436], [s * 1.128, 0.86, -2.452], [s * 0.708, 0.86, -2.452]], t: 0.01, mat: P });
+    b.span({ z0: -2.44, z1: 2.05, y0: 0.84, y1: 0.93, w: 0.01, x: s * 1.125, mat: P, r: 0.003 });
+    studs(b, [s * 1.128, 0.885, -2.2], [s * 1.128, 0.885, 1.9], 10, [s, 0, 0], P, 0.009, 0.004);
   }
   b.anchor('driverEye', -0.48, 1.68, gl(1.62) + 0.03);
   {
     const bx = 0.3,
       by = 1.2;
+    b.latheDir({ profile: [[0, 0.025], [0.095, 0.025], [0.13, 0], [0.13, -0.03], [0, -0.03]], at: [bx, by, gl(by)], dir: gn, mat: P, seg: 12 }); // socket
     b.sphere({ x: bx, y: by, z: gl(by), r: 0.1, sz: 0.6, mat: P, seg: 14 });
     b.cyl({ z0: gl(by) - 0.05, z1: gl(by) - 0.22, r0: 0.02, x: bx, y: by, mat: 'blued', seg: 10 });
     b.anchor('bowMgMuzzle', bx, by, gl(by) - 0.22);
   }
-  // Engine deck with grilles, rear plate with the exhaust deflector, stowage box.
-  b.box({ x: 0, y: 1.63, z: 1.4, w: 1.5, h: 0.03, d: 1.2, r: 0.01, mat: 'black' });
-  for (let i = 0; i < 7; i++) b.box({ x: 0, y: 1.65, z: 0.9 + i * 0.17, w: 1.5, h: 0.015, d: 0.04, r: 0.004, mat: P });
+  // Raised rear deck over the two engines (the step behind the turret): the air intake
+  // grille at its front, then the two engine doors, a fuel filler cap at each front corner.
+  b.convex({ points: [-1, 1].flatMap((s) => [[s * 0.975, 1.6, 0.78], [s * 0.975, 1.6, 2.13], [s * 0.958, 1.71, 0.84], [s * 0.958, 1.705, 2.06], [s * 0.968, 1.66, 2.125]]), mat: P });
+  b.box({ x: 0, y: 1.707, z: 1.17, w: 1.5, h: 0.02, d: 0.56, r: 0, mat: 'black' });
+  for (let i = 0; i < 4; i++) b.box({ x: 0, y: 1.722, z: 0.96 + i * 0.14, w: 1.5, h: 0.014, d: 0.045, r: 0, mat: P });
+  for (const s of [-1, 1]) {
+    b.box({ x: s * 0.376, y: 1.716, z: 1.77, w: 0.74, h: 0.02, d: 0.56, r: 0.006, mat: P });
+    for (const z of [1.62, 1.92]) b.cyl({ z0: z - 0.04, z1: z + 0.04, r0: 0.014, x: s * 0.75, y: 1.722, mat: P, seg: 6 });
+    grab(b, [s * 0.12, 1.724, 1.7], [s * 0.12, 1.724, 1.84], [0, 1, 0], 0.024, P, 0.007);
+    b.latheDir({ profile: [[0, 0.028], [0.03, 0.028], [0.046, 0.02], [0.05, 0.006], [0.064, 0.005], [0.064, -0.01], [0, -0.01]], at: [s * 0.86, 1.709, 0.93], dir: [0, 1, 0], mat: P, seg: 10 });
+  }
+  // Pioneer tools: shovel on the left of the roof, axe and crowbar on the right; mattock
+  // handle and sledge on the raised deck.
+  const strap = (x, y, z, w) => b.box({ x, y, z, w, h: 0.045, d: 0.025, r: 0, mat: P });
+  b.rod({ from: [-0.87, 1.642, -0.94], to: [-0.87, 1.642, -0.12], r: 0.016, mat: 'wood', seg: 8 }); // shovel
+  b.box({ x: -0.87, y: 1.642, z: -0.955, w: 0.09, h: 0.026, d: 0.03, r: 0.008, mat: 'wood' });
+  b.rod({ from: [-0.87, 1.642, -0.16], to: [-0.87, 1.636, -0.07], r: 0.02, mat: 'parkerized', seg: 8 });
+  b.box({ x: -0.87, y: 1.631, z: 0.04, w: 0.17, h: 0.012, d: 0.24, r: 0.005, mat: 'parkerized' });
+  for (const z of [-0.8, -0.3]) strap(-0.87, 1.64, z, 0.06);
+  b.box({ x: 0.87, y: 1.634, z: -0.5, w: 0.035, h: 0.022, d: 0.6, r: 0.008, mat: 'wood' }); // axe
+  b.box({ x: 0.895, y: 1.636, z: -0.76, w: 0.13, h: 0.028, d: 0.09, r: 0.006, mat: 'parkerized' });
+  b.rod({ from: [0.945, 1.633, -1.0], to: [0.945, 1.633, 0.2], r: 0.011, mat: 'steel', seg: 6 }); // crowbar
+  for (const z of [-0.6, -0.3]) strap(0.9, 1.636, z, 0.13);
+  strap(0.945, 1.633, 0.1, 0.045);
+  b.rod({ from: [-0.86, 1.732, 1.05], to: [-0.86, 1.732, 1.85], r: 0.02, r1: 0.016, mat: 'wood', seg: 8 }); // mattock handle
+  b.rod({ from: [0.86, 1.73, 1.05], to: [0.86, 1.73, 1.74], r: 0.016, mat: 'wood', seg: 8 }); // sledge
+  b.box({ x: 0.86, y: 1.74, z: 1.78, w: 0.14, h: 0.06, d: 0.07, r: 0.008, mat: 'parkerized' });
+  for (const sx of [-0.86, 0.86]) for (const z of [1.2, 1.6]) strap(sx, 1.727, z, 0.065);
+  // Rear plate: an access plate between the tow lugs, the exhaust deflector, the stowage box
+  // with its lid and latches, tail lights under guards.
+  b.box({ x: 0, y: 0.74, z: 2.122, w: 0.66, h: 0.3, d: 0.016, r: 0.005, mat: P });
+  for (const y of [0.62, 0.86]) studs(b, [-0.3, y, 2.13], [0.3, y, 2.13], 4, [0, 0, 1], P, 0.011, 0.008);
+  for (const s of [-1, 1]) {
+    towLug(b, s * 0.52, 0.7, 2.12, 1, P);
+    tailLight(b, s * 0.86, 1.42, 2.135, P);
+  }
   b.convex({
     points: [
       [-0.8, 0.95, 2.1],
@@ -788,7 +1016,10 @@ export function m5a1_stuart(b) {
     ],
     mat: P,
   });
-  b.box({ x: 0, y: 1.42, z: 2.24, w: 1.4, h: 0.3, d: 0.22, r: 0.02, mat: P }); // stowage box
+  b.box({ x: 0, y: 1.41, z: 2.235, w: 1.4, h: 0.28, d: 0.22, r: 0.015, mat: P }); // stowage box
+  b.box({ x: 0, y: 1.558, z: 2.237, w: 1.42, h: 0.025, d: 0.226, r: 0.006, mat: P });
+  for (const x of [-0.42, 0.42]) b.box({ x, y: 1.52, z: 2.348, w: 0.04, h: 0.075, d: 0.008, r: 0, mat: P });
+  for (const x of [-0.5, 0, 0.5]) b.cylAxis({ axis: 'x', x, y: 1.572, z: 2.13, len: 0.1, r: 0.012, mat: P, seg: 6 });
   for (const s of [-1, 1]) b.anchor(`exhaust${side(s)}`, s * 0.45, 0.98, 2.25);
 
   // ---- Turret ---------------------------------------------------------------------------------
@@ -806,17 +1037,46 @@ export function m5a1_stuart(b) {
     [0, 1.02],
   ]);
   const L3 = (y, sc) => plan.map(([x, dz]) => [x * sc, y, zT + dz * sc]);
-  b.convex({ points: [...L3(1.64, 1), ...L3(2.14, 0.9), ...L3(2.2, 0.86)], mat: P, crease: 0.3 });
+  // The shell follows that plan with its corners eased. The foot of the bustle tucks in to
+  // the ring (sr), so the radio bulge overhangs the deck; the roof edge is rounded.
+  const soft = mirrorHalf([[0, -0.66], [0.44, -0.66], [0.54, -0.62], [0.65, -0.51], [0.69, -0.4], [0.72, -0.1], [0.72, 0.36], [0.7, 0.47], [0.62, 0.78], [0.57, 0.89], [0.47, 0.98], [0.38, 1.003], [0, 1.02]]);
+  const shell = (y, sc, sr = 1) => soft.map(([x, dz]) => [x * sc, y, zT + dz * sc * (dz > 0 ? sr : 1)]);
+  b.convex({ points: [...shell(1.64, 1, 0.62), ...shell(1.8, 0.968), ...shell(2.14, 0.9), ...shell(2.185, 0.885), ...shell(2.2, 0.86)], mat: P, crease: 0.5 });
+  // Roof: the two hatches (rim, door, hinges on the outer edge, handle), each with its
+  // periscope on a round mount ahead of it.
   for (const s of [-1, 1]) {
-    b.box({ x: s * 0.28, y: 2.21, z: zT + 0.2, w: 0.42, h: 0.03, d: 0.5, r: 0.01, mat: P }); // split hatches
+    b.prismY({ points: roundRect(s * 0.28, zT + 0.2, 0.225, 0.265, 0.06), y0: 2.19, y1: 2.212, mat: P, bevel: 0.006 });
+    b.prismY({ points: roundRect(s * 0.28, zT + 0.2, 0.2, 0.24, 0.045), y0: 2.205, y1: 2.23, mat: P, bevel: 0.006 });
+    for (const dz of [0.07, 0.33]) b.cyl({ z0: zT + dz - 0.035, z1: zT + dz + 0.035, r0: 0.014, x: s * 0.492, y: 2.222, mat: P, seg: 6 });
+    grab(b, [s * 0.13, 2.228, zT + 0.26], [s * 0.13, 2.228, zT + 0.36], [0, 1, 0], 0.022, P, 0.007);
+    b.cylAxis({ axis: 'y', x: s * 0.28, y: 2.212, z: zT - 0.14, len: 0.036, r: 0.07, mat: P, seg: 10 });
     b.box({ x: s * 0.28, y: 2.27, z: zT - 0.14, w: 0.08, h: 0.08, d: 0.15, r: 0.01, mat: P });
   }
+  // Radio bulge: the bolted plate across its rear face, the antenna on a bracket at its left
+  // rear corner (kept below the machine gun), a pistol port on the left side.
+  b.box({ x: 0, y: 1.98, z: zT + 0.957, w: 0.7, h: 0.22, d: 0.014, r: 0.004, rx: -0.2, mat: P });
+  for (const [y, dz] of [[1.895, 0.978], [2.065, 0.944]]) studs(b, [-0.31, y, zT + dz], [0.31, y, zT + dz], 5, [0, 0.2, 0.98], P, 0.011, 0.008);
+  b.box({ x: -0.46, y: 2.02, z: zT + 0.98, w: 0.1, h: 0.02, d: 0.14, r: 0, mat: P });
+  b.cylAxis({ axis: 'y', x: -0.47, y: 2.06, z: zT + 1.02, len: 0.06, r: 0.03, mat: P, seg: 8 });
+  b.cylAxis({ axis: 'y', x: -0.47, y: 2.12, z: zT + 1.02, len: 0.06, r: 0.017, mat: 'black', seg: 6 });
+  b.rod({ from: [-0.47, 2.15, zT + 1.02], to: [-0.47, 2.335, zT + 1.02], r: 0.005, r1: 0.003, mat: 'black', seg: 5 });
+  b.cylAxis({ axis: 'x', x: -0.672, y: 1.95, z: zT + 0.3, len: 0.03, r: 0.055, mat: P, seg: 10 });
+  // Spare track on each side of the bulge.
+  for (const s of [-1, 1])
+    b.place({ pos: [s * 0.624, 1.93, zT + 0.6], rot: [0, s * -0.254, 0] }, () =>
+      b.place({ rot: [0, 0, s * 0.14] }, () => b.place({ rot: [Math.PI / 2, 0, s * -Math.PI / 2] }, () => spareLinks(b, { n: 2, w: 0.295, pitch: 0.14, thick: 0.045, mat: P }))),
+    );
   b.at('turret', 'commanderEye', -0.28, 2.45, zT + 0.2);
   // AA .30 cal on its bracket on the turret's right side.
-  b.box({ x: 0.74, y: 1.95, z: zT + 0.35, w: 0.08, h: 0.18, d: 0.12, r: 0.01, mat: P });
   const mg = [0.82, 2.24, zT + 0.35];
-  b.cylAxis({ axis: 'y', x: mg[0], y: 2.08, z: mg[2], len: 0.3, r: 0.022, mat: P, seg: 8 });
+  b.prismZ({ points: [[0.66, 2.02], [0.85, 2.02], [0.85, 1.98], [0.69, 1.8]], z0: mg[2] - 0.012, z1: mg[2] + 0.012, mat: P, bevel: 0.003 }); // gusset
+  b.box({ x: 0.76, y: 2.03, z: mg[2], w: 0.2, h: 0.022, d: 0.1, r: 0.005, mat: P });
+  b.cylAxis({ axis: 'y', x: mg[0], y: 2.07, z: mg[2], len: 0.14, r: 0.032, mat: P, seg: 10 }); // pintle socket
+  b.cylAxis({ axis: 'y', x: mg[0], y: 2.185, z: mg[2], len: 0.1, r: 0.02, mat: P, seg: 8 });
   b.part('pintleMg', mg);
+  b.box({ x: mg[0], y: mg[1] - 0.012, z: mg[2] - 0.02, w: 0.05, h: 0.035, d: 0.16, r: 0, mat: P }); // cradle
+  b.rod({ from: [mg[0], mg[1] + 0.01, mg[2] + 0.22], to: [mg[0], mg[1] - 0.07, mg[2] + 0.27], r: 0.014, mat: 'black', seg: 6 }); // grip
+  b.cyl({ z0: mg[2] - 0.435, z1: mg[2] - 0.46, r0: 0.029, x: mg[0], y: mg[1] + 0.05, mat: 'blued', seg: 10 });
   b.box({ x: mg[0], y: mg[1] + 0.05, z: mg[2] + 0.05, w: 0.07, h: 0.1, d: 0.4, r: 0.008, mat: 'blued' });
   b.cyl({ z0: mg[2] - 0.15, z1: mg[2] - 0.45, r0: 0.024, x: mg[0], y: mg[1] + 0.05, mat: 'blued', seg: 10 });
   b.cyl({ z0: mg[2] - 0.45, z1: mg[2] - 0.6, r0: 0.01, x: mg[0], y: mg[1] + 0.05, mat: 'blued', seg: 8 });
@@ -829,14 +1089,31 @@ export function m5a1_stuart(b) {
   const yG = 1.9,
     zG = zT - 0.5;
   b.part('gun', [0, yG, zG]);
+  // Rotor: a drum across the turret front, its ends rounded off, reaching back into the
+  // turret. On it the gun shield, a plate curved about the trunnions, swelling into a boss
+  // round the barrel; raised rims round the coax and telescope ports.
+  const onArc = (x, r, a) => [x, yG + r * Math.sin(a), zG - r * Math.cos(a)];
   const rot = [];
-  for (let i = 0; i <= 8; i++) {
-    const a = -0.9 + (1.8 * i) / 8;
-    for (const x of [-0.36, 0.36]) rot.push([x, yG + 0.2 * Math.sin(a), zG - 0.2 * Math.cos(a)]);
+  for (const e of [-1, 1]) {
+    for (let i = 0; i <= 8; i++) {
+      const a = -1.2 + (2.4 * i) / 8;
+      rot.push(onArc(e * 0.36, 0.18, a), onArc(e * 0.335, 0.2, a));
+    }
+    rot.push([e * 0.36, yG - 0.13, zG + 0.08], [e * 0.36, yG + 0.13, zG + 0.08]);
   }
   b.convex({ points: rot, mat: P, crease: 0.45 });
   const zS = zG - 0.25;
-  b.box({ x: 0.04, y: yG, z: zS + 0.026, w: 0.5, h: 0.3, d: 0.052, r: 0.02, mat: P }); // gun shield
+  const shield = [];
+  for (const [x, r] of [[-0.228, 0.236], [-0.208, 0.25], [0.288, 0.25], [0.308, 0.236]]) for (let i = 0; i <= 6; i++) shield.push(onArc(x, r, -0.6435 + (1.287 * i) / 6));
+  for (const x of [-0.228, 0.308]) shield.push(onArc(x, 0.19, -0.6435), onArc(x, 0.19, 0.6435));
+  b.convex({ points: shield, mat: P, crease: 0.45 });
+  const boss = [];
+  for (const [u, v] of roundRect(0, yG, 0.092, 0.105, 0.04, 2)) boss.push([u, v, zS + 0.03]);
+  for (const [u, v] of circle(0.078, 10, 0, yG)) boss.push([u, v, zS - 0.02]);
+  for (const [u, v] of circle(0.066, 10, 0, yG)) boss.push([u, v, zS - 0.055]);
+  b.convex({ points: boss, mat: P, crease: 0.6 });
+  b.cyl({ z0: zS + 0.015, z1: zS - 0.01, r0: 0.028, x: 0.15, y: yG, mat: P, seg: 8 });
+  b.cyl({ z0: zS + 0.015, z1: zS - 0.002, r0: 0.034, x: -0.15, y: yG + 0.05, mat: P, seg: 10 });
   b.latheDir({
     profile: [
       [0, -0.02],
