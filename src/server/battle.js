@@ -139,10 +139,10 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   const noop = () => {};
   g.effects = { impact: noop, spawn: noop, muzzle: noop, explosion: noop, bulletHole: noop, flashLight: noop };
   g.hud = { flash: noop, hint: noop, hitMarker: noop, killFeed: noop, damage: noop, setDeploy: noop, root: el() };
-  g.projectiles = new ProjectileSystem({ world: world.collision, atmosphere: world.atmosphere, dynamicRaycast: (...a) => g._raycastDynamic(...a) });
+  g.projectiles = new ProjectileSystem({ world: world.collision, atmosphere: world.atmosphere, dynamicRaycast: (ox, oy, oz, dx, dy, dz, max, p) => g._raycastDynamic(ox, oy, oz, dx, dy, dz, max, p) });
   g.projectiles.onImpact = (p, info) => g._onImpact(p, info);
   g.projectiles.onExpire = (p, why) => g._onExpire(p, why);
-  g.projectiles.onSegment = (p, ...a) => g._botsNearMiss(p, ...a);
+  g.projectiles.onSegment = (p, x0, y0, z0, x1, y1, z1) => g._botsNearMiss(p, x0, y0, z0, x1, y1, z1);
   g.mode = new AssaultMode(g, { attackers, defenders, playerTeam: ATT, perSide, minutes, jeeps: vehicles, bikes: vehicles });
   // The "player" is just one more bot here.
   const ps = new Soldier(g, { faction: attackers, cls: 'infantry', loadout: DEFAULT_LOADOUT[attackers].infantry, team: ATT, name: NAMES[attackers][(perSide - 1) % NAMES[attackers].length], x: 0, z: 0 });

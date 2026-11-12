@@ -36,6 +36,10 @@ import { clamp } from '../core/math.js';
 // Enemy gunfire within this many meters shows which way it came from (the shot marks).
 // The tank each army's crews bring unless they chose another.
 const ARMY_TANK = { US: 'm4a1_sherman', GE: 'panzer4_h', SU: 't34_76' };
+// The squares soldiers and vehicles are sorted into for flying rounds
+// (_nearby), and the longest ray looked up that way (m).
+const DYN_CELL = 32;
+const DYN_REACH = 48;
 const HEAR_RANGE = 300;
 
 // A tank's own shells pass over it for their first 40 m of flight (they leave
@@ -575,9 +579,63 @@ export class Game {
     }
   }
 
+  // Soldiers and vehicles by 32 m square of the map, made afresh in each step
+  // that asks: a flying round (and its near misses) is checked against the
+  // ones in the squares its short hop crosses, not every soldier and vehicle
+  // in the battle for every hop of every round. They are entered with a
+  // metre or two to spare, since some move after it is made.
+  _nearby(x0, z0, x1, z1) {
+    let grid = this._dyn;
+    if (!grid || grid.time !== this.time) {
+      grid = this._dyn ||= { cells: new Map(), soldiers: [], vehicles: [], n: 0, pool: [] };
+      grid.time = this.time;
+      for (const c of grid.cells.values()) {
+        c.s.length = 0;
+        c.v.length = 0;
+        grid.pool.push(c);
+      }
+      grid.cells.clear();
+      const cellAt = (cx, cz) => {
+        const k = (cx + 512) * 2048 + cz + 512;
+        let c = grid.cells.get(k);
+        if (!c) grid.cells.set(k, (c = grid.pool.pop() || { s: [], v: [] }));
+        return c;
+      };
+      const put = (x, z, r, list, item) => {
+        const a0 = Math.floor((x - r) / DYN_CELL),
+          a1 = Math.floor((x + r) / DYN_CELL),
+          b0 = Math.floor((z - r) / DYN_CELL),
+          b1 = Math.floor((z + r) / DYN_CELL);
+        for (let cz = b0; cz <= b1; cz++) for (let cx = a0; cx <= a1; cx++) cellAt(cx, cz)[list].push(item);
+      };
+      for (const s of this.soldiers) put(s.body.x, s.body.z, 3.5, 's', s);
+      for (const v of this.vehicles) put(v.body.position.x, v.body.position.z, (v.radius || 4) + 2, 'v', v);
+    }
+    const S = grid.soldiers,
+      V = grid.vehicles;
+    S.length = 0;
+    V.length = 0;
+    const mark = ++grid.n;
+    const a0 = Math.floor(Math.min(x0, x1) / DYN_CELL),
+      a1 = Math.floor(Math.max(x0, x1) / DYN_CELL),
+      b0 = Math.floor(Math.min(z0, z1) / DYN_CELL),
+      b1 = Math.floor(Math.max(z0, z1) / DYN_CELL);
+    for (let cz = b0; cz <= b1; cz++) {
+      for (let cx = a0; cx <= a1; cx++) {
+        const c = grid.cells.get((cx + 512) * 2048 + cz + 512);
+        if (!c) continue;
+        for (const o of c.s) if (o._near !== mark) (o._near = mark), S.push(o);
+        for (const o of c.v) if (o._near !== mark) (o._near = mark), V.push(o);
+      }
+    }
+    return grid;
+  }
+
   _raycastDynamic(ox, oy, oz, dx, dy, dz, max, p) {
-    let best = this._raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p);
-    for (const v of this.vehicles) {
+    // (A long ray, not a round's hop: against everything.)
+    const near = max <= DYN_REACH ? this._nearby(ox, oz, ox + dx * max, oz + dz * max) : null;
+    let best = this._raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p, near ? near.soldiers : this.soldiers);
+    for (const v of near ? near.vehicles : this.vehicles) {
       if (v === p.ignoreTarget || (v === p.ignoreVehicle && p.distance < OWN_GUN_CLEAR)) continue;
       const hit = v.raycastArmor(ox, oy, oz, dx, dy, dz, best ? best.t : max);
       if (hit && (!best || hit.t < best.t)) best = hit;
@@ -585,9 +643,9 @@ export class Game {
     return best;
   }
 
-  _raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p) {
+  _raycastSoldiers(ox, oy, oz, dx, dy, dz, max, p, among = this.soldiers) {
     let best = null;
-    for (const s of this.soldiers) {
+    for (const s of among) {
       if (s === p.owner || s === p.ignoreTarget) continue;
       // Crews inside tanks are behind armor (hit through the vehicle damage model).
       if (s.vehicle && s.vehicle.def.kind === 'tracked') continue;
@@ -783,7 +841,8 @@ export class Game {
     const mx = (x0 + x1) / 2,
       mz = (z0 + z1) / 2;
     const reach2 = len2 / 4 + 25;
-    for (const s of this.soldiers) {
+    const among = len2 <= DYN_REACH * DYN_REACH ? this._nearby(Math.min(x0, x1) - 5, Math.min(z0, z1) - 5, Math.max(x0, x1) + 5, Math.max(z0, z1) + 5).soldiers : this.soldiers;
+    for (const s of among) {
       if (!s.brain || !s.alive || s === p.owner || (p.owner && s.team === p.owner.team)) continue;
       const b = s.body;
       if ((b.x - mx) ** 2 + (b.z - mz) ** 2 > reach2) continue;

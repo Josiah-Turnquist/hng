@@ -578,7 +578,43 @@ export class Vehicle {
   }
 
   // Gravity + everything else, integrated in sub-steps for the stiff springs.
+  // Parked with nobody aboard, or a wreck, and lying still: nothing is worked
+  // out for it until something disturbs it (a parked jeep or a burnt-out tank
+  // cost as much every step as one being driven, for the whole battle). True
+  // while it rests. It stirs when someone gets in, when it is hit, or when
+  // another vehicle moves close by (looked for four times a second).
+  _resting(dt) {
+    if (!this.asleep) return false;
+    if (this.fire > 0) this._burn(dt);
+    if (!this.alive) this.deadTime += dt;
+    this._napT = (this._napT || 0) - dt;
+    if (this._napT > 0) return true;
+    this._napT = 0.25;
+    if (!this._stirred()) return true;
+    this.stir();
+    return false;
+  }
+
+  stir() {
+    this.asleep = false;
+    this._stillT = 0;
+  }
+
+  _stirred() {
+    if (this.occupants.some(Boolean)) return true;
+    const p = this.body.position;
+    for (const v of this.game.vehicles || []) {
+      if (v === this || v.asleep) continue;
+      const q = v.body.position;
+      const r = 4 + (Math.hypot(v.def.dims[0], v.def.dims[2]) + Math.hypot(this.def.dims[0], this.def.dims[2])) / 2;
+      if ((q.x - p.x) ** 2 + (q.z - p.z) ** 2 < r * r && (Math.abs(v.speed || 0) > 0.3 || v.body.velocity.lengthSq() > 0.1)) return true;
+    }
+    return false;
+  }
+
+  // (False for a step in which it rested.)
   step(dt) {
+    if (this._resting(dt)) return false;
     if (!this.alive) {
       this.deadTime += dt;
       this.input.throttle = 0;
@@ -625,6 +661,18 @@ export class Vehicle {
     }
     this._knock(this.lastImpact, dt);
     for (const o of this.occupants) if (o) this._seatOccupant(o);
+    // Nobody aboard and still for two seconds: it rests (_resting).
+    const b = this.body;
+    const still = b.velocity.lengthSq() < 0.03 * 0.03 && b.angular.lengthSq() < 0.02 * 0.02 && !this.occupants.some(Boolean);
+    this._stillT = still ? (this._stillT || 0) + dt : 0;
+    if (this._stillT > 2) {
+      this.asleep = true;
+      this._napT = 0.25;
+      b.velocity.set(0, 0, 0);
+      b.angular.set(0, 0, 0);
+      this.speed = 0;
+    }
+    return true;
   }
 
   // Hard knocks hurt the vehicle and (in the open, not inside a tank) whoever
@@ -798,9 +846,13 @@ export class Vehicle {
         for (const g of fw.parts) g.visible = !far;
       }
     }
+    // Resting where it was last put: nothing to place (false).
+    if (this.asleep && this._restPlaced) return false;
+    this._restPlaced = !!this.asleep;
     root.quaternion.copy(b.quaternion);
     root.position.copy(this.cg).negate().applyQuaternion(b.quaternion).add(b.position);
     root.updateMatrixWorld(true);
+    return true;
   }
 
   // With no screen (the game server) nothing draws the vehicle, so nothing
@@ -874,6 +926,7 @@ export class Vehicle {
 
   enter(soldier, seat = this.freeSeat()) {
     if (!this.alive || seat < 0 || this.occupants[seat]) return false;
+    this.stir?.();
     this.occupants[seat] = soldier;
     soldier.vehicle = this;
     soldier.seat = seat;
@@ -1252,6 +1305,7 @@ export class Vehicle {
 
   damage(amount, attacker, cause) {
     if (!this.alive || amount <= 0) return;
+    this.stir?.();
     this.hp -= amount;
     if (attacker) this.lastAttacker = attacker;
     if (this.hp <= 0) this.destroy(attacker || this.lastAttacker, cause);

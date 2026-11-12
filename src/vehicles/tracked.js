@@ -467,7 +467,7 @@ export class TrackedVehicle extends Vehicle {
   }
 
   step(dt) {
-    super.step(dt);
+    if (super.step(dt) === false) return false;
     for (let i = 0; i < 2; i++) this.trackDist[i] += this.trackSpeed[i] * dt;
     this._turret(dt);
     this.coax.update(dt);
@@ -684,7 +684,7 @@ export class TrackedVehicle extends Vehicle {
   }
 
   syncModel(dt = 0) {
-    super.syncModel();
+    if (super.syncModel() === false) return;
     const parts = this.model.parts || {};
     if (parts.turret) parts.turret.rotation.y = this.turretYaw;
     if (parts.gun) {

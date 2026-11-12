@@ -248,7 +248,7 @@ export class WheeledVehicle extends Vehicle {
   }
 
   syncModel(dt = 0) {
-    super.syncModel();
+    if (super.syncModel() === false) return;
     for (const w of this.wheels) {
       if (!w.part) continue;
       w.angle += w.spin * dt;
