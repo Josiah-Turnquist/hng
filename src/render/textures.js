@@ -257,6 +257,45 @@ export class TextureLibrary {
     this.scene = new THREE.Scene();
     this.scene.add(this.quad);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    // Copies one texture into a target of another size (see _halved).
+    this.copyMat = new THREE.ShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: 'uniform sampler2D tSrc;\nvarying vec2 vUv;\nvoid main() { gl_FragColor = texture2D(tSrc, vUv); }',
+      uniforms: { tSrc: { value: null } },
+      depthTest: false,
+      depthWrite: false,
+    });
+  }
+
+  // The size a map of occlusion, roughness and metal is kept at beside color
+  // and normal maps of `size`: half. These maps hold broad, soft variation
+  // (how dull or bright a surface is, where dirt sits in its hollows), and at
+  // full size they were a third of all the texture memory. See _halved.
+  ormSize(size) {
+    return Math.max(32, size >> 1);
+  }
+
+  // Draw at full size (draw(target) does the drawing), then keep the result at
+  // half size in dst: each kept texel is the average of the four it stands
+  // for, which is exactly the full-size map's next smaller level of detail.
+  // So from any distance where the graphics card would have used that level
+  // or a smaller one, nothing changes at all; nearer than that, these maps
+  // are a little softer. (Not drawn at half size directly: that would skip
+  // three texels in four, and fine patterns would crawl.)
+  _halved(dst, w, h, draw) {
+    const full = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, colorSpace: THREE.NoColorSpace });
+    draw(full);
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    const was = this.quad.material;
+    this.copyMat.uniforms.tSrc.value = full.texture;
+    this.quad.material = this.copyMat;
+    r.setRenderTarget(dst);
+    r.render(this.scene, this.camera);
+    r.setRenderTarget(prev);
+    this.quad.material = was;
+    this.copyMat.uniforms.tSrc.value = null;
+    full.dispose();
   }
 
   _material(name) {
@@ -324,6 +363,13 @@ export class TextureLibrary {
     r.setRenderTarget(prev);
   }
 
+  // How many meters one tile of a preset covers (known without painting it).
+  worldOf(name) {
+    const preset = PRESETS[name];
+    if (!preset) throw new Error(`Unknown texture preset ${name}`);
+    return preset.world;
+  }
+
   // Returns { map, normalMap, ormMap, repeat } for a preset name. Cached.
   get(name, size = this.size) {
     const key = `${name}@${size}`;
@@ -332,12 +378,17 @@ export class TextureLibrary {
     if (!preset) throw new Error(`Unknown texture preset ${name}`);
     const map = this._target(size, true);
     const normal = this._target(size, false);
-    const orm = this._target(size, false);
+    const orm = this._target(this.ormSize(size), false);
     const bake = () => {
-      const u = this._setup(preset, size);
-      [map, normal, orm].forEach((t, mode) => {
+      let u = this._setup(preset, size);
+      [map, normal].forEach((t, mode) => {
         u.uMode.value = mode;
         this._render(t);
+      });
+      this._halved(orm, size, size, (full) => {
+        u = this._setup(preset, size);
+        u.uMode.value = 2;
+        this._render(full);
       });
     };
     bake();
@@ -459,8 +510,8 @@ export class TextureLibrary {
       scene.add(q);
       mats.push(m);
     });
-    const mk = (srgb) =>
-      new THREE.WebGLRenderTarget(w, h, {
+    const mk = (srgb, tw = w, th = h) =>
+      new THREE.WebGLRenderTarget(tw, th, {
         depthBuffer: false,
         generateMipmaps: true,
         minFilter: THREE.LinearMipmapLinearFilter,
@@ -470,19 +521,24 @@ export class TextureLibrary {
         colorSpace: srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace,
         anisotropy: this.anisotropy,
       });
-    const targets = [mk(true), normals ? mk(false) : null, orm ? mk(false) : null];
+    // (The map of occlusion, roughness and metal at half size: ormSize.)
+    const targets = [mk(true), normals ? mk(false) : null, orm ? mk(false, this.ormSize(w), this.ormSize(h)) : null];
     const r = this.renderer;
     const bake = () => {
       const prev = r.getRenderTarget();
       const prevColor = r.getClearColor(new THREE.Color());
       const prevAlpha = r.getClearAlpha();
       r.setClearColor(0x000000, 0);
-      targets.forEach((t, mode) => {
-        if (!t) return;
+      const draw = (t, mode) => {
         for (const m of mats) m.uniforms.uMode.value = mode;
         r.setRenderTarget(t);
         r.clear();
         r.render(scene, this.camera);
+      };
+      targets.forEach((t, mode) => {
+        if (!t) return;
+        if (mode === 2) this._halved(t, w, h, (full) => draw(full, mode));
+        else draw(t, mode);
       });
       r.setRenderTarget(prev);
       r.setClearColor(prevColor, prevAlpha);
@@ -522,5 +578,6 @@ export class TextureLibrary {
     this.disposed = true;
     for (const set of this.cache.values()) for (const t of set.targets) t.dispose();
     for (const m of this.programs.values()) m.dispose();
+    this.copyMat.dispose();
   }
 }

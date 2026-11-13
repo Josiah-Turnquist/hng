@@ -376,6 +376,8 @@ export class GunBuilder {
         const merged = mergeGeometries(clean, false);
         merged.translate(-part.pivot.x, -part.pivot.y, -part.pivot.z);
         merged.computeBoundingSphere();
+        // (A finish not seen yet in this battle is painted now: materials.js.)
+        mat.paintNow?.();
         const mesh = new THREE.Mesh(merged, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;

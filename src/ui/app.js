@@ -9,6 +9,7 @@ import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
 import { serverConfig } from '../net/auth.js';
+import { startUpdateNotice } from './updateNotice.js';
 import { PROTOCOL_VERSION } from '../net/protocol.js';
 import { connect, OnlineBattle } from '../net/online.js';
 import { syncProgress, saveNow, takeServerCopy } from '../net/progress.js';
@@ -64,7 +65,7 @@ export class App {
       depth: true,
       preserveDrawingBuffer: this.params.has('capture'),
     });
-    renderer.setPixelRatio(this._pixelRatio(q));
+    renderer.setPixelRatio(this._canvasRatio(q));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -105,6 +106,8 @@ export class App {
       // An older copy of the game than the server's: the new one, at once.
       const cfg = await serverConfig().catch(() => null);
       if (cfg?.protocol && cfg.protocol !== PROTOCOL_VERSION && this._reloadForUpdate()) return;
+      // (And a tab left open while a new version goes up is told so: ui/updateNotice.js.)
+      if (cfg?.online) this.updates ??= startUpdateNotice();
       this.account ??= await signInScreen(this.root);
       // Signed in: his soldiers and war from the server (and kept there from now on).
       if (this.account && !this.progressSynced) {
@@ -150,7 +153,7 @@ export class App {
         }
       }
       // The quality may have changed in the menu.
-      renderer.setPixelRatio(this._pixelRatio(this.settings.quality));
+      renderer.setPixelRatio(this._canvasRatio(this.settings.quality));
       this.audio?.resume();
     }
 
@@ -215,9 +218,23 @@ export class App {
     setTimeout(() => this.loading.el.remove(), 800);
   }
 
-  // Sharpest pixel ratio the quality allows on this screen.
+  // How finely the 3D picture is worked out on this screen: as fine as the
+  // quality allows (the costly part: every pixel of it is lit and shaded).
   _pixelRatio(q) {
     return Math.min(window.devicePixelRatio || 1, q.maxPixelRatio || 1);
+  }
+
+  // How fine the canvas itself is: as fine as the screen, up to twice and up
+  // to six million pixels (never coarser than the 3D picture). Where that is
+  // finer than the 3D picture, the game's last pass scales the picture up to
+  // it and sharpens it (render/pipeline.js): one cheap pass. The canvas used
+  // to be as coarse as the 3D picture and the browser stretched it, which on
+  // a screen with fine pixels left Low and Medium looking soft beside the
+  // crisp words on screen.
+  _canvasRatio(q) {
+    const dpr = window.devicePixelRatio || 1;
+    const room = Math.sqrt(6e6 / Math.max(1, window.innerWidth * window.innerHeight));
+    return Math.max(this._pixelRatio(q), Math.min(dpr, 2, room));
   }
 
   // Apply the current graphics settings to the running battle. Texture detail waits
@@ -228,7 +245,7 @@ export class App {
     if (!g?.pipeline) return;
     const q = this.settings.quality;
     g.quality = q;
-    this.renderer.setPixelRatio(this._pixelRatio(q));
+    this.renderer.setPixelRatio(this._canvasRatio(q));
     if (g.camera.far !== q.viewDistance) {
       g.camera.far = q.viewDistance;
       g.camera.updateProjectionMatrix();
@@ -266,8 +283,10 @@ export class App {
   _resize() {
     const w = window.innerWidth,
       h = window.innerHeight;
+    const q = this.settings.quality;
+    this.renderer.setPixelRatio(this._canvasRatio(q));
     this.renderer.setSize(w, h, false);
-    this.game?.resize(w, h, this.renderer.getPixelRatio());
+    this.game?.resize(w, h, this._pixelRatio(q));
   }
 
   // The loading screen, as in the original game: the kind of battle, the

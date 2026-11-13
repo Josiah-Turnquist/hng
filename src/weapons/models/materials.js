@@ -431,18 +431,26 @@ const LOW = {
 export function makeGunMaterials(textures, { size = 512, firstPerson = false } = {}) {
   const fp = firstPerson;
   const Coat = fp ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
+  // A finish's textures are painted when the first gun to be drawn in it is
+  // built (kit.js calls paintNow as it makes the mesh), not here: there are
+  // some thirty finishes for the guns of three armies, 4 MB each, and a
+  // battle shows a handful of them. (Should a mesh ever reach the screen in
+  // an unpainted finish by another road, it is painted as it is first drawn.)
   const std = (preset, extra = {}, Mat = THREE.MeshStandardMaterial) => {
-    const t = textures.get(preset, size);
-    const m = new Mat({
-      map: t.map,
-      normalMap: t.normalMap,
-      roughnessMap: t.ormMap,
-      metalnessMap: t.ormMap,
-      roughness: 1,
-      metalness: 1,
-      ...extra,
-    });
-    m.userData.texWorld = t.world;
+    const m = new Mat({ roughness: 1, metalness: 1, ...extra });
+    // (A stand-in library in the tests and on the server has only get.)
+    m.userData.texWorld = textures.worldOf ? textures.worldOf(preset) : textures.get(preset, size).world;
+    m.paintNow = () => {
+      m.paintNow = null;
+      m.onBeforeRender = () => {};
+      const t = textures.get(preset, size);
+      m.map = t.map;
+      m.normalMap = t.normalMap;
+      m.roughnessMap = t.ormMap;
+      m.metalnessMap = t.ormMap;
+      m.needsUpdate = true;
+    };
+    m.onBeforeRender = () => m.paintNow?.();
     return m;
   };
   const oil = fp ? { clearcoat: 0.1, clearcoatRoughness: 0.3 } : {};

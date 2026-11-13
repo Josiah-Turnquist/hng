@@ -65,6 +65,21 @@ Vehicles answer the same ray query with their armor plates (oriented boxes from 
 
 Rough cost of each feature at 1920 x 1080 on a mid-range card: shadows are the biggest (each shadow map redraws the scene from the sun; all but the nearest map are redrawn every other frame, taking turns; the village and each vehicle cast through merged shadow-only meshes, so a shadow map costs a draw per village chunk and per vehicle part, not one per material), then 4x MSAA (memory and bandwidth), contact shadows (two half-resolution passes), TAA (one full pass and a copy), focus when aiming (one pass, only while aiming), motion blur (one pass), sun rays (two quarter-resolution passes), bloom (ten small passes), eye adaptation (two tiny passes). Each flash light (Effects: Medium 2, High 4) adds a little to every lit pixel. Knee-high meadow grass is many layers of see-through cards, and the nearest 7,000 clumps are also drawn into the sharpest shadow map: on a slower card, Grass density and Grass distance are the next settings to lower after shadows.
 
+### How sharp the picture is
+
+Two sizes are kept apart. The canvas is as fine as the screen (`App._canvasRatio`: the screen's own pixel ratio, up to 2 and up to six million pixels). The 3D picture inside the pipeline is as fine as the graphics level allows (`App._pixelRatio`, `maxPixelRatio` and `renderScale` in the presets): that is the costly part, since every pixel of it is lit and shaded. Where the canvas is finer than the 3D picture, the pipeline's last pass scales the picture up to it and sharpens it as it goes (after FXAA on Low and Medium). The canvas used to be as coarse as the 3D picture and the browser stretched it, which on a screen with fine pixels left Low and Medium soft beside the crisp words on screen. The number of 3D pixels at each level is unchanged; the extra cost is that one last pass over the finer canvas.
+
+### Texture memory
+
+Measured on the graphics card (every texture, by exact size): 885 MB at High before the two changes below.
+
+- A set of painted textures is a color map, a normal map and a map of occlusion, roughness and metal (`TextureLibrary.get`, `atlas`). The third is kept at half size: it is painted at full size and averaged down two by two (`_halved`), so what is kept is exactly the full-size map's next smaller level of detail. From any distance where the card would have used that level or a smaller one, nothing changes; nearer than that these maps are a little softer. Color and normal maps are untouched.
+- A gun finish's textures are painted when the first gun to be drawn in it is built (`makeGunMaterials`, `paintNow`, called from `kit.js` as the mesh is made), not when the materials are made. There are about thirty finishes for three armies' guns at 4 MB each; a battle shows a handful. A far gun (one flat material) paints nothing (tests/gunFinishes.test.js).
+
+## A new version while the page is open
+
+A tab left open across an update goes on running the old game. `ui/updateNotice.js` asks the server which version it serves (`/api/config`, the commit it was built from) every five minutes and whenever the tab is looked at again, and when that is no longer the version the page was loaded from it shows a small bar with a Reload button. The bar shows only while the mouse is free (menus, pause, the deploy screen), never over the fighting. A copy run from a folder, and a server that does not answer, never count as a new version (tests/updateNotice.test.js). This is beside the older check at the start of a battle, which reloads at once when the messages between browser and server have changed (`PROTOCOL_VERSION`).
+
 ## Smoke, dust and grass up close
 
 Smoke and dust puffs (`render/effects.js`, the kinds marked `wisp`) are drawn with a lumpy outline, thick in the middle, in strands that curl and come apart as the puff ages; each puff's age goes to the graphics card with it. Solid bits (clods, chips, drops) keep the plain rough-edged spot. A gun makes a fifth fewer puffs than it did and each covers about a quarter less over its life: the numbers were set by measuring what a puff covers, old drawing against new, since a burst of fire used to hide everything in front of the gun. Puffs take three quarters of the sun, as they cannot tell whether they hang in shade.

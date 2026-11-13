@@ -860,7 +860,8 @@ canvas.game {
 .fe .fr button.gold,
 .fe .fr-add button,
 .fe .fr-say button,
-.fe .wr-bbtn button[data-act='join'] {
+.fe .wr-bbtn button[data-act='join'],
+.upd .upd-go {
   border: 0;
   background: linear-gradient(180deg, #ecbb56, #c99332);
   color: #1b160c;
@@ -1448,3 +1449,27 @@ button.ps-row:hover { background: rgba(226, 172, 70, 0.08); }
 .hc-say[hidden] { display: none; }
 .hc-say span { font: 600 13px var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber); white-space: nowrap; }
 .hc-say input { flex: 1; min-width: 0; font: inherit; color: #f0ead9; background: none; border: 0; outline: none; }
+
+/* A new version of the game is out (ui/updateNotice.js): a small bar just
+   under the top bar of the menus, with the gold button to load it. */
+.upd {
+  position: fixed;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 16px;
+  background: rgba(18, 19, 15, 0.94);
+  border: 1px solid rgba(236, 187, 86, 0.55);
+  color: var(--ink);
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.upd[hidden] { display: none; }
+.upd .upd-go { padding: 7px 16px; font-size: 15px; cursor: pointer; }
+.upd .upd-later { padding: 7px 8px; border: 0; background: none; color: var(--ink-dim); font: inherit; font-size: 13px; cursor: pointer; }
+.upd .upd-later:hover { color: var(--ink); }

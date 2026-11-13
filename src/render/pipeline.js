@@ -58,6 +58,7 @@ for (let i = 1; i <= 8; i++) {
 }
 
 const BLOOM_LEVELS = 5;
+const _size = new THREE.Vector2();
 // Sunlight on flat ground (brightness times the sun's height) that the exposure was
 // tuned for: a sun about 30 degrees up.
 const DAYLIGHT_REF = 2.2;
@@ -270,6 +271,8 @@ export class Pipeline {
     want(q.depthOfField, 'vmRT', () => hdrTarget(1, 1, { depthTexture: true }));
     want(q.bloom, 'bloomRTs', () => Array.from({ length: BLOOM_LEVELS * 2 }, () => hdrTarget(1, 1)));
     want(q.lightShafts, 'shaftRTs', () => [hdrTarget(1, 1), hdrTarget(1, 1)]);
+    // (FXAA's result, when it is then sharpened up to a bigger canvas.)
+    want(q.fxaa, 'ldrB', () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.UnsignedByteType, depthBuffer: false }));
     if (this.aoMat.defines.AO_SAMPLES !== (q.aoQuality === 'high' ? 16 : 8)) {
       this.aoMat.defines.AO_SAMPLES = q.aoQuality === 'high' ? 16 : 8;
       this.aoMat.needsUpdate = true;
@@ -293,6 +296,7 @@ export class Pipeline {
     this.sceneRT.setSize(rw, rh);
     this.hdrRT.setSize(rw, rh);
     this.ldrRT.setSize(rw, rh);
+    this.ldrB?.setSize(rw, rh);
     this.hdrB?.setSize(rw, rh);
     this.vmRT?.setSize(rw, rh);
     this.taaRTs?.forEach((t) => t.setSize(rw, rh));
@@ -489,11 +493,25 @@ export class Pipeline {
     const sl = SHARED_UNIFORMS.uSunLight.value;
     const day = (0.2126 * sl.r + 0.7152 * sl.g + 0.0722 * sl.b) * Math.max(0.05, SHARED_UNIFORMS.uSunDir.value.y);
     g.uExposure.value = this.exposure * Math.min(1.5, Math.max(1, Math.pow(DAYLIGHT_REF / Math.max(day, 1e-3), 0.35)));
-    const sharpen = q.taa ? 0.45 : this.scale < 0.99 ? 0.35 : q.msaa ? 0.15 : 0;
+    // The canvas can have more pixels than the picture drawn here: a screen
+    // with fine pixels shows the canvas at its own sharpness (ui/app.js), while
+    // the graphics level decides how many of them the 3D picture is worked out
+    // for. The last pass then scales the picture up itself, sharpening as it
+    // goes, where the browser used to stretch it and leave it soft.
+    const canvas = r.getDrawingBufferSize(_size);
+    const up = canvas.x / this.rw;
+    // (As strong as it was at the Low level's three quarters scale, and stronger the further it is stretched.)
+    const sharpen = up > 1.05 ? Math.min(0.7, 0.35 + Math.max(0, up - 1.34) * 0.35) : q.taa ? 0.45 : q.msaa ? 0.15 : 0;
     if (q.fxaa) {
       this._pass(this.grade, this.ldrRT);
       this.fxaa.uniforms.tDiffuse.value = this.ldrRT.texture;
-      this._pass(this.fxaa, null);
+      if (up > 1.05 && this.ldrB) {
+        this._pass(this.fxaa, this.ldrB);
+        this.sharpenMat.uniforms.tColor.value = this.ldrB.texture;
+        this.sharpenMat.uniforms.uSharpness.value = sharpen;
+        this._pass(this.sharpenMat, null);
+        this.sharpenMat.uniforms.tColor.value = this.ldrRT.texture;
+      } else this._pass(this.fxaa, null);
     } else if (sharpen > 0) {
       this._pass(this.grade, this.ldrRT);
       this.sharpenMat.uniforms.uSharpness.value = sharpen;
@@ -595,7 +613,7 @@ export class Pipeline {
   }
 
   dispose() {
-    for (const k of ['sceneRT', 'hdrRT', 'ldrRT', 'hdrB', 'vmRT', 'lumRT']) {
+    for (const k of ['sceneRT', 'hdrRT', 'ldrRT', 'ldrB', 'hdrB', 'vmRT', 'lumRT']) {
       this[k]?.dispose();
       this[k]?.depthTexture?.dispose();
     }
