@@ -290,6 +290,9 @@ export class GroundCover {
       this.count = 0;
       this.geo.instanceCount = 0;
       this.mesh.visible = false;
+      // (So the grass is laid again when the camera comes back down, even to
+      // the very spot it left.)
+      this.trigger.reset();
       return;
     }
     const need = [];

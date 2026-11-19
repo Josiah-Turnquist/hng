@@ -35,7 +35,8 @@ export function signInChecker({ jwksUrl = process.env.NEON_AUTH_JWKS_URL?.trim()
     if (hello?.token && keys) {
       const { payload } = await jwtVerify(String(hello.token), keys, { issuer, algorithms: ['EdDSA', 'ES256', 'RS256'] });
       if (!payload.sub) throw new Error('No user in the sign-in');
-      const name = cleanName(payload.name) || cleanName(String(payload.email || '').split('@')[0]) || 'Soldier';
+      // (Never part of his email: other players see his name.)
+      const name = cleanName(payload.name) || `Soldier ${numberOf(String(payload.sub))}`;
       return { id: String(payload.sub), name, email: String(payload.email || '').toLowerCase() || null, ...(typeof payload.role === 'string' ? { role: payload.role } : {}) };
     }
     if (allowDevNames && hello?.dev) {
@@ -98,6 +99,13 @@ function signInKeys(urls, { log, tries }) {
 
 // A name to show other players: letters, numbers, spaces and a little
 // punctuation, up to 24 characters.
+// A short number that is always the same for the same player (100 to 999).
+function numberOf(id) {
+  let n = 0;
+  for (const c of id) n = (n * 31 + c.codePointAt(0)) % 900;
+  return 100 + n;
+}
+
 export function cleanName(s) {
   return String(s ?? '')
     .replace(/[^\p{L}\p{N} ._'-]/gu, '')

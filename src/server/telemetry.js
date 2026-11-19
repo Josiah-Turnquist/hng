@@ -82,6 +82,8 @@ export class Telemetry {
   }
 }
 
+const COUNTED = new Set(['seconds', 'kills', 'deaths', 'captures', 'fps', 'low', 'minutes', 'step', 'worstStep', 'worstLag', 'lost', 'players', 'perSide', 'won', 'early']);
+
 // What may be kept of the data: a flat object of short strings, numbers and
 // true/false (anything else is left out).
 function tidy(data) {
@@ -91,7 +93,9 @@ function tidy(data) {
     const key = String(k).slice(0, 24);
     if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.round(v * 100) / 100;
     else if (typeof v === 'boolean') out[key] = v;
-    else if (typeof v === 'string') out[key] = v.slice(0, 300);
+    // (What the stats add up must be a number, and a yes or no just that: a
+    // word in its place is left out.)
+    else if (typeof v === 'string' && !COUNTED.has(key)) out[key] = v.slice(0, 300);
   }
   return out;
 }

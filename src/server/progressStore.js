@@ -191,23 +191,27 @@ export function openProgressStore(url, { log = console.log } = {}) {
       const d = Math.max(1, Math.min(KEEP_DAYS, Math.floor(days) || 7));
       const since = `now() - interval '${d} days'`;
       const q = async (sql) => (await pool.query(sql)).rows;
+      // (Read so that one odd value, a word where a number belongs, counts as
+      // nothing rather than failing the whole page: some of this comes from browsers.)
+      const num = (k) => `(CASE WHEN jsonb_typeof(data->'${k}') = 'number' THEN (data->>'${k}')::numeric END)`;
+      const yes = (k) => `(data->'${k}' = 'true'::jsonb)`;
       const [daily, battles, sides, perf, errors, sessions, server] = await Promise.all([
         q(`SELECT to_char(date_trunc('day', at), 'YYYY-MM-DD') AS day, count(DISTINCT user_id) AS players, count(*) FILTER (WHERE kind = 'battle') AS battles
            FROM events WHERE at > ${since} GROUP BY 1 ORDER BY 1`),
-        q(`SELECT count(*) AS battles, count(DISTINCT user_id) AS players, round(avg((data->>'seconds')::numeric) / 60, 1) AS minutes,
-             round(avg((data->>'kills')::numeric), 1) AS kills, round(avg((data->>'deaths')::numeric), 1) AS deaths,
-             count(*) FILTER (WHERE (data->>'won')::boolean) AS won, count(*) FILTER (WHERE (data->>'early')::boolean) AS left_early
+        q(`SELECT count(*) AS battles, count(DISTINCT user_id) AS players, round(avg(${num('seconds')}) / 60, 1) AS minutes,
+             round(avg(${num('kills')}), 1) AS kills, round(avg(${num('deaths')}), 1) AS deaths,
+             count(*) FILTER (WHERE ${yes('won')}) AS won, count(*) FILTER (WHERE ${yes('early')}) AS left_early
            FROM events WHERE kind = 'battle' AND at > ${since}`),
         q(`SELECT data->>'army' AS army, data->>'cls' AS cls, count(*) AS battles FROM events WHERE kind = 'battle' AND at > ${since} GROUP BY 1, 2 ORDER BY 3 DESC`),
-        q(`SELECT data->>'quality' AS quality, count(*) AS samples, round(avg((data->>'fps')::numeric)) AS fps, round(avg((data->>'low')::numeric)) AS low
+        q(`SELECT data->>'quality' AS quality, count(*) AS samples, round(avg(${num('fps')})) AS fps, round(avg(${num('low')})) AS low
            FROM events WHERE kind = 'perf' AND at > ${since} GROUP BY 1 ORDER BY 2 DESC`),
         q(`SELECT data->>'message' AS message, max(data->>'where') AS place, count(*) AS times, count(DISTINCT user_id) AS players, max(at) AS last
            FROM events WHERE kind = 'error' AND at > ${since} GROUP BY 1 ORDER BY 3 DESC LIMIT 15`),
-        q(`SELECT count(*) AS sessions, count(DISTINCT user_id) AS players, round(avg((data->>'minutes')::numeric), 1) AS minutes
+        q(`SELECT count(*) AS sessions, count(DISTINCT user_id) AS players, round(avg(${num('minutes')}), 1) AS minutes
            FROM events WHERE kind = 'session' AND at > ${since}`),
-        q(`SELECT to_char(date_trunc('day', at), 'YYYY-MM-DD') AS day, count(*) AS minutes, round(avg((data->>'step')::numeric), 1) AS step,
-             max((data->>'worstStep')::numeric) AS worst_step, max((data->>'worstLag')::numeric) AS worst_lag,
-             round(sum((data->>'lost')::numeric) / 1000, 1) AS lost
+        q(`SELECT to_char(date_trunc('day', at), 'YYYY-MM-DD') AS day, count(*) AS minutes, round(avg(${num('step')}), 1) AS step,
+             max(${num('worstStep')}) AS worst_step, max(${num('worstLag')}) AS worst_lag,
+             round(sum(${num('lost')}) / 1000, 1) AS lost
            FROM events WHERE kind = 'server' AND at > ${since} GROUP BY 1 ORDER BY 1`),
       ]);
       return { days: d, daily, battles: battles[0], sides, perf, errors, sessions: sessions[0], server };

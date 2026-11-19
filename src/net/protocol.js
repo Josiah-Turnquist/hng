@@ -66,14 +66,17 @@ function gunLine(g) {
   return Math.hypot(a[0], a[1]) <= 0.3 && Math.hypot(a[2], a[3], a[4]) <= 1.6 ? a : null;
 }
 
+// A number from a message, or 0 (never "not a number", nor endless).
+const finite = (n) => (Number.isFinite(n) ? n : 0);
+
 export function decodeInput(m) {
   if (!m || m.k !== 'i' || !Array.isArray(m.h) || !Array.isArray(m.p) || !Array.isArray(m.l)) return null;
   const name = (n) => (Number.isInteger(n) ? ACTION_LIST[n] : undefined);
   return {
-    seq: Number(m.q) || 0,
+    seq: finite(Number(m.q)),
     held: new Set(m.h.map(name).filter(Boolean)),
     pressed: new Set(m.p.map(name).filter(Boolean)),
-    look: [Number(m.l[0]) / 10000 || 0, Math.max(-1.6, Math.min(1.6, Number(m.l[1]) / 10000 || 0))],
+    look: [finite(Number(m.l[0]) / 10000), Math.max(-1.6, Math.min(1.6, finite(Number(m.l[1]) / 10000)))],
     wheel: Math.max(-5, Math.min(5, Number(m.w) || 0)),
     deploy: typeof m.d === 'string' && m.d.length <= 8 ? m.d : null,
     range: Number.isFinite(m.r) ? Math.max(0, Math.min(5000, m.r)) : null,

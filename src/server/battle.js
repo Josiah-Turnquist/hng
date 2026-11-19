@@ -202,8 +202,10 @@ export function addPlayer(g, { faction = 'US', cls = 'infantry', loadout = null,
   // (Not the battle's own stand-in "player": he always comes back.)
   const bots = g.soldiers.filter((b) => b.team === team && b.brain && !b.remote && !b.retire && b !== g.player.soldier);
   const bot = bots.find((b) => !b.alive && !b.tankCrew) || bots.find((b) => !b.tankCrew) || bots[0];
-  if (bot) bot.retire = true;
+  // (The bot is told to go only once the player's soldier is made: a join
+  // that fails costs his side nobody.)
   const s = new Soldier(g, { faction, cls, loadout: loadout || DEFAULT_LOADOUT[faction][cls], team, name, x: 0, z: 0 });
+  if (bot) bot.retire = true;
   s.remote = true;
   s.tankId = tank;
   s.tally = new RibbonTally();

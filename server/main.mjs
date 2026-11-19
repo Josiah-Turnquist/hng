@@ -71,7 +71,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, authOrigin = NEON_AUTH_ORIGIN, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10, threads = process.env.BATTLE_THREADS !== '0' } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, authOrigin = NEON_AUTH_ORIGIN, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10, beatEvery = 30000, threads = process.env.BATTLE_THREADS !== '0' } = {}) {
   // Each battle in its own thread, a processor core to itself (roomProxy.js);
   // threads: false keeps them in this one (tests that look inside a battle).
   const Room = threads ? RoomProxy : BattleRoom;
@@ -87,6 +87,9 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   const telemetry = new Telemetry({ store, log });
   const telemetryRoute = telemetry.handler({ check });
   const opening = new Map(); // 'GE-US' -> the battle being made
+  let warOpening = 0; // war battles being made
+  const inPlay = new Map(); // user id -> { ws, room, soldierId }: the connection he plays over
+  const missed = new Map(); // user id -> his battle's result, not yet seen (his connection was down)
 
   // The game's files, read once and kept, each also squeezed (gzip): the page
   // loads hundreds of small code files, so this makes it much quicker.
@@ -117,7 +120,13 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         log(`rewards not saved for ${name}: ${e.message}`);
       }
     }
-    if (client.readyState === 1) client.send(JSON.stringify(out ? { k: 'g', ...out } : { k: 'g', result: null }));
+    const text = JSON.stringify(out ? { k: 'g', ...out } : { k: 'g', result: null });
+    if (client?.readyState === 1) client.send(text);
+    // (His connection is down: kept a few minutes, for when he gets back in.)
+    else if (userId) {
+      missed.set(userId, text);
+      setTimeout(() => missed.get(userId) === text && missed.delete(userId), 5 * 60000).unref?.();
+    }
   }
 
   // The battle a player of this army joins: a running one his army fights in,
@@ -131,7 +140,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     const open = [...rooms].filter((r) => !r.closed && !r.isOver && r.sideOf(army) !== null && r.playersOn(r.sideOf(army)) < r.opts.perSide);
     if (open.length) return open.sort((a, b) => b.players.size - a.players.size)[0];
     for (const [key, p] of opening) if (key.split('-').includes(army)) return p;
-    if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
+    if (rooms.size + opening.size + warOpening >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
     const defenders = army === 'GE' ? 'US' : 'GE';
     const key = `${army}-${defenders}`;
     const p = (async () => {
@@ -166,7 +175,10 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         return r;
       }
     }
-    if (rooms.size + opening.size >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
+    if (rooms.size + opening.size + warOpening >= maxBattles) throw new Error('Every battle is full right now. Try again in a few minutes.');
+    warOpening++;
+    let made = false;
+    const built = () => made || ((made = true), warOpening--);
     const p = (async () => {
       const r = new Room({ perSide: battleSize || MAPS.town.onlineSize || 24, difficulty: process.env.BOT_DIFFICULTY || 'easy', attackers: b.att, defenders: b.def, war: { number, id, point: MAP.name(b.point) }, send: (ws, text) => ws.readyState === 1 && ws.send(text) });
       await r.ready;
@@ -185,12 +197,13 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         log(`war battle closed: ${r.opts.war.point}`);
       };
       rooms.add(r);
+      built();
       war.opened(number, id, r);
       log(`war battle opened: ${b.att} against ${b.def} at ${r.opts.war.point} (${rooms.size} running)`);
       return r;
     })();
     warRooms.set(id, p);
-    p.catch(() => warRooms.get(id) === p && warRooms.delete(id));
+    p.catch(() => (built(), warRooms.get(id) === p && warRooms.delete(id)));
     return p;
   }
 
@@ -229,8 +242,11 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       if (gz) headers['Content-Encoding'] = 'gzip';
       res.writeHead(200, headers);
       res.end(gz ? f.gz : f.raw);
-    } catch {
-      res.writeHead(500).end('Server error');
+    } catch (e) {
+      // (An answer already begun can't be begun again: it is cut short.)
+      log(`${req.method} ${String(req.url).slice(0, 80)}: ${e?.message || e}`);
+      if (!res.headersSent) res.writeHead(500).end('Server error');
+      else res.destroy();
     }
   });
 
@@ -247,19 +263,23 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
   // A page that has gone without closing (a laptop shut, the line cut) is
   // dropped within a minute, so its visit ends when it really did: each is
   // pinged every half minute and must have answered the ping before.
+  // (A battle's connections too: a player whose line went dead without a
+  // word has his soldier held for him, and can get back in, rather than being
+  // told for ever that he is already in the battle.)
   const beat = setInterval(() => {
-    for (const ws of lobby.clients) {
+    for (const ws of [...lobby.clients, ...wss.clients]) {
       if (ws.alive === false) ws.terminate();
       else {
         ws.alive = false;
         ws.ping();
       }
     }
-  }, 30000);
+  }, beatEvery);
   beat.unref?.();
   lobby.on('close', () => clearInterval(beat));
   lobby.on('connection', (ws) => {
     ws.on('pong', () => (ws.alive = true));
+    ws.on('error', () => {});
     let who = null;
     let since = 0;
     let zone = null;
@@ -307,11 +327,16 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
     });
   });
   wss.on('connection', (ws) => {
+    ws.on('pong', () => (ws.alive = true));
     let joined = null;
     let player = null;
     // (retry: a passing trouble; the browser tries again on its own.)
     const refuse = (why, retry = false) => {
       if (ws.readyState === 1) ws.send(JSON.stringify(retry ? { k: 'x', why, retry } : { k: 'x', why }));
+      ws.close(4000, 'refused');
+    };
+    const gonePlace = () => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'Your place in that battle is gone.', gone: true }));
       ws.close(4000, 'refused');
     };
     // Ten seconds to say who you are.
@@ -323,10 +348,18 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       } catch {
         return refuse('Bad message');
       }
+      // (Anything but a message of the game's own kind: "null", a number, a list.)
+      if (!m || typeof m !== 'object' || Array.isArray(m)) return refuse('Bad message');
       if (joined) {
-        if (m.k === 'i') joined.input(ws, m);
-        else if (m.k === 't') joined.chat(ws, m.text, !!m.all);
-        else if (m.k === 'l') joined.leaving(ws);
+        // (Nothing a player sends may stop the server: a message that can't
+        // be dealt with is dropped, and said in the log.)
+        try {
+          if (m.k === 'i') joined.input(ws, m);
+          else if (m.k === 't') joined.chat(ws, m.text, !!m.all);
+          else if (m.k === 'l') joined.leaving(ws);
+        } catch (e) {
+          log(`play: a message from ${player?.name || 'a player'} could not be dealt with: ${e?.message || e}`);
+        }
         return;
       }
       if (m.k !== 'h' || joined === false) return;
@@ -339,29 +372,48 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
       }
       try {
         const who = await check(m);
-        const s = m.soldier || {};
+        const s = m.soldier && typeof m.soldier === 'object' ? m.soldier : {};
+        // He is in a battle already, over another connection: one that went
+        // dead without a word (his browser is trying to get back in), or
+        // another window. That one is let go, as a dropped connection is, so
+        // his soldier waits for this one.
+        const old = inPlay.get(who.id);
+        if (old && old.ws !== ws) {
+          inPlay.delete(who.id);
+          old.room.gone(old.ws);
+          if (old.ws.readyState === 1) old.ws.send(JSON.stringify({ k: 'x', why: 'You are playing in another window now.', gone: true }));
+          old.ws.close(4001, 'replaced');
+        }
         // His connection dropped a moment ago and his soldier is waiting for
         // him: straight back in (from the battle reconnecting by itself, or
         // from the menus with the same soldier). Another soldier: that place
-        // is given up and he joins as usual.
-        const held = [...rooms].find((r) => r.holding?.(who.id) != null);
-        if (held && (s.rejoin || s.id === held.heldSoldier(who.id))) {
+        // is given up and he joins as usual. (A battle decided while he was
+        // away is no place to come back to from the menus.)
+        const held = old?.room ?? [...rooms].find((r) => r.holding?.(who.id) != null);
+        const heldId = held ? (held.heldSoldier(who.id) ?? old?.soldierId ?? null) : null;
+        if (held && (s.rejoin || (s.id === heldId && !held.isOver && !held.closed))) {
           if (ws.readyState !== 1) return;
-          if ((await held.rejoin(ws, who.id)) == null) {
-            if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'Your place in that battle is gone.', gone: true }));
-            return ws.close(4000, 'refused');
+          const back = await held.rejoin(ws, who.id);
+          // (Gone again while that was looked up: his soldier goes on waiting.)
+          if (ws.readyState !== 1) return back != null && held.gone(ws);
+          if (back != null) {
+            joined = held;
+            player = who;
+            inPlay.set(who.id, { ws, room: held, soldierId: heldId });
+            social.inBattle(who.id, who.name, held);
+            telemetry.record(who.id, 'rejoin', {});
+            // (What the battle earned him, if it was decided while he was away.)
+            const text = missed.get(who.id);
+            if (text) {
+              missed.delete(who.id);
+              ws.send(text);
+            }
+            return log(`${who.name} came back`);
           }
-          joined = held;
-          player = who;
-          social.inBattle(who.id, who.name, held);
-          telemetry.record(who.id, 'rejoin', {});
-          return log(`${who.name} came back`);
-        }
-        if (held) held.release(who.id);
-        if (s.rejoin) {
-          if (ws.readyState === 1) ws.send(JSON.stringify({ k: 'x', why: 'Your place in that battle is gone.', gone: true }));
-          return ws.close(4000, 'refused');
-        }
+          if (s.rejoin) return gonePlace();
+        } else if (held) held.release(who.id);
+        if (s.rejoin) return gonePlace();
+        missed.delete(who.id);
         let me = { faction: s.faction, cls: s.cls, loadout: s.loadout, tank: s.tank, soldierId: typeof s.id === 'string' ? s.id.slice(0, 64) : null };
         // Soldiers kept here: his army, class and what he may carry are the
         // kept soldier's, not what the browser says.
@@ -387,17 +439,23 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         if (ws.readyState !== 1) return r.leave(ws);
         joined = r;
         player = who;
+        inPlay.set(who.id, { ws, room: r, soldierId: me.soldierId });
         social.inBattle(who.id, who.name, r);
         log(`${who.name} joined`);
       } catch (e) {
-        refuse(e.message || 'Could not join');
+        refuse(e?.message || 'Could not join');
       }
     });
     ws.on('close', () => {
       clearTimeout(helloTimer);
       if (joined) joined.gone(ws);
-      if (player) social.inBattle(player.id, player.name, null);
+      // (Unless he plays on over a newer connection.)
+      if (player && inPlay.get(player.id)?.ws === ws) {
+        inPlay.delete(player.id);
+        social.inBattle(player.id, player.name, null);
+      }
     });
+    ws.on('error', () => {});
   });
 
   return new Promise((ok) =>
@@ -411,6 +469,10 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
 // Run as the game server: when Railway stops it (a new version going up), the
 // players' battles so far are kept before it goes (eight seconds at most).
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Whatever goes wrong in one player's request or one battle, the server
+  // stays up for everyone else: it is said in the log and the game goes on.
+  process.on('unhandledRejection', (e) => console.error('Something went wrong (the server carries on):', e));
+  process.on('uncaughtException', (e) => console.error('Something went wrong (the server carries on):', e));
   const server = await startServer();
   let stopping = false;
   for (const sig of ['SIGTERM', 'SIGINT']) {

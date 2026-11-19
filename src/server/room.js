@@ -85,7 +85,7 @@ export class BattleRoom {
     const g = this.g;
     const team = this.sideOf(faction);
     if (team === null) throw new Error(`This battle is ${this.opts.attackers} against ${this.opts.defenders}`);
-    if (!DEFAULT_LOADOUT[faction]?.[cls]) throw new Error('Unknown class');
+    if (typeof cls !== 'string' || !Object.hasOwn(DEFAULT_LOADOUT, faction) || !Object.hasOwn(DEFAULT_LOADOUT[faction], cls)) throw new Error('Unknown class');
     for (const [, p] of this.players) if (p.userId === userId) throw new Error('You are already in this battle');
     if (this.held.has(userId)) this.release(userId);
     const who = { faction, cls, team, name, loadout: checkLoadout(faction, cls, loadout), tank: cls === 'tanker' ? (TANK_IDS[faction].includes(tank) ? tank : TANK_IDS[faction][0]) : null };
@@ -143,6 +143,9 @@ export class BattleRoom {
     h.p.budget = INPUTS_PER_SECOND;
     this.players.set(client, h.p);
     this._welcome(client, h.p.pc, true);
+    // (Decided while he was away: he is told, so his battle ends too.)
+    const over = this.g.mode?.over;
+    if (over) this.send(client, JSON.stringify({ k: 'o', team: over.team, why: over.why ?? '' }));
     return h.p.pc.soldier.id;
   }
 

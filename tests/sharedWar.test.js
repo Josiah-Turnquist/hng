@@ -242,7 +242,11 @@ test('on the game server: watch the war, a general made on the admin page gives 
     assert.equal(battleOf(war, b.id), undefined);
     assert.equal(war.owner[b.point], 1, 'the Americans took it');
 
-    // A battle that is over can't be joined.
+    // A battle that is over can't be joined. (He has left it first: a player
+    // still in a battle who connects again is put back in his place there.)
+    play.send({ k: 'l' });
+    play.ws.close();
+    await new Promise((r) => setTimeout(r, 300));
     const late = await connect(srv.port, '/play');
     open.push(late);
     late.send({ k: 'h', v: PROTOCOL_VERSION, dev: 'Pipsy', soldier: { id: 's1', faction: 'US', cls: 'infantry', war: { number: war.number, id: b.id } } });

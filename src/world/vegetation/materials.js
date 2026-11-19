@@ -411,7 +411,7 @@ varying float vGrassGust;`;
 float gD = distance( iA.xyz, uVegCam ) * max( uVegLod, 0.6 );
 float gK = gD < uGrassLod.x ? 1.0 : pow( uGrassLod.x / gD, uGrassLod.y );
 float gSize = clamp( ( 1.0 - iB.w ) / 0.25, 0.0, 1.0 );
-float gIn = clamp( ( gK - iB.w ) / ( clamp( 1.0 - iB.w, 0.03, 0.3 ) * gK ), 0.0, 1.0 );
+float gIn = clamp( ( gK - iB.w ) / ( max( min( 1.0 - iB.w, 0.3 ), 1e-4 ) * gK ), 0.0, 1.0 );
 float gFar = 1.0 - smoothstep( uGrassLod.z, uGrassLod.w, gD );
 float gShow = gIn * gFar * gSize;
 float gC = cos( iA.w ), gS = sin( iA.w );`;

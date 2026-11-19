@@ -61,10 +61,6 @@ test('players join a battle over the network, move, see each other, and leave to
     // The scoreboard as the server counts it, everyone on it.
     const sc = await a.next((m) => m.k === 'c');
     assert.ok(sc.s.some((x) => x[0] === wa.you) && sc.s.some((x) => x[0] === wb.you));
-    // A second hello from the same user is refused.
-    const c = await connect(srv.port);
-    c.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US' } }));
-    assert.match((await c.next((m) => m.k === 'x')).why, /already/);
     // An army not in this battle gets a battle of its own (the Soviets attack the Germans).
     const d = await connect(srv.port);
     d.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Dog', soldier: { faction: 'SU' } }));
@@ -91,6 +87,13 @@ test('players join a battle over the network, move, see each other, and leave to
     const r2 = await a.next((m) => m.k === 'r' && m.s.some((x) => x[0] === wb.you && /\(bot\)/.test(x[2])));
     assert.ok(r2);
     assert.equal(srv.rooms()[0].g.soldiers.find((s) => s.id === wb.you).remote, false);
+    // The same user connecting again takes over: his first connection (a line
+    // gone dead, or another window) is told and let go (tests/sweepServer.test.js).
+    const c = await connect(srv.port);
+    c.ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, dev: 'Able', soldier: { faction: 'US' } }));
+    assert.equal((await c.next((m) => m.k === 'w')).side, 1);
+    assert.equal((await a.next((m) => m.k === 'x')).gone, true);
+    c.ws.close();
     a.ws.close();
   } finally {
     await srv.close();
@@ -203,7 +206,11 @@ test("sign-in tokens are checked against the sign-in service's public keys", asy
   const token = (claims, exp = '15m', key = privateKey) => new SignJWT(claims).setProtectedHeader({ alg: 'EdDSA', kid: 'k1' }).setIssuedAt().setExpirationTime(exp).sign(key);
   try {
     assert.deepEqual(await check({ token: await token({ sub: 'u1', name: 'Walt <Kowalski>' }) }), { id: 'u1', name: 'Walt Kowalski', email: null });
-    assert.deepEqual(await check({ token: await token({ sub: 'u2', email: 'baker@example.com' }) }), { id: 'u2', name: 'baker', email: 'baker@example.com' });
+    // (No name given: never part of his email, which other players would see.)
+    const noName = await check({ token: await token({ sub: 'u2', email: 'baker@example.com' }) });
+    assert.match(noName.name, /^Soldier \d{3}$/);
+    assert.deepEqual(noName, { id: 'u2', name: noName.name, email: 'baker@example.com' });
+    assert.equal((await check({ token: await token({ sub: 'u2', email: 'other@example.com' }) })).name, noName.name, 'the same name every time');
     await assert.rejects(check({ token: await token({ sub: 'u1' }, '-1m') }), 'run out');
     const other = await generateKeyPair('EdDSA', { crv: 'Ed25519' });
     await assert.rejects(check({ token: await token({ sub: 'u1' }, '15m', other.privateKey) }), 'someone else signed it');

@@ -311,8 +311,11 @@ export const MATERIALS = {
     void surface(vec2 uv, out vec3 albedo, out float rough, out float height, out float metal, out float alpha) {
       float across = uv.x;
       float wob = fbm(vec2(0.0, uv.y) + vec2(0.3, 0.0), vec2(1.0, 4.0), 3, 101.0) * 0.03;
-      float rutL = exp(-pow((across - 0.27 - wob) / 0.06, 2.0));
-      float rutR = exp(-pow((across - 0.73 - wob) / 0.06, 2.0));
+      // (Squared by hand: pow of a number below zero is not defined.)
+      float dL = (across - 0.27 - wob) / 0.06;
+      float dR = (across - 0.73 - wob) / 0.06;
+      float rutL = exp(-dL * dL);
+      float rutR = exp(-dR * dR);
       float ruts = rutL + rutR;
       float crown = 1.0 - pow(abs(across - 0.5) * 2.0, 2.0);
       float base = fbm01(uv, vec2(4.0, 8.0), 5, 102.0);

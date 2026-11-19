@@ -110,7 +110,7 @@ function makeSoldier(faction, cls, name, rng = Math.random) {
 
 // Make a saved soldier whole again: known army and class, weapons he may carry.
 function check(s) {
-  if (!DEFAULT_LOADOUT[s.faction]?.[s.cls]) return null;
+  if (typeof s.faction !== 'string' || typeof s.cls !== 'string' || !Object.hasOwn(DEFAULT_LOADOUT, s.faction) || !Object.hasOwn(DEFAULT_LOADOUT[s.faction], s.cls)) return null;
   // Saved before ribbons: his past kills count toward his class's main ribbon
   // (about what a rifle kill earns).
   if (!s.ribbons || typeof s.ribbons !== 'object') {

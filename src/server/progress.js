@@ -15,7 +15,7 @@
 // purchases, never of earnings. A save it had to correct is answered with the
 // roster as kept: { rev, roster }.
 import { awardBattle } from '../ui/roster.js';
-import { WEAPONS } from '../weapons/defs.js';
+import { WEAPONS, DEFAULT_LOADOUT } from '../weapons/defs.js';
 import { upgradesOf, upgradeOpen } from '../weapons/upgrades.js';
 import { isFree, priceOf } from '../game/armory.js';
 import { unlocked } from '../game/ribbons.js';
@@ -119,7 +119,9 @@ export function keepEarned(kept, sent) {
   };
   const was = new Map(kept.soldiers.filter((s) => s && s.id).map((s) => [s.id, s]));
   const n = out.soldiers.length;
-  out.soldiers = out.soldiers.filter((s) => s && typeof s === 'object' && typeof s.id === 'string');
+  // (A new recruit must be of a real army and class: one that is neither is left out.)
+  const known = (s) => typeof s.faction === 'string' && typeof s.cls === 'string' && Object.hasOwn(DEFAULT_LOADOUT, s.faction) && Object.hasOwn(DEFAULT_LOADOUT[s.faction], s.cls);
+  out.soldiers = out.soldiers.filter((s) => s && typeof s === 'object' && typeof s.id === 'string' && (was.has(s.id) || known(s)));
   if (out.soldiers.length !== n) fixed = true;
   let cost = 0;
   for (const s of out.soldiers) {

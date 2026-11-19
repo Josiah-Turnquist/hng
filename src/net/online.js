@@ -55,9 +55,15 @@ export async function connect(soldier, { dev = null, url = null } = {}) {
   const inbox = [];
   return new Promise((ok, fail) => {
     let welcome = null;
-    const timer = setTimeout(() => fail(Object.assign(new Error('The game server did not answer. Try again in a moment.'), { retry: true })), 30000);
+    // (Given up on: the connection is closed too, so no soldier is left standing
+    // in a battle for a page that has stopped waiting.)
+    const giveUp = (e) => {
+      fail(e);
+      if (!welcome || !inbox.some((x) => x.k === 'r')) ws.close();
+    };
+    const timer = setTimeout(() => giveUp(Object.assign(new Error('The game server did not answer. Try again in a moment.'), { retry: true })), 30000);
     ws.onopen = () => ws.send(JSON.stringify({ k: 'h', v: PROTOCOL_VERSION, token: t, dev, soldier }));
-    ws.onerror = () => fail(Object.assign(new Error('Could not reach the game server.'), { retry: true }));
+    ws.onerror = () => giveUp(Object.assign(new Error('Could not reach the game server.'), { retry: true }));
     ws.onclose = (e) => {
       clearTimeout(timer);
       if (!welcome) fail(new Error(e.reason && e.reason !== 'refused' ? e.reason : 'The game server closed the connection.'));
@@ -117,7 +123,10 @@ export class OnlineBattle {
       if (this.ws !== ws) return;
       this.closed = true;
       // Dropped (not leaving, not over): back in by itself if it can be.
-      if (!this.over && !this.leftOnPurpose && this.reconnect) this._rejoin();
+      // (Turned out by the server, as when he joins from another window: no
+      // coming back by itself, or the two windows would take turns for ever.)
+      if (this.turnedOut) this.game.hud?.flash(`${this.turnedOut} Press Esc to leave.`, 60);
+      else if (!this.over && !this.leftOnPurpose && this.reconnect) this._rejoin();
       else if (!this.over && !this.leftOnPurpose) this.game.hud?.flash('Lost the connection to the game server', 30);
     };
   }
@@ -176,6 +185,7 @@ export class OnlineBattle {
       this.onReward?.(m);
       this._left?.();
     }
+    else if (m.k === 'x') this.turnedOut = String(m.why || 'The game server closed the connection.');
     else if (m.k === 'o') {
       this.over = m;
       this.game.mode?.serverEnd?.(m.team, m.why);

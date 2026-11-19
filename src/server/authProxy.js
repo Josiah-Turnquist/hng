@@ -77,8 +77,18 @@ export async function proxyAuth(req, res, path, baseUrl, { log = console.log, or
   if (set.length) out['set-cookie'] = set;
   // (fetch has already unpacked a squeezed answer.)
   delete out['content-encoding'];
+  // (The whole answer is read before any of it is passed on: one cut off
+  // half way is a plain "could not be reached", not half an answer.)
+  let bytes;
+  try {
+    bytes = Buffer.from(await answer.arrayBuffer());
+  } catch (e) {
+    log(`sign-in: Neon Auth's answer was cut off (${why(e)})`);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'The sign-in service could not be reached', code: 'NETWORK_ERROR' }));
+  }
   res.writeHead(answer.status, out);
-  res.end(Buffer.from(await answer.arrayBuffer()));
+  res.end(bytes);
 }
 
 // Does this request come from a page of this very server? Asked of every

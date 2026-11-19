@@ -20,7 +20,7 @@
 //   w.battleFor(number, id, army) -> battle or throws; w.opened / result / closedEarly
 //   w.heroFunds(number, army, n)                  // warfunds his heroes earned
 //   await w.stop()
-import { newWar, nextWar, tick, save, load, buy, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, battleOf, teamOf, resolveBattle, ARMIES, TEAMS } from '../war/war.js';
+import { newWar, nextWar, tick, save, load, buy, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, battleOf, teamOf, resolveBattle, ARMIES, TEAMS, teamType } from '../war/war.js';
 import { MAP } from '../war/warMap.js';
 
 const SAVE_EVERY = 30; // seconds between saves
@@ -69,7 +69,15 @@ export class WarService {
     this._use(war);
     this.log(`war ${war.number}: running at ${this.speed} times real time`);
     this.last = this.now();
-    this.timer = setInterval(() => this._run(), 1000);
+    // (A fault in one second of the war must not stop the server, nor the war:
+    // it is said in the log and the next second is tried.)
+    this.timer = setInterval(() => {
+      try {
+        this._run();
+      } catch (e) {
+        this.log(`war: ${e?.stack || e}`);
+      }
+    }, 1000);
     this.timer.unref?.();
   }
 
@@ -196,7 +204,7 @@ export class WarService {
     };
     switch (m.act) {
       case 'buy': {
-        const d = TEAMS[m.type];
+        const d = teamType(m.type);
         if (!d || d.from) return { ok: false, why: 'No such team' };
         const nt = buy(war, army, m.type);
         return nt ? done({ team: nt.id }) : { ok: false, why: 'Not enough warfunds' };
@@ -218,7 +226,7 @@ export class WarService {
       case 'withdraw':
         return withdraw(war, t.id) ? done() : { ok: false, why: 'Only from your own land joined to a capital, and not in battle' };
       case 'upgrade': {
-        const why = TEAMS[m.to] ? upgradeProblem(war, t, m.to) : 'No such upgrade';
+        const why = teamType(m.to) ? upgradeProblem(war, t, m.to) : 'No such upgrade';
         if (why) return { ok: false, why };
         return upgrade(war, t.id, m.to) ? done() : { ok: false, why: 'It could not be upgraded' };
       }

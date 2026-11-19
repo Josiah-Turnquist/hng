@@ -284,9 +284,10 @@ export class TextureLibrary {
   // three texels in four, and fine patterns would crawl.)
   _halved(dst, w, h, draw) {
     const full = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, colorSpace: THREE.NoColorSpace });
-    draw(full);
     const r = this.renderer;
+    // (Noted before the drawing, which may leave its own target set.)
     const prev = r.getRenderTarget();
+    draw(full);
     const was = this.quad.material;
     this.copyMat.uniforms.tSrc.value = full.texture;
     this.quad.material = this.copyMat;

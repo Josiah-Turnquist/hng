@@ -232,9 +232,13 @@ function pay(war, army, n) {
   return true;
 }
 
+// A kind of team by its name, or null (never something every object has,
+// like "constructor": the name may come from a player's message).
+export const teamType = (type) => (typeof type === 'string' && Object.hasOwn(TEAMS, type) ? TEAMS[type] : null);
+
 export function buy(war, army, type) {
-  const d = TEAMS[type];
-  if (!d || d.from || war.over) return null;
+  const d = teamType(type);
+  if (!d || d.from || war.over || !Number.isFinite(d.price)) return null;
   if (!pay(war, army, d.price)) return null;
   const t = blankTeam(war, army, type);
   war.teams.push(t);
@@ -307,7 +311,7 @@ export function order(war, id, point) {
 const pathCost = (war, army) => (a, b) => (war.owner[b] === CODE[army] ? 0 : 120);
 
 export function upgradeProblem(war, t, to) {
-  const u = TEAMS[to];
+  const u = teamType(to);
   if (!u || u.from !== t.type) return 'Not an upgrade of this team';
   if (t.battle) return 'In battle';
   if (t.at !== null && !(MAP.isCapital(t.at) && war.owner[t.at] === CODE[t.army])) return 'Only in the reserve or at a capital';

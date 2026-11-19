@@ -242,7 +242,10 @@ void main() {
     float body = 1.0 - smoothstep(rc * 0.6, rc, d);
     float a = body * mix(1.0, 0.0, pow(t, 0.5)) * vColor.a;
     if (a < 0.004) discard;
-    float glint = exp(-pow((vQ.y + vR * 0.3) / (vR * 0.28), 2.0)) * (1.0 - t);
+    // (Squared by hand: pow of a number below zero is not defined, and on some
+    // graphics cards gives a black speck.)
+    float gy = (vQ.y + vR * 0.3) / (vR * 0.28);
+    float glint = exp(-gy * gy) * (1.0 - t);
     float edge = smoothstep(rc * 0.2, rc * 0.9, d);
     vec3 metal = vColor.rgb * (uAmbient * 0.9 + uSunLight * 0.3) * (1.0 - edge * 0.65) + glint * uSunLight * 0.3;
     vec3 col = metal * air.x + air.yzw * (1.0 - air.x);
