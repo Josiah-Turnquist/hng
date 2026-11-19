@@ -18,7 +18,8 @@ const workerSrc = worker.outputFiles[0].text;
 const css = readFileSync(resolve(root, 'src/ui/styles.css'), 'utf8');
 // Keep "</script" out of inline code.
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
-const workerJs = `window.__HNG_SYNTH_WORKER_SRC = ${JSON.stringify(workerSrc).replace(/</g, '\\u003c')};`;
+// (__HNG_ONE_FILE: this copy has no game server behind it and plays offline, net/auth.js.)
+const workerJs = `window.__HNG_ONE_FILE = true; window.__HNG_SYNTH_WORKER_SRC = ${JSON.stringify(workerSrc).replace(/</g, '\\u003c')};`;
 const head = `<title>Rank &amp; File</title>
 <meta name="description" content="A WWII battle game in the browser: soldiers fight big battles of infantry, tanks and vehicles, and generals fight the war on a map.">
 <style>${css}</style>`;

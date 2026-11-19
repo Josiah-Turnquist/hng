@@ -8,7 +8,7 @@ import { AudioSystem } from '../audio/audio.js';
 import { PauseMenu } from './menu.js';
 import { showFrontEnd } from './frontend.js';
 import { signInScreen } from './signIn.js';
-import { serverConfig } from '../net/auth.js';
+import { serverKind } from '../net/auth.js';
 import { startUpdateNotice } from './updateNotice.js';
 import { PROTOCOL_VERSION } from '../net/protocol.js';
 import { connect, OnlineBattle } from '../net/online.js';
@@ -81,6 +81,27 @@ export class App {
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
 
+    // Played from the game server: sign in first, whatever the address bar
+    // says (no guests). Only a copy with no server behind it (the one-file
+    // copy, a file from a folder, a plain file server) plays without one.
+    // (A battle set up in the address bar used to skip the sign-in, and so did
+    // a moment when the server could not be asked.)
+    const where = await serverKind();
+    if (where.kind === 'unknown') {
+      await this._note('The game server could not be reached. Check your connection and try again.', 'Try again').closed;
+      location.reload();
+      return;
+    }
+    const cfg = where.config || null;
+    if (cfg) {
+      // An older copy of the game than the server's: the new one, at once.
+      if (cfg.protocol && cfg.protocol !== PROTOCOL_VERSION && this._reloadForUpdate()) return;
+      // (And a tab left open while a new version goes up is told so: ui/updateNotice.js.)
+      this.updates ??= startUpdateNotice();
+      this.account ??= await signInScreen(this.root, cfg);
+      if (!this.account) return;
+    }
+
     // A battle set up in the address bar (used by tests and links) skips the menu.
     const p = this.params;
     let opts;
@@ -101,14 +122,6 @@ export class App {
         minutes: Number(p.get('minutes') || 20),
       };
     } else {
-      // Played from the game server: sign in first (no guests). Offline (a
-      // file, the claude.ai copy): straight in.
-      // An older copy of the game than the server's: the new one, at once.
-      const cfg = await serverConfig().catch(() => null);
-      if (cfg?.protocol && cfg.protocol !== PROTOCOL_VERSION && this._reloadForUpdate()) return;
-      // (And a tab left open while a new version goes up is told so: ui/updateNotice.js.)
-      if (cfg?.online) this.updates ??= startUpdateNotice();
-      this.account ??= await signInScreen(this.root);
       // Signed in: his soldiers and war from the server (and kept there from now on).
       if (this.account && !this.progressSynced) {
         const note = this._note('Loading your soldiers...');

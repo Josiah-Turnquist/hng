@@ -15,8 +15,9 @@ const el = (tag, cls, html) => {
   return e;
 };
 
-export async function signInScreen(root) {
-  const config = await serverConfig();
+// config: the game server's settings when the caller has them already.
+export async function signInScreen(root, config = null) {
+  config ??= await serverConfig();
   if (!config) return null;
   // Testing on your own computer (a server started with ALLOW_DEV_NAMES=1):
   // ?dev=Name plays as Name with no account.

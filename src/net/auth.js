@@ -50,6 +50,33 @@ export async function serverConfig() {
   }
 }
 
+// What this page is served by, which decides whether signing in is needed:
+//   { kind: 'server', config }  the game server: nobody plays without an account
+//   { kind: 'none' }            no game server (the one-file copy, a file opened
+//                               from a folder, a plain file server): offline play
+//   { kind: 'unknown' }         an address that may be the game server did not
+//                               answer: nobody is let in on the strength of that
+// (A failed question used to count as "no server", so a player whose
+// connection hiccupped at that moment walked in with no account.)
+export async function serverKind({ ask = (url, o) => fetch(url, o), tries = 3, wait = (ms) => new Promise((r) => setTimeout(r, ms)), page = globalThis } = {}) {
+  if (page.__HNG_ONE_FILE || page.location?.protocol === 'file:') return { kind: 'none' };
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await ask('/api/config', { cache: 'no-store' });
+      if (r.ok) {
+        const c = await r.json().catch(() => null);
+        return c?.online === true ? { kind: 'server', config: c } : { kind: 'none' };
+      }
+      // A plain "no such page": a file server, not the game's.
+      if (r.status >= 400 && r.status < 500) return { kind: 'none' };
+    } catch {
+      /* not reached: asked again */
+    }
+    if (i < tries - 1) await wait(700 * (i + 1));
+  }
+  return { kind: 'unknown' };
+}
+
 export async function online() {
   return !!(await serverConfig());
 }

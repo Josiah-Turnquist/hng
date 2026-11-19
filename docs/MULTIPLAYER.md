@@ -28,7 +28,13 @@ commit to anything.
   our Neon database, and we use Neon's own client library, not a plain
   Better Auth one (Neon's sign-in addresses differ from Better Auth's
   defaults).
-- **Guests can play at once.** Signing in is only needed to keep progress.
+- **No guests.** On the game server nobody plays without an account: the
+  page finds out what it is served by (`serverKind` in `src/net/auth.js`) and
+  shows the sign-in screen before anything else, whatever the address bar
+  says. If the server cannot be asked, it says so and lets nobody in. Only a
+  copy with no server behind it (the one-file copy, a file opened from a
+  folder, a plain file server as the tests use) plays offline without one
+  (tests/noGuests.test.js).
 - **One shared war.** The Generals side becomes a single war that everyone
   takes part in, run on the server around the clock. Real players lead the
   armies as generals; computer generals fill in for an army that has too few.
@@ -40,8 +46,8 @@ commit to anything.
 
 ## What players will see
 
-1. Open the game page. Play as a guest straight away, or sign in (email, Google
-   or GitHub) to keep your soldiers and progress.
+1. Open the game page and sign in or create an account (email and password).
+   There are no guests.
 2. Pick a soldier on the Heroes screen as now.
 3. Press **Quick battle**: the game finds a battle with room on your side (or
    starts one) and drops you in.
@@ -500,7 +506,7 @@ Still to do before real players sign in:
 **Phase 2: accounts and progress (about 1 to 2 weeks).**
 Neon database and Neon Auth (email, Google, GitHub). Soldiers, loadouts and
 unlocks saved on the server; experience and credits awarded by the server at the
-end of each battle. A guest can turn into an account without losing progress.
+end of each battle. (No guests: everyone has an account from the start.)
 
 *Phase 2 so far.* Each account's progress is kept in Neon's Postgres: one
 row an account in a `progress` table (made by the server the first time it
@@ -595,7 +601,7 @@ to about $2 a month, inside the Hobby plan's $5.
 
 ## Decisions for you
 
-1. **Guests:** let people play without an account? (Recommended: yes.)
+1. **Guests:** let people play without an account? (Decided: no.)
 2. **Sign-in methods:** email and password, Google, GitHub? Discord is popular
    with players and could come later.
 3. **Where most players are:** to pick the first region (US East is a safe
