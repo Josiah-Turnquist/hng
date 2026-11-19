@@ -20,6 +20,12 @@ import { createLocalJWKSet, jwtVerify } from 'jose';
 // which Neon doesn't know.)
 export const NEON_AUTH_BASE_URL = (process.env.NEON_AUTH_BASE_URL || 'https://ep-weathered-meadow-ary5i3vv.neonauth.c-4.us-west-2.aws.neon.tech/neondb/auth').trim().replace(/\/+$/, '');
 const STANDARD_JWKS_URL = `${NEON_AUTH_BASE_URL}/.well-known/jwks.json`;
+// The web address Neon Auth trusts for this game (its list of trusted domains,
+// in the Neon console under Auth). The game server gives it as the origin of
+// every sign-in it passes on (src/server/authProxy.js), so players can sign in
+// from whatever address the game is served at. Not a secret. NEON_AUTH_ORIGIN
+// overrides it; it must be on Neon's list, or every sign-in is refused.
+export const NEON_AUTH_ORIGIN = (process.env.NEON_AUTH_ORIGIN || 'https://hng-production-47bb.up.railway.app').trim().replace(/\/+$/, '');
 
 export function signInChecker({ jwksUrl = process.env.NEON_AUTH_JWKS_URL?.trim() || STANDARD_JWKS_URL, issuer = process.env.NEON_AUTH_ISSUER || undefined, allowDevNames = process.env.ALLOW_DEV_NAMES === '1', log = console.log, tries = 4 } = {}) {
   // (A keys address set by hand that doesn't work falls back to the standard one.)

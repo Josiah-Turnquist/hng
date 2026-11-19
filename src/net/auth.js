@@ -32,6 +32,7 @@ function message(data, status) {
   if (/PASSWORD_TOO_LONG/i.test(code)) return 'The password is too long.';
   if (/INVALID_EMAIL/i.test(code)) return 'That email address does not look right.';
   if (/EMAIL_NOT_VERIFIED/i.test(code)) return 'Please confirm your email address first: look for the email we sent.';
+  if (/INVALID_ORIGIN/i.test(code)) return 'This page could not be checked as the game\'s own, so signing in was refused. Open the game from its own address and try again.';
   if (code === 'NETWORK_ERROR' || status === 502) return 'The sign-in service could not be reached. Try again in a moment.';
   if (status === 429) return 'Too many tries. Wait a minute and try again.';
   return data?.message || `Sign-in failed (${status}).`;

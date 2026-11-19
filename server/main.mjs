@@ -46,7 +46,7 @@ import { WebSocketServer } from 'ws';
 import { BattleRoom } from '../src/server/room.js';
 import { RoomProxy } from '../src/server/roomProxy.js';
 import { MAPS } from '../src/world/maps.js';
-import { signInChecker, NEON_AUTH_BASE_URL } from '../src/server/auth.js';
+import { signInChecker, NEON_AUTH_BASE_URL, NEON_AUTH_ORIGIN } from '../src/server/auth.js';
 import { proxyAuth } from '../src/server/authProxy.js';
 import { progressHandler, awardStored } from '../src/server/progress.js';
 import { adminHandler } from '../src/server/admin.js';
@@ -71,7 +71,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC = ['index.html', 'admin.html', 'src', 'assets', join('node_modules', 'three')];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
-export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10, threads = process.env.BATTLE_THREADS !== '0' } = {}) {
+export function startServer({ port = Number(process.env.PORT || 8080), battleSize = Number(process.env.BATTLE_SIZE) || null, devNames = process.env.ALLOW_DEV_NAMES === '1', check = signInChecker({ allowDevNames: devNames }), authBase = NEON_AUTH_BASE_URL, authOrigin = NEON_AUTH_ORIGIN, databaseUrl = process.env.DATABASE_URL, maxBattles = Number(process.env.MAX_BATTLES || 3), admins = String(process.env.ADMIN_EMAILS || '').split(','), log = console.log, store = databaseUrl ? openProgressStore(databaseUrl, { log }) : null, warSpeed = Number(process.env.WAR_SPEED) || 6, warBattleWait = Number(process.env.WAR_BATTLE_WAIT) || 10, threads = process.env.BATTLE_THREADS !== '0' } = {}) {
   // Each battle in its own thread, a processor core to itself (roomProxy.js);
   // threads: false keeps them in this one (tests that look inside a battle).
   const Room = threads ? RoomProxy : BattleRoom;
@@ -203,7 +203,7 @@ export function startServer({ port = Number(process.env.PORT || 8080), battleSiz
         // (How long each sign-in step takes, in the server's log: no names or addresses.)
         const t0 = performance.now();
         const path = url.pathname.slice('/api/auth/'.length);
-        await proxyAuth(req, res, path, authBase, { log });
+        await proxyAuth(req, res, path, authBase, { log, origin: authOrigin });
         return log(`sign-in ${req.method} ${path}: ${res.statusCode} in ${Math.round(performance.now() - t0)} ms`);
       }
       if (url.pathname.startsWith('/api/admin/')) return await admin(req, res, url.pathname.slice('/api/admin/'.length));

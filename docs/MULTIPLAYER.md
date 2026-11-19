@@ -95,6 +95,18 @@ commit to anything.
   also block the sign-in cookie between two sites; if Safari players can't
   stay signed in, the fix is to serve the sign-in address from our own web
   address (Neon's JWT page links to Better Auth's notes on this).
+- **Which web address a sign-in comes from.** Neon Auth refuses a sign-in whose
+  origin is not on its short list of trusted addresses (Neon console, Auth,
+  trusted domains; "Invalid origin"). That list holds the game's Railway
+  address. The game server makes its own check instead, that the request comes
+  from a page of this very server (`ownPage` in `src/server/authProxy.js`: the
+  browser's own Sec-Fetch-Site, or for older browsers an origin that is the
+  address the request came to), and gives Neon Auth the trusted address
+  (`NEON_AUTH_ORIGIN`, the Railway address by default) whichever address the
+  player used. So the game can be given a second address, or a name of its
+  own, without anyone being locked out. If the Railway address itself ever
+  changes: put the new one on Neon's list and in `NEON_AUTH_ORIGIN`, or every
+  sign-in is refused.
 - **Check Neon's current docs before building on it.** Neon Auth moves fast
   and older guides (and AI tools trained on them) are often out of date.
 

@@ -79,7 +79,9 @@ export async function signInScreen(root) {
           clearTimeout(slow);
           note.textContent = NOTE;
         });
-        if (!s) throw new Error(mode === 'up' ? 'Your account was made, but signing in failed. Try signing in.' : 'Signing in failed. Try again.');
+        // (The email and password were accepted, yet the browser shows no
+        // sign-in: it did not keep the sign-in cookie.)
+        if (!s) throw new Error(mode === 'up' ? 'Your account was made, but this browser did not keep you signed in. Allow cookies for this site, then sign in.' : 'Your email and password are right, but this browser did not keep you signed in. Allow cookies for this site and try again.');
         box.remove();
         resolve(s);
       } catch (e2) {
