@@ -470,6 +470,7 @@ export class TrackedVehicle extends Vehicle {
     if (super.step(dt) === false) return false;
     for (let i = 0; i < 2; i++) this.trackDist[i] += this.trackSpeed[i] * dt;
     this._turret(dt);
+    this._releaseEmptyGuns();
     this.coax.update(dt);
     this.bowMg.update(dt);
     if (this.reloadT > 0) {

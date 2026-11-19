@@ -98,6 +98,23 @@ The programs the graphics card needs (one per kind of material) are asked for ah
 
 Memory: the soldiers' outfits are shared between men of the same army, class, kit and level of detail (`soldierModel.js` `outfitFor`). What is kept of each is only what is used again: the finished geometry at full detail, and at the two lower levels the builder (each man's own body is merged into it), packed into plain number lists with `SkinBuilder.pack`. Keeping every builder as it was built held 280 MB in a battle of 48 men, a third of the page's memory.
 
+## Rules put right by the bug sweep (November 2026)
+
+A review of the whole game, area by area, each fault tried before and after. What a later change must not undo:
+
+- **A reload stopped half way never leaves a dead gun** (`weapons/weapon.js`). Cancelling a reload after the magazine, clip or rounds are in leaves the bolt open or the gun uncocked. `needsChambering` says so, `canReload()` then allows a reload that does only that last step (no rounds used), and pulling the trigger starts it too, which is how bots get out of it. `fill()`, used when a soldier comes back in, also stops whatever the gun was doing. A test walks every weapon through a cancel at every step (tests/weapons.test.js).
+- **A grenade that knocks off something hurts nobody** until it goes off (`Game._onImpact`, kind `bounce`).
+- **Coming back in** is `Soldier.revive()` for every mode: whole, standing, rested, own loadout gun with its badges, first aid again, and nothing kept from the last life (who wounded him, a throw under way falls as a live grenade: `throwing.js`).
+- **Vehicles are not made inside one another.** A wrecked jeep or motorcycle is put back on its spot only when no other vehicle stands there (`modes/assault.js` `SPOT_CLEAR`, `vehicles/bikeSpots.js` `_taken`). Should two overlap all the same, the push between them stops once they part at 2 m/s (`vehicle.js` `PART_SPEED`), a wheel does not take another vehicle's top for ground (`bike.js`), and pushes on a resting vehicle are not saved up for when it wakes.
+- **Wrecks of tanks that crews brought in go after three minutes** (`TANK_WRECK_STAYS`), once nobody is in them; working tanks stay.
+- **A seat's machine gun is let go when its seat empties** (`Vehicle.releaseGun`), and a player's shots are collected only from his own seat's gun.
+- **Getting out on a bridge** stands the man on the deck (`Vehicle.standingHeight`), not on the ground under it.
+- **Bots**: stuck is judged over a second and a half as well as step by step (`ai/bot.js`); a tank stuck three times in one place leaves that point for a while (`ai/tankBot.js`); a tank crewman whose tank is wrecked under him fights on foot; tanks do not fire through their own men; a route is not handed to a man who is no longer where he asked for it (`ai/navgrid.js`).
+- **The war** (`war/war.js`): a team set down where a battle is on joins it; enemy teams left on one point fight for it; an army knocked out loses the battles it is in.
+- **Menus**: a window is taken away through one function (`shutWindow` in `ui/frontend.js`) so its Esc key never outlives it; keys typed into a text box are not the game's (`core/input.js` `typing`), and the keys are forgotten as a battle starts (`Input.clear`).
+
+Known and left alone: online battles have no dropped guns and binoculars mark nobody there (the game server sets up neither, and there are no messages for them yet); two tanks in the town can still wedge for good against things the route grid does not know about.
+
 ## Debug pages
 
 Open these through the dev server:

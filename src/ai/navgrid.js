@@ -12,6 +12,10 @@ const SQRT2 = Math.SQRT2;
 const SLICE = 3000,
   SLICE_MORE = 2500,
   SLICE_MAX = 14000;
+// A finished route is handed over only if the asker is still within this many
+// meters of the way it goes (from where he asked, along it): he walks on while
+// it is worked out, but one asked for before he was killed started across the map.
+const START_SLACK = 10;
 
 export class NavGrid {
   constructor(world, { radius, cell = 2, centerX = 0, centerZ = 0 } = {}) {
@@ -273,8 +277,9 @@ export class NavGrid {
     const done = R.answers.get(who);
     if (done) {
       R.answers.delete(who);
-      // (An answer to somewhere he no longer wants to go is dropped.)
-      if (!moved(done)) {
+      // (An answer to somewhere he no longer wants to go, or from somewhere he
+      // no longer is, is dropped.)
+      if (!moved(done) && offRoute(done, sx, sz) <= START_SLACK) {
         this.lastFail = done.fail;
         return done.path;
       }
@@ -291,6 +296,16 @@ export class NavGrid {
     } else R.queue.push(ask);
     this.lastFail = 'thinking';
     return undefined;
+  }
+
+  // Forget whatever this asker was waiting for (he was killed and is back
+  // somewhere else).
+  forget(who) {
+    const R = this.shared || this;
+    R.answers.delete(who);
+    const i = R.queue.findIndex((q) => q.who === who);
+    if (i >= 0) R.queue.splice(i, 1);
+    if (R.job?.who === who) R.job.cancel = true;
   }
 
   // One step's share of the searches waiting (called once a step by the game).
@@ -311,10 +326,13 @@ export class NavGrid {
         job.ask = q;
         budget -= 200;
         if (job.done) {
-          this.answers.set(q.who, { path: job.path, fail: q.grid.lastFail, at: this.ticks, gx: q.gx, gz: q.gz });
+          this.answers.set(q.who, { path: job.path, fail: q.grid.lastFail, at: this.ticks, gx: q.gx, gz: q.gz, sx: q.sx, sz: q.sz });
           continue;
         }
         this.job = job;
+      } else if (job.cancel) {
+        this.job = null;
+        continue;
       } else if (job.restart) {
         const q = job.ask;
         this.job = null;
@@ -331,7 +349,7 @@ export class NavGrid {
       }
       this.job = null;
       const path = job.ask.grid._finish(job);
-      this.answers.set(job.who, { path, fail: job.ask.grid.lastFail, at: this.ticks, gx: job.ask.gx, gz: job.ask.gz });
+      this.answers.set(job.who, { path, fail: job.ask.grid.lastFail, at: this.ticks, gx: job.ask.gx, gz: job.ask.gz, sx: job.ask.sx, sz: job.ask.sz });
       return;
     }
   }
@@ -536,6 +554,28 @@ export class NavGrid {
     }
     return maxCost < 30; // don't straighten a path into the water
   }
+}
+
+// How far (x, z) is from an answer's route, taken from where it was asked
+// along its first few legs (or from where it was asked, when none was found).
+function offRoute(a, x, z) {
+  let best = Math.hypot(x - a.sx, z - a.sz);
+  const p = a.path;
+  if (!p) return best;
+  let px = a.sx,
+    pz = a.sz;
+  for (let i = 0; i < Math.min(p.length, 6) && best > START_SLACK; i++) {
+    const qx = p[i].x,
+      qz = p[i].z;
+    const ex = qx - px,
+      ez = qz - pz;
+    const L = ex * ex + ez * ez;
+    const t = L > 0 ? Math.max(0, Math.min(1, ((x - px) * ex + (z - pz) * ez) / L)) : 0;
+    best = Math.min(best, Math.hypot(x - px - ex * t, z - pz - ez * t));
+    px = qx;
+    pz = qz;
+  }
+  return best;
 }
 
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];

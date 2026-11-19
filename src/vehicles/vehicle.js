@@ -17,6 +17,7 @@ const _n = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _hit = new RayHit();
+const _hitDown = new RayHit();
 const _boxes = [];
 
 export function torqueAt(curve, rpm) {
@@ -67,6 +68,10 @@ function solve3(A, b) {
 // Which part each anchor rides on (the gun is a child of the turret).
 // Beyond this (m) a vehicle's wheels are drawn as one mesh (syncModel).
 const WHEELS_FAR = 70;
+
+// Two vehicles pressed into each other stop pushing apart once they part this
+// fast (m/s): the push is there to separate them, not to throw them.
+const PART_SPEED = 2;
 
 const ANCHOR_PART = {
   muzzle: 'gun',
@@ -316,11 +321,14 @@ export class Vehicle {
       w.fz = 0;
       return 0;
     }
-    // Bump stop: past full travel the spring gets very stiff.
+    // Bump stop: past full travel the spring gets very stiff. (No further than
+    // a wheel can really be pushed up: on another vehicle's slanting top, left
+    // inside it, the contact plane gave a squeeze of meters and a push of
+    // hundreds of tonnes.)
+    compression = Math.min(compression, w.rest + 0.3);
     let k = w.k;
     let f = (compression + w.preload) * w.k;
     if (compression > w.travel) f += (compression - w.travel) * k * 12;
-    compression = Math.min(compression, w.rest + 0.3);
     w.compression = compression;
     const vel = (w.compression - w.prevCompression) / dt;
     f = Math.max(0, f + vel * w.c);
@@ -386,6 +394,14 @@ export class Vehicle {
     // Don't let the penalty spring launch the vehicle (a wall pushing only
     // sideways may push harder: it stops him instead of letting him in).
     fn = Math.min(fn, this.def.mass * G * (wall ? 30 : 6));
+    // Against another vehicle: no more than would leave the two coming apart
+    // at PART_SPEED (shared among the contact points). One made inside
+    // another, or rammed deep into it, was thrown tens of meters up.
+    if (other) {
+      const m = (this.def.mass * other.def.mass) / (this.def.mass + other.def.mass);
+      fn = Math.min(fn, ((PART_SPEED - vn) * m) / dt / Math.max(4, this.samples.length));
+      if (fn <= 0) return;
+    }
     _f.copy(n).multiplyScalar(fn);
     // Friction opposing sliding along the surface.
     const vt = _v3.addScaledVector(n, -vn);
@@ -395,7 +411,13 @@ export class Vehicle {
       _f.addScaledVector(vt, -ft / vtl);
     }
     b.applyForce(_f, p);
-    if (other) other.body.applyForce(_f.negate(), p);
+    if (other) {
+      // (Pushed by one somebody is in, it wakes and gives way, as it would
+      // to a vehicle driving into it. Not by an empty one or a wreck leaning
+      // on it: the two would keep each other awake for the rest of the battle.)
+      if (other.asleep && this.occupants.some(Boolean)) other.stir();
+      other.body.applyForce(_f.negate(), p);
+    }
     // (How fast it was closing in: the spring pushing it back out again is no knock.)
     if (vn < 0) this.lastImpact = Math.max(this.lastImpact, -vn);
     if (sample) sample.touching = true;
@@ -585,6 +607,10 @@ export class Vehicle {
   // another vehicle moves close by (looked for four times a second).
   _resting(dt) {
     if (!this.asleep) return false;
+    // Pushes on it while it rests are not saved up: a tank nosed against a
+    // parked jeep for 15 s piled 130 MN on it, and the jeep, woken, flew.
+    this.body.force.set(0, 0, 0);
+    this.body.torque.set(0, 0, 0);
     if (this.fire > 0) this._burn(dt);
     if (!this.alive) this.deadTime += dt;
     this._napT = (this._napT || 0) - dt;
@@ -940,13 +966,52 @@ export class Vehicle {
     return true;
   }
 
+  // The machine gun worked from a seat, if any (the gunner's coaxial gun, the
+  // bow gun, the sidecar gun).
+  seatGun(i) {
+    const role = this.seats[i]?.role;
+    return (role === 'gunner' ? this.coax : role === 'bowMg' ? this.bowMg : role === 'sidecarMg' ? this.mg : null) || null;
+  }
+
+  // Whoever leaves a seat lets go of its gun: the trigger is released and
+  // rounds not yet handed out are dropped (held down as he got out, the gun
+  // went on firing, and the next man in fired them all at once).
+  releaseGun(i) {
+    const mg = this.seatGun(i);
+    if (!mg) return;
+    mg.trigger = false;
+    mg.pending = 0;
+  }
+
+  // Each step: a gun whose seat is empty (its gunner got out, moved or was
+  // killed) is let go.
+  _releaseEmptyGuns() {
+    for (let i = 0; i < this.seats.length; i++) if (!this.occupants[i]) this.releaseGun(i);
+  }
+
   switchSeat(soldier, seat) {
     if (seat < 0 || seat >= this.occupants.length || this.occupants[seat]) return false;
     const cur = this.seatIndexFor(soldier);
-    if (cur >= 0) this.occupants[cur] = null;
+    if (cur >= 0) {
+      this.occupants[cur] = null;
+      this.releaseGun(cur);
+    }
     this.occupants[seat] = soldier;
     soldier.seat = seat;
     return true;
+  }
+
+  // Where a man getting out at (x, z) would stand: the first thing he can
+  // stand on below fromY (a bridge deck, a step), else the ground. (The ground
+  // alone put him in the river under a bridge.)
+  standingHeight(x, z, fromY) {
+    const h = this.world.hf.getHeight(x, z);
+    if (!(fromY > h)) return h;
+    const own = this.proxies || [];
+    for (const p of own) p.box.enabled = false;
+    const hit = this.world.collision.raycast(x, fromY, z, 0, -1, 0, fromY - h + 0.05, _hitDown, FLAG_WALKABLE, true);
+    for (const p of own) p.box.enabled = true;
+    return hit ? Math.max(h, fromY - _hitDown.t) : h;
   }
 
   // Leave on the side nearest to the seat, at a spot where there's room to stand.
@@ -970,16 +1035,21 @@ export class Vehicle {
       const p = _v3.copy(b.position).addScaledVector(right, sx * halfW);
       if (sx === 0) p.addScaledVector(this.forward, -(this.def.dims[2] / 2 + 0.8));
       else p.addScaledVector(this.forward, -dz);
-      const y = this.world.hf.getHeight(p.x, p.z);
+      const y = this.standingHeight(p.x, p.z, b.position.y + 0.1);
       // Room to stand?
+      // (The boxes found are only those whose outline is near; a bridge's
+      // parapet set at an angle reaches over the whole deck, so each is tested
+      // for really being in his way, from knee to head.)
       const list = coll.query(p.x - 0.3, y + 0.2, p.z - 0.3, p.x + 0.3, y + 1.8, p.z + 0.3, _boxes, FLAG_SOLID);
-      if (list.length === 0 || (list.length === 1 && list[0].owner === this)) {
+      const inWay = (bx) => bx.owner !== this && [0.5, 1.0, 1.5].some((k) => sphereBox(_f.set(p.x, y + k, p.z), 0.3, bx, _n) > 0);
+      if (!list.some(inWay)) {
         placed = { x: p.x, y, z: p.z };
         break;
       }
     }
     if (!placed) placed = { x: b.position.x, y: b.position.y + this.def.dims[1], z: b.position.z };
     this.occupants[i] = null;
+    this.releaseGun(i);
     soldier.vehicle = null;
     soldier.seat = -1;
     soldier.leftVehicle = this;

@@ -17,6 +17,7 @@ const RIDE_MIN = 200; // m to the goal before a ride is worth it
 const SEARCH = 45; // m he'll walk to get a bike
 const DISMOUNT = 55; // m short of the goal's edge he gets off
 const SPOT_STOP = 260; // m: an enemy seen closer than this, he gets off to fight
+const REACH_OUTFIT = 2.2; // m from the seat a man can get on a sidecar outfit from (1.7 on a solo machine)
 const _p = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _hit = new RayHit();
@@ -117,7 +118,7 @@ function look(brain, dt) {
 }
 
 // A comrade within a couple of meters of the line of fire (out to dist).
-function friendInLine(s, from, dir, dist) {
+export function friendInLine(s, from, dir, dist) {
   for (const o of s.game.soldiers) {
     if (o === s || !o.alive || o.team !== s.team || o.vehicle === s.vehicle) continue;
     const dx = o.body.x - from.x,
@@ -147,7 +148,9 @@ function walkTo(ride, dt) {
   if (ride.seat > 0 && Math.abs(v.speed) > 1.5) return 'fail'; // it left without him
   const p = v.seatPos(ride.seat, _p, 'hip');
   const d = Math.hypot(p.x - s.body.x, p.z - s.body.z);
-  if (d < 1.7) return v.enter(s, ride.seat) ? 'on' : 'fail';
+  // (An outfit's chair keeps him further off on that side: from there he
+  // could get no nearer than about 1.9 m, and stood beside it until he gave up.)
+  if (d < (v.def.sidecar ? REACH_OUTFIT : 1.7)) return v.enter(s, ride.seat) ? 'on' : 'fail';
   if (d > SEARCH + 20) return 'fail'; // (killed on the way, and back at a spawn point)
   if (!brain.path || ride.t > ride.replanT) {
     ride.replanT = ride.t + 6;

@@ -10,6 +10,7 @@ const WRECK_RESPAWN = 45; // s after it was wrecked
 const ABANDON_TIME = 90; // s left alone away from its place (or lying on its side)
 const ABANDON_DIST = 30; // m from its place
 const UNSEEN = 40; // m: nobody this close to it (or to its place) when it is put back
+const HOME_SLACK = 1.2; // m: a machine this near the middle of its own place is standing on it
 const _boxes = [];
 const _hit = new RayHit();
 
@@ -176,6 +177,9 @@ export class BikeStands {
       else s.idleT = 0;
       const due = (!v.alive && s.deadT > WRECK_RESPAWN && !v.occupants.some(Boolean)) || (v.alive && s.idleT > ABANDON_TIME);
       if (!due || this._watched(p) || this._watched(s)) continue;
+      // Another vehicle stands on its place (a jeep parked there, a wreck):
+      // wait until it has gone. (Made inside it, the two were thrown apart.)
+      if (this._taken(s, v)) continue;
       v.removeFromWorld();
       const i = g.vehicles.indexOf(v);
       if (i >= 0) g.vehicles.splice(i, 1);
@@ -183,6 +187,21 @@ export class BikeStands {
       s.v.team = s.team;
       s.deadT = s.idleT = 0;
     }
+  }
+
+  // Is any vehicle but the one being replaced on or touching this place?
+  _taken(s, self) {
+    const r = halfWidth(VEHICLES[s.id]) + VEHICLES[s.id].dims[2] / 2;
+    // (Not the machines of the places beside it, standing on their own places.)
+    const home = new Set();
+    for (const t of this.spots) if (t !== s && (t.v.body.position.x - t.cx) ** 2 + (t.v.body.position.z - t.cz) ** 2 < HOME_SLACK ** 2) home.add(t.v);
+    for (const o of this.game.vehicles) {
+      if (o === self || home.has(o)) continue;
+      const q = o.body.position;
+      const ro = Math.hypot(o.def.dims[0], o.def.dims[2]) / 2;
+      if ((q.x - s.cx) ** 2 + (q.z - s.cz) ** 2 < (r + ro) ** 2) return true;
+    }
+    return false;
   }
 
   _watched(p) {

@@ -243,12 +243,14 @@ export class VehicleController {
       else if (!v.loaded) this.game.audio?.play?.('dryFire', null, { volume: 0.4 });
     }
     this.wantFire = false;
-    // Machine guns.
-    if (v.coax) {
+    // Machine guns: only the one of his own seat (one left firing in another
+    // seat was his too, and its rounds counted as his).
+    const role = this.role;
+    if (v.coax && role === 'gunner') {
       const n = v.coax.takeShots();
       for (let i = 0; i < n; i++) this._mgShot(v, v.coax, 'coaxMuzzle', v.boreDir(_v2));
     }
-    if (v.bowMg) {
+    if (v.bowMg && role === 'bowMg') {
       const n = v.bowMg.takeShots();
       if (n) {
         _q.setFromEuler(_e.set(v.bowAim.pitch, v.bowAim.yaw, 0, 'YXZ')).premultiply(v.body.quaternion);
@@ -256,7 +258,7 @@ export class VehicleController {
         for (let i = 0; i < n; i++) this._mgShot(v, v.bowMg, 'bowMgMuzzle', dir);
       }
     }
-    if (v.mg && this.role === 'sidecarMg') {
+    if (v.mg && role === 'sidecarMg') {
       const n = v.mg.takeShots();
       for (let i = 0; i < n; i++) this._mgShot(v, v.mg, 'mgMuzzle', v.mgDir(_v2));
     }

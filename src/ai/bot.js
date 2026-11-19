@@ -73,6 +73,10 @@ const RANGES = {
 };
 // Shot at from further off, he answers out to this many times his range.
 const ANSWER = 1.5;
+// Trying to move but less than this far (m) from where he was this long ago
+// (s): he is stuck, however much he shakes about meanwhile.
+const STUCK_WINDOW = 1.5;
+const STUCK_WINDOW_MOVE = 0.3;
 export function engageRange(def) {
   if (!def) return RANGES.iron;
   return def.scope ? RANGES.scope : RANGES[def.type] || RANGES.iron;
@@ -201,6 +205,10 @@ export class BotBrain {
     this.coverT = 0;
     this.stuckT = 0;
     this.unstickT = 0;
+    this.stuckSpot = null;
+    // (A route asked for in his last life would start where he fell.)
+    this.want = null;
+    this.game.nav?.forget?.(this);
   }
 
   get enemies() {
@@ -1012,7 +1020,18 @@ export class BotBrain {
     it.sprint = ((!this.target && farToGo && !this.hunt) || coverRun) && fwd > 0.7 && b.stamina > 20 && !b.staminaLock;
     // Stuck? Try to hop, then pick a new path.
     const moved = Math.hypot(b.x - this.lastPos.x, b.z - this.lastPos.z);
-    if (len > 0.5 && speed > 0 && moved < 0.25 * dt) this.stuckT += dt;
+    const trying = len > 0.5 && speed > 0;
+    // (Judged over a second or so too: shaking back and forth against a bank
+    // he moved enough each step, and got nowhere for minutes.)
+    const now = this.game.time;
+    const sp = this.stuckSpot;
+    if (!trying) this.stuckSpot = null;
+    else if (!sp) this.stuckSpot = { x: b.x, z: b.z, t: now, slow: false };
+    else if (now - sp.t >= STUCK_WINDOW) {
+      const slow = Math.hypot(b.x - sp.x, b.z - sp.z) < STUCK_WINDOW_MOVE;
+      this.stuckSpot = { x: b.x, z: b.z, t: now, slow };
+    }
+    if (trying && (moved < 0.25 * dt || this.stuckSpot?.slow)) this.stuckT += dt;
     else this.stuckT = Math.max(0, this.stuckT - dt * 2);
     this.lastPos.x = b.x;
     this.lastPos.z = b.z;

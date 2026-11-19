@@ -626,7 +626,19 @@ export class Bike extends Vehicle {
         wz = oz + (-w.x * syw + w.z * cyw);
       const yf = this.oy - w.x * Math.sin(this.lean) * Math.cos(this.pitch) - w.z * Math.sin(this.pitch);
       const y0 = yf + w.radius + 0.25;
-      if (coll.raycast(wx, y0, wz, 0, -1, 0, w.radius + 1.6, _hit, FLAG_WALKABLE, true)) {
+      let hit = coll.raycast(wx, y0, wz, 0, -1, 0, w.radius + 1.6, _hit, FLAG_WALKABLE, true);
+      // Another vehicle's top, higher than the wheel can roll up (a tank
+      // driving into a parked machine): not ground under it, but something it
+      // is pushed by (_collide). Taken as ground, the spring threw it hundreds
+      // of meters up.
+      const other = hit && !_hit.ground && _hit.box?.owner?.isVehicle && _hit.box.owner !== this ? _hit.box.owner : null;
+      if (other && y0 - _hit.t > yf + (this.pedal ? 0.12 : 0.2)) {
+        const boxes = other.proxies || [];
+        for (const b of boxes) b.box.enabled = false;
+        hit = coll.raycast(wx, y0, wz, 0, -1, 0, w.radius + 1.6, _hit, FLAG_WALKABLE, true);
+        for (const b of boxes) b.box.enabled = true;
+      }
+      if (hit) {
         w.hit = true;
         w.nx = _hit.nx;
         w.ny = Math.max(0.3, _hit.ny);
@@ -1916,12 +1928,15 @@ export class Bike extends Vehicle {
     let x = p.x + rx * side * off,
       z = p.z + rz * side * off;
     const coll = this.world.collision;
-    const y0 = this.world.hf.getHeight(x, z);
+    // (On a bridge deck he stands on the deck, not on the river bed under it.)
+    let y0 = this.standingHeight(x, z, p.y);
     if (coll.query(x - 0.3, y0 + 0.2, z - 0.3, x + 0.3, y0 + 1.8, z + 0.3, _boxes, FLAG_SOLID).some((bx) => bx.owner !== this)) {
       x = p.x - rx * side * off;
       z = p.z - rz * side * off;
+      y0 = this.standingHeight(x, z, p.y);
     }
     this.occupants[i] = null;
+    this.releaseGun(i);
     soldier.vehicle = null;
     soldier.seat = -1;
     soldier.leftVehicle = this;
@@ -1929,7 +1944,7 @@ export class Bike extends Vehicle {
     if (b) {
       b.x = x;
       b.z = z;
-      b.y = this.world.hf.getHeight(x, z) + 0.05;
+      b.y = y0 + 0.05;
       b.vx = this.body.velocity.x * 0.5;
       b.vy = 0;
       b.vz = this.body.velocity.z * 0.5;
@@ -1959,9 +1974,8 @@ export class Bike extends Vehicle {
   // ------------------------------------------------------------------ sidecar gun
   _mgStep(dt) {
     const d = this.def.sidecarMg;
+    this._releaseEmptyGuns();
     this.mg.update(dt);
-    const gunner = this.occupants.findIndex((o, i) => o && this.seats[i].role === 'sidecarMg');
-    if (gunner < 0) this.mg.trigger = false;
     // He swings the gun at a human rate, within the mount's limits.
     const lim = d.traverse * DEG;
     const yaw = clamp(wrapAngle(this.mgAim.yaw), -lim, lim);

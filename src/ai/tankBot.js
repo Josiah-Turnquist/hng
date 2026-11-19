@@ -9,9 +9,20 @@ import { clamp, wrapAngle, DEG, rand } from '../core/math.js';
 import { FLAG_SIGHT, RayHit } from '../physics/collision.js';
 import { SHELLS, isHE } from '../vehicles/defs.js';
 import { leavesBetween } from './tactics.js';
+import { BotBrain } from './bot.js';
+import { friendInLine } from './riderBot.js';
 
 // How far short of a point a tank that can't reach it tries to get, in turn (m).
 const BACK = [0, 50, 90, 140];
+
+// Stuck: if it is stuck again less than this far (m) from where it was last
+// stuck, the backing off didn't help; it backs off for longer (s), and after
+// this many tries in the same place it gives up that point for a while.
+const STUCK_PROGRESS = 8;
+const REVERSE_LONG = 5;
+const STUCK_TRIES = 3;
+// Throttle for a sharp turn that isn't coming round at the usual quarter.
+const TURN_HARD = 0.5;
 
 // How far a tank crew makes out men at all (m).
 const INFANTRY_SIGHT = 900;
@@ -43,7 +54,12 @@ export class TankBrain {
 
   update(dt) {
     const v = this.v;
-    if (!v.alive || v.occupants[0] !== this.s) return;
+    if (!v.alive || v.occupants[0] !== this.s) {
+      // His tank was wrecked (in a crash, say) and he got out alive: he fights
+      // on foot, as a man who found no room for a tank does (modes/assault.js).
+      if (!v.alive && this.s.alive && !this.s.vehicle && this.s.brain === this) this.s.brain = new BotBrain(this.game, this.s);
+      return;
+    }
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
       this.thinkT = 0.35 + rand() * 0.15;
@@ -216,7 +232,11 @@ export class TankBrain {
         const have = Math.atan2(-f.x, -f.z);
         const err = wrapAngle(want - have);
         steer = clamp(-err * 2, -1, 1);
-        drive = Math.abs(err) > 0.7 ? 0.25 : Math.abs(err) > 0.3 ? 0.6 : 1;
+        // (Turning on the spot at a quarter throttle a Panzer IV doesn't turn
+        // at all, and a Sherman barely: not getting round, he gives it more.)
+        if (Math.abs(err) <= 0.7) this.hardTurn = false;
+        else if (this.stuckT > 1) this.hardTurn = true;
+        drive = Math.abs(err) > 0.7 ? (this.hardTurn ? TURN_HARD : 0.25) : Math.abs(err) > 0.3 ? 0.6 : 1;
         // Slow down for the last waypoint.
         if (this.pathI === this.path.length - 1 && d < 25) drive *= 0.5;
       }
@@ -227,10 +247,23 @@ export class TankBrain {
     else this.stuckT = Math.max(0, this.stuckT - dt);
     if (this.stuckT > 3) {
       this.stuckT = 0;
-      this.reverseT = 2.5;
+      // Stuck again where he was stuck last time: backing off and taking the
+      // same route has not worked (wedged on low posts the route doesn't
+      // know about, a tank sat there for minutes). Back off further, and
+      // after a few tries leave that point for a while, as when no route is found.
+      const at = b.position;
+      const last = this.stuckAt;
+      this.stuckN = last && Math.hypot(at.x - last.x, at.z - last.z) < STUCK_PROGRESS ? (this.stuckN || 0) + 1 : 1;
+      this.stuckAt = { x: at.x, z: at.z };
+      this.reverseT = this.stuckN > 1 ? REVERSE_LONG : 2.5;
       this.reverseSteer = rand() < 0.5 ? -0.6 : 0.6;
       this.path = null;
       this.pathT = 0;
+      if (this.stuckN >= STUCK_TRIES && this.goal) {
+        this.noRoute.set(this.goal.id, this.game.time + 150 + rand() * 60);
+        this.goal = null;
+        this.stuckN = 0;
+      }
     }
   }
 
@@ -276,13 +309,16 @@ export class TankBrain {
     const off = Math.acos(clamp(dir.dot(to), -1, 1));
     const size = (t.kind === 'vehicle' ? 1.2 : 0.4) / Math.max(d, 1);
     const steady = v.def.turret.stabilizer ? Math.abs(v.speed) < 5 : Math.abs(v.speed) < 1;
-    // Don't fire high explosive at enemies mixed up with our own men.
+    // Don't fire high explosive at enemies mixed up with our own men, nor
+    // anything through them.
     let clear = true;
     if (t.kind === 'soldier')
       for (const o of g.soldiers) {
         if (o.alive && o.team === this.s.team && !o.vehicle && Math.hypot(o.body.x - tp.x, o.body.z - tp.z) < 12) clear = false;
       }
-    if (this.fireDelay <= 0 && v.loaded && off < size + 0.0015 && steady && clear) {
+    const lineDist = Math.hypot(dx, dy, dz);
+    const friendAhead = friendInLine(this.s, m, to, lineDist);
+    if (this.fireDelay <= 0 && v.loaded && off < size + 0.0015 && steady && clear && !friendAhead) {
       const p = v.fireMain(this.s);
       if (p) this.fireDelay = 0.5 + rand();
     }
@@ -290,7 +326,7 @@ export class TankBrain {
     if (t.kind === 'soldier' && d < 350 && off < 0.02) {
       this.mgBurst -= dt;
       if (this.mgBurst < -1.2) this.mgBurst = 0.8 + rand();
-      v.coax.trigger = this.mgBurst > 0;
+      v.coax.trigger = this.mgBurst > 0 && !friendAhead;
     }
     // Shots from the coax are fired by the game for the crew.
     const n = v.coax.takeShots();
