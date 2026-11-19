@@ -567,6 +567,27 @@ when he clicks Ready with the same soldier. Not back in time, a bot takes the
 soldier over and his battle so far is rewarded, as when leaving. Tests:
 `tests/rejoin.test.js`.
 
+*Three gaps in it closed (November 2026, the bug sweep).* A line that goes
+dead without a word (a phone leaving wifi) used to leave the server thinking
+the player was still there, so his own page, trying to get back in, was told
+"you are already in this battle" for as long as that lasted. Now a battle's
+connections are checked every half minute, as the menus' already were, and a
+player who connects again while his old connection still looks open simply
+takes his soldier over: the old connection is let go, and if it was really
+another window of his, that window is told so and does not fight him for the
+place. A battle decided while he was away tells him so when he gets back, and
+hands him what it earned him. Tests: `tests/sweepServer.test.js`.
+
+**Nothing a browser sends may stop the server (November 2026).** The sweep
+found four messages that brought the whole server down, three of them from
+anyone, without signing in: the text "null" sent to a battle connection, a
+message longer than allowed, a sign-in answer cut off half way, and a war order
+for a team type that is no team. Each is now refused or dropped. Names that
+come from a browser (a class, an army, a team type) are looked up only among
+the game's own, never among what every object has ("constructor"). And as a
+last resort the server logs a fault in one request, or in one second of the
+war, and carries on for everyone else. Tests: `tests/sweepServer.test.js`.
+
 **Phase 5: run it for real (ongoing).**
 More than one game server, battles started on demand, health checks, logs and
 charts, database backups, report, kick and ban tools, a privacy policy and terms.

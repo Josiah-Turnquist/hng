@@ -46,8 +46,8 @@ export function updateThrow(game, s, dt) {
   const th = s.throwing;
   if (!th) return;
   if (!s.alive || s.vehicle) {
-    // Dropped: a cooking grenade falls where he was.
-    if (th.phase === 'windup' && th.cook > 0) launch(game, s, th, dropAim);
+    // Dropped: a cooking grenade, or one in mid swing, falls where he was.
+    if ((th.phase === 'windup' && th.cook > 0) || th.phase === 'swing') launch(game, s, th, dropAim);
     s.throwing = null;
     return;
   }

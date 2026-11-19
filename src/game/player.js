@@ -762,10 +762,15 @@ export class PlayerController {
     const breathP = Math.sin(this.breathPh * 2 * Math.PI) * (0.0016 + hard * 0.0034) * breathAmp;
     const breathY = Math.sin(this.breathPh * Math.PI + 1.3) * (0.0006 + hard * 0.0014) * breathAmp;
     // Slow drift (random walk pulled back to center) and a fine tremor.
+    // (On the player's own screen this runs once a frame as it draws, so it
+    // takes its dice from Math.random: from the battle's, a seeded battle would
+    // play out differently at a different frame rate. A server, with no screen,
+    // runs it each step, from the battle's.)
+    const gauss = this.viewmodel ? screenGauss : gaussRandom;
     const dr = this.drift;
     const driftAmp = 0.0012 * (1 + fatigue + 0.4 * hard);
-    dr.vy += (gaussRandom() * driftAmp * 6 - dr.yaw * 2.5 - dr.vy * 1.6) * dt;
-    dr.vp += (gaussRandom() * driftAmp * 6 - dr.pitch * 2.5 - dr.vp * 1.6) * dt;
+    dr.vy += (gauss() * driftAmp * 6 - dr.yaw * 2.5 - dr.vy * 1.6) * dt;
+    dr.vp += (gauss() * driftAmp * 6 - dr.pitch * 2.5 - dr.vp * 1.6) * dt;
     dr.yaw += dr.vy * dt;
     dr.pitch += dr.vp * dt;
     const pulse = Math.sin(this.pulsePh * 2 * Math.PI) * 0.00018 * (1 + hard * 1.5);
@@ -788,4 +793,12 @@ export class PlayerController {
     this.lightLevel = damp(this.lightLevel, sunBlocked ? 0.08 : 1, 6, dt);
     this.ambientLevel = damp(this.ambientLevel, roof ? 0.35 : 1, 4, dt);
   }
+}
+
+// A normally distributed number from Math.random, not the battle's dice (for
+// what only the screen works out: the sway, above).
+function screenGauss() {
+  let u = 0;
+  while (u === 0) u = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
 }

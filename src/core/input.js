@@ -220,6 +220,15 @@ export function keyName(code) {
   return code;
 }
 
+// Is this where text is being typed: a text box, or an editable part of the page?
+// (Not a slider, tick box or button, which keep focus after a click.)
+const NOT_TEXT = new Set(['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'color', 'file', 'image']);
+export function typing(t) {
+  if (!t) return false;
+  if (t.tagName === 'INPUT') return !NOT_TEXT.has(String(t.type || 'text').toLowerCase());
+  return t.tagName === 'TEXTAREA' || !!t.isContentEditable;
+}
+
 export class Input {
   constructor(element) {
     this.element = element;
@@ -243,6 +252,8 @@ export class Input {
         this.unlock();
         return;
       }
+      // Typing in a box (a name, an email, chat) is not playing.
+      if (typing(e.target)) return;
       // (On the deploy screen the mouse is free but Tab is still the
       // scoreboard: it must not also step between the screen's buttons.)
       if (e.code === 'Tab' && !this.locked && document.querySelector('.hud.deploying')) e.preventDefault();
@@ -385,6 +396,17 @@ export class Input {
     const w = this.wheel;
     this.wheel = 0;
     return w;
+  }
+
+  // Forget every key: those pressed or held before the battle (typed in the
+  // menus) must not act on its first frame.
+  clear() {
+    this.down.clear();
+    this.pressed.clear();
+    this.released.clear();
+    this.dx = 0;
+    this.dy = 0;
+    this.wheel = 0;
   }
 
   // Called once per rendered frame after all systems have read input.

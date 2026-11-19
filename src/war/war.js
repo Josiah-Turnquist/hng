@@ -251,6 +251,12 @@ export function deployProblem(war, t, capital) {
   if (t.at !== null) return 'Already in the field';
   if (!capitalsOf(war, t.army).length) return 'No capital left to set it down at';
   if (capital != null && (!MAP.isCapital(capital) || war.owner[capital] !== CODE[t.army])) return 'Not one of your capitals';
+  if (capital != null) {
+    // A battle there that this army is in: the team joins it. Two other
+    // armies fighting there, or enemy teams standing there: no.
+    const fight = war.battles.find((b) => b.point === capital);
+    if (fight ? fight.att !== t.army && fight.def !== t.army : teamsAt(war, capital).some((o) => o.army !== t.army)) return 'The enemy is there';
+  }
   if (cpUsed(war, t.army) + TEAMS[t.type].cp > war.cpLimit[t.army]) return 'Not enough command points';
   if (war.funds[t.army] < refillCost(t)) return 'Not enough warfunds';
   const pool = war.pools[t.army];
@@ -269,6 +275,9 @@ export function deploy(war, id, capital) {
     t.men[r] = n;
   }
   Object.assign(t, { at: capital, path: [], leg: 0, air: false, hold: 0, battle: null, morale: 100 });
+  // Set down where a battle is on: it fights in it.
+  const fight = war.battles.find((b) => b.point === capital);
+  if (fight) enter(war, t, capital, fight);
   return true;
 }
 
@@ -364,6 +373,15 @@ function step(war, dt) {
       continue;
     }
     if (!t.path.length) {
+      // Enemy teams on the same point: they fight, the army that doesn't hold
+      // it attacking.
+      const foe = war.teams.find((o) => o.at === t.at && o.army !== t.army && !o.battle);
+      if (foe && !war.battles.some((b) => b.point === t.at)) {
+        const [att, def] = war.owner[t.at] === CODE[t.army] ? [foe.army, t.army] : [t.army, foe.army];
+        const side = (a) => war.teams.filter((o) => o.at === t.at && o.army === a && !o.battle);
+        startBattle(war, t.at, att, def, side(att), side(def), 0);
+        continue;
+      }
       // Standing on a point it doesn't hold (after a battle there, or told to
       // stop): it carries on taking it.
       if (war.owner[t.at] !== CODE[t.army]) t.hold = MAP.isCapital(t.at) ? TAKE_TIME.capital : TAKE_TIME.point;
@@ -521,11 +539,16 @@ function checkVictory(war) {
   const held = Object.fromEntries(ARMIES.map((a) => [a, capitalsOf(war, a).length]));
   const alive = ARMIES.filter((a) => held[a] > 0);
   const winner = ARMIES.find((a) => held[a] >= CAPITALS_TO_WIN) || (alive.length === 1 ? alive[0] : null);
-  // An army with no capital left is out: its teams go home.
+  // An army with no capital left is out: it loses the battles it is in, and
+  // its teams go home.
+  let b;
+  while (!war.over && (b = war.battles.find((x) => !held[x.att] || !held[x.def]))) resolveBattle(war, b.id, !held[b.def]);
+  if (war.over) return;
   for (const a of ARMIES) if (!held[a]) for (const t of war.teams) if (t.army === a && t.at !== null) undeploy(t);
   if (!winner) return;
   war.over = { winner, t: war.t };
   war.battles = [];
+  for (const t of war.teams) t.battle = null;
   if (winner === war.army) war.funds[war.army] += WAR_BONUS.warfunds * deployed(war, war.army).length;
   note(war, winner, `${winner} wins the war`);
 }

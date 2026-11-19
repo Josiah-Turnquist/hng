@@ -20,7 +20,7 @@ import { priceOf, owns, canBuy, buy, ownsUpgrade, canBuyUpgrade, buyUpgrade, pic
 import { variantCount } from '../actors/soldierKit.js';
 import { SettingsView } from './settingsView.js';
 import { emblem, classIcon, rankBadge, ICONS } from './icons.js';
-import { loadRoster, saveRoster, selected, select, recruit, dismiss, rename, NAME_MAX, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
+import { loadRoster, saveRoster, ROSTER_KEY, selected, select, recruit, dismiss, rename, NAME_MAX, rankOf, rankTitle, playerLevel, randomName, RANK_XP, RANK_TITLES, CLASS_NAMES, CLASS_NOTES, MAX_SOLDIERS } from './roster.js';
 import { SoldierPreview } from './soldierPreview.js';
 import { BattleMap } from './battleMap.js';
 import { signOut } from '../net/auth.js';
@@ -30,6 +30,7 @@ import { TEAM_LEVELS, WAR_BONUS } from '../war/warMapData.js';
 import { newWar, nextWar, tick, drift, buy as buyTeam, deploy, deployProblem, order, withdraw, upgrade, upgradeProblem, upgradesFor, capitalsOf, ownerOf, teamOf, battleOf, teamsAt, cpUsed, teamLevel, fullness, refillCost, supplied, canFly, clock, TEAMS, BUYABLE, ARMIES, RESOURCE_NAMES, WAR_SPEED, CAPITALS_TO_WIN, BATTLE_TIME } from '../war/war.js';
 import { loadWar, saveWar, commandPoints, generalRank, canPromote, promote, hireGeneral, mayLead, GENERAL_RANK, HIRE_PRICE } from '../war/warStore.js';
 import { GAME_NAME, GAME_TAGLINE } from '../core/brand.js';
+import { tooSoon } from './confirmClick.js';
 
 const TANKS = {
   US: [
@@ -152,8 +153,10 @@ export function showFrontEnd(app) {
       acct.hidden = false;
       acct.textContent = app.account.user.name || app.account.user.email;
       acct.title = `Signed in as ${app.account.user.email}. Press to sign out.`;
-      acct.addEventListener('click', async () => {
+      let askedAt = 0;
+      acct.addEventListener('click', async (e) => {
         if (!acct.classList.contains('sure')) {
+          askedAt = performance.now();
           acct.classList.add('sure');
           acct.textContent = 'Sign out?';
           setTimeout(() => {
@@ -162,6 +165,8 @@ export function showFrontEnd(app) {
           }, 3000);
           return;
         }
+        // (Not the second half of a double-click.)
+        if (tooSoon(e, askedAt)) return;
         await signOut();
         location.reload();
       });
@@ -192,6 +197,7 @@ export function showFrontEnd(app) {
     root.querySelector('.fe-touch').hidden = !matchMedia('(hover: none) and (pointer: coarse)').matches;
     let screen = 'heroes';
     let view = null; // settings pages, when open
+    let shutWindow = null; // takes away the window open over the screen, if any
     let preview = null;
     try {
       preview = new SoldierPreview(app.renderer);
@@ -225,6 +231,8 @@ export function showFrontEnd(app) {
       if (lobby) lobby.onGo = null;
       save();
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('storage', onStorage);
+      shutWindow?.();
       view?.close();
       preview?.dispose();
       root.remove();
@@ -393,6 +401,7 @@ export function showFrontEnd(app) {
 
     const show = (name) => {
       screen = name;
+      shutWindow?.();
       view?.close();
       view = null;
       main.innerHTML = '';
@@ -658,9 +667,10 @@ export function showFrontEnd(app) {
       box.appendChild(b);
     }
 
-    // A window over the screen: { box, body, foot, close }. Esc or the cross
+    // A window over the screen: { box, body, foot, close, shut }. Esc or the cross
     // closes it, and the screen behind is drawn afresh.
     function openWindow(title, { sub = '', cls = '' } = {}) {
+      shutWindow?.();
       main.querySelector('.hx-dim')?.remove();
       const dim = el('div', 'hx-dim');
       dim.innerHTML = `<div class="hx-win ${cls}"><header><h2></h2><span class="hx-sub"></span><button class="x" title="Close">${ICONS.close}</button></header><div class="hx-wb"></div><footer><button class="ok">OK</button></footer></div>`;
@@ -669,21 +679,29 @@ export function showFrontEnd(app) {
       dim.style.setProperty('--at', `${main.scrollTop}px`);
       main.appendChild(dim);
       const onKey = (e) => {
+        // (The window is gone, taken away with the screen: its key goes too.)
+        if (!dim.isConnected) return shut();
         if (e.key === 'Escape') {
           e.stopPropagation();
           close();
         }
       };
-      const close = () => {
+      // Takes the window and its Esc key away, without drawing the screen again.
+      const shut = () => {
         window.removeEventListener('keydown', onKey, true);
         dim.remove();
+        if (shutWindow === shut) shutWindow = null;
+      };
+      const close = () => {
+        shut();
         show(screen);
       };
+      shutWindow = shut;
       window.addEventListener('keydown', onKey, true);
       dim.querySelector('.x').addEventListener('click', close);
       dim.querySelector('.ok').addEventListener('click', close);
       dim.addEventListener('click', (e) => e.target === dim && close());
-      return { box: dim.querySelector('.hx-win'), body: dim.querySelector('.hx-wb'), foot: dim.querySelector('footer'), close, title: (t) => (dim.querySelector('h2').textContent = t) };
+      return { box: dim.querySelector('.hx-win'), body: dim.querySelector('.hx-wb'), foot: dim.querySelector('footer'), close, shut, title: (t) => (dim.querySelector('h2').textContent = t) };
     }
 
     // Choosing what goes in a slot: what he owns, what is for sale to him, and
@@ -863,7 +881,7 @@ export function showFrontEnd(app) {
           else c.appendChild(el('em')).textContent = lockLine(s, tankRequirement(id));
           W.body.appendChild(c);
         }
-        W.body.appendChild(el('div', 'lo-note', 'The gunner and the other seats change with F1 to F4.'));
+        W.body.appendChild(el('div', 'lo-note', `The gunner and the other seats change with ${app.input?.key('seat1') || 'F1'} to ${app.input?.key('seat4') || 'F4'}.`));
       };
       draw();
     }
@@ -1054,6 +1072,7 @@ export function showFrontEnd(app) {
         tag.textContent = `${fmt(price)} credits`;
       };
       idle();
+      let askedAt = 0;
       c.addEventListener('click', (e) => {
         e.stopPropagation();
         const can = canBuy(roster, s, id);
@@ -1062,11 +1081,13 @@ export function showFrontEnd(app) {
           return;
         }
         if (!c.classList.contains('confirm')) {
+          askedAt = performance.now();
           c.classList.add('confirm');
           tag.textContent = `Buy for ${fmt(price)} credits? Click again`;
           setTimeout(idle, 4000);
           return;
         }
+        if (tooSoon(e, askedAt)) return;
         buy(roster, s, id);
         save();
         topBar();
@@ -1089,6 +1110,7 @@ export function showFrontEnd(app) {
       let slot = UPGRADE_SLOTS.find((k) => upgradesOf(gun).some((u) => u.slot === k)) || 'ammo';
       let chosen; // the part picked out: an upgrade id, or null for the gun's own
       let asking = false; // waiting for the second click to buy
+      let askedAt = 0; // when it started waiting
       const gunPic = preview?.gunPicture(gun, 360, 120) || '';
       const pic = (id, w, h) => (id ? preview?.partPicture?.(gun, id, w, h) : '') || '';
       const standard = (k) => (k === 'ammo' ? AMMO_TYPES[entry?.ammo]?.name || 'Service round' : k === 'sight' ? (def.scope ? def.scope.name : 'Iron sights') : 'Standard');
@@ -1203,12 +1225,14 @@ export function showFrontEnd(app) {
           act.classList.add('buy');
           if (!can.ok) act.disabled = true;
           else
-            act.addEventListener('click', () => {
+            act.addEventListener('click', (e) => {
               if (!asking) {
                 asking = true;
+                askedAt = performance.now();
                 draw();
                 return;
               }
+              if (tooSoon(e, askedAt)) return;
               asking = false;
               buyUpgrade(roster, s, gun, id);
               fit(s, gun, slot, id);
@@ -1626,10 +1650,12 @@ export function showFrontEnd(app) {
             c.querySelector('small').textContent = madeText(d) + (d.airRange ? ' · flies from airfields and capitals' : '');
             c.disabled = war.funds[army] < d.price;
             c.addEventListener('click', () => {
-              W.close();
+              // (Only the window goes: drawing the screen again would load the
+              // war as saved, before this purchase, and lose the team.)
+              W.shut();
               if (shared) return orderIt({ act: 'buy', type: id }, null, `${d.name} bought: set it down at one of your capitals`);
               const t = buyTeam(war, army, id);
-              if (!t) return;
+              if (!t) return refresh(true);
               sel = { team: t.id };
               saveWar(war);
               refresh(true);
@@ -1929,9 +1955,21 @@ export function showFrontEnd(app) {
       if (e.code !== 'Escape' || e.repeat) return;
       const modal = main.querySelector('.fe-modal');
       if (modal) modal.remove();
-      else if (view) view.back();
+      // (The Generals screen's view has no pages to go back through.)
+      else view?.back?.();
     };
     window.addEventListener('keydown', onKey);
+    // Offline, another tab of the game may save the soldiers too (a battle's
+    // rewards): take its copy and draw the screen again, so that this tab's
+    // next save does not undo it. (Signed in, the game server keeps them.)
+    const onStorage = (e) => {
+      if (e.key !== ROSTER_KEY || !e.newValue) return;
+      const fresh = loadRoster();
+      for (const k of Object.keys(roster)) delete roster[k];
+      Object.assign(roster, fresh);
+      show(screen);
+    };
+    if (!app.account) window.addEventListener('storage', onStorage);
     show('heroes');
   });
 }

@@ -21,6 +21,9 @@ import { rand } from '../../core/math.js';
 
 export const DEF = 0; // defenders' team index
 export const ATT = 1; // attackers
+const TANK_WRECK_STAYS = 180; // seconds the wreck of a tank a crew brought in stays (as cover) before it is taken away
+const SPOT_CLEAR = 7; // m around a vehicle's spot that must be free of other cars and tanks before a new one is put there (3 m for bicycles and motorcycles, which park close by)
+const SPAWN_WAIT = 10; // s back in at a point by your own base (half a second more for each link out from it)
 
 export const NAMES = {
   US: ['Miller', 'Kowalski', 'Russo', 'Johnson', 'Walsh', 'Hendricks', 'Ortiz', 'Brennan', 'Novak', 'Carter', 'Delaney', 'Fischer', 'Hayes', 'Lindqvist', 'Moretti', 'Parker', 'Quinn', 'Sullivan', 'Tucker', 'Vance'],
@@ -133,7 +136,8 @@ export class AssaultMode {
 
   capturable(p, team) {
     if (p.owner === team && Math.abs(p.c) >= 0.999) return false;
-    if (p.kind === 'access' && team === ATT) return p.owner !== ATT;
+    // (Attackers may also win back an access point of theirs the defenders have partly drained.)
+    if (p.kind === 'access' && team === ATT) return p.owner !== ATT || Math.abs(p.c) < 0.999;
     return p.links.some((id) => this.byId[id].owner === team && Math.abs(this.byId[id].c) >= 0.999);
   }
 
@@ -304,7 +308,7 @@ export class AssaultMode {
   }
 
   _spawnDelay(p, team) {
-    return 10 + 0.5 * this._depth(p, team);
+    return SPAWN_WAIT + 0.5 * this._depth(p, team);
   }
 
   _spawnPos(p) {
@@ -338,24 +342,9 @@ export class AssaultMode {
     b.x = pos.x;
     b.z = pos.z;
     b.y = pos.y ?? this.game.world.hf.getHeight(pos.x, pos.z);
-    b.vx = b.vy = b.vz = 0;
-    b.stance = b.targetStance = 0;
-    b.stanceT = 1;
-    b.stamina = 100;
-    s.alive = true;
-    s.health = 100;
-    s.bleed = 0;
-    s.armWound = 0;
-    b.legWound = 0;
-    s.action = null;
-    s.deathTime = 0;
-    s.killer = null;
-    s.gunDropped = false;
     s.yaw = this._facing(p);
     b.yaw = s.yaw;
-    s.rearm();
-    s.resupply();
-    for (const w of s.weapons) w?.fill();
+    s.revive();
     s.current = 0;
     if (s.brain) {
       s.brain.path = null;
@@ -456,14 +445,19 @@ export class AssaultMode {
     }
     for (const s of g.soldiers) {
       if (s.alive || s.isPlayer || s.remote) continue; // (players come back in where they choose)
-      if (s.respawnT === undefined || s.respawnT === null) s.respawnT = this._spawnDelay(this.points[0], s.team);
+      // (The shortest wait; the point he comes in at may add to it, below.)
+      if (s.respawnT === undefined || s.respawnT === null) s.respawnT = SPAWN_WAIT;
       s.respawnT -= dt;
       if (s.respawnT <= 0 && s.deathTime > 3) {
         let pts = this._spawnPoints(s.team);
         // Tanks come in only at access points (attackers) and objectives (defenders).
         if (s.tankCrew) pts = pts.filter((p) => p.kind === (s.team === ATT ? 'access' : 'objective'));
         if (!pts.length) continue;
-        const p = this._botSpawnPoint(s, pts);
+        // The point first, then that point's own wait (kept to while it can still be spawned at).
+        const p = pts.includes(s.respawnAt) ? s.respawnAt : this._botSpawnPoint(s, pts);
+        s.respawnAt = p;
+        if (s.deathTime < this._spawnDelay(p, s.team)) continue;
+        s.respawnAt = null;
         this.spawnSoldier(s, p);
         s.respawnT = s.tankCrew ? 40 : null;
         if (s.tankCrew) {
@@ -479,11 +473,22 @@ export class AssaultMode {
       if (spot.v.alive) continue;
       spot.deadT += dt;
       if (spot.deadT < 45 || spot.v.occupants.some((o) => o)) continue;
+      // (Not while another vehicle stands on the spot: two put in one place
+      // are thrown apart and wrecked. It waits for the spot to clear.)
+      if (g.vehicles.some((v) => v !== spot.v && (v.body.position.x - spot.x) ** 2 + (v.body.position.z - spot.z) ** 2 < (v.isBike ? 3 : SPOT_CLEAR) ** 2)) continue;
       spot.v.removeFromWorld();
       g.vehicles.splice(g.vehicles.indexOf(spot.v), 1);
       spot.v = g.spawnVehicle(spot.id, spot.x, spot.z, spot.yaw);
       spot.v.team = spot.team;
       spot.deadT = 0;
+    }
+    // A tank a crew brought in (Game._deployInTank) is not replaced: its wreck
+    // is taken away after a while, once nobody is in it.
+    for (let i = g.vehicles.length - 1; i >= 0; i--) {
+      const v = g.vehicles[i];
+      if (!v.crewBrought || v.alive || v.deadTime < TANK_WRECK_STAYS || v.occupants.some((o) => o)) continue;
+      v.removeFromWorld();
+      g.vehicles.splice(i, 1);
     }
     this.bikes?.update(dt);
     if (((g.time * 4) | 0) !== this._barTick) {

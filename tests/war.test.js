@@ -174,3 +174,86 @@ test('a soldier of rank 18 can be promoted to General (and keeps fighting), or a
   assert.equal(roster.credits, 0);
   assert.equal(hireGeneral(roster), false);
 });
+
+// A US team walked onto Rome (a German capital) where a German team stands,
+// and the battle that makes.
+function battleAtRome(seed) {
+  const w = newWar({ army: 'US', seed });
+  w.nextAi = Infinity;
+  const us = w.teams.find((x) => x.army === 'US');
+  const ge = w.teams.find((x) => x.army === 'GE');
+  const rome = capital('Rome');
+  deploy(w, us.id, capital('Arnhem'));
+  deploy(w, ge.id, rome);
+  us.at = rome;
+  return { w, us, ge, rome };
+}
+
+test('enemy teams standing on one point fight there; none can be set down beside them while they stand', () => {
+  const { w, us, ge, rome } = battleAtRome(10);
+  const more = buy(w, 'GE', 'guard');
+  assert.equal(deployProblem(w, more, rome), 'The enemy is there');
+  tick(w, 20);
+  const b = w.battles.find((x) => x.point === rome);
+  assert.ok(b, 'a battle, not a quiet hold');
+  assert.equal(b.att, 'US');
+  assert.deepEqual(b.attTeams, [us.id]);
+  assert.deepEqual(b.defTeams, [ge.id]);
+  assert.equal(us.hold, 0);
+});
+
+test('a team set down at a capital while a battle is on there fights in it, and goes back to the reserve if it is lost', () => {
+  const { w, us, rome } = battleAtRome(11);
+  tick(w, 20);
+  const b = w.battles.find((x) => x.point === rome);
+  const more = buy(w, 'GE', 'guard');
+  assert.equal(deployProblem(w, more, rome), null);
+  assert.ok(deploy(w, more.id, rome));
+  assert.equal(more.battle, b.id);
+  assert.ok(b.defTeams.includes(more.id));
+  // (Seed 8 of the old war: the US took Rome while the German team set down
+  // there stood by, then it took Rome back without a fight.)
+  resolveBattle(w, b.id, true);
+  assert.equal(ownerOf(w, rome), 'US');
+  assert.equal(more.at, null);
+  assert.ok(w.teams.every((t) => t.at !== rome || t.army === 'US'));
+  tick(w, 3 * 3600);
+  assert.equal(ownerOf(w, rome), 'US');
+  assert.equal(us.at, rome);
+});
+
+test('an army that loses its last capital loses its battles and cannot win a capital back through them', () => {
+  const w = newWar({ army: 'US', seed: 12 });
+  w.nextAi = Infinity;
+  const us = w.teams.find((x) => x.army === 'US');
+  const su = w.teams.find((x) => x.army === 'SU');
+  const arnhem = capital('Arnhem');
+  deploy(w, us.id, arnhem);
+  deploy(w, su.id, capital('Warsaw'));
+  su.at = arnhem;
+  tick(w, 20);
+  const b = w.battles.find((x) => x.point === arnhem);
+  assert.equal(b?.att, 'SU');
+  for (const c of capitalsOf(w, 'SU')) w.owner[c] = armyCode('GE');
+  tick(w, 20);
+  assert.equal(w.over, null);
+  assert.ok(!w.battles.some((x) => x.att === 'SU' || x.def === 'SU'), 'its battles are over');
+  assert.equal(su.at, null);
+  assert.equal(su.battle, null);
+  assert.equal(us.battle, null, 'the other side is free again');
+  assert.equal(us.at, arnhem);
+  assert.equal(ownerOf(w, arnhem), 'US');
+  assert.equal(resolveBattle(w, b.id, true), null, 'the battle can no longer be won');
+  assert.equal(capitalsOf(w, 'SU').length, 0);
+});
+
+test('when the war is over no team is left in a battle', () => {
+  const { w, rome } = battleAtRome(13);
+  tick(w, 20);
+  assert.ok(w.battles.some((x) => x.point === rome));
+  for (const c of MAP.capitals) if (!['Rome', 'Athens', 'Budapest', 'Warsaw', 'Leningrad', 'Donetsk'].includes(MAP.name(c.point))) w.owner[c.point] = armyCode('US');
+  tick(w, 20);
+  assert.equal(w.over?.winner, 'US');
+  assert.equal(w.battles.length, 0);
+  assert.ok(w.teams.every((t) => t.battle === null));
+});

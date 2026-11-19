@@ -16,6 +16,8 @@ import { TANK_PARTS, tankNews } from './tankReport.js';
 const _cv = new THREE.Vector3();
 
 const FACTION_ARMY = { US: 'US Army', GE: 'Wehrmacht', SU: 'Red Army' };
+// Names and other text put into the page as HTML, made safe to show as written.
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const STANCE_NAMES = ['Standing', 'Crouched', 'Prone'];
 
@@ -366,7 +368,7 @@ export class Hud {
   killFeed(killer, victim, cause) {
     const row = document.createElement('div');
     const weapon = cause?.weapon?.name || (cause?.kind === 'bleeding' ? 'bled out' : cause?.kind === 'fall' ? 'fell' : cause?.kind === 'explosion' ? 'explosion' : '');
-    row.innerHTML = `<span class="k">${killer?.name ?? ''}</span> <span class="w">${weapon}</span> <span class="v">${victim.name}</span>${cause?.headshot ? ' <span class="h">head</span>' : ''}`;
+    row.innerHTML = `<span class="k">${esc(killer?.name ?? '')}</span> <span class="w">${esc(weapon)}</span> <span class="v">${esc(victim.name)}</span>${cause?.headshot ? ' <span class="h">head</span>' : ''}`;
     this.killfeedEl.prepend(row);
     setTimeout(() => row.remove(), 7000);
     while (this.killfeedEl.children.length > 6) this.killfeedEl.lastChild.remove();
@@ -405,12 +407,12 @@ export class Hud {
       } else if (d.type === 'grenade') {
         this.loadedEl.textContent = `${(w.chambered ? 1 : 0) + (w.spareMags?.length || 0)}`;
         this.reserveEl.textContent = '';
-        this.modeEl.textContent = 'Hold LMB to cook, release to throw';
+        this.modeEl.textContent = `Hold ${g.input.key('fire')} to cook, let go to throw`;
       } else if (d.type === 'melee') {
         // Nothing to load: what it does instead.
         this.loadedEl.textContent = '';
         this.reserveEl.textContent = '';
-        this.modeEl.textContent = d.style === 'stab' ? 'Close combat: LMB to stab' : 'Close combat: LMB to strike';
+        this.modeEl.textContent = `Close combat: ${g.input.key('fire')} to ${d.style === 'stab' ? 'stab' : 'strike'}`;
       } else if (d.type === 'binoculars') {
         // Nothing to count: how to use them instead.
         this.loadedEl.textContent = '';
@@ -951,7 +953,7 @@ export class Hud {
     const side = (t) => {
       const list = g.soldiers.filter((s) => s.team === t).sort((a, b) => b.score - a.score || b.kills - a.kills);
       const f = list[0]?.faction;
-      const rows = list.map((s) => `<tr class="${s === me ? 'me' : ''}${s.alive ? '' : ' dead'}"><td>${s.name}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.score}</td></tr>`).join('');
+      const rows = list.map((s) => `<tr class="${s === me ? 'me' : ''}${s.alive ? '' : ' dead'}"><td>${esc(s.name)}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.score}</td></tr>`).join('');
       return `<div class="side ${t === me.team ? 'own' : 'enemy'}"><h3>${f ? (FACTION_ARMY[f] || f) : ''}${g.mode?.points ? (t === 1 ? ' · attacking' : ' · defending') : ''}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th><th>Score</th></tr>${rows}</table></div>`;
     };
     el.innerHTML = teams.map(side).join('');
@@ -1077,7 +1079,8 @@ export class Hud {
       E.gun.textContent = '';
       E.reloadBar.style.display = 'none';
     }
-    E.seat.textContent = `${v.seats[s.seat]?.name || ''} · F exit · V camera · F1-F${v.seats.length} seats`;
+    const k = (a) => this.game.input.key(a);
+    E.seat.textContent = `${v.seats[s.seat]?.name || ''} · ${k('use')} exit · ${k('camera')} camera · ${k('seat1')}-${k(`seat${Math.min(4, v.seats.length)}`)} seats`;
     // Turret direction relative to the hull (top view, camera up).
     if (v.def.kind === 'tracked') {
       const camYaw = p.camera.rotation.y;

@@ -27,15 +27,15 @@ export class Pickups {
     return d;
   }
 
-  // Killed: his main weapon falls beside him; he gets a fresh one of the same
-  // kind when he comes back.
+  // Killed: his main weapon falls beside him; he gets a fresh one of his own
+  // when he comes back. (A grenade he was cooking falls too: throwing.js.)
   dropFrom(s) {
     const w = s.weapons[0];
     if (!w || s.vehicle) return null;
-    if (s.throwing) s.throwing = null;
     w.setTrigger(false);
     if (w.state === 'reloading') w.cancelReload();
-    s.weapons[0] = new Weapon(w.def);
+    // (His own loadout gun, armed as his badges have it, even if he died holding one he picked up.)
+    s.weapons[0] = s._arm?.(s.loadout?.[0], 0) || new Weapon(w.def);
     s.gunDropped = true;
     const a = rand() * Math.PI * 2,
       r = 0.4 + rand() * 0.4;

@@ -196,6 +196,13 @@ export class App {
     await Promise.race([soundReady, new Promise((r) => setTimeout(r, 4000))]);
     this._resize();
     window.addEventListener('resize', () => this._resize());
+    // (Moved to a screen with finer or coarser dots: browsers often send no
+    // "resize" for that, so it is watched for by itself.)
+    const watchDots = () => {
+      const m = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      m?.addEventListener?.('change', () => (this._resize(), watchDots()), { once: true });
+    };
+    watchDots();
     // Releasing the mouse (Esc) pauses, once the player has started playing.
     this.pause = new PauseMenu(this, game);
     // Experience for the soldier when the battle ends, or when he leaves it.
@@ -217,6 +224,8 @@ export class App {
       if (key === 'showFps') this._fpsCounter();
     });
     this._fpsCounter();
+    // (Keys typed in the menus and while loading do not carry into the battle.)
+    this.input.clear();
     game.start();
     // The loading screen stays up until the first frames have really been
     // drawn (they are the slowest of the battle), or four seconds at most.

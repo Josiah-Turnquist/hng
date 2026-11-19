@@ -279,6 +279,8 @@ export class Game {
     const spot = this.findParking(b.x, b.z, 8, 160, 3.5, this.vnav || this.nav) || this.findParking(b.x, b.z, 6, 80, 3.5) || { x: b.x - Math.sin(s.yaw) * 6, z: b.z - Math.cos(s.yaw) * 6 };
     const v = this.spawnVehicle(id, spot.x, spot.z, s.yaw);
     v.team = s.team;
+    // (Its wreck is taken away in time: AssaultMode.update.)
+    v.crewBrought = true;
     v.enter(s, 0);
     if (s.isPlayer) this.player.vehicleCtl.entered(v);
     return v;
@@ -347,7 +349,8 @@ export class Game {
     // none, here: its muzzle, seats and armour are found from them.)
     if (this.headless) for (const v of this.vehicles) this._guard(v, () => v.syncMoved(dt));
     for (const s of this.soldiers) {
-      if (s.isPlayer || s.remote || s.puppet) continue;
+      // (The player was moved above, even when a bot stands in for him on the game server.)
+      if (s.isPlayer || s.remote || s.puppet || s === this.player?.soldier) continue;
       this._guard(s, () => {
         if (s.alive && s.brain) s.brain.update(dt);
         s.update(dt);
@@ -542,14 +545,7 @@ export class Game {
         b.x = sp.x;
         b.z = sp.z;
         b.y = this.world.hf.getHeight(sp.x, sp.z);
-        b.vx = b.vy = b.vz = 0;
-        s.alive = true;
-        s.health = 100;
-        s.bleed = 0;
-        s.deathTime = 0;
-        s.rearm();
-        s.resupply();
-        for (const w of s.weapons) w?.fill();
+        s.revive();
         s.current = -1;
         this.player._equip(0);
         this.player.look.yaw = sp.yaw;
@@ -718,6 +714,12 @@ export class Game {
     if (p.visual) {
       if (info.kind === 'exit' || info.detonate) return;
       fx.impact(info.material === 'flesh' ? { ...info, effect: 'blood' } : info);
+      this.audio?.impact?.(info.material, info.x, info.y, info.z, info.energy);
+      return;
+    }
+    // A thrown grenade knocking off a man or a vehicle: only the knock is heard
+    // (it hurts nobody until it goes off).
+    if (info.kind === 'bounce' && info.target) {
       this.audio?.impact?.(info.material, info.x, info.y, info.z, info.energy);
       return;
     }

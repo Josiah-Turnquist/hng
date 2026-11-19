@@ -99,8 +99,12 @@ export class Weapon {
     if (!(n > 0)) return false;
     if (this.spareMags) this.spareMags.push(Math.min(n, d.capacity));
     else if (d.feed === 'stripper' || d.feed === 'gate') this.loose = (this.loose || 0) + n;
-    else if (d.feed === 'enbloc' || d.feed === 'moon') this.clips = (this.clips || 0) + Math.max(1, Math.round(n / d.capacity));
-    else return false;
+    else if (d.feed === 'moon') this.clips = (this.clips || 0) + Math.max(1, Math.round(n / 3)); // half-moon clips of 3
+    else if (d.feed === 'enbloc') {
+      // Loose rounds; every full clip's worth makes up a clip.
+      this.loose = (this.loose || 0) + n;
+      this._rollLooseIntoClips();
+    } else return false;
     return true;
   }
 
@@ -112,6 +116,17 @@ export class Weapon {
 
   fill() {
     const d = this.def;
+    // Whatever the weapon was doing (a reload, working the bolt) stops: it
+    // starts again ready, as if new.
+    this.state = 'ready';
+    this.stateT = 0;
+    this.sequence = null;
+    this.stepIndex = 0;
+    this.stepT = 0;
+    this.cooldown = 0;
+    this.needsCycle = false;
+    this.boltBack = false;
+    this.boltLocked = false;
     if (this.kit) {
       // Uses left (none counted for the wrench); nothing in a magazine.
       this.uses = d.uses == null ? null : d.uses + (this.extraUses || 0);
@@ -200,10 +215,25 @@ export class Weapon {
     return this.chambered && !this.needsCycle;
   }
 
+  // Rounds are in the magazine but none can be fired until the bolt is closed,
+  // released or cocked: a reload stopped after the magazine (clip, rounds) went
+  // in. Reloading then, or pulling the trigger, only does that last step.
+  get needsChambering() {
+    const d = this.def;
+    if (this.melee || this.optic || this.kit || this.needsCycle || !(this.mag > 0)) return false;
+    if (d.feed === 'gate' || d.feed === 'moon' || d.feed === 'single' || d.feed === 'disposable' || d.type === 'grenade') return false;
+    return d.openBolt ? !this.boltBack : !this.chambered;
+  }
+
   // Can a reload start right now (and is there anything to load)?
   canReload() {
-    const d = this.def;
     if (this.state === 'reloading' || this.melee || this.optic || this.kit) return false;
+    return this._canLoad() || this.needsChambering;
+  }
+
+  // Is there room and anything to load (a full reload)?
+  _canLoad() {
+    const d = this.def;
     if (d.feed === 'disposable' || d.type === 'grenade') return false;
     if (d.feed === 'stripper' || d.feed === 'enbloc') {
       const room = d.capacity - this.mag - (d.feed === 'enbloc' && this.chambered ? 0 : 0);
@@ -211,7 +241,8 @@ export class Weapon {
       return room > 0 && (this.clips > 0 || this.loose > 0);
     }
     if (d.feed === 'gate') return this.loaded < d.capacity && this.loose > 0;
-    if (d.feed === 'moon') return this.loaded < d.capacity && this.clips > 0;
+    // A half-moon clip holds 3: only when there is room for a whole one.
+    if (d.feed === 'moon') return d.capacity - this.loaded >= 3 && this.clips > 0;
     if (d.feed === 'single') return !this.chambered && this.spareMags.length > 0;
     return this.spareMags.length > 0 && this.mag < d.capacity;
   }
@@ -222,7 +253,15 @@ export class Weapon {
     const d = this.def;
     const r = d.reload;
     const steps = [];
-    if (d.feed === 'stripper') {
+    if (this.needsChambering && (d.feed !== 'stripper' || !this._canLoad())) {
+      // Only the last step of a reload that was stopped: no rounds are used.
+      // (A stripper-clip rifle with room left is topped off as usual instead;
+      // that ends with closing the bolt too.)
+      if (d.feed === 'stripper') steps.push({ name: 'boltClose', t: r.boltClose, end: () => this._closeBolt() });
+      else if (d.feed === 'enbloc') steps.push({ name: 'boltRelease', t: 0.35, end: () => this._garandBoltForward() });
+      else if (d.feed === 'belt') steps.push({ name: 'charge', t: r.empty * 0.15, end: () => this._charge() });
+      else steps.push({ name: !d.openBolt && this.boltLocked ? 'boltRelease' : 'charge', t: Math.min(0.55, r.empty * 0.2), end: () => this._charge() });
+    } else if (d.feed === 'stripper') {
       // Clip when the magazine is empty and we have a full clip (and no scope
       // over the clip guide); otherwise single rounds.
       steps.push({ name: 'boltOpen', t: r.boltOpen, end: () => this._openBolt() });
@@ -370,10 +409,7 @@ export class Weapon {
     // The rounds left in the clip are picked up and kept as loose rounds; every
     // 8 loose rounds make up a new clip.
     this.loose += this.mag + (this.chambered ? 1 : 0);
-    while (this.loose >= this.def.capacity) {
-      this.loose -= this.def.capacity;
-      this.clips++;
-    }
+    this._rollLooseIntoClips();
     this.mag = 0;
     this.chambered = false;
     this.boltLocked = true;
@@ -381,7 +417,20 @@ export class Weapon {
     this.events.push({ type: 'sound', id: 'garandPing' });
   }
 
+  _rollLooseIntoClips() {
+    while (this.loose >= this.def.capacity) {
+      this.loose -= this.def.capacity;
+      this.clips++;
+    }
+  }
+
   _garandClipIn() {
+    // Rounds still in the rifle (a clip already in) are kept, not lost.
+    if (this.mag > 0) {
+      this.loose += this.mag;
+      this.mag = 0;
+      this._rollLooseIntoClips();
+    }
     if (this.clips <= 0) return;
     this.clips--;
     this.mag = this.def.capacity;
@@ -404,8 +453,9 @@ export class Weapon {
   }
 
   _moonClips() {
+    // Only whole clips go in: a clip of 3 never goes in with rounds left over.
     const need = this.def.capacity - this.loaded;
-    const clipsUsed = Math.min(this.clips, Math.ceil(need / 3));
+    const clipsUsed = Math.min(this.clips, Math.floor(need / 3));
     this.clips -= clipsUsed;
     const add = Math.min(need, clipsUsed * 3);
     if (!this.chambered && add > 0) {
@@ -508,6 +558,10 @@ export class Weapon {
         if (this.canFire()) {
           this._fire();
           shots = 1;
+        } else if (this.needsChambering && this.cooldown <= 1e-9) {
+          // Rounds in but the bolt not closed or cocked: pulling the trigger
+          // does that (the same last step as a reload, using no rounds).
+          this.startReload();
         } else if (pressed) {
           this._dryFire();
         }

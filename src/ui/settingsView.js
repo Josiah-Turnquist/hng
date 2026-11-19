@@ -524,7 +524,7 @@ function gameplayPage(body, view) {
         st.set('botDifficulty', v);
         view.render();
       },
-      'How good the computer soldiers on both sides are: Easy ones are slower to react and shoot wider, Hard ones have more veterans and react a little faster. It applies at once, in a battle too.',
+      'How good the computer soldiers on both sides are: Easy ones are slower to react and shoot wider, Hard ones have more veterans and react a little faster. It is for battles on this computer (practice and staged battles, and your own war), and applies at once, in a battle too. In online battles the game server sets how good the bots are.',
     ),
   );
 }

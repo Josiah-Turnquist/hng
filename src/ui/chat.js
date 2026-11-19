@@ -41,6 +41,13 @@ export class BattleChat {
       else if (e.code === 'KeyY') this._start('all', e);
     };
     window.addEventListener('keydown', this.onKey, true);
+    // Esc while the mouse is held by the game lets the mouse go before the
+    // box ever hears the key: close the box then too, or the game's keys stay
+    // off (and the box keeps every key to itself) after the player goes back in.
+    this.onLock = () => {
+      if (this.open && !document.pointerLockElement) this._close();
+    };
+    document.addEventListener('pointerlockchange', this.onLock);
     this.timer = setInterval(() => this._draw(), 1000);
   }
 
@@ -93,6 +100,7 @@ export class BattleChat {
   dispose() {
     clearInterval(this.timer);
     window.removeEventListener('keydown', this.onKey, true);
+    document.removeEventListener('pointerlockchange', this.onLock);
     this.root.remove();
   }
 }

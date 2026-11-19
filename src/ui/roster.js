@@ -20,6 +20,7 @@ import '../actors/soldierKitSU.js';
 import { saved } from '../core/saved.js';
 
 const KEY = 'hng.roster.v1';
+export const ROSTER_KEY = KEY;
 
 // Cumulative XP for ranks 0 to 22, from the original game's final data
 // (ExperienceLevels; see docs/research/heroes-and-generals.md 4.3).

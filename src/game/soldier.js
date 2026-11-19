@@ -268,6 +268,33 @@ export class Soldier {
   resupply() {
     for (const w of this.weapons) w?.resupply();
     this.bandages = Math.max(this.bandages, 2);
+    this.firstAid = Math.max(this.firstAid, 1);
+  }
+
+  // Back in battle (where is up to the caller): whole again, standing, rested,
+  // with his loadout and full ammunition, and nothing kept from his last life.
+  revive() {
+    const b = this.body;
+    b.vx = b.vy = b.vz = 0;
+    b.stance = b.targetStance = 0;
+    b.stanceT = 1;
+    b.stamina = 100;
+    b.legWound = 0;
+    this.alive = true;
+    this.health = 100;
+    this.bleed = 0;
+    this.armWound = 0;
+    this.action = null;
+    this.deathTime = 0;
+    this.killer = null;
+    this.gunDropped = false;
+    // (So bleeding out later is never put down to someone from that last life.)
+    this.woundedBy = null;
+    this.woundedWith = null;
+    this.woundedT = null;
+    this.rearm();
+    this.resupply();
+    for (const w of this.weapons) w?.fill();
   }
 
   // Coming back in: the weapons of his loadout again, in place of any he picked
