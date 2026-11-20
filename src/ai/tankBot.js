@@ -18,6 +18,14 @@ const BACK = [0, 50, 90, 140];
 // Stuck: if it is stuck again less than this far (m) from where it was last
 // stuck, the backing off didn't help; it backs off for longer (s), and after
 // this many tries in the same place it gives up that point for a while.
+const ESCAPE_TRY = 2.5; // s of backing that gets it nowhere before it tries going forward (the gear change alone takes over a second)
+const STRAIGHT_TRY = 4; // s it drives straight on (or back) to get clear of something beside it
+const STRAND_TIME = 60; // s of trying to go and getting nowhere before the last resort
+const STRAND_MOVE = 4; // m: less than this from where it was is nowhere
+const STRAND_UNSEEN = 90; // m: no player nearer than this to it, or to where it is set down
+const CORNER_NEAR = 2.5; // m from a point of its route at which it has reached it, whatever lies beyond
+const AHEAD_CLOSED = 2; // m ahead of the nose that it takes as blocked, when stuck
+const CLOSED_FOR = 60; // s it stays so
 const STUCK_PROGRESS = 8;
 const REVERSE_LONG = 5;
 const STUCK_TRIES = 3;
@@ -46,7 +54,12 @@ export class TankBrain {
     this.aware = new Map();
     this.lookYaw = soldier.yaw;
     this.stuckT = 0;
+    this.strandAt = null;
+    this.strandT = 0;
     this.reverseT = 0;
+    this.escapeDir = -1;
+    this.escapeT = 0;
+    this.escapeAt = { x: 0, z: 0 };
     this.fireDelay = 1;
     this.mgBurst = 0;
     this.noRoute = new Map(); // point id -> time until which it's left out
@@ -68,6 +81,50 @@ export class TankBrain {
     }
     this._drive(dt);
     this._gun(dt);
+    this._stranded(dt);
+  }
+
+  // The last resort. A tank that has a way to go and has got nowhere for a
+  // minute, whatever it tried, is set down on clear ground close by, as
+  // abandoned bicycles and jeeps are brought back: only when no player is
+  // anywhere near to see it.
+  _stranded(dt) {
+    const v = this.v;
+    const p = v.body.position;
+    const a = this.strandAt;
+    // (Holding by its point, or halted to fire, it is where it means to be.)
+    if (!a || this.holding || this.target || Math.hypot(p.x - a.x, p.z - a.z) > STRAND_MOVE) {
+      this.strandAt = { x: p.x, z: p.z };
+      this.strandT = 0;
+      return;
+    }
+    // (With nowhere to go it is not stranded, unless it has only given up
+    // the points it could not get to from here.)
+    if (!this.goal && !this.noRoute.size) return;
+    this.strandT += dt;
+    if (this.strandT < STRAND_TIME) return;
+    this.strandT = STRAND_TIME - 5; // (if it can't be done now, tried again in a few seconds)
+    const g = this.game;
+    const near = (x, z, r) => g.soldiers.some((s) => s.alive && (s.isPlayer || s.remote) && (s.body.x - x) ** 2 + (s.body.z - z) ** 2 < r * r);
+    if (near(p.x, p.z, STRAND_UNSEEN)) return;
+    const spot = g.findParking?.(p.x, p.z, 8, 70, 3.5, g.vnav || g.nav);
+    if (!spot || near(spot.x, spot.z, STRAND_UNSEEN)) return;
+    const b = v.body;
+    b.position.set(spot.x, g.world.hf.getHeight(spot.x, spot.z) + v.cg.y + 0.1, spot.z);
+    b.velocity.set(0, 0, 0);
+    b.angular.set(0, 0, 0);
+    b.force.set(0, 0, 0);
+    b.torque.set(0, 0, 0);
+    b.updateDerived();
+    v.syncMoved?.(0);
+    v.stir?.();
+    this.path = null;
+    this.pathT = 0;
+    this.stuckT = 0;
+    this.stuckN = 0;
+    this.reverseT = 0;
+    this.strandAt = null;
+    this.noRoute.clear();
   }
 
   _enemyVehicles() {
@@ -217,15 +274,29 @@ export class TankBrain {
     const engaging = this.target && (this.target.kind === 'vehicle' || !v.def.turret.stabilizer);
     const p = this.path && this.pathI < this.path.length ? this.path[this.pathI] : null;
     if (this.reverseT > 0) {
-      // Backing out of something we drove into.
+      // Backing out of something we drove into. If backing gets it nowhere
+      // either (it is what is behind that holds it: a tank backed against a
+      // trunk went on backing into it for the rest of the battle), forward.
       this.reverseT -= dt;
-      drive = -0.7;
-      steer = this.reverseSteer;
+      this.escapeT += dt;
+      if (this.escapeT > ESCAPE_TRY) {
+        if (Math.hypot(b.position.x - this.escapeAt.x, b.position.z - this.escapeAt.z) < 0.4) this.escapeDir = -this.escapeDir;
+        this.escapeT = 0;
+        this.escapeAt = { x: b.position.x, z: b.position.z };
+      }
+      drive = 0.7 * this.escapeDir;
+      steer = this.reverseSteer * (this.escapeDir < 0 ? 1 : 0.3);
     } else if (p && !this.holding && !(engaging && this.fireDelay < 1.5)) {
       const dx = p.x - b.position.x,
         dz = p.z - b.position.z;
       const d = Math.hypot(dx, dz);
-      if (d < 6) this.pathI++;
+      // A point of the route counts as reached from a few meters off only if
+      // the way straight on to the next one is clear: reached from 6 m off
+      // whatever lay between, a tank cut every corner, across the wall or the
+      // tree the route had been taken round.
+      const next = this.path[this.pathI + 1];
+      const nav = this.game.vnav || this.game.nav;
+      if (d < CORNER_NEAR || (d < 6 && (!next || !nav?.lineWalkable || nav.lineWalkable(b.position.x, b.position.z, next.x, next.z)))) this.pathI++;
       else {
         const f = v.forward;
         const want = Math.atan2(-dx, -dz);
@@ -237,10 +308,14 @@ export class TankBrain {
         if (Math.abs(err) <= 0.7) this.hardTurn = false;
         else if (this.stuckT > 1) this.hardTurn = true;
         drive = Math.abs(err) > 0.7 ? (this.hardTurn ? TURN_HARD : 0.25) : Math.abs(err) > 0.3 ? 0.6 : 1;
+        this.wasAhead = Math.abs(err) <= 0.7;
         // Slow down for the last waypoint.
         if (this.pathI === this.path.length - 1 && d < 25) drive *= 0.5;
       }
     }
+    // Asked to go and not going (a start on a slope, soft ground): all the
+    // throttle it has, before deciding it is stuck.
+    if (drive > 0.2 && this.stuckT > 1 && this.reverseT <= 0) drive = 1;
     v.driverInput(drive, steer, false);
     // Stuck against something: reverse a bit, then find another way.
     if (Math.abs(drive) > 0.2 && Math.abs(v.speed) < 0.3 && this.reverseT <= 0) this.stuckT += dt;
@@ -255,8 +330,33 @@ export class TankBrain {
       const last = this.stuckAt;
       this.stuckN = last && Math.hypot(at.x - last.x, at.z - last.z) < STUCK_PROGRESS ? (this.stuckN || 0) + 1 : 1;
       this.stuckAt = { x: at.x, z: at.z };
-      this.reverseT = this.stuckN > 1 ? REVERSE_LONG : 2.5;
-      this.reverseSteer = rand() < 0.5 ? -0.6 : 0.6;
+      if (this.wasAhead) {
+        // Driving on when it stopped: what holds it is ahead. Back off, turning.
+        this.reverseT = this.stuckN > 1 ? REVERSE_LONG : 2.5;
+        this.reverseSteer = rand() < 0.5 ? -0.6 : 0.6;
+        this.escapeDir = -1;
+      } else {
+        // Turning on the spot when it stopped: something stands beside it or
+        // behind it (a hull as long as a tank's cannot swing with a trunk
+        // against the middle of its side). Straight on a few meters to get
+        // clear of it, and the next time straight back.
+        this.reverseT = STRAIGHT_TRY;
+        this.reverseSteer = 0;
+        this.escapeDir = this.stuckN % 2 ? 1 : -1;
+      }
+      this.escapeT = 0;
+      this.escapeAt = { x: at.x, z: at.z };
+      // Whatever stopped it is just ahead of its nose: the routes worked out
+      // in the next minute go round that place. (Backing off and asking
+      // again gave the same route, into the same hedge bank or wall.)
+      // (Only when it was driving on, not when it was turning on the spot:
+      // then what stopped it is not ahead.)
+      if (this.wasAhead) {
+        const nav = this.game.vnav || this.game.nav;
+        const f = v.forward;
+        const ahead = v.def.dims[2] / 2 + AHEAD_CLOSED;
+        nav?.closeFor?.(at.x + f.x * ahead, at.z + f.z * ahead, AHEAD_CLOSED + 0.5, CLOSED_FOR, this.game.time);
+      }
       this.path = null;
       this.pathT = 0;
       if (this.stuckN >= STUCK_TRIES && this.goal) {

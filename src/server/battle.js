@@ -17,7 +17,7 @@ import { CollisionWorld, RayHit } from '../physics/collision.js';
 import { Atmosphere } from '../ballistics/atmosphere.js';
 import { RNG, useStream } from '../core/math.js';
 import { ProjectileSystem } from '../ballistics/projectiles.js';
-import { NavGrid } from '../ai/navgrid.js';
+import { NavGrid, VEHICLE_TREE_BERTH } from '../ai/navgrid.js';
 import { AssaultMode, ATT, DEF, NAMES } from '../game/modes/assault.js';
 import { Soldier } from '../game/soldier.js';
 import { BotBrain } from '../ai/bot.js';
@@ -114,7 +114,7 @@ export async function makeBattle({ perSide = 8, minutes = 30, seed = 1, attacker
   // Vehicles plan on their own grid, as in Game.load: more clearance, no
   // doorways, gentler slopes.
   const vnav = new NavGrid(world, { radius: town.def.playRadius + 60 });
-  vnav.build({ doors: [], agentRadius: 1.6, maxSlopeDeg: 28 });
+  vnav.build({ doors: [], agentRadius: 1.6, treeRadius: VEHICLE_TREE_BERTH, startHop: 14, minHeight: 0.5, maxSlopeDeg: 28 });
   await breather();
   const g = Object.create(Game.prototype);
   Object.assign(g, {

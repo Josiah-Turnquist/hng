@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { makeBattle, addPlayer } from '../src/server/battle.js';
 import { encodeInput, decodeInput, watchEvents } from '../src/net/protocol.js';
 import { makeWorld, run, rider } from './helpers/vehicleWorld.js';
+import { RNG, useStream } from '../src/core/math.js';
 import { SURF } from '../src/world/heightfield.js';
 import { VEHICLES, SHELLS, isHE } from '../src/vehicles/defs.js';
 import { AMMO } from '../src/weapons/ammo.js';
@@ -145,6 +146,10 @@ function past(id, range, lay) {
 test('from the outside view the gun is laid for the distance to the point aimed at: the shell lands there', () => {
   const warn = console.warn;
   console.warn = () => {};
+  // (Each shell has its own small scatter, from the battle's dice: this test
+  // starts them afresh, so that what the battle above happened to use of them
+  // does not decide whether a shell lands 2 m or 4 m long.)
+  useStream(new RNG(1));
   try {
     for (const id of ['m4a1_sherman', 't34_76', 'tiger1']) {
       for (const range of [30, 60, 120]) {

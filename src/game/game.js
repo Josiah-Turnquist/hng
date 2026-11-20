@@ -13,7 +13,7 @@ import { FACTIONS, DEFAULT_LOADOUT } from '../weapons/defs.js';
 import { Hud } from '../ui/hud.js';
 import { RangeMode } from './modes/range.js';
 import { AssaultMode, ATT, DEF } from './modes/assault.js';
-import { NavGrid } from '../ai/navgrid.js';
+import { NavGrid, VEHICLE_TREE_BERTH } from '../ai/navgrid.js';
 import { attachSoldierModel, updateSoldierView } from './soldierView.js';
 import { ThrownView } from './thrownView.js';
 import { ProjectileView } from './projectileView.js';
@@ -137,7 +137,7 @@ export class Game {
       this.nav.build({ doors: this.world.village?.doors || [] });
       // Vehicles need wider gaps and no doorways.
       this.vnav = new NavGrid(this.world, { radius: (def.playRadius || 700) + 60 });
-      this.vnav.build({ doors: [], agentRadius: 1.6, maxSlopeDeg: 28 });
+      this.vnav.build({ doors: [], agentRadius: 1.6, treeRadius: VEHICLE_TREE_BERTH, startHop: 14, minHeight: 0.5, maxSlopeDeg: 28 });
       console.log(`navigation grid ${this.nav.n}x${this.nav.n} built in ${Math.round(performance.now() - t0)} ms`);
       const enemy = this.opts.enemy || (faction === 'GE' ? 'US' : 'GE');
       const attack = (this.opts.side || 'attack') === 'attack';
@@ -333,8 +333,8 @@ export class Game {
     this.online?.update(dt);
     // The bots' routes, worked out a little each step (ai/navgrid.js; the
     // bikes' grid takes its turns through the vehicles').
-    this.nav?.tick();
-    if (this.vnav !== this.nav) this.vnav?.tick();
+    this.nav?.tick(this.time);
+    if (this.vnav !== this.nav) this.vnav?.tick(this.time);
     this._guard(this.player.soldier, () => this.player.update(dt));
     // Players on a game server, each driven by his input messages (server/battle.js).
     for (const p of this.remotePlayers || [])

@@ -17,6 +17,7 @@ const RIDE_MIN = 200; // m to the goal before a ride is worth it
 const SEARCH = 45; // m he'll walk to get a bike
 const DISMOUNT = 55; // m short of the goal's edge he gets off
 const SPOT_STOP = 260; // m: an enemy seen closer than this, he gets off to fight
+const FEEL_CREEP = 1.5; // m/s he keeps up while steering round something close ahead
 const REACH_OUTFIT = 2.2; // m from the seat a man can get on a sidecar outfit from (1.7 on a solo machine)
 const _p = new THREE.Vector3();
 const _d = new THREE.Vector3();
@@ -387,7 +388,9 @@ export class BikeRide {
     if (fc < len || fr < len * 0.7 || fl < len * 0.7) {
       const away = fl > fr ? -1 : 1;
       steer = clamp(steer + away * (1 - Math.min(fc, fl, fr) / len) * 1.2, -lim, lim);
-      vt = Math.min(vt, Math.sqrt(2 * 3 * Math.max(0, fc - 2.5)));
+      // (Never to a dead stop while there is still room: stopped, the bars
+      // turn nothing, and he sat facing the tree until he gave the ride up.)
+      vt = Math.min(vt, Math.max(fc > 1.2 ? FEEL_CREEP : 0, Math.sqrt(2 * 3 * Math.max(0, fc - 2.5))));
     }
     const err = vt - u;
     const drive = err > 0.4 ? clamp(err / 3, 0.35, 1) : err < -1.5 ? clamp(err / 4, v.rig ? -0.6 : -1, -0.25) : 0;
@@ -418,9 +421,17 @@ export class BikeRide {
     const len = 3 + Math.abs(u) * 1.1;
     const out = this._feelOut || (this._feelOut = [0, 0, 0, 0]);
     if (v.proxies) for (const q of v.proxies) q.box.enabled = false;
+    // (Each side's feeler starts at that side's edge: on an outfit the
+    // right-hand one starts at the sidecar's outer side, which otherwise met a
+    // tree the rider himself had cleared.)
+    const sc = v.def.sidecar;
+    const rx = Math.cos(v.yaw),
+      rz = -Math.sin(v.yaw);
     for (let k = 0; k < 3; k++) {
       const yaw = v.yaw + (k - 1) * 0.35;
-      const hit = coll.raycast(p.x, p.y + 0.1, p.z, -Math.sin(yaw), 0, -Math.cos(yaw), len, _hit, FLAG_SOLID, false);
+      // out[0] is the feeler to the right, out[2] the one to the left.
+      const side = k === 0 ? (sc ? sc.track + 0.35 : 0.35) : k === 2 ? -0.35 : sc ? sc.track / 2 : 0;
+      const hit = coll.raycast(p.x + rx * side, p.y + 0.1, p.z + rz * side, -Math.sin(yaw), 0, -Math.cos(yaw), len, _hit, FLAG_SOLID, false);
       out[k] = hit ? _hit.t : len;
     }
     if (v.proxies) for (const q of v.proxies) q.box.enabled = true;

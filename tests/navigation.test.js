@@ -34,11 +34,19 @@ test('a search between unconnected areas gives up at once', () => {
   let pocket = -1;
   for (let i = 0; i < nav.comp.length && pocket < 0; i++) if (nav.cost[i] && nav.compSize[nav.comp[i]] < 200) pocket = i;
   assert.ok(pocket >= 0);
-  const t = performance.now();
-  const r = nav.findPath(nav.cellX(pocket), nav.cellZ(pocket), 100, 500, 120000);
-  assert.equal(r, null);
-  assert.equal(nav.lastFail, 'apart');
-  assert.ok(performance.now() - t < 5);
+  // (As for men on foot. A vehicle is let out of a pocket near open ground,
+  // startHop: tests/vehiclesAndTrees.test.js.)
+  const hop = nav.startHop;
+  nav.startHop = 0;
+  try {
+    const t = performance.now();
+    const r = nav.findPath(nav.cellX(pocket), nav.cellZ(pocket), 100, 500, 120000);
+    assert.equal(r, null);
+    assert.equal(nav.lastFail, 'apart');
+    assert.ok(performance.now() - t < 5);
+  } finally {
+    nav.startHop = hop;
+  }
 });
 
 test('bots in the woods and hedgerows keep moving', () => {

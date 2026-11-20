@@ -19,6 +19,26 @@ const _m = new THREE.Matrix4();
 const _hit = new RayHit();
 const _hitDown = new RayHit();
 const _boxes = [];
+const _treeP = new THREE.Vector3();
+// (Its own working values: the ones the rest of the step shares are still in
+// use when the posts are looked at.)
+const _postO = new THREE.Vector3();
+const _postF = new THREE.Vector3();
+const _postN = new THREE.Vector3();
+const _postBoxes = [];
+// A thin upright thing a hull can run into: a tree trunk, or anything else as
+// thin and standing as tall (a tree in the village square, a telegraph pole, a
+// lamp post). floorY: the ground under the hull.
+const POST_HALF = 0.45; // m: half its width at most
+const POST_GRIP = 0.05; // friction of a hull against one
+const POST_TALL = 1.2; // m above the ground under the hull, at least
+function isPost(box, floorY) {
+  if (box.tree) return true;
+  if (box.owner?.isVehicle || box.owner?.isBike) return false;
+  const half = Math.max(box.hx, box.hz);
+  return half <= POST_HALF && box.hy > half && box.maxY > floorY + POST_TALL && Math.abs(box.pitch || 0) < 0.05 && Math.abs(box.roll || 0) < 0.05;
+}
+const _trees = new Float64Array(16); // the trees pushed on this step (x, z of up to eight)
 
 export function torqueAt(curve, rpm) {
   if (rpm <= curve[0][0]) return curve[0][1];
@@ -348,6 +368,7 @@ export class Vehicle {
     const k = this.def.mass * 380;
     const c = this.def.mass * 28;
     const up = _up.set(0, 1, 0).applyQuaternion(b.quaternion);
+    const floorY = b.position.y - this.cg.y;
     for (const s of this.samples) {
       const p = _v.copy(s.p).applyQuaternion(b.quaternion).add(b.position);
       // Ground.
@@ -365,21 +386,101 @@ export class Vehicle {
         // Motorcycles work out their own knocks (and push back on us): a 300 kg
         // machine is no wall to a tank.
         if (box.owner?.isBike) continue;
+        // Trees and posts meet the whole outline of the hull, below (_postContacts).
+        if (isPost(box, floorY)) continue;
         const depth = sphereBox(p, s.r, box, _n);
         if (depth <= 0) continue;
-        // A tree is a wall, never a ramp: it pushes straight back, not up, and
-        // hard enough to stop him against it (sideways it can't launch him).
-        let wall = false;
-        if (box.tree) {
-          _n.y = 0;
-          if (_n.lengthSq() < 1e-6) continue;
-          _n.normalize();
-          wall = true;
-        }
         // Tracks climb low obstacles: the front and back runs slope like a ramp.
-        else if (s.climb && _n.dot(up) < 0.5) _n.addScaledVector(up, 0.9).normalize();
-        this._contactForce(p, _n, depth, k, c, 0.4, dt, box.owner?.isVehicle ? box.owner : null, s, wall);
+        if (s.climb && _n.dot(up) < 0.5) _n.addScaledVector(up, 0.9).normalize();
+        this._contactForce(p, _n, depth, k, c, 0.4, dt, box.owner?.isVehicle ? box.owner : null, s);
       }
+    }
+    this._postContacts(k, c, dt);
+  }
+
+  // Trees and posts against the hull's whole outline (seen from above, a
+  // rectangle the hull's width and length), not only the few points the rest
+  // is tested at: a trunk is thinner than the gaps between those points, and
+  // went in between them (in at the middle of a tank's nose, a metre and more
+  // inside the hull), where it held the tank fast for the rest of the battle.
+  // A tree is a wall, never a ramp: it pushes straight back, not up, and hard
+  // enough to stop the vehicle against it.
+  _postContacts(k, c, dt) {
+    const b = this.body;
+    const [W, H, L] = this.def.dims;
+    const hw = W / 2,
+      hl = L / 2;
+    // The middle of the hull on the ground, and which way it faces, on the flat.
+    const o = _postO.copy(this.cg).negate().applyQuaternion(b.quaternion).add(b.position);
+    const f = _postF.set(0, 0, -1).applyQuaternion(b.quaternion);
+    const fl = Math.hypot(f.x, f.z);
+    if (fl < 0.2) return; // (on its nose or tail)
+    const fx = f.x / fl,
+      fz = f.z / fl;
+    const rx = -fz,
+      rz = fx;
+    const ox = o.x,
+      oy = o.y,
+      oz = o.z;
+    const reach = Math.hypot(hw, hl) + 1.5;
+    // (Trunks from a little above the ground, which tracks ride over, to the hull's top.)
+    const list = this.world.collision.query(ox - reach, oy + 0.35, oz - reach, ox + reach, oy + H, oz + reach, _postBoxes, FLAG_SOLID);
+    let seen = 0;
+    for (let i = 0; i < list.length; i++) {
+      const box = list[i];
+      if (!isPost(box, oy)) continue;
+      const tx = box.trunk ? box.trunk.x : box.cx,
+        tz = box.trunk ? box.trunk.z : box.cz,
+        tr = box.trunk ? box.trunk.r : Math.max(box.hx, box.hz);
+      // (A trunk is a stack of pieces: one push for each tree, not one for each piece.)
+      let dup = false;
+      for (let j = 0; j < seen; j += 2) if ((_trees[j] - tx) ** 2 + (_trees[j + 1] - tz) ** 2 < 0.36) dup = true;
+      if (dup) continue;
+      // The trunk's middle in the hull's own frame (x to its right, z to its front).
+      const dx = tx - ox,
+        dz = tz - oz;
+      const lx = dx * rx + dz * rz,
+        lz = dx * fx + dz * fz;
+      // The nearest point of the outline to it.
+      const qx = clamp(lx, -hw, hw),
+        qz = clamp(lz, -hl, hl);
+      let nx, nz, depth, px, pz;
+      const out = Math.hypot(lx - qx, lz - qz);
+      if (out > 1e-4) {
+        // Outside the outline: touching if nearer than its own radius.
+        depth = tr - out;
+        if (depth <= 0) continue;
+        nx = (qx - lx) / out;
+        nz = (qz - lz) / out;
+        px = qx;
+        pz = qz;
+      } else {
+        // Inside it: out by the nearest side.
+        const sx = hw - Math.abs(lx),
+          sz = hl - Math.abs(lz);
+        if (sx < sz) {
+          nx = lx > 0 ? -1 : 1;
+          nz = 0;
+          depth = sx + tr;
+        } else {
+          nx = 0;
+          nz = lz > 0 ? -1 : 1;
+          depth = sz + tr;
+        }
+        px = lx;
+        pz = lz;
+      }
+      if (seen < _trees.length) {
+        _trees[seen++] = tx;
+        _trees[seen++] = tz;
+      }
+      // Back to the world: the push on the hull, at the height of its middle.
+      _postN.set(nx * rx + nz * fx, 0, nx * rz + nz * fz);
+      const p = _treeP.set(ox + px * rx + pz * fx, b.position.y, oz + px * rz + pz * fz);
+      // (Hardly any grip: bark does not hold a steel hull that is turning or
+      // sliding along it. With a wall's grip, a tank backed against a trunk
+      // could not swing its tail off it.)
+      this._contactForce(p, _postN, depth, k, c, POST_GRIP, dt, null, null, true);
     }
   }
 
@@ -505,9 +606,29 @@ export class Vehicle {
     // Up a gear at the top of the rev range, if the next gear will still pull
     // (on a steep hill it won't: stay in the low gear and crawl up).
     if (!this.holdGear && shaft > up && this.gear < g.length && inp.throttle > 0.2 && this.slipping < 0.3) {
-      const rpmNext = (shaft * g[this.gear]) / g[this.gear - 1];
-      if (rpmNext > e.idle * 1.15 && this._pull(this.gear + 1, rpmNext) > this._resistance() * 1.1) return this._startShift(this.gear + 1);
+      // (The revs it will have in the next gear once the change is made: on a
+      // hill it loses speed all the while the change takes, and a tank that
+      // changed up half way up one came out of the change stopped, dropped
+      // back, and went up the hill a meter at a time.)
+      const slow = d.shiftTime * G * (Math.max(0, _v.set(0, 0, -1).applyQuaternion(this.body.quaternion).y) + (d.kind === 'tracked' ? (d.rollCoef ?? 0.03) + 0.6 * (this._avgRoll ?? 0.04) : (this._avgRoll ?? 0.04)));
+      const rpmNext = ((shaft * g[this.gear]) / g[this.gear - 1]) * Math.max(0, 1 - slow / Math.max(Math.abs(v), 0.5));
+      // (Out of the crawler gear only if the next will pull at the throttle
+      // being given: else it stalls in it, drops back, and never gets up the hill.)
+      const share = this.gear < start ? inp.throttle : 1;
+      if (rpmNext > e.idle * 1.15 && this._pull(this.gear + 1, rpmNext) * share > this._resistance() * 1.1) return this._startShift(this.gear + 1);
     }
+    // Standing still with the throttle on, in a gear that will not move it (a
+    // tank stopped on a hill in its starting gear, second: the rule below only
+    // changes down while it is still losing speed): down to first, the crawler
+    // gear. Without this a tank that stopped on a slope of one in six never got
+    // going again short of full throttle, and on one in four not at all.
+    if (this.gear > 1 && this.wantDir > 0 && inp.throttle > 0.3 && Math.abs(v) < 0.3 && this._pull(this.gear, Math.max(this.rpm, e.idle)) * inp.throttle < this._resistance() * 1.05) {
+      this.stoodT = (this.stoodT || 0) + dt;
+      if (this.stoodT > 0.8) {
+        this.stoodT = 0;
+        return this._startShift(1);
+      }
+    } else this.stoodT = 0;
     if (this.gear <= 1 || this.sinceShift < 1.2) return;
     // Down when the engine labors below its useful range (skipping gears if the
     // speed has dropped a lot), or when speed falls away at full throttle on a

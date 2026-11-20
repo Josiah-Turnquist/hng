@@ -3,9 +3,16 @@
 // deep water without a bridge over it, and cliffs. Doorways are forced open so
 // paths go through doors. A* finds routes; the route is then straightened by
 // cutting corners wherever a straight line stays walkable.
-import { FLAG_SOLID, FLAG_WALKABLE } from '../physics/collision.js';
+import { FLAG_SOLID, FLAG_WALKABLE, RayHit } from '../physics/collision.js';
+
+const _ray = new RayHit();
 
 const SQRT2 = Math.SQRT2;
+// How wide a berth (m) the vehicles' grid gives tree trunks: enough that a tank
+// keeping to its route passes a trunk with room to spare.
+// (Wider closes too much: at 2.4 m the attackers' way in through the woods was
+// cut off from the rest of the map for vehicles.)
+export const VEHICLE_TREE_BERTH = 2;
 // Cells searched in one step of the battle for the routes being worked out a
 // little at a time (findPathSoon): about a millisecond's worth, more for each
 // search waiting, up to a limit.
@@ -43,6 +50,7 @@ export class NavGrid {
     this.queue = [];
     this.answers = new Map();
     this.ticks = 0;
+    this.closedOff = []; // places closed for a while (closeFor): { cells, was, until }
   }
 
   index(x, z) {
@@ -67,7 +75,20 @@ export class NavGrid {
 
   // Build from the terrain, water, solid boxes (and the village's own lists of
   // blockers and doors when given).
-  build({ blockers = null, doors = [], agentRadius = 0.35, maxSlopeDeg = 38 } = {}) {
+  // (treeRadius: how wide a berth tree trunks are given, when wider than
+  // agentRadius: a vehicle can back off a wall, but among trunks it has
+  // nowhere to turn.)
+  // (startHop: how far, in meters, a route may begin from where its asker
+  // stands when he is in a pocket cut off from where he is going: a vehicle
+  // backed in among trees, whose berths join up round it, would otherwise be
+  // told there is no way to anywhere, and stand there for the rest of the
+  // battle. Not for men on foot, whose pockets have walls.)
+  // (minHeight: how far above the ground a thing must stand to be in the
+  // way: for men, what they cannot step or vault over; for vehicles less, since
+  // a tank that takes a garden wall for nothing sits on it with its tracks in
+  // the air.)
+  build({ blockers = null, doors = [], agentRadius = 0.35, treeRadius = 0, startHop = 0, minHeight = 0.9, maxSlopeDeg = 38 } = {}) {
+    this.startHop = startHop;
     const { world, n, cell } = this;
     const hf = world.hf;
     const coll = world.collision;
@@ -118,9 +139,9 @@ export class NavGrid {
       const az = [Math.sin(b.yaw), 0, Math.cos(b.yaw)];
       const lo = b.minY ?? -Infinity,
         hi = b.maxY ?? Infinity;
-      this._raster(b.cx, b.cz, b.hx, b.hz, ax, az, agentRadius, (i) => {
+      this._raster(b.cx, b.cz, b.hx, b.hz, ax, az, b.tree ? Math.max(agentRadius, treeRadius) : agentRadius, (i) => {
         const f = this.floorY[i];
-        if (lo > f + 0.6 || hi < f + 0.9) return;
+        if (lo > f + 0.6 || hi < f + minHeight) return;
         this.cost[i] = 0;
       });
     }
@@ -193,7 +214,7 @@ export class NavGrid {
       // Ramps and slabs are tilted surfaces to walk on; tilted solid volumes
       // (a hedge bank following a slope) still block.
       if ((Math.abs(b.pitch) > 0.05 || Math.abs(b.roll) > 0.05) && b.flags & FLAG_WALKABLE) continue;
-      out.push({ cx: b.cx, cz: b.cz, hx: b.hx, hz: b.hz, yaw: b.yaw, minY: b.minY, maxY: b.maxY });
+      out.push({ cx: b.cx, cz: b.cz, hx: b.hx, hz: b.hz, yaw: b.yaw, minY: b.minY, maxY: b.maxY, tree: !!b.tree || b.village?.tag === 'tree' });
     }
     return out;
   }
@@ -247,6 +268,101 @@ export class NavGrid {
       if (best >= 0) return best;
     }
     return -1;
+  }
+
+  // Where a route begins. For a vehicle standing where the grid lets nobody
+  // be (hard up against a wall, a hedge bank or a tree, inside the room the
+  // grid leaves round them): the nearest open cell it can get to in a straight
+  // line, not the nearest of all, which may be on the far side of the wall
+  // (its route then began through the wall, and it pushed at it for minutes).
+  _startCell(sx, sz) {
+    const i0 = this.index(sx, sz);
+    if ((i0 >= 0 && this.cost[i0]) || !this.startHop) return this.nearestWalkable(sx, sz);
+    const n = this.n;
+    const R = Math.ceil(this.startHop / this.cell);
+    const ix = Math.floor((sx - this.minX) / this.cell),
+      iz = Math.floor((sz - this.minZ) / this.cell);
+    const near = [];
+    for (let dz = -R; dz <= R; dz++)
+      for (let dx = -R; dx <= R; dx++) {
+        const jx = ix + dx,
+          jz = iz + dz;
+        if (jx < 0 || jz < 0 || jx >= n || jz >= n || dx * dx + dz * dz > R * R) continue;
+        const j = jz * n + jx;
+        if (this.cost[j]) near.push(j);
+      }
+    const d2 = (j) => (this.cellX(j) - sx) ** 2 + (this.cellZ(j) - sz) ** 2;
+    near.sort((a, b) => d2(a) - d2(b));
+    const hf = this.world.hf;
+    const coll = this.world.collision;
+    const y0 = hf.getHeight(sx, sz) + 0.6;
+    for (let k = 0; k < near.length && k < 48; k++) {
+      const j = near[k];
+      const cx = this.cellX(j),
+        cz = this.cellZ(j);
+      const cy = hf.getHeight(cx, cz) + 0.6;
+      const dx = sx - cx,
+        dy = y0 - cy,
+        dz = sz - cz;
+      const len = Math.hypot(dx, dy, dz);
+      // (From the cell back to him: his own hull, and other vehicles, are no wall.)
+      if (len < 0.5 || !coll.raycast(cx, cy, cz, dx / len, dy / len, dz / len, len, _ray, FLAG_SOLID, false) || _ray.box?.owner?.isVehicle) return j;
+    }
+    return this.nearestWalkable(sx, sz);
+  }
+
+  // Close the cells round a point for some seconds: a vehicle has found
+  // something there the grid did not know was in its way, and the routes
+  // worked out meanwhile go round it. now: the battle's clock.
+  closeFor(x, z, radius, seconds, now) {
+    const n = this.n;
+    const R = Math.ceil(radius / this.cell);
+    const ix = Math.floor((x - this.minX) / this.cell),
+      iz = Math.floor((z - this.minZ) / this.cell);
+    const cells = [],
+      was = [];
+    for (let dz = -R; dz <= R; dz++)
+      for (let dx = -R; dx <= R; dx++) {
+        const jx = ix + dx,
+          jz = iz + dz;
+        if (jx < 0 || jz < 0 || jx >= n || jz >= n) continue;
+        const j = jz * n + jx;
+        if (!this.cost[j] || (this.cellX(j) - x) ** 2 + (this.cellZ(j) - z) ** 2 > radius * radius) continue;
+        cells.push(j);
+        was.push(this.cost[j]);
+        this.cost[j] = 0;
+      }
+    if (cells.length) this.closedOff.push({ cells, was, until: now + seconds });
+  }
+
+  _reopen(now) {
+    for (let k = this.closedOff.length - 1; k >= 0; k--) {
+      const c = this.closedOff[k];
+      if (now < c.until) continue;
+      for (let i = 0; i < c.cells.length; i++) this.cost[c.cells[i]] = c.was[i];
+      this.closedOff.splice(k, 1);
+    }
+  }
+
+  // The nearest open cell of one connected area, within maxR cells, or -1.
+  _nearestOf(x, z, area, maxR) {
+    const n = this.n;
+    const ix = Math.floor((x - this.minX) / this.cell),
+      iz = Math.floor((z - this.minZ) / this.cell);
+    let best = -1,
+      bd = Infinity;
+    for (let dz = -maxR; dz <= maxR; dz++)
+      for (let dx = -maxR; dx <= maxR; dx++) {
+        const jx = ix + dx,
+          jz = iz + dz;
+        if (jx < 0 || jz < 0 || jx >= n || jz >= n) continue;
+        const j = jz * n + jx;
+        const d = dx * dx + dz * dz;
+        if (d >= bd || d > maxR * maxR || !this.cost[j] || this.comp[j] !== area) continue;
+        bd = d;
+        best = j;
+      }
+    return best;
   }
 
   // A* from (sx, sz) to (gx, gz). Returns [{x, z}, ...] or null. With partial,
@@ -311,9 +427,10 @@ export class NavGrid {
   // One step's share of the searches waiting (called once a step by the game).
   // More of them waiting (a whole side setting off at once): a bigger share,
   // so nobody stands about for long.
-  tick() {
+  tick(now) {
     if (this.shared) return;
     this.ticks++;
+    if (this.closedOff.length && now !== undefined) this._reopen(now);
     if (this.answers.size) for (const [who, a] of this.answers) if (this.ticks - a.at > 1200) this.answers.delete(who);
     let budget = Math.min(SLICE_MAX, SLICE + SLICE_MORE * this.queue.length);
     while (budget > 0) {
@@ -358,7 +475,7 @@ export class NavGrid {
   // nothing to search.
   _begin(sx, sz, gx, gz, maxExpand, partial) {
     const n = this.n;
-    const start = this.nearestWalkable(sx, sz);
+    let start = this._startCell(sx, sz);
     const goal = this.nearestWalkable(gx, gz);
     // Why the last search failed: 'blocked' (no open cell nearby), 'apart' (the
     // two ends are in areas that don't connect) or 'limit' (too long a route).
@@ -369,8 +486,13 @@ export class NavGrid {
     }
     if (start === goal) return { done: true, path: [{ x: gx, z: gz }] };
     if (this.comp && this.comp[start] !== this.comp[goal]) {
-      this.lastFail = 'apart';
-      return { done: true, path: null };
+      // (A vehicle in a pocket: from the nearest cell that does join up.)
+      const out = this.startHop ? this._nearestOf(sx, sz, this.comp[goal], Math.ceil(this.startHop / this.cell)) : -1;
+      if (out < 0) {
+        this.lastFail = 'apart';
+        return { done: true, path: null };
+      }
+      start = out;
     }
     const gen = ++this.gen;
     const gxI = goal % n,
